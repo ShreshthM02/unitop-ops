@@ -4,7 +4,7 @@
 // Note: each document's buildPrintHTML() (Quotation, Proforma, Exchange Order) stays
 // local to its own component, since it closes over component-specific state.
 
-import { LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, BADGE_AWARD_B64 } from "./constants.js";
+import { LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, BADGE_AWARD_B64 } from "./images.js";
 
 export const invoiceLetterheadCSS = `
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@300;400;500;600;700&display=swap');
