@@ -4,8 +4,8 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 
 export default function GanttView({ queries, tours }) {
   const [calTab, setCalTab]         = useState("gantt");
-  const [selectedYear,  setYear]    = useState(2026);
-  const [selectedMonth, setMonth]   = useState(5); // 0-indexed, default June 2026
+  const [selectedYear,  setYear]    = useState(()=>new Date().getFullYear());
+  const [selectedMonth, setMonth]   = useState(()=>new Date().getMonth()); // 0-indexed, defaults to current month
 
   // ── GANTT ──────────────────────────────────────────────────────────────────
   // Build days for selected month
@@ -17,12 +17,23 @@ export default function GanttView({ queries, tours }) {
     return todayD.getFullYear()===selectedYear && todayD.getMonth()===selectedMonth && todayD.getDate()===day;
   };
 
-  // Map tours to gantt bars within the selected month
-  const ganttTours = queries.filter(q=>q.status!=="new_query"&&!q.cancelled&&(q.travelDate||q.travelMonth)).map((q,idx)=>{
-    const nights = parseInt(q.nights)||7;
-    const tDate  = q.travelDate ? new Date(q.travelDate) : null;
-    return { query:q, tDate, nights, color:DEST_COLORS[idx%DEST_COLORS.length] };
-  }).filter(t=>t.tDate);
+  // Parse a YYYY-MM-DD string as local midnight (avoids UTC-shift off-by-one)
+  const parseLocalDate = (str) => {
+    if(!str||typeof str!=="string") return null;
+    const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(!m) return null;
+    return new Date(+m[1], +m[2]-1, +m[3]);
+  };
+
+  // Only show queries that are in operations or completed AND have a confirmed travel date
+  const ganttTours = queries
+    .filter(q=>["operations","completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .map((q,idx)=>{
+      const nights = parseInt(q.nights)||7;
+      const tDate  = parseLocalDate(q.travelDate);
+      return { query:q, tDate, nights, color:DEST_COLORS[idx%DEST_COLORS.length] };
+    })
+    .filter(t=>t.tDate);
 
   const barForDay = (tour, day) => {
     if(!tour.tDate) return null;
@@ -54,7 +65,8 @@ export default function GanttView({ queries, tours }) {
   const isInCity = (q, day) => {
     if(!q.travelDate) return false;
     const d = new Date(selectedYear, selectedMonth, day);
-    const s = new Date(q.travelDate);
+    const s = parseLocalDate(q.travelDate);
+    if(!s) return false;
     const e = new Date(s); e.setDate(s.getDate()+(parseInt(q.nights)||7));
     return d>=s && d<=e;
   };
