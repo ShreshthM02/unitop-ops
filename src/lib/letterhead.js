@@ -1,86 +1,113 @@
 // Shared invoice/quotation letterhead building blocks.
 //
 // ARCHITECTURE (read this before touching print CSS in a document component):
-// Every letterhead document is a single <table class="lh-doc"> with a real
-// <thead>/<tbody>/<tfoot>. Browsers natively repeat <thead> and <tfoot> on
-// every printed page when a table's rows spill across pages, and they apply
-// the containing box's per-page margins (@page) correctly on every page —
-// unlike a plain block's own padding, which only ever appears once, at the
-// very top and very bottom of the whole flow. That mismatch was the root
-// cause of headers vanishing on page 2, footers overlapping content, and
-// content bleeding past the print margins on multi-page documents.
-//   - Physical page margins come from a real `@page { margin }` rule, so
-//     every printed page gets the same margin, not just page 1.
-//   - "Header/Footer on all pages" ON  -> header/footer content goes in
-//     <thead>/<tfoot>, which repeats on every page automatically.
-//   - "Header/Footer on all pages" OFF -> header/footer content becomes an
-//     ordinary first/last row in <tbody>, so it appears exactly once.
-//   - "Print on Letterhead" -> header/footer render as blank space of the
-//     same height (the physical pre-printed paper already has the artwork),
-//     and — since every physical sheet in the printer needs that blank
-//     space reserved — it always repeats on every page and overrides the
-//     other two toggles.
 //
-// Use `buildLetterheadDocument()` below to assemble a full print HTML
-// string; don't hand-roll the <table>/<thead>/<tfoot> wrapper per document.
-// Each document still owns its own content-specific CSS and content blocks,
-// passed in as plain HTML strings — one string per array entry in
-// `bodyBlocks`, since each entry becomes its own table row, which is what
-// gives the browser a place to break the page.
+// Header/footer repeat is achieved with position:fixed, NOT <thead>/<tfoot>.
+// Chrome does NOT reliably repeat <thead>/<tfoot> on every printed page
+// (known Chromium limitation). Chrome DOES reliably redraw position:fixed
+// elements on every page.
+//
+// Layout model:
+//   - position:fixed elements are positioned relative to the physical page
+//     box (top:0 = top of physical page, before any @page margin).
+//   - @page { margin } is guaranteed per-page by the CSS spec. Setting
+//     margin-top/bottom to match the fixed element heights creates the
+//     blank space that keeps body content from sliding under the header/footer.
+//   - "Header/Footer on all pages" ON  → element is position:fixed (repeats).
+//   - "Header/Footer on all pages" OFF → element is in normal body flow
+//     (appears once, on the first/last page only). @page margin shrinks back
+//     to the default side margin so subsequent pages have no wasted space.
+//   - "Print on Letterhead" → no header/footer elements at all; blank space
+//     is provided entirely by @page margins of exactly 60 mm top / 40 mm
+//     bottom, which reserves the right amount of space on every physical
+//     sheet for the pre-printed artwork.
+//
+// Use buildLetterheadDocument() to assemble a full print HTML string.
+// Each document passes its own content blocks as bodyBlocks (plain HTML
+// strings) and its own extra CSS as extraHeadCSS.
 
 import { LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, BADGE_AWARD_B64 } from "./images.js";
 
-export const PRINT_MARGIN = { top: "8mm", right: "14mm", bottom: "8mm", left: "14mm" };
+// Measured heights (pt → mm: mm = pt × 25.4 / 72)
+// Header: logo 88pt(≈31mm) + 3 addr lines(≈13mm) + rule+margins(≈5mm) + pad(≈1mm) = ~50mm
+// Footer: top-pad(≈2mm) + rule+margin(≈3mm) + badge row 32pt(≈11mm) = ~16mm
+const HEADER_H_MM  = 50;
+const FOOTER_H_MM  = 18;
+const GAP_MM       = 4;   // whitespace between fixed element and content area
+const SIDE_MM      = 14;
+const LH_TOP_MM    = 60;  // "Print on Letterhead" @page margin-top
+const LH_BOTTOM_MM = 40;  // "Print on Letterhead" @page margin-bottom
+
+export const PRINT_MARGIN = {
+  top:    `${HEADER_H_MM + GAP_MM}mm`,
+  right:  `${SIDE_MM}mm`,
+  bottom: `${FOOTER_H_MM + GAP_MM}mm`,
+  left:   `${SIDE_MM}mm`,
+};
 
 export const invoiceLetterheadCSS = `
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@300;400;500;600;700&display=swap');
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body { font-family: 'Inter', Arial, sans-serif; font-size: 10pt; color: #1a1a1a; background: #fff; }
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Inter:wght@300;400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { font-family: 'Inter', Arial, sans-serif; font-size: 10pt; color: #1a1a1a; background: #fff; }
 
-    .lh-doc { width: 100%; border-collapse: collapse; }
-    .lh-doc > tbody > tr > td { padding: 0; }
+  .lh-fixed-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: ${HEADER_H_MM}mm;
+    background: #fff;
+    padding: 0 ${SIDE_MM}mm;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .lh-fixed-footer {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: ${FOOTER_H_MM}mm;
+    background: #fff;
+    padding: 0 ${SIDE_MM}mm;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 
-    .lh-header { text-align: center; padding-bottom: 3pt; }
-    .lh-logo { height: 88pt; width: auto; display: block; margin: 0 auto; }
-    .lh-addr-block { color: #2a2a2a; font-family: 'Inter', Arial, sans-serif; font-size: 9pt; letter-spacing: 0.3pt; line-height: 1.35; margin-bottom: 0; text-align: center; white-space: nowrap; }
-    .lh-addr-block:first-of-type { margin-top: 1pt; }
-    .lh-rule { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin: 4pt 0 8pt; border-radius: 1pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-header--blank { height: 84pt; }
+  .lh-header { text-align: center; padding-bottom: 3pt; }
+  .lh-logo   { height: 88pt; width: auto; display: block; margin: 0 auto; }
+  .lh-addr-block { color: #2a2a2a; font-family: 'Inter', Arial, sans-serif; font-size: 9pt; letter-spacing: 0.3pt; line-height: 1.35; text-align: center; white-space: nowrap; }
+  .lh-addr-block:first-of-type { margin-top: 1pt; }
+  .lh-rule { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin: 4pt 0 8pt; border-radius: 1pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
-    .lh-footer { padding-top: 6pt; }
-    .lh-rule-footer { height: 1.5pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-footer--blank { height: 40pt; }
+  .lh-footer { padding-top: 6pt; }
+  .lh-rule-footer { height: 1.5pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
-    .inv-title { font-family: 'Playfair Display', Georgia, serif; font-size: 18pt; font-weight: 700; color: #1A3A52; text-align: center; margin-bottom: 10pt; letter-spacing: 1pt; text-transform: uppercase; }
-    .inv-number { font-size: 11pt; font-weight: 700; color: #8B1A1A; }
-    .parties { display: flex; justify-content: space-between; margin-bottom: 10pt; gap: 14pt; }
-    .party-block { flex: 1; background: #f8f9fa; border: 1pt solid #e5e7eb; border-radius: 4pt; padding: 8pt 10pt; }
-    .party-label { font-size: 7.5pt; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 4pt; }
-    .party-name { font-size: 10.5pt; font-weight: 700; color: #1A3A52; font-family: 'Playfair Display', serif; margin-bottom: 2pt; }
-    .party-detail { font-size: 8.5pt; color: #555; line-height: 1.45; }
-    table.content-table { width: 100%; border-collapse: collapse; margin-bottom: 6pt; }
-    table.content-table thead tr th { background: #1A3A52; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 5pt 7pt; text-align: left; }
-    table.content-table tbody tr td { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; vertical-align: top; }
-    table.content-table tbody tr:nth-child(even) td { background: #f9fafb; }
-    td.amount { text-align: right; font-weight: 600; color: #1A3A52; }
-    .totals-block { width: 240pt; margin-left: auto; margin-bottom: 6pt; }
-    .total-row { display: flex; justify-content: space-between; padding: 3pt 7pt; font-size: 9.5pt; border-bottom: 0.5pt solid #e5e7eb; }
-    .total-row.grand { background: #1A3A52; color: #fff; font-weight: 700; font-size: 10.5pt; border-radius: 3pt; padding: 6pt 9pt; }
-    .bank-box { background: #f0f4f8; border: 1pt solid #d1d9e0; border-radius: 4pt; padding: 8pt 10pt; margin-bottom: 7pt; }
-    .bank-title { font-size: 8.5pt; font-weight: 700; color: #1A3A52; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 4pt; text-decoration: underline; }
-    .bank-row { display: flex; gap: 8pt; font-size: 9pt; margin-bottom: 2pt; }
-    .bank-key { font-weight: 600; color: #333; min-width: 110pt; }
-    .bank-val { color: #555; }
-    .notes-box { font-size: 8.5pt; color: #666; line-height: 1.5; border-left: 2pt solid #cb0f0f; padding-left: 7pt; margin-bottom: 7pt; }
+  .inv-title  { font-family: 'Playfair Display', Georgia, serif; font-size: 18pt; font-weight: 700; color: #1A3A52; text-align: center; margin-bottom: 10pt; letter-spacing: 1pt; text-transform: uppercase; }
+  .inv-number { font-size: 11pt; font-weight: 700; color: #8B1A1A; }
+  .parties       { display: flex; justify-content: space-between; margin-bottom: 10pt; gap: 14pt; }
+  .party-block   { flex: 1; background: #f8f9fa; border: 1pt solid #e5e7eb; border-radius: 4pt; padding: 8pt 10pt; }
+  .party-label   { font-size: 7.5pt; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 4pt; }
+  .party-name    { font-size: 10.5pt; font-weight: 700; color: #1A3A52; font-family: 'Playfair Display', serif; margin-bottom: 2pt; }
+  .party-detail  { font-size: 8.5pt; color: #555; line-height: 1.45; }
+  table.content-table { width: 100%; border-collapse: collapse; margin-bottom: 6pt; }
+  table.content-table thead tr th { background: #1A3A52; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 5pt 7pt; text-align: left; }
+  table.content-table tbody tr td { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; vertical-align: top; }
+  table.content-table tbody tr:nth-child(even) td { background: #f9fafb; }
+  td.amount      { text-align: right; font-weight: 600; color: #1A3A52; }
+  .totals-block  { width: 240pt; margin-left: auto; margin-bottom: 6pt; }
+  .total-row     { display: flex; justify-content: space-between; padding: 3pt 7pt; font-size: 9.5pt; border-bottom: 0.5pt solid #e5e7eb; }
+  .total-row.grand { background: #1A3A52; color: #fff; font-weight: 700; font-size: 10.5pt; border-radius: 3pt; padding: 6pt 9pt; }
+  .bank-box    { background: #f0f4f8; border: 1pt solid #d1d9e0; border-radius: 4pt; padding: 8pt 10pt; margin-bottom: 7pt; }
+  .bank-title  { font-size: 8.5pt; font-weight: 700; color: #1A3A52; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 4pt; text-decoration: underline; }
+  .bank-row    { display: flex; gap: 8pt; font-size: 9pt; margin-bottom: 2pt; }
+  .bank-key    { font-weight: 600; color: #333; min-width: 110pt; }
+  .bank-val    { color: #555; }
+  .notes-box   { font-size: 8.5pt; color: #666; line-height: 1.5; border-left: 2pt solid #cb0f0f; padding-left: 7pt; margin-bottom: 7pt; }
 
-    @media print {
-      body { margin: 0; }
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    }
-  `;
+  @media print {
+    body { margin: 0; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+`;
 
 export const invoiceLetterheadHTML = (printOnLetterhead = false) => {
-  if (printOnLetterhead) return `<div class="lh-header lh-header--blank"></div>`;
+  if (printOnLetterhead) return "";
   return `
   <div class="lh-header">
     <img src="${LOGO_B64}" class="lh-logo" alt="Unitop Tours"/>
@@ -92,7 +119,7 @@ export const invoiceLetterheadHTML = (printOnLetterhead = false) => {
 `;};
 
 export const invoiceFooterHTML = (printOnLetterhead = false) => {
-  if (printOnLetterhead) return `<div class="lh-footer lh-footer--blank"></div>`;
+  if (printOnLetterhead) return "";
   return `
 <div class="lh-footer">
   <div class="lh-rule-footer"></div>
@@ -126,28 +153,41 @@ export function buildLetterheadDocument({
   const effHeaderRepeat = printOnLetterhead || headerAllPages;
   const effFooterRepeat = printOnLetterhead || footerAllPages;
 
-  const headerInner = showHeader ? invoiceLetterheadHTML(printOnLetterhead) : "";
-  const footerInner = showFooter ? invoiceFooterHTML(printOnLetterhead) : "";
+  // @page margins: reserve space for fixed elements on every page,
+  // or fall back to side-margin default when element is flow-only.
+  const marginTop    = printOnLetterhead ? `${LH_TOP_MM}mm`
+    : (showHeader && effHeaderRepeat)    ? `${HEADER_H_MM + GAP_MM}mm`
+    : `${SIDE_MM}mm`;
+  const marginBottom = printOnLetterhead ? `${LH_BOTTOM_MM}mm`
+    : (showFooter && effFooterRepeat)    ? `${FOOTER_H_MM + GAP_MM}mm`
+    : `${SIDE_MM}mm`;
 
-  const theadBlock = headerInner && effHeaderRepeat
-    ? `<thead><tr><td>${headerInner}</td></tr></thead>` : "";
-  const tfootBlock = footerInner && effFooterRepeat
-    ? `<tfoot><tr><td>${footerInner}</td></tr></tfoot>` : "";
+  // Fixed elements — only when repeating and not in letterhead mode
+  const fixedHeader = (!printOnLetterhead && showHeader && effHeaderRepeat)
+    ? `<div class="lh-fixed-header">${invoiceLetterheadHTML(false)}</div>` : "";
+  const fixedFooter = (!printOnLetterhead && showFooter && effFooterRepeat)
+    ? `<div class="lh-fixed-footer">${invoiceFooterHTML(false)}</div>` : "";
 
-  const rows = [...bodyBlocks];
-  if (headerInner && !effHeaderRepeat) rows.unshift(headerInner);
-  if (footerInner && !effFooterRepeat) rows.push(footerInner);
-  const tbodyRows = rows.map(b => `<tr><td>${b}</td></tr>`).join("");
+  // Flow elements — appear once at top/bottom of body
+  const flowBlocks = [...bodyBlocks];
+  if (!printOnLetterhead && showHeader && !effHeaderRepeat) flowBlocks.unshift(invoiceLetterheadHTML(false));
+  if (!printOnLetterhead && showFooter && !effFooterRepeat) flowBlocks.push(invoiceFooterHTML(false));
 
   return `<!DOCTYPE html><html><head><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
-    <style>@page{size:A4;margin:${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left};${showPageNum ? '@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}' : ''}}</style>
+    <style>
+      @page {
+        size: A4;
+        margin: ${marginTop} ${SIDE_MM}mm ${marginBottom} ${SIDE_MM}mm;
+        ${showPageNum ? `@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}` : ''}
+      }
+    </style>
     <style>${extraHeadCSS}</style>
   </head><body>
-    <table class="lh-doc">
-      ${theadBlock}
-      <tbody>${tbodyRows}</tbody>
-      ${tfootBlock}
-    </table>
+    ${fixedHeader}
+    ${fixedFooter}
+    <div class="lh-body">
+      ${flowBlocks.join("\n")}
+    </div>
   </body></html>`;
 }
