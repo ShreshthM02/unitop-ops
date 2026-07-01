@@ -1,8 +1,30 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
-import * as Comp from './index.js';
-const { AgentLedgerPanel,AgentMaster,AllQueriesView,CancelModal,CostSheet,Dashboard,DestinationOverlapView,DocumentRegistry,DocRegistryInline,EnhancedPaymentTracker,ExchangeOrderGenerator,GanttView,InAppChat,ItineraryBuilder,KanbanView,LoginScreen,MealPlanDocument,NewQueryModal,OwnPasswordChange,PLReport,ProformaInvoice,QueryDrawerWithQuote,QuotationGenerator,ReportsView,ServicesList,SmartSearch,TaxInvoice,TeamView,TemplatesHub,TourBriefingSheet,UserManagementPanel,UserProfilePanel,VendorLedgerPanel,VendorMaster } = Comp;
+import AgentMaster from './AgentMaster.jsx';
+import AllQueriesView from './AllQueriesView.jsx';
+import CancelModal from './CancelModal.jsx';
+import Dashboard from './Dashboard.jsx';
+import EnhancedPaymentTracker from './EnhancedPaymentTracker.jsx';
+import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
+import GanttView from './GanttView.jsx';
+import InAppChat from './InAppChat.jsx';
+import ItineraryBuilder from './ItineraryBuilder.jsx';
+import KanbanView from './KanbanView.jsx';
+import NewQueryModal from './NewQueryModal.jsx';
+import PLReport from './PLReport.jsx';
+import ProformaInvoice from './ProformaInvoice.jsx';
+import QueryDrawerWithQuote from './QueryDrawerWithQuote.jsx';
+import QuotationGenerator from './QuotationGenerator.jsx';
+import ReportsView from './ReportsView.jsx';
+import SmartSearch from './SmartSearch.jsx';
+import TaxInvoice from './TaxInvoice.jsx';
+import TeamView from './TeamView.jsx';
+import TemplatesHub from './TemplatesHub.jsx';
+import UserProfilePanel from './UserProfilePanel.jsx';
+import VendorMaster from './VendorMaster.jsx';
+import { CostSheet } from './CostSheet.jsx';
+import { UserManagementPanel } from './UserManagementPanel.jsx';
 
 export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLedger }) {
   const [view, setView]           = useState("dashboard");
