@@ -57,7 +57,7 @@ export const invoiceLetterheadCSS = `
 
     /* ── Header (logo + 3 address lines + top gradient rule) ─────────────── */
     .lh-header { text-align: center; padding-bottom: 10pt; }
-    .lh-header--fixed { position: fixed; top: 8mm; left: 14mm; right: 14mm; padding-bottom: 0; }
+    .lh-header--fixed { position: fixed; top: calc(${PRINT_MARGIN.top} - ${HEADER_RESERVE_MM}mm); left: 0; right: 0; padding-bottom: 0; }
     .lh-logo { height: 88pt; width: auto; display: block; margin: 0 auto; }
     .lh-addr-block { color: #2a2a2a; font-family: 'Inter', Arial, sans-serif; font-size: 9pt; letter-spacing: 0.3pt; line-height: 1.35; margin-bottom: 0; text-align: center; white-space: nowrap; }
     .lh-addr-block:first-of-type { margin-top: 1pt; }
@@ -65,7 +65,7 @@ export const invoiceLetterheadCSS = `
 
     /* ── Footer (bottom gradient rule + 4 badges) ─────────────────────────── */
     .lh-footer { padding-top: 14pt; }
-    .lh-footer--fixed { position: fixed; bottom: 8mm; left: 14mm; right: 14mm; padding-top: 0; }
+    .lh-footer--fixed { position: fixed; bottom: calc(${PRINT_MARGIN.bottom} - ${FOOTER_RESERVE_MM}mm); left: 0; right: 0; padding-top: 0; }
     .lh-rule-footer { height: 1.5pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
     /* ── Shared document content styles ───────────────────────────────────── */
