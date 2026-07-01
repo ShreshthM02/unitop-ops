@@ -40,12 +40,15 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
     monumentNote: template.monumentNote,
   });
 
-  const [activeTab,         setActiveTab]         = useState('content');
-  const [showHeader,        setShowHeader]        = useState(true);
-  const [showFooter,        setShowFooter]        = useState(false);
-  const [showPageNum,       setShowPageNum]       = useState(false);
-  const [showStamp,         setShowStamp]         = useState(false);
+  const [activeTab,    setActiveTab]    = useState('content');
+  const [showHeader,   setShowHeader]   = useState(true);
+  const [showFooter,   setShowFooter]   = useState(false);
+  const [showPageNum,  setShowPageNum]  = useState(false);
+  const [showStamp,    setShowStamp]    = useState(false);
   const [printOnLetterhead, setPrintOnLetterhead] = useState(false);
+  // Turning this on supersedes the header/footer toggles (physical letterhead
+  // paper already carries the artwork on every sheet), so switch them off
+  // rather than leaving conflicting controls active.
   const togglePrintOnLetterhead = () => setPrintOnLetterhead(p => {
     const next = !p;
     if (next) { setShowHeader(false); setShowFooter(false); }
@@ -75,42 +78,42 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
   }));
 
   const buildPrintHTML = () => {
-    const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
+    const stampHTMLQ = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
 
     const addresseeBlock = `
-      <div style="margin-bottom:10pt;font-size:9pt;">
-        ${q.attnName ? '<div><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
-        <div><strong>Date:</strong> ${q.date}</div>
-        ${q.refLine ? '<div style="margin-top:6pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
-      </div>
-      <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
-      <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>`;
+    <div style="margin-bottom:10pt;font-size:9pt;">
+      ${q.attnName ? '<div><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
+      <div><strong>Date:</strong> ${q.date}</div>
+      ${q.refLine ? '<div style="margin-top:6pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
+    </div>
+    <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
+    <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>`;
 
     const itineraryBlock = `
-      <h2>Day-wise Itinerary</h2>
-      <table class="content-table"><thead><tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr></thead>
-      <tbody>${q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>').join('')}</tbody></table>`;
+    <h2>Day-wise Itinerary</h2>
+    <table class="content-table"><thead><tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr></thead>
+    <tbody>${q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>').join('')}</tbody></table>`;
 
     const accommodationBlock = `
-      <h2>Accommodation</h2>
-      <table class="content-table"><thead><tr><th>Place</th><th>Nights</th><th>Hotel</th></tr></thead>
-      <tbody>${q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>').join('')}</tbody></table>`;
+    <h2>Accommodation</h2>
+    <table class="content-table"><thead><tr><th>Place</th><th>Nights</th><th>Hotel</th></tr></thead>
+    <tbody>${q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>').join('')}</tbody></table>`;
 
     const priceBlock = `
-      <h2>Cost Per Person (${q.currency})</h2>
-      <table class="content-table price-table"><thead><tr><th>Group Size</th><th>Rate</th></tr></thead>
-      <tbody>${q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>').join('')}</tbody></table>
-      ${q.showMonuments ? '<h2>'+q.monumentNote+'</h2><table class="content-table"><thead><tr><th>Monument</th><th>Fee</th></tr></thead><tbody>'+q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>').join('')+'</tbody></table>' : ''}`;
+    <h2>Cost Per Person (${q.currency})</h2>
+    <table class="content-table price-table"><thead><tr><th>Group Size</th><th>Rate</th></tr></thead>
+    <tbody>${q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>').join('')}</tbody></table>
+    ${q.showMonuments ? '<h2>'+q.monumentNote+'</h2><table class="content-table"><thead><tr><th>Monument</th><th>Fee</th></tr></thead><tbody>'+q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>').join('')+'</tbody></table>' : ''}`;
 
     const inclusionsBlock = `
-      <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
-      <h2>Cost Does Not Include</h2><ol>${q.excludes.map(i=>'<li>'+i+'</li>').join('')}</ol>`;
+    <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
+    <h2>Cost Does Not Include</h2><ol>${q.excludes.map(i=>'<li>'+i+'</li>').join('')}</ol>`;
 
     const closingBlock = `
-      <p style="margin-top:12pt;font-size:9.5pt;">${q.closingLine}</p>
-      <div style="margin-top:20pt;font-size:10pt;">${q.signoff.replace(/\n/g,'<br/>')}</div>
+    <p style="margin-top:12pt;font-size:9.5pt;">${q.closingLine}</p>
+    <div style="margin-top:20pt;font-size:10pt;">${q.signoff.replace(/\n/g,'<br/>')}</div>
       <div style="margin-top:14pt;">
-        ${stampHTML}
+        ${stampHTMLQ}
         ${showStamp ? '' : '<div style="height:44pt;"></div>'}
         <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
         <div style="font-size:10pt;font-weight:700;color:#1A3A52;">For Unitop Tours &amp; Travel (P) Ltd.</div>
@@ -123,7 +126,8 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
         h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:10pt 0 4pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
         .price-table td:last-child{font-weight:bold;color:#C0392B;}
         ol,ul{margin:3pt 0 0 14pt;padding:0;}
-        li{margin-bottom:2pt;font-size:9pt;}`,
+        li{margin-bottom:2pt;font-size:9pt;}
+      `,
       bodyBlocks: [addresseeBlock, itineraryBlock, accommodationBlock, priceBlock, inclusionsBlock, closingBlock],
       headerAllPages: showHeader,
       footerAllPages: showFooter,
@@ -175,8 +179,8 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
         </div>
 
         {/* Toggles */}
-        <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,alignItems:'center'}}>
-          {(()=>{const Tog=({label,val,onToggle,disabled})=>(<label style={{display:'flex',alignItems:'center',gap:6,cursor:disabled?'not-allowed':'pointer',fontSize:11,color:disabled?G.gray300:G.gray600,opacity:disabled?.5:1}}><div onClick={disabled?undefined:onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',flexShrink:0,transition:'background .2s'}}><div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/></div>{label}</label>);return(<><Tog label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/><Tog label="Header on all pages" val={showHeader}  onToggle={()=>setShowHeader(p=>!p)} disabled={printOnLetterhead}/><Tog label="Footer on all pages" val={showFooter}  onToggle={()=>setShowFooter(p=>!p)} disabled={printOnLetterhead}/><Tog label="Page number"         val={showPageNum} onToggle={()=>setShowPageNum(p=>!p)}/><Tog label="Digital stamp"       val={showStamp}   onToggle={()=>setShowStamp(p=>!p)}/></>);})()}
+        <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,alignItems:'center',flexWrap:'wrap'}}>
+          {(()=>{const Tog=({label,val,onToggle,disabled})=>(<label style={{display:'flex',alignItems:'center',gap:6,cursor:disabled?'not-allowed':'pointer',fontSize:11,color:disabled?G.gray400:G.gray600,opacity:disabled?0.55:1}}><div onClick={disabled?undefined:onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',flexShrink:0,transition:'background .2s'}}><div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/></div>{label}</label>);return(<><Tog label="Header on all pages" val={showHeader}  onToggle={()=>setShowHeader(p=>!p)} disabled={printOnLetterhead}/><Tog label="Footer on all pages" val={showFooter}  onToggle={()=>setShowFooter(p=>!p)} disabled={printOnLetterhead}/><Tog label="Page number"         val={showPageNum} onToggle={()=>setShowPageNum(p=>!p)}/><Tog label="Digital stamp"       val={showStamp}   onToggle={()=>setShowStamp(p=>!p)}/><span style={{width:1,alignSelf:'stretch',background:G.gray200}}/><Tog label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/></>);})()}
         </div>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
