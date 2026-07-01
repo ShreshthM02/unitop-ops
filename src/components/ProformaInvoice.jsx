@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
 
 export default function ProformaInvoice({ query, onClose }) {
   const settings = (() => { try { return JSON.parse(localStorage.getItem('unitop_doc_settings')||'{}'); } catch(e) { return {}; } })();
@@ -14,6 +14,12 @@ export default function ProformaInvoice({ query, onClose }) {
   const [footerAllPages, setFooterAllPages] = React.useState(false);
   const [showPageNums,   setShowPageNums]   = React.useState(false);
   const [digitalSign,    setDigitalSign]    = React.useState(false);
+  const [printOnLetterhead, setPrintOnLetterhead] = React.useState(false);
+  const togglePrintOnLetterhead = () => setPrintOnLetterhead(p => {
+    const next = !p;
+    if (next) { setHeaderAllPages(false); setFooterAllPages(false); }
+    return next;
+  });
 
   const [inv, setInv] = React.useState({
     invoiceNo:   `${prefix}-${new Date().getFullYear()}-${String(nextSerial).padStart(3,'0')}`,
@@ -58,117 +64,106 @@ export default function ProformaInvoice({ query, onClose }) {
   const buildPrintHTML = () => {
     const words     = numToWords(grandTotal);
     const stampHTML = digitalSign ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Digital Stamp"/>` : '';
-    const pageNum   = (n) => showPageNums ? `<div class="page-num">Page ${n}</div>` : '';
     const rows = inv.items.map(it=>`
       <tr><td>${it.desc}</td><td style="text-align:center">${it.qty}</td>
       <td style="text-align:center">${it.unit}</td>
       <td class="amount">${inv.currency} ${parseFloat(it.rate||0).toLocaleString()}</td>
       <td class="amount">${inv.currency} ${parseFloat(it.amount||0).toLocaleString()}</td></tr>`).join('');
 
-    return `<!DOCTYPE html><html><head>
-      <title>Proforma Invoice ${inv.invoiceNo}</title>
-      <style>${invoiceLetterheadCSS}</style>
-      ${showPageNums ? '<style>@page{@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}}</style>' : ''}
-    </head><body><div class="page${footerAllPages ? ' reserve-footer' : ''}">
-      ${invoiceLetterheadHTML(1, headerAllPages)}
-      <div class="doc-body">
-        <!-- Addressee -->
-        <div style="display:table;width:100%;margin-bottom:10pt">
-          <div style="display:table-cell;vertical-align:top">
-            <div style="font-size:10.5pt;font-weight:bold">KIND ATTN: &nbsp;&nbsp;${inv.attnName}</div>
-            ${inv.attnCompany?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCompany}</div>`:''}
-            ${inv.attnCity?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCity}</div>`:''}
-          </div>
-          <div style="display:table-cell;vertical-align:top;text-align:right;white-space:nowrap">
-            <div style="font-size:10.5pt">DATE: <strong>${inv.date}</strong></div>
-          </div>
+    const addresseeBlock = `
+      <div style="display:table;width:100%;margin-bottom:10pt">
+        <div style="display:table-cell;vertical-align:top">
+          <div style="font-size:10.5pt;font-weight:bold">KIND ATTN: &nbsp;&nbsp;${inv.attnName}</div>
+          ${inv.attnCompany?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCompany}</div>`:''}
+          ${inv.attnCity?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCity}</div>`:''}
         </div>
-        <div style="font-size:10.5pt;font-weight:bold;margin-bottom:4pt">AS DESIRED PLEASE FIND INVOICE AS UNDER:</div>
-        <div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:12pt">RE: ${inv.subject}</div>
-        <!-- Invoice meta -->
-        <div style="display:flex;justify-content:space-between;margin-bottom:7pt;font-size:9pt">
-          <div>
-            <div><strong>Invoice No:</strong> <span style="color:#8B1A1A;font-weight:700">${inv.invoiceNo}</span></div>
-            <div><strong>Tour Ref:</strong> ${inv.tourRef}</div>
-            ${inv.validUntil?`<div><strong>Valid Until:</strong> ${inv.validUntil}</div>`:''}
-          </div>
-          <div style="text-align:right">
-            <div><strong>Travel Date:</strong> ${inv.travelDate||'TBC'}</div>
-            <div><strong>Sector:</strong> ${inv.sector}</div>
-            <div><strong>No. of Pax:</strong> ${inv.pax||'TBC'}</div>
-          </div>
-        </div>
-        <!-- Parties -->
-        <div class="parties">
-          <div class="party-block">
-            <div class="party-label">Billed To</div>
-            <div class="party-name">${inv.toCompany||inv.toName}</div>
-            ${inv.toName&&inv.toCompany?`<div class="party-detail">Attn: ${inv.toName}</div>`:''}
-            ${inv.toAddress?`<div class="party-detail">${inv.toAddress}</div>`:''}
-            ${inv.toGSTIN?`<div class="party-detail">GSTIN: ${inv.toGSTIN}</div>`:''}
-          </div>
-          <div class="party-block">
-            <div class="party-label">Billed By</div>
-            <div class="party-name">Unitop Tours &amp; Travel Pvt. Ltd.</div>
-            <div class="party-detail">506, DDA-2F, District Centre, Janakpuri<br/>New Delhi – 110058, India</div>
-            <div class="party-detail">GSTIN: 07AAACU4406H1ZK &nbsp;|&nbsp; PAN: AAACU4406H</div>
-          </div>
-        </div>
-        <!-- Items -->
-        <table>
-          <thead><tr>
-            <th style="width:45%">Description</th><th style="width:8%;text-align:center">Qty</th>
-            <th style="width:12%;text-align:center">Unit</th><th style="width:15%;text-align:right">Rate</th>
-            <th style="width:20%;text-align:right">Amount</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <!-- Totals -->
-        <div class="totals-block">
-          <div class="total-row"><span class="lbl">Sub Total</span><span>${inv.currency} ${subTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
-          ${inv.roeNote?`<div class="total-row" style="font-size:8.5pt;color:#888"><span>ROE Note</span><span>${inv.roeNote}</span></div>`:''}
-          <div class="total-row grand"><span class="lbl">Total Due</span><span>${inv.currency} ${grandTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
-        </div>
-        <!-- Amount in words -->
-        <div style="font-size:10pt;font-style:italic;font-weight:600;margin-bottom:12pt">
-          IN WORDS: ${inv.currency} ${words.toUpperCase()}
-        </div>
-        <!-- Bank details -->
-        <div class="bank-box">
-          <div class="bank-title">Bank Details as Under:</div>
-          <div class="bank-row"><span class="bank-key">Account Name</span><span class="bank-val">Unitop Tours & Travel (P) Ltd.</span></div>
-          <div class="bank-row"><span class="bank-key">Bank Name</span><span class="bank-val">Punjab National Bank</span></div>
-          <div class="bank-row"><span class="bank-key">Current A/C No.</span><span class="bank-val">1503002100024279</span></div>
-          <div class="bank-row"><span class="bank-key">Swift Code</span><span class="bank-val">PUNBINBBISB</span></div>
-          <div class="bank-row"><span class="bank-key">Address</span><span class="bank-val">B-1, Community Centre, Janakpuri, New Delhi – 110058 (India)</span></div>
-        </div>
-        ${inv.notes?`<div class="notes-box">${inv.notes.replace(/\n/g,'<br/>')}</div>`:''}
-        <div style="margin-top:14pt;">
-          ${stampHTML}
-          ${digitalSign ? '' : '<div style="height:44pt;"></div>'}
-          <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
-          <div style="font-size:10pt;font-weight:700;color:#1A3A52;">For Unitop Tours &amp; Travel (P) Ltd.</div>
-          <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
+        <div style="display:table-cell;vertical-align:top;text-align:right;white-space:nowrap">
+          <div style="font-size:10.5pt">DATE: <strong>${inv.date}</strong></div>
         </div>
       </div>
-      <div class="print-footer${footerAllPages ? ' on-all-pages' : ''}">
-        <div style="height:1.5px;background:linear-gradient(to right,#cb0f0f,#061bb0);margin-bottom:6pt;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>
-        <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-          <tr>
-            <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_MOT_B64}" alt="MOT" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-            <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_INDIA_B64}" alt="Incredible India" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-            <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_IATO_B64}" alt="IATO" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-            <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;">
-              <img src="${BADGE_AWARD_B64}" alt="Award" style="height:28pt;width:auto;max-width:100%;display:block;margin:0 auto 1.5pt;"/>
-              <div style="font-size:5pt;font-weight:700;color:#1A3A52;text-transform:uppercase;letter-spacing:0.3pt;">National Tourism Award</div>
-              <div style="font-size:4.5pt;color:#888;">2013&#8209;14 &nbsp;|&nbsp; 2016&#8209;17 &nbsp;|&nbsp; 2018&#8209;19</div>
-              <div style="font-size:4pt;color:#666;">Ministry of Tourism, Govt. of India</div>
-            </td>
-          </tr>
-        </table>
-        
+      <div style="font-size:10.5pt;font-weight:bold;margin-bottom:4pt;margin-top:6pt;">AS DESIRED PLEASE FIND INVOICE AS UNDER:</div>
+      <div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:12pt">RE: ${inv.subject}</div>`;
+
+    const partiesBlock = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:7pt;font-size:9pt">
+        <div>
+          <div><strong>Invoice No:</strong> <span style="color:#8B1A1A;font-weight:700">${inv.invoiceNo}</span></div>
+          <div><strong>Tour Ref:</strong> ${inv.tourRef}</div>
+          ${inv.validUntil?`<div><strong>Valid Until:</strong> ${inv.validUntil}</div>`:''}
+        </div>
+        <div style="text-align:right">
+          <div><strong>Travel Date:</strong> ${inv.travelDate||'TBC'}</div>
+          <div><strong>Sector:</strong> ${inv.sector}</div>
+          <div><strong>No. of Pax:</strong> ${inv.pax||'TBC'}</div>
+        </div>
       </div>
-    </div></body></html>`;
+      <div class="parties">
+        <div class="party-block">
+          <div class="party-label">Billed To</div>
+          <div class="party-name">${inv.toCompany||inv.toName}</div>
+          ${inv.toName&&inv.toCompany?`<div class="party-detail">Attn: ${inv.toName}</div>`:''}
+          ${inv.toAddress?`<div class="party-detail">${inv.toAddress}</div>`:''}
+          ${inv.toGSTIN?`<div class="party-detail">GSTIN: ${inv.toGSTIN}</div>`:''}
+        </div>
+        <div class="party-block">
+          <div class="party-label">Billed By</div>
+          <div class="party-name">Unitop Tours &amp; Travel Pvt. Ltd.</div>
+          <div class="party-detail">506, DDA-2F, District Centre, Janakpuri<br/>New Delhi – 110058, India</div>
+          <div class="party-detail">GSTIN: 07AAACU4406H1ZK &nbsp;|&nbsp; PAN: AAACU4406H</div>
+        </div>
+      </div>`;
+
+    const itemsBlock = `
+      <table class="content-table">
+        <thead><tr>
+          <th style="width:45%">Description</th><th style="width:8%;text-align:center">Qty</th>
+          <th style="width:12%;text-align:center">Unit</th><th style="width:15%;text-align:right">Rate</th>
+          <th style="width:20%;text-align:right">Amount</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    const totalsBlock = `
+      <div class="totals-block">
+        <div class="total-row"><span class="lbl">Sub Total</span><span>${inv.currency} ${subTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
+        ${inv.roeNote?`<div class="total-row" style="font-size:8.5pt;color:#888"><span>ROE Note</span><span>${inv.roeNote}</span></div>`:''}
+        <div class="total-row grand"><span class="lbl">Total Due</span><span>${inv.currency} ${grandTotal.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
+      </div>
+      <div style="font-size:10pt;font-style:italic;font-weight:600;margin-bottom:12pt">
+        IN WORDS: ${inv.currency} ${words.toUpperCase()}
+      </div>`;
+
+    const bankBlock = `
+      <div class="bank-box">
+        <div class="bank-title">Bank Details as Under:</div>
+        <div class="bank-row"><span class="bank-key">Account Name</span><span class="bank-val">Unitop Tours &amp; Travel (P) Ltd.</span></div>
+        <div class="bank-row"><span class="bank-key">Bank Name</span><span class="bank-val">Punjab National Bank</span></div>
+        <div class="bank-row"><span class="bank-key">Current A/C No.</span><span class="bank-val">1503002100024279</span></div>
+        <div class="bank-row"><span class="bank-key">Swift Code</span><span class="bank-val">PUNBINBBISB</span></div>
+        <div class="bank-row"><span class="bank-key">Address</span><span class="bank-val">B-1, Community Centre, Janakpuri, New Delhi – 110058 (India)</span></div>
+      </div>
+      ${inv.notes?`<div class="notes-box">${inv.notes.replace(/\n/g,'<br/>')}</div>`:''}`;
+
+    const closingBlock = `
+      <div style="margin-top:14pt;">
+        ${stampHTML}
+        ${digitalSign ? '' : '<div style="height:44pt;"></div>'}
+        <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
+        <div style="font-size:10pt;font-weight:700;color:#1A3A52;">For Unitop Tours &amp; Travel (P) Ltd.</div>
+        <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
+      </div>`;
+
+    return buildLetterheadDocument({
+      title: `Proforma Invoice ${inv.invoiceNo}`,
+      extraHeadCSS: ``,
+      bodyBlocks: [addresseeBlock, partiesBlock, itemsBlock, totalsBlock, bankBlock, closingBlock],
+      headerAllPages,
+      footerAllPages,
+      showHeader: true,
+      showFooter: true,
+      printOnLetterhead,
+      showPageNum: showPageNums,
+    });
   };
 
   const handlePrint = () => {
@@ -182,9 +177,9 @@ export default function ProformaInvoice({ query, onClose }) {
   const inp = {padding:'6px 8px',border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:'100%',outline:'none',color:G.gray800,background:G.white};
   const lbl = {fontSize:10,color:G.gray600,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:3,display:'block'};
   const Section = ({title}) => <div style={{fontSize:11,fontWeight:700,color:'#fff',background:G.navy,padding:'5px 10px',borderRadius:5,margin:'14px 0 8px'}}>{title}</div>;
-  const Toggle = ({label,val,onToggle}) => (
-    <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11,color:G.gray600}}>
-      <div onClick={onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
+  const Toggle = ({label,val,onToggle,disabled}) => (
+    <label style={{display:'flex',alignItems:'center',gap:6,cursor:disabled?'not-allowed':'pointer',fontSize:11,color:disabled?G.gray300:G.gray600,opacity:disabled?.5:1}}>
+      <div onClick={disabled?undefined:onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',transition:'background .2s',flexShrink:0}}>
         <div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}/>
       </div>{label}
     </label>
@@ -205,8 +200,9 @@ export default function ProformaInvoice({ query, onClose }) {
         </div>
         {/* Toggles */}
         <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,flexWrap:'wrap',alignItems:'center'}}>
-          <Toggle label="Header on all pages" val={headerAllPages} onToggle={()=>setHeaderAllPages(p=>!p)}/>
-          <Toggle label="Footer on all pages" val={footerAllPages} onToggle={()=>setFooterAllPages(p=>!p)}/>
+          <Toggle label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/>
+          <Toggle label="Header on all pages" val={headerAllPages} onToggle={()=>setHeaderAllPages(p=>!p)} disabled={printOnLetterhead}/>
+          <Toggle label="Footer on all pages" val={footerAllPages} onToggle={()=>setFooterAllPages(p=>!p)} disabled={printOnLetterhead}/>
           <Toggle label="Page numbers"        val={showPageNums}   onToggle={()=>setShowPageNums(p=>!p)}/>
           <Toggle label="Digital stamp"       val={digitalSign}    onToggle={()=>setDigitalSign(p=>!p)}/>
         </div>

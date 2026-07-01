@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
 
 export default function QuotationGenerator({ query, template, onClose, onSaved, currentUser }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -40,11 +40,17 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
     monumentNote: template.monumentNote,
   });
 
-  const [activeTab,    setActiveTab]    = useState('content');
-  const [showHeader,   setShowHeader]   = useState(true);
-  const [showFooter,   setShowFooter]   = useState(false);
-  const [showPageNum,  setShowPageNum]  = useState(false);
-  const [showStamp,    setShowStamp]    = useState(false);
+  const [activeTab,         setActiveTab]         = useState('content');
+  const [showHeader,        setShowHeader]        = useState(true);
+  const [showFooter,        setShowFooter]        = useState(false);
+  const [showPageNum,       setShowPageNum]       = useState(false);
+  const [showStamp,         setShowStamp]         = useState(false);
+  const [printOnLetterhead, setPrintOnLetterhead] = useState(false);
+  const togglePrintOnLetterhead = () => setPrintOnLetterhead(p => {
+    const next = !p;
+    if (next) { setShowHeader(false); setShowFooter(false); }
+    return next;
+  });
   const setF = (k, v) => setQ(prev => ({ ...prev, [k]: v }));
   const updateSlab = (i, field, val) => setQ(prev => ({
     ...prev, slabs: prev.slabs.map((s, idx) => idx === i ? { ...s, [field]: val } : s)
@@ -69,72 +75,63 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
   }));
 
   const buildPrintHTML = () => {
-    const stampHTMLQ = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
-    const pgNum = showPageNum ? `<div style="text-align:right;font-size:8pt;color:#888;margin-top:4pt">Page 1</div>` : '';
-    return `<!DOCTYPE html><html><head><title>Quotation — ${q.attnCompany}</title>
-    <style>${invoiceLetterheadCSS}</style>
-    ${showPageNum ? '<style>@page{@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}}</style>' : ''}
-    <style>
-      body{margin:0;padding:0;}
-      /* .q-page merged into .page */
-      h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:10pt 0 4pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
-      table{width:100%;border-collapse:collapse;margin:8pt 0;}
-      th{background:#1A3A52;color:white;padding:5pt 8pt;font-size:8.5pt;text-align:left;}
-      td{padding:4pt 8pt;font-size:9pt;border-bottom:0.5pt solid #eee;vertical-align:top;}
-      tr:nth-child(even) td{background:#f9f9f9;}
-      .price-table td:last-child{font-weight:bold;color:#C0392B;}
-      ol,ul{margin:3pt 0 0 14pt;padding:0;}
-      li{margin-bottom:2pt;font-size:9pt;}
-    </style></head><body>
-    <div class="page${showFooter ? ' reserve-footer' : ''}">
-    ${showHeader ? invoiceLetterheadHTML(1,true) : ''}
-    <div style="margin-bottom:10pt;font-size:9pt;">
-      ${q.attnName ? '<div><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
-      <div><strong>Date:</strong> ${q.date}</div>
-      ${q.refLine ? '<div><strong>AS DESIRED RE:</strong> '+q.refLine+'</div>' : ''}
-    </div>
-    <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
-    <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>
-    <h2>Day-wise Itinerary</h2>
-    <table><thead><tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr></thead>
-    <tbody>${q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>').join('')}</tbody></table>
-    <h2>Accommodation</h2>
-    <table><thead><tr><th>Place</th><th>Nights</th><th>Hotel</th></tr></thead>
-    <tbody>${q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>').join('')}</tbody></table>
-    <h2>Cost Per Person (${q.currency})</h2>
-    <table class="price-table"><thead><tr><th>Group Size</th><th>Rate</th></tr></thead>
-    <tbody>${q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>').join('')}</tbody></table>
-    ${q.showMonuments ? '<h2>'+q.monumentNote+'</h2><table><thead><tr><th>Monument</th><th>Fee</th></tr></thead><tbody>'+q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>').join('')+'</tbody></table>' : ''}
-    <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
-    <h2>Cost Does Not Include</h2><ol>${q.excludes.map(i=>'<li>'+i+'</li>').join('')}</ol>
-    <p style="margin-top:12pt;font-size:9.5pt;">${q.closingLine}</p>
-    <div style="margin-top:20pt;font-size:10pt;">${q.signoff.replace(/\n/g,'<br/>')}</div>
+    const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
+
+    const addresseeBlock = `
+      <div style="margin-bottom:10pt;font-size:9pt;">
+        ${q.attnName ? '<div><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
+        <div><strong>Date:</strong> ${q.date}</div>
+        ${q.refLine ? '<div style="margin-top:6pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
+      </div>
+      <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
+      <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>`;
+
+    const itineraryBlock = `
+      <h2>Day-wise Itinerary</h2>
+      <table class="content-table"><thead><tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr></thead>
+      <tbody>${q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>').join('')}</tbody></table>`;
+
+    const accommodationBlock = `
+      <h2>Accommodation</h2>
+      <table class="content-table"><thead><tr><th>Place</th><th>Nights</th><th>Hotel</th></tr></thead>
+      <tbody>${q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>').join('')}</tbody></table>`;
+
+    const priceBlock = `
+      <h2>Cost Per Person (${q.currency})</h2>
+      <table class="content-table price-table"><thead><tr><th>Group Size</th><th>Rate</th></tr></thead>
+      <tbody>${q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>').join('')}</tbody></table>
+      ${q.showMonuments ? '<h2>'+q.monumentNote+'</h2><table class="content-table"><thead><tr><th>Monument</th><th>Fee</th></tr></thead><tbody>'+q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>').join('')+'</tbody></table>' : ''}`;
+
+    const inclusionsBlock = `
+      <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
+      <h2>Cost Does Not Include</h2><ol>${q.excludes.map(i=>'<li>'+i+'</li>').join('')}</ol>`;
+
+    const closingBlock = `
+      <p style="margin-top:12pt;font-size:9.5pt;">${q.closingLine}</p>
+      <div style="margin-top:20pt;font-size:10pt;">${q.signoff.replace(/\n/g,'<br/>')}</div>
       <div style="margin-top:14pt;">
-        ${stampHTMLQ}
+        ${stampHTML}
         ${showStamp ? '' : '<div style="height:44pt;"></div>'}
         <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
         <div style="font-size:10pt;font-weight:700;color:#1A3A52;">For Unitop Tours &amp; Travel (P) Ltd.</div>
         <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
-      </div>
-    </div>
-    <div class="print-footer${showFooter ? ' on-all-pages' : ''}">
-      <div style="height:1.5px;background:linear-gradient(to right,#cb0f0f,#061bb0);margin-bottom:6pt;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>
-      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-        <tr>
-          <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_MOT_B64}" alt="MOT" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-          <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_INDIA_B64}" alt="Incredible India" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-          <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;"><img src="${BADGE_IATO_B64}" alt="IATO" style="max-height:32pt;max-width:90%;width:auto;height:auto;"/></td>
-          <td style="width:25%;text-align:center;padding:0 6pt;vertical-align:middle;">
-            <img src="${BADGE_AWARD_B64}" alt="Award" style="height:28pt;width:auto;max-width:100%;display:block;margin:0 auto 1.5pt;"/>
-            <div style="font-size:5pt;font-weight:700;color:#1A3A52;text-transform:uppercase;letter-spacing:0.3pt;">National Tourism Award</div>
-            <div style="font-size:4.5pt;color:#888;">2013&#8209;14 &nbsp;|&nbsp; 2016&#8209;17 &nbsp;|&nbsp; 2018&#8209;19</div>
-            <div style="font-size:4pt;color:#666;">Ministry of Tourism, Govt. of India</div>
-          </td>
-        </tr>
-      </table>
-      
-    </div>
-    </body></html>`;
+      </div>`;
+
+    return buildLetterheadDocument({
+      title: `Quotation — ${q.attnCompany}`,
+      extraHeadCSS: `
+        h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:10pt 0 4pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
+        .price-table td:last-child{font-weight:bold;color:#C0392B;}
+        ol,ul{margin:3pt 0 0 14pt;padding:0;}
+        li{margin-bottom:2pt;font-size:9pt;}`,
+      bodyBlocks: [addresseeBlock, itineraryBlock, accommodationBlock, priceBlock, inclusionsBlock, closingBlock],
+      headerAllPages: showHeader,
+      footerAllPages: showFooter,
+      showHeader: true,
+      showFooter: showFooter,
+      printOnLetterhead,
+      showPageNum,
+    });
   };
 
   const printQuotation = () => {
@@ -179,7 +176,7 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
 
         {/* Toggles */}
         <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,alignItems:'center'}}>
-          {(()=>{const Tog=({label,val,onToggle})=>(<label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11,color:G.gray600}}><div onClick={onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',flexShrink:0,transition:'background .2s'}}><div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/></div>{label}</label>);return(<><Tog label="Header on all pages" val={showHeader}  onToggle={()=>setShowHeader(p=>!p)}/><Tog label="Footer on all pages" val={showFooter}  onToggle={()=>setShowFooter(p=>!p)}/><Tog label="Page number"         val={showPageNum} onToggle={()=>setShowPageNum(p=>!p)}/><Tog label="Digital stamp"       val={showStamp}   onToggle={()=>setShowStamp(p=>!p)}/></>);})()}
+          {(()=>{const Tog=({label,val,onToggle,disabled})=>(<label style={{display:'flex',alignItems:'center',gap:6,cursor:disabled?'not-allowed':'pointer',fontSize:11,color:disabled?G.gray300:G.gray600,opacity:disabled?.5:1}}><div onClick={disabled?undefined:onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',flexShrink:0,transition:'background .2s'}}><div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/></div>{label}</label>);return(<><Tog label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/><Tog label="Header on all pages" val={showHeader}  onToggle={()=>setShowHeader(p=>!p)} disabled={printOnLetterhead}/><Tog label="Footer on all pages" val={showFooter}  onToggle={()=>setShowFooter(p=>!p)} disabled={printOnLetterhead}/><Tog label="Page number"         val={showPageNum} onToggle={()=>setShowPageNum(p=>!p)}/><Tog label="Digital stamp"       val={showStamp}   onToggle={()=>setShowStamp(p=>!p)}/></>);})()}
         </div>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
