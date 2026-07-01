@@ -21,6 +21,8 @@ import SmartSearch from './SmartSearch.jsx';
 import TaxInvoice from './TaxInvoice.jsx';
 import TeamView from './TeamView.jsx';
 import TemplatesHub from './TemplatesHub.jsx';
+import MealPlanDocument from './MealPlanDocument.jsx';
+import TourBriefingSheet from './TourBriefingSheet.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
 import VendorMaster from './VendorMaster.jsx';
 import { CostSheet } from './CostSheet.jsx';
@@ -47,6 +49,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showPayments,   setShowPayments]   = useState(null);
   const [showPL,         setShowPL]         = useState(false);
   const [showVoucher,    setShowVoucher]    = useState(null);
+  const [showMealPlan,   setShowMealPlan]   = useState(null);
+  const [showTourBrief,  setShowTourBrief]  = useState(null);
   const [showAgents,     setShowAgents]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
@@ -82,7 +86,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       else if(panel==="proforma")  setShowProforma(query);
       else if(panel==="payments")  setShowPayments(query);
       else if(panel==="taxinv")    setShowTaxInv(query);
-      else if(panel==="voucher")   setShowVoucher(query);
+      else if(panel==="voucher")      setShowVoucher(query);
+      else if(panel==="mealplan")     setShowMealPlan(query);
+      else if(panel==="tourbriefing") setShowTourBrief(query);
     };
     document.addEventListener("unitop-open", handler);
     return ()=>document.removeEventListener("unitop-open", handler);
@@ -615,6 +621,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
+        {showMealPlan   && <MealPlanDocument query={showMealPlan} onClose={()=>setShowMealPlan(null)}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} onClose={()=>setShowTourBrief(null)}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
