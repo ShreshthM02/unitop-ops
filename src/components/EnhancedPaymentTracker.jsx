@@ -2,6 +2,133 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
 
+function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO }) {
+  const deleteEntry = () => {
+    const updated = { ...pt, entries: pt.entries.filter(x => x.id !== e.id) };
+    setPt(updated);
+    onUpdatePayments(query.id, updated);
+  };
+
+  const printReceipt = () => {
+    const ci = COMPANY_INFO;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>Receipt ${e.receipt||""}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{font-family:'Inter',Arial,sans-serif;font-size:10pt;color:#1a1a1a;background:#fff}
+  .page{width:148mm;min-height:210mm;margin:0 auto;padding:10mm 12mm}
+  .lh-logo{height:70pt;width:auto;display:block;margin:0 auto 4pt}
+  .lh-name{font-family:'Playfair Display',serif;font-size:13pt;font-weight:700;color:#1A3A52;text-align:center;letter-spacing:0.5pt}
+  .lh-addr{font-size:7.5pt;color:#555;text-align:center;line-height:1.6;margin-top:2pt}
+  .rule{height:2pt;border:none;background:linear-gradient(to right,#cb0f0f,#061bb0);margin:6pt 0;border-radius:1pt}
+  .title{font-family:'Playfair Display',serif;font-size:15pt;font-weight:700;color:#1A3A52;text-align:center;margin:10pt 0 6pt;text-transform:uppercase;letter-spacing:1pt}
+  .rcpt-no{text-align:center;font-size:9pt;color:#8B1A1A;font-weight:700;margin-bottom:10pt}
+  .party{background:#f8f9fa;border:1pt solid #e5e7eb;border-radius:4pt;padding:8pt 10pt;margin-bottom:10pt}
+  .party-lbl{font-size:7pt;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1pt;margin-bottom:3pt}
+  .party-name{font-size:11pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif}
+  .party-det{font-size:8.5pt;color:#555;margin-top:2pt}
+  table{width:100%;border-collapse:collapse;margin-bottom:8pt}
+  th{background:#1A3A52;color:#fff;font-size:8pt;font-weight:700;padding:5pt 7pt;text-align:left}
+  td{padding:5pt 7pt;border-bottom:0.5pt solid #e5e7eb;font-size:9pt;vertical-align:top}
+  tr:nth-child(even) td{background:#f9fafb}
+  .amount-row{background:#1A3A52!important;color:#fff;font-weight:700;font-size:10pt}
+  .amount-row td{color:#fff;border:none;padding:7pt}
+  .footer-rule{height:0.75pt;border:none;background:linear-gradient(to right,#cb0f0f,#061bb0);margin-top:14pt}
+  .footer{font-size:7.5pt;color:#888;text-align:center;margin-top:5pt}
+  .stamp-area{margin-top:18pt;display:flex;justify-content:space-between;align-items:flex-end;font-size:8pt;color:#555}
+  @media print{body{margin:0}.page{width:100%}@page{margin:0;size:A5}}
+</style></head><body>
+<div class="page">
+  <img src="${LOGO_B64}" class="lh-logo" alt="Unitop Tours"/>
+  <div class="lh-name">${ci.name}</div>
+  <div class="lh-addr">${ci.address}<br/>
+    Tel: ${ci.phone} &nbsp;|&nbsp; ${ci.email} &nbsp;|&nbsp; ${ci.web}<br/>
+    GSTIN: ${ci.gstin} &nbsp;|&nbsp; PAN: ${ci.pan}
+  </div>
+  <div class="rule"></div>
+  <div class="title">Payment Receipt</div>
+  <div class="rcpt-no">${e.receipt||"RCP-"+e.id}</div>
+
+  <div class="party">
+    <div class="party-lbl">Received From</div>
+    <div class="party-name">${query.groupName||query.clientName||"—"}</div>
+    <div class="party-det">
+      ${query.agentCompany?`Via: ${query.agentCompany}<br/>`:""}
+      Tour File: ${query.tourFileId||query.id} &nbsp;|&nbsp; ${query.destination||query.sector||""}
+      ${query.pax?` &nbsp;|&nbsp; ${query.pax} pax`:""}
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Description</th><th style="text-align:right">Details</th></tr></thead>
+    <tbody>
+      <tr><td>Payment Type</td><td style="text-align:right;font-weight:600">${TYPE_LABELS[e.type]||e.type}</td></tr>
+      <tr><td>Date Received</td><td style="text-align:right">${e.date||"—"}</td></tr>
+      <tr><td>Mode of Payment</td><td style="text-align:right">${e.mode==="Other"?e.modeOther||"Other":e.mode}</td></tr>
+      ${e.ref?`<tr><td>Reference / UTR</td><td style="text-align:right;font-family:monospace">${e.ref}</td></tr>`:""}
+      <tr><td>Currency</td><td style="text-align:right">${e.inCurrency==="Other"?e.currOther||"Other":e.inCurrency}</td></tr>
+      ${e.note?`<tr><td>Notes</td><td style="text-align:right;font-style:italic">${e.note}</td></tr>`:""}
+    </tbody>
+    <tfoot>
+      <tr class="amount-row"><td>Amount Received (INR)</td><td style="text-align:right;font-size:12pt">₹ ${parseFloat(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>
+    </tfoot>
+  </table>
+
+  <div class="stamp-area">
+    <div>
+      <div style="border-top:0.5pt solid #ccc;padding-top:4pt;margin-top:32pt;width:120pt;text-align:center">Client Signature</div>
+    </div>
+    <div style="text-align:right">
+      <div style="border-top:0.5pt solid #ccc;padding-top:4pt;margin-top:32pt;width:120pt;text-align:center">For ${ci.name}<br/><span style="font-size:7pt;color:#888">Authorised Signatory</span></div>
+    </div>
+  </div>
+
+  <div class="footer-rule"></div>
+  <div class="footer">This is a computer-generated receipt. &nbsp;|&nbsp; ${ci.name} &nbsp;|&nbsp; GSTIN: ${ci.gstin}</div>
+</div>
+<script>window.onload=()=>{window.print();}</script>
+</body></html>`;
+    const w = window.open("", "_blank", "width=700,height=900");
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  return (
+    <div style={{background:"#fff",border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
+              background:TYPE_COLORS[e.type]||"#F3F4F6",color:TYPE_TEXT[e.type]||"#374151"}}>
+              {TYPE_LABELS[e.type]||e.type}
+            </span>
+            <span style={{fontSize:13,fontWeight:700,color:"#059669"}}>
+              ₹ {parseFloat(e.amount||0).toLocaleString("en-IN")}
+              {e.inCurrency && e.inCurrency!=="INR" && <span style={{fontSize:10,color:G.gray400,fontWeight:400}}> ({e.inCurrency==="Other"?e.currOther:e.inCurrency})</span>}
+            </span>
+            {e.receipt && <span style={{fontSize:10,color:G.gray400,fontFamily:"monospace"}}>{e.receipt}</span>}
+          </div>
+          <div style={{fontSize:11,color:G.gray600}}>
+            {e.date} · {e.mode==="Other"?e.modeOther||"Other":e.mode}
+            {e.ref && <span style={{fontFamily:"monospace",marginLeft:6,color:G.gray500}}>{e.ref}</span>}
+          </div>
+          {e.note && <div style={{fontSize:11,color:G.gray400,marginTop:2,fontStyle:"italic"}}>{e.note}</div>}
+        </div>
+        <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
+          <button onClick={printReceipt}
+            style={{background:"#EBF5FB",border:"1px solid #A9CCE3",color:"#1A5276",borderRadius:5,
+              padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            🖨 Receipt
+          </button>
+          <button onClick={deleteEntry}
+            style={{background:"none",border:"none",cursor:"pointer",color:G.gray400,fontSize:18,padding:"0 4px"}}
+            title="Delete entry">✕</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose }) {
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
