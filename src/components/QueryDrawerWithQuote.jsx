@@ -20,7 +20,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
   // Tabs: query vs tour file, order per spec
   const TABS = isCaseFile
-    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
+    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"uploads",label:"📁 Uploads"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
     : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
 
   const sec = t => (
@@ -224,7 +224,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {sec(isCaseFile?"All Documents":"Query Documents")}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:isCaseFile?0:12}}>
                 {docs.map(d=>(
-                  <button key={d.label} onClick={()=>openPanel(d.panel)}
+                  <button key={d.label} onClick={()=>d.panel==="docregistry" ? setTab("uploads") : openPanel(d.panel)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:8,
                       border:`1px solid ${G.gray200}`,background:G.white,cursor:"pointer",
                       fontFamily:"'Inter',sans-serif",textAlign:"left",transition:"all .15s"}}

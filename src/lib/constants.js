@@ -61,7 +61,7 @@ export const INITIAL_QUERIES = [
     id: "UTQ-2025-036", type:"query", status:"operations",
     clientName:"Anderson Family", nationality:"British",
     destination:"Varanasi + Bodh Gaya", nights:6, pax:3,
-    source:"Email", date:"2025-06-01", travelDate:"2025-06-28",
+    source:"Email", date:"2025-06-01", travelDate:"2026-07-10",
     hotelCat:"4 Star", assignedTo:3,
     notes:"All vouchers confirmed. Driver briefed.",
     audit:[
@@ -92,7 +92,7 @@ export const INITIAL_QUERIES = [
     id: "UTQ-2025-028", type:"query", status:"completed",
     clientName:"Tanaka Group", nationality:"Japanese",
     destination:"Rajasthan", nights:10, pax:9,
-    source:"Agent", date:"2025-04-10", travelDate:"2025-05-15",
+    source:"Agent", date:"2025-04-10", travelDate:"2026-07-22",
     hotelCat:"5 Star", assignedTo:1,
     notes:"Tour completed. P&L filed. Feedback: Excellent.",
     audit:[
