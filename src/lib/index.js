@@ -6,4 +6,5 @@ export * from './helpers.jsx';
 export * from './utils.js';
 export * from './letterhead.js';
 export * from './LetterheadControls.jsx';
+export * from './useRealtimeTable.js';
 export * from './supabase.js';

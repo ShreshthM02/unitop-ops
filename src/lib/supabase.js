@@ -1,5 +1,24 @@
+import { createClient } from "@supabase/supabase-js";
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
+
+// Real Supabase client — used ONLY for Realtime (postgres_changes)
+// subscriptions, since that's a WebSocket protocol the hand-rolled REST
+// wrapper below can't do. All regular reads/writes still go through `_supa`;
+// this is a pure addition, not a replacement of the existing data layer.
+// Guarded: createClient() throws synchronously if the URL/key are missing,
+// which would crash the whole app on load (including in test environments
+// with no env vars configured) — the REST wrapper below never had this
+// problem because it only touches the network lazily, on an actual request.
+// realtimeClient is null when unconfigured; useRealtimeTable() no-ops in
+// that case rather than throwing.
+export const realtimeClient = (SUPABASE_URL && SUPABASE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_KEY)
+  : null;
+if (!realtimeClient && typeof console !== "undefined") {
+  console.warn("Supabase Realtime disabled: VITE_SUPABASE_URL/VITE_SUPABASE_KEY not set.");
+}
 
 export const _supa = (() => {
   const url = SUPABASE_URL;

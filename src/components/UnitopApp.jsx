@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -111,38 +111,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         // Load queries
         const { data: qData } = await db.from("queries").select("*").order("created_at", {ascending:false});
         if (qData && qData.length > 0) {
-          const mapped = qData.map(q => ({
-            ...q,
-            id:          q.id,
-            agentCompany:q.agent_company,
-            agentCountry:q.agent_country,
-            correspondent:q.correspondent,
-            groupName:   q.group_name,
-            clientName:  q.client_name || q.group_name,
-            sector:      q.sector,
-            destination: q.sector,
-            nights:      q.nights,
-            hotelCat:    q.hotel_cat,
-            paxKnown:    q.pax_known,
-            paxExact:    q.pax_exact,
-            paxMin:      q.pax_min,
-            paxMax:      q.pax_max,
-            paxDisplay:  q.pax_display,
-            dateKnown:   q.date_known,
-            travelDate:  q.travel_date_from ? q.travel_date_from.split("T")[0] : (q.travel_month||""),
-            travelMonth: q.travel_month,
-            travelSeason:q.travel_season,
-            dateDisplay: q.date_display,
-            status:      q.status,
-            cancelled:   q.cancelled,
-            cancellationReason: q.cancellation_reason,
-            tourFileId:  q.tour_file_id,
-            notes:       q.notes,
-            manualWF:    q.manual_wf || [],
-            date:        q.date || q.created_at?.split("T")[0],
-            audit:       [],
-            remarks:     [],
-          }));
+          const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
           // Load audit trails
           const { data: auditData } = await db.from("query_audit").select("*").order("created_at", {ascending:true});
           const { data: remarkData } = await db.from("query_remarks").select("*").order("created_at", {ascending:true});
@@ -186,6 +155,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     };
     loadData();
   }, []);
+
+  // ── Realtime: reflect other users' query changes live, no refresh needed ──
+  // Requires Realtime to be enabled for the `queries` table in Supabase
+  // (Database > Replication, or `alter publication supabase_realtime add
+  // table queries;`) — this is a project-level setting, not something the
+  // app can turn on itself.
+  useRealtimeTable("queries", (eventType, newRow, oldRow) => {
+    setQueries(qs => applyQueryRealtimeEvent(qs, eventType, newRow, oldRow));
+  });
 
   // ── Persist query to Supabase ──────────────────────────────────────────────
   const saveQueryToDB = async (q, auditAction) => {

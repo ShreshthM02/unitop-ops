@@ -30,3 +30,72 @@ export function numToWords(n) {
 
 // ─── SHARED INVOICE LETTERHEAD ────────────────────────────────────────────────
 
+
+// ─── DB ROW <-> APP OBJECT MAPPING ─────────────────────────────────────────────
+// Converts a raw `queries` table row (snake_case, as returned by Supabase)
+// into the camelCase shape the rest of the app expects. Used by both the
+// initial page-load fetch and by Realtime postgres_changes payloads, so the
+// two paths can never drift out of sync with each other.
+// Deliberately does NOT set `audit`/`remarks` — those come from separate
+// tables (query_audit/query_remarks) and callers are responsible for either
+// attaching freshly-loaded values (initial load) or preserving whatever the
+// existing local state already has (Realtime updates, which don't include
+// audit/remarks changes).
+export function mapDbQueryRow(q) {
+  return {
+    ...q,
+    id: q.id,
+    agentCompany: q.agent_company,
+    agentCountry: q.agent_country,
+    correspondent: q.correspondent,
+    groupName: q.group_name,
+    clientName: q.client_name || q.group_name,
+    sector: q.sector,
+    destination: q.sector,
+    nights: q.nights,
+    hotelCat: q.hotel_cat,
+    paxKnown: q.pax_known,
+    paxExact: q.pax_exact,
+    paxMin: q.pax_min,
+    paxMax: q.pax_max,
+    paxDisplay: q.pax_display,
+    dateKnown: q.date_known,
+    travelDate: q.travel_date_from ? q.travel_date_from.split("T")[0] : (q.travel_month || ""),
+    travelMonth: q.travel_month,
+    travelSeason: q.travel_season,
+    dateDisplay: q.date_display,
+    status: q.status,
+    cancelled: q.cancelled,
+    cancellationReason: q.cancellation_reason,
+    tourFileId: q.tour_file_id,
+    notes: q.notes,
+    manualWF: q.manual_wf || [],
+    date: q.date || q.created_at?.split("T")[0],
+  };
+}
+
+// Pure reducer: given the current queries array and an incoming Realtime
+// postgres_changes event, returns the new queries array. Kept separate from
+// the actual subscription wiring so it's trivially unit-testable without a
+// live WebSocket connection.
+//   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+//   newRow / oldRow: raw DB rows as delivered by Supabase Realtime
+export function applyQueryRealtimeEvent(queries, eventType, newRow, oldRow) {
+  if (eventType === "DELETE") {
+    const deadId = oldRow?.id;
+    return queries.filter(q => q.id !== deadId);
+  }
+  const mapped = mapDbQueryRow(newRow);
+  const idx = queries.findIndex(q => q.id === mapped.id);
+  if (idx === -1) {
+    // New query from another user -- no local audit/remarks history yet.
+    return [{ ...mapped, audit: [], remarks: [] }, ...queries];
+  }
+  // Existing query updated -- keep local audit/remarks (a plain `queries`
+  // UPDATE never touches those separate tables), replace everything else.
+  const existing = queries[idx];
+  const updated = { ...existing, ...mapped, audit: existing.audit, remarks: existing.remarks };
+  const next = [...queries];
+  next[idx] = updated;
+  return next;
+}
