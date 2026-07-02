@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
 
-export default function TourBriefingSheet({ query, onClose }) {
+export default function TourBriefingSheet({ query, template, onClose }) {
+  const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
   const ALL_SECTIONS = [
     {id:"meta",label:"Header / Meta"},{id:"hotels",label:"Hotels"},{id:"flights",label:"Flights"},
     {id:"trains",label:"Trains"},{id:"transport",label:"Transport"},{id:"guides",label:"Tour Facilitators"},
@@ -30,8 +31,8 @@ export default function TourBriefingSheet({ query, onClose }) {
   const [agentCo,setAgentCo]=useState(query.agentCompany||"");
   const [agentCity,setAgentCity]=useState(query.agentCountry||"");
   const [subject,setSubject]=useState(`GROUP FROM ${query.travelDate||""} x ${query.pax||""} PAX (REF. ${query.tourFileId||query.id})`);
-  const [intro,setIntro]=useState("As desired, please find service details as under: -");
-  const [footer,setFooter]=useState(`Unitop Tours & Travel (P) Ltd.\nDDA-2F/506, Commercial Flat, District Centre, Janakpuri, New Delhi – 110058\nTel: 011-25550991/25550992 | E-mail: unitoptours@gmail.com`);
+  const [intro,setIntro]=useState(tmpl.openingLine);
+  const [footer,setFooter]=useState(tmpl.footerText);
   const [metaNotes,setMetaNotes]=useState("");
   const [hotels,setHotels]=useState([{id:1,checkIn:"",checkOut:"",city:"",hotelName:"",rooms:"",bookingStatus:"Requested"}]);
   const updH=(i,f,v)=>setHotels(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));

@@ -162,32 +162,12 @@ export const INITIAL_PAYMENTS = {
   },
 };
 
-export const DEFAULT_TEMPLATE = {
-  greeting: "Greetings from Unitop Tours & Travel Pvt. Ltd. !!!",
-  openingLine: "As Desired, Please Find Itinerary & Quotation As Under.",
-  closingLine: "Kindly check & advise your acceptance, with exact date of journey & no. of Pax enabling us to go ahead for the necessary arrangement well in advance.",
-  signoff: "Hope you will find the above in order.\n\nThanks & Regards\n\nTour Deptt.",
-  includes: [
-    "Hotel accommodation as per itinerary.",
-    "All Meals as per itinerary.",
-    "Air-con transport throughout the tour as per your itinerary.",
-    "English Speaking Escort throughout the tour.",
-    "Bottle Drinking Water during the journey.",
-    "All present Govt. Taxes included. (In case of any change in Govt. Tax Structure, we will update you accordingly)",
-  ],
-  excludes: [
-    "Any expense of personal nature.",
-    "Any Air Fare. (Domestic or International Flight)",
-    "Any Visa Fee (India & Nepal Visa)",
-    "Any Airport Tax.",
-    "Battery Rickshaw, Local Transport, Tanga Ride etc.",
-    "Monument entrance fees at each place, payable directly.",
-    "Any other item not mentioned under Cost Includes.",
-  ],
-  monumentNote: "Monument Fees (Foreign Nationals) — Payable directly at site:",
-  monuments: [],
-  showMonuments: true,
-};
+// NOTE: quotation defaults live in DEFAULT_QUOT_TEMPLATE further down this
+// file (bundled into DEFAULT_DOC_TEMPLATES) — this used to be a separate,
+// slightly different duplicate left over from the single-file split. It was
+// never actually applied to real quotations (UnitopApp seeded state from
+// this constant, but nothing ever wrote back to it), so it's removed here
+// rather than kept as a second source of truth.
 
 // ─── SOURCE OPTIONS ───────────────────────────────────────────────────────────
 export const QUERY_SOURCES = ["Agency","E-Mail","Website","Phone","WhatsApp","Line","Referral","Others"];
@@ -604,6 +584,33 @@ export const DEFAULT_QUOT_TEMPLATE = {
   monuments:[], showMonuments:true,
 };
 
+export const DEFAULT_PROFORMA_TEMPLATE = {
+  asDesiredLine: "AS DESIRED PLEASE FIND INVOICE AS UNDER:",
+  bankAccountName: "Unitop Tours & Travel (P) Ltd.",
+  bankName: "Punjab National Bank",
+  bankAccountNo: "1503002100024279",
+  bankSwift: "PUNBINBBISB",
+  bankAddress: "B-1, Community Centre, Janakpuri, New Delhi – 110058 (India)",
+};
+
+export const DEFAULT_TAXINVOICE_TEMPLATE = {
+  footerNote: "This is a computer generated invoice. Subject to Delhi jurisdiction.",
+  placeOfSupply: "Delhi (07)",
+};
+
+export const DEFAULT_MEALPLAN_TEMPLATE = {
+  defaultHeading: "Meal Plan",
+};
+
+export const DEFAULT_TOURBRIEFING_TEMPLATE = {
+  openingLine: "As desired, please find service details as under: -",
+  footerText: "Unitop Tours & Travel (P) Ltd.\nDDA-2F/506, Commercial Flat, District Centre, Janakpuri, New Delhi – 110058\nTel: 011-25550991/25550992 | E-mail: unitoptours@gmail.com",
+};
+
+export const DEFAULT_ITINERARY_TEMPLATE = {
+  closingTagline: "TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES",
+};
+
 // ─── EXCHANGE ORDER / VOUCHER GENERATOR ──────────────────────────────────────
 export const SERVICE_TYPES = [
   { id:"restaurant", label:"Restaurant",   icon:"🍽" },
@@ -626,3 +633,68 @@ export const WatermarkSVG = () => (
     ).join("")}
   </svg>`
 );
+
+export const DEFAULT_EXCHANGE_TEMPLATE = {
+  instructionLine: "Please provide the following services against this order & bill us in duplicate.",
+  footerBold: "PLEASE COLLECT ALL EXTRA CHARGES DIRECTLY",
+  footerLine1: "Foreign Tourist(s) Payment in Foreign Exchange Received/Receivable",
+  footerLine2: "Valid only when Signed & Stamped. Subject to Delhi Jurisdiction.",
+};
+
+// ─── TEMPLATE CONTENT (Templates section, "Template Content" tab) ────────────
+// Consolidated lookup of every document type's default boilerplate text, keyed
+// by the same id used in DOC_TYPES. TemplatesHub edits this; each document
+// component receives its slice as a `template` prop and seeds its own local
+// state from it (falling back to these hardcoded defaults if nothing has been
+// customized yet). Doc types not listed here (costsheet, monument, receipt)
+// don't have a populated standalone document generator yet, so there's
+// nothing to templatize — the Template Content tab shows the "designed in a
+// dedicated session" placeholder for those until that changes.
+export const DEFAULT_DOC_TEMPLATES = {
+  quotation: DEFAULT_QUOT_TEMPLATE,
+  proforma: DEFAULT_PROFORMA_TEMPLATE,
+  taxinvoice: DEFAULT_TAXINVOICE_TEMPLATE,
+  mealplan: DEFAULT_MEALPLAN_TEMPLATE,
+  tourbriefing: DEFAULT_TOURBRIEFING_TEMPLATE,
+  brief_itin: DEFAULT_ITINERARY_TEMPLATE,
+  detail_itin: DEFAULT_ITINERARY_TEMPLATE,
+  exchange: DEFAULT_EXCHANGE_TEMPLATE,
+};
+
+// Field schema for the GENERIC Template Content form (used by every doc type
+// except quotation, which keeps its bespoke editor — greeting/opening/closing/
+// signoff plus the includes/excludes list editor — since that predates this
+// generic renderer and has list fields the generic form doesn't support).
+export const TEMPLATE_FIELD_SCHEMAS = {
+  proforma: [
+    { key: "asDesiredLine", label: "Opening Statement Line", type: "text" },
+    { key: "bankAccountName", label: "Bank Account Name", type: "text" },
+    { key: "bankName", label: "Bank Name", type: "text" },
+    { key: "bankAccountNo", label: "Bank Account No.", type: "text" },
+    { key: "bankSwift", label: "Swift Code", type: "text" },
+    { key: "bankAddress", label: "Bank Address", type: "text" },
+  ],
+  taxinvoice: [
+    { key: "footerNote", label: "Footer Note", type: "text" },
+    { key: "placeOfSupply", label: "Default Place of Supply", type: "text" },
+  ],
+  mealplan: [
+    { key: "defaultHeading", label: "Default Document Heading", type: "text" },
+  ],
+  tourbriefing: [
+    { key: "openingLine", label: "Opening Line", type: "text" },
+    { key: "footerText", label: "Footer Signature Block", type: "textarea" },
+  ],
+  brief_itin: [
+    { key: "closingTagline", label: "Closing Tagline", type: "text" },
+  ],
+  detail_itin: [
+    { key: "closingTagline", label: "Closing Tagline", type: "text" },
+  ],
+  exchange: [
+    { key: "instructionLine", label: "Instruction Line", type: "text" },
+    { key: "footerBold", label: "Footer Bold Line", type: "text" },
+    { key: "footerLine1", label: "Footer Line 1", type: "text" },
+    { key: "footerLine2", label: "Footer Line 2", type: "text" },
+  ],
+};

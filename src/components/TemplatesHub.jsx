@@ -1,22 +1,34 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
 
-export default function TemplatesHub({template,onSaveTemplate,docSettings,setDocSettings}){
+export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings}){
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
   const [activePane,setActivePane]=React.useState("settings");
   const [settings,setSettings]=React.useState(()=>{try{return{...DEFAULT_DOC_SETTINGS,...JSON.parse(localStorage.getItem("unitop_doc_settings")||"{}")}}catch(e){return DEFAULT_DOC_SETTINGS;}});
   const [typo,setTypo]=React.useState(()=>{try{return{...TYPOGRAPHY_DEFAULTS,...JSON.parse(localStorage.getItem("unitop_typography")||"{}")}}catch(e){return TYPOGRAPHY_DEFAULTS;}});
-  const [quotTmpl,setQuotTmpl]=React.useState(()=>{try{return{...DEFAULT_QUOT_TEMPLATE,...JSON.parse(localStorage.getItem("unitop_quot_template")||"{}")}}catch(e){return DEFAULT_QUOT_TEMPLATE;}});
+  // Draft copy of ALL document templates (quotation, proforma, taxinvoice, ...),
+  // seeded from the live value passed down from UnitopApp. Edits here stay
+  // local until "Save All Settings" — same pattern as settings/typo above.
+  const [tmpl,setTmpl]=React.useState(()=>({...DEFAULT_DOC_TEMPLATES,...(docTemplates||{})}));
   const [saved,setSaved]=React.useState("");
   const setS=(d,f,v)=>setSettings(p=>({...p,[d]:{...p[d],[f]:v}}));
   const setT=(k,v)=>setTypo(p=>({...p,[k]:v}));
-  const setQT=(k,v)=>setQuotTmpl(p=>({...p,[k]:v}));
-  const updQTL=(k,i,v)=>setQuotTmpl(p=>({...p,[k]:p[k].map((x,xi)=>xi===i?v:x)}));
-  const addQTL=(k)=>setQuotTmpl(p=>({...p,[k]:[...p[k],""]}));
-  const rmQTL=(k,i)=>setQuotTmpl(p=>({...p,[k]:p[k].filter((_,xi)=>xi!==i)}));
-  const saveAll=()=>{localStorage.setItem("unitop_doc_settings",JSON.stringify(settings));localStorage.setItem("unitop_typography",JSON.stringify(typo));localStorage.setItem("unitop_quot_template",JSON.stringify(quotTmpl));if(setDocSettings)setDocSettings(settings);setSaved("✓ Saved");setTimeout(()=>setSaved(""),2500);};
+  // Generic field setter for any doc's template: setTF('proforma','bankName',...)
+  const setTF=(doc,k,v)=>setTmpl(p=>({...p,[doc]:{...p[doc],[k]:v}}));
+  const updQTL=(k,i,v)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].map((x,xi)=>xi===i?v:x)}}));
+  const addQTL=(k)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:[...p.quotation[k],""]}}));
+  const rmQTL=(k,i)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].filter((_,xi)=>xi!==i)}}));
+  const saveAll=()=>{
+    localStorage.setItem("unitop_doc_settings",JSON.stringify(settings));
+    localStorage.setItem("unitop_typography",JSON.stringify(typo));
+    localStorage.setItem("unitop_doc_templates",JSON.stringify(tmpl));
+    if(setDocSettings)setDocSettings(settings);
+    if(onSaveDocTemplates)onSaveDocTemplates(tmpl); // <-- this call was missing before: edits saved to
+                                                     //     localStorage but never reached live documents.
+    setSaved("✓ Saved");setTimeout(()=>setSaved(""),2500);
+  };
   const prevFn=(d)=>{const s=settings[d];if(!s)return "";return(s.pattern||"{prefix}-{seq}").replace("{prefix}",s.prefix||"DOC").replace("{seq}",String(s.serial||1).padStart(3,"0")).replace("{group}","NCH_Holidays").replace("{date}",new Date().toISOString().split("T")[0]).replace("{year}",new Date().getFullYear()).replace("{sector}","Golden_Triangle").replace("{tourfile}","TUR-2025-019");};
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const lbl={fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4,display:"block"};
@@ -24,6 +36,7 @@ export default function TemplatesHub({template,onSaveTemplate,docSettings,setDoc
   const cs=settings[selectedDoc]||{};
   const isSys=selectedDoc==="query"||selectedDoc==="tourfile";
   const isTypo=selectedDoc==="_typography";
+  const schema=TEMPLATE_FIELD_SCHEMAS[selectedDoc]; // undefined for costsheet/monument/receipt -> placeholder shown
   const sideItems=[...DOC_TYPES,{id:"query",icon:"🔢",label:"Query ID"},{id:"tourfile",icon:"📁",label:"Tour File ID"},{id:"_typography",icon:"🎨",label:"Typography & Colours"}];
   return(
     <div style={{display:"flex",height:"100%",minHeight:500,margin:"-16px -20px"}}>
@@ -85,17 +98,29 @@ export default function TemplatesHub({template,onSaveTemplate,docSettings,setDoc
                 </div>
               </div>
             </div>}
+            {/* Quotation keeps its bespoke editor: prose fields + includes/excludes list editor */}
             {activePane==="templateContent"&&selectedDoc==="quotation"&&<div>
               <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:11,color:"#1A5276"}}>These defaults pre-fill when you open a new quotation.</div>
-              {[["Greeting","greeting",false],["Opening Line","openingLine",false],["Closing Paragraph","closingLine",true],["Sign-off","signoff",true],["Monument Heading","monumentNote",false]].map(([label,key,multi])=><div key={key} style={{marginBottom:10}}><label style={lbl}>{label}</label>{multi?<textarea style={{...inp,minHeight:52,resize:"vertical"}} value={quotTmpl[key]||""} onChange={e=>setQT(key,e.target.value)}/>:<input style={inp} value={quotTmpl[key]||""} onChange={e=>setQT(key,e.target.value)}/>}</div>)}
+              {[["Greeting","greeting",false],["Opening Line","openingLine",false],["Closing Paragraph","closingLine",true],["Sign-off","signoff",true],["Monument Heading","monumentNote",false]].map(([label,key,multi])=><div key={key} style={{marginBottom:10}}><label style={lbl}>{label}</label>{multi?<textarea style={{...inp,minHeight:52,resize:"vertical"}} value={tmpl.quotation[key]||""} onChange={e=>setTF("quotation",key,e.target.value)}/>:<input style={inp} value={tmpl.quotation[key]||""} onChange={e=>setTF("quotation",key,e.target.value)}/>}</div>)}
               <div style={{fontSize:12,fontWeight:700,color:G.navy,margin:"14px 0 8px"}}>Default Cost Includes</div>
-              {(quotTmpl.includes||[]).map((item,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:G.gray400,paddingTop:7,minWidth:18}}>{i+1}.</span><input style={{...inp,flex:1}} value={item} onChange={e=>updQTL("includes",i,e.target.value)}/><span style={{cursor:"pointer",color:G.gray400,fontSize:16,paddingTop:5}} onClick={()=>rmQTL("includes",i)}>✕</span></div>)}
+              {(tmpl.quotation.includes||[]).map((item,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:G.gray400,paddingTop:7,minWidth:18}}>{i+1}.</span><input style={{...inp,flex:1}} value={item} onChange={e=>updQTL("includes",i,e.target.value)}/><span style={{cursor:"pointer",color:G.gray400,fontSize:16,paddingTop:5}} onClick={()=>rmQTL("includes",i)}>✕</span></div>)}
               <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addQTL("includes")}>+ Add Item</button>
               <div style={{fontSize:12,fontWeight:700,color:G.navy,margin:"14px 0 8px"}}>Default Cost Does Not Include</div>
-              {(quotTmpl.excludes||[]).map((item,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:G.gray400,paddingTop:7,minWidth:18}}>{i+1}.</span><input style={{...inp,flex:1}} value={item} onChange={e=>updQTL("excludes",i,e.target.value)}/><span style={{cursor:"pointer",color:G.gray400,fontSize:16,paddingTop:5}} onClick={()=>rmQTL("excludes",i)}>✕</span></div>)}
+              {(tmpl.quotation.excludes||[]).map((item,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:G.gray400,paddingTop:7,minWidth:18}}>{i+1}.</span><input style={{...inp,flex:1}} value={item} onChange={e=>updQTL("excludes",i,e.target.value)}/><span style={{cursor:"pointer",color:G.gray400,fontSize:16,paddingTop:5}} onClick={()=>rmQTL("excludes",i)}>✕</span></div>)}
               <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>addQTL("excludes")}>+ Add Item</button>
             </div>}
-            {activePane==="templateContent"&&selectedDoc!=="quotation"&&<div style={{textAlign:"center",padding:"32px 20px",color:G.gray400}}><div style={{fontSize:32,marginBottom:8}}>{sm.icon}</div><div style={{fontSize:13,fontWeight:600,color:G.gray600}}>{sm.label} Template</div><div style={{fontSize:11,marginTop:6}}>Content for this document will be designed in a dedicated session.</div></div>}
+            {/* Generic schema-driven editor for every other doc type that has one */}
+            {activePane==="templateContent"&&selectedDoc!=="quotation"&&schema&&<div>
+              <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:11,color:"#1A5276"}}>These defaults pre-fill when you open a new {sm.label.toLowerCase()}.</div>
+              {schema.map(({key,label,type})=><div key={key} style={{marginBottom:10}}>
+                <label style={lbl}>{label}</label>
+                {type==="textarea"
+                  ? <textarea style={{...inp,minHeight:64,resize:"vertical"}} value={(tmpl[selectedDoc]||{})[key]||""} onChange={e=>setTF(selectedDoc,key,e.target.value)}/>
+                  : <input style={inp} value={(tmpl[selectedDoc]||{})[key]||""} onChange={e=>setTF(selectedDoc,key,e.target.value)}/>}
+              </div>)}
+            </div>}
+            {/* Placeholder only for doc types with no standalone generator yet (costsheet, monument, receipt) */}
+            {activePane==="templateContent"&&selectedDoc!=="quotation"&&!schema&&<div style={{textAlign:"center",padding:"32px 20px",color:G.gray400}}><div style={{fontSize:32,marginBottom:8}}>{sm.icon}</div><div style={{fontSize:13,fontWeight:600,color:G.gray600}}>{sm.label} Template</div><div style={{fontSize:11,marginTop:6}}>Content for this document will be designed in a dedicated session.</div></div>}
             {activePane==="preview"&&<div style={{background:G.gray50,borderRadius:8,padding:14}}>
               <div style={{maxWidth:520,margin:"0 auto",background:"#fff",borderRadius:4,boxShadow:"0 4px 20px rgba(0,0,0,0.1)",overflow:"hidden"}}>
                 <div style={{textAlign:"center",padding:"12px 20px 6px"}}><img src={LOGO_B64} style={{height:66,width:"auto",display:"block",margin:"0 auto 3px"}} alt="Unitop"/><div style={{fontSize:6.5,color:"#2a2a2a",lineHeight:1.65,letterSpacing:"0.3pt"}}>Registered Office: 506, DDA-2F, District Centre, Janakpuri, New Delhi, India - 110058</div><div style={{fontSize:6.5,color:"#2a2a2a",lineHeight:1.65,letterSpacing:"0.3pt"}}>Corporate Office: 452, JMD Megapolis, Sec-48, Sohna Rd., Gurugram, Haryana, India - 122018</div><div style={{fontSize:6.5,color:"#2a2a2a",lineHeight:1.65,letterSpacing:"0.3pt",marginBottom:4}}>www.unitoptours.com | unitoptours@gmail.com | +91-124-4476571</div><div style={{height:2,background:"linear-gradient(to right,#cb0f0f,#061bb0)",borderRadius:1,marginBottom:6}}/></div>
@@ -109,5 +134,3 @@ export default function TemplatesHub({template,onSaveTemplate,docSettings,setDoc
     </div>
   );
 }
-
-// ─── ALL QUERIES VIEW ─────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -37,7 +37,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
   const [docSettings, setDocSettings] = useState(DEFAULT_DOC_SETTINGS);
-  const [template, setTemplate]   = useState(DEFAULT_TEMPLATE);
+  const [docTemplates, setDocTemplates] = useState(() => {
+    try { return { ...DEFAULT_DOC_TEMPLATES, ...JSON.parse(localStorage.getItem("unitop_doc_templates") || "{}") }; }
+    catch (e) { return DEFAULT_DOC_TEMPLATES; }
+  });
+  const saveDocTemplates = (t) => {
+    setDocTemplates(t);
+    localStorage.setItem("unitop_doc_templates", JSON.stringify(t));
+    showToast("Templates saved");
+  };
   const [activeQuery, setActiveQuery]   = useState(null);
   const [showNewQuery, setShowNewQuery] = useState(false);
   const [showSearch, setShowSearch]     = useState(false);
@@ -438,7 +446,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               </div>
             )}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser}/>}
-            {view==="templates_hub" && <TemplatesHub template={template} onSaveTemplate={t=>{setTemplate(t);showToast("Template saved");}} docSettings={docSettings} setDocSettings={setDocSettings}/>}
+            {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={setDocSettings}/>}
 
             {view==="cancelled" && (
               <div>
@@ -614,15 +622,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
         {/* PANELS */}
         {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={()=>{setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser}/>}
-        {showItinerary  && <ItineraryBuilder query={showItinerary} onClose={()=>setShowItinerary(null)} currentUser={currentUser}/>}
-        {showQuotation  && <QuotationGenerator query={showQuotation} template={template} onClose={()=>setShowQuotation(null)} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser}/>}
-        {showProforma   && <ProformaInvoice query={showProforma} onClose={()=>setShowProforma(null)}/>}
-        {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} onClose={()=>setShowTaxInv(null)}/>}
+        {showItinerary  && <ItineraryBuilder query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser}/>}
+        {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} onClose={()=>setShowQuotation(null)} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser}/>}
+        {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} onClose={()=>setShowProforma(null)}/>}
+        {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} onClose={()=>setShowTaxInv(null)}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
-        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
-        {showMealPlan   && <MealPlanDocument query={showMealPlan} onClose={()=>setShowMealPlan(null)}/>}
-        {showTourBrief  && <TourBriefingSheet query={showTourBrief} onClose={()=>setShowTourBrief(null)}/>}
+        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
+        {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} onClose={()=>setShowTourBrief(null)}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}

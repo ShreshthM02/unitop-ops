@@ -1,9 +1,10 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
 
-export default function ProformaInvoice({ query, onClose }) {
+export default function ProformaInvoice({ query, template, onClose }) {
+  const tmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(template||{}) };
   const settings = (() => { try { return JSON.parse(localStorage.getItem('unitop_doc_settings')||'{}'); } catch(e) { return {}; } })();
   const nextSerial = settings.proforma?.serial || 1;
   const prefix     = settings.proforma?.prefix  || 'PI';
@@ -82,7 +83,7 @@ export default function ProformaInvoice({ query, onClose }) {
             <div style="font-size:10.5pt">DATE: <strong>${inv.date}</strong></div>
           </div>
         </div>
-        <div style="font-size:10.5pt;font-weight:bold;margin-top:6pt;margin-bottom:4pt">AS DESIRED PLEASE FIND INVOICE AS UNDER:</div>
+        <div style="font-size:10.5pt;font-weight:bold;margin-top:6pt;margin-bottom:4pt">${tmpl.asDesiredLine}</div>
         <div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:12pt">RE: ${inv.subject}</div>
         <!-- Invoice meta -->
         <div style="display:flex;justify-content:space-between;margin-bottom:7pt;font-size:9pt">
@@ -143,11 +144,11 @@ export default function ProformaInvoice({ query, onClose }) {
         <!-- Bank details -->
         <div class="bank-box">
           <div class="bank-title">Bank Details as Under:</div>
-          <div class="bank-row"><span class="bank-key">Account Name</span><span class="bank-val">Unitop Tours & Travel (P) Ltd.</span></div>
-          <div class="bank-row"><span class="bank-key">Bank Name</span><span class="bank-val">Punjab National Bank</span></div>
-          <div class="bank-row"><span class="bank-key">Current A/C No.</span><span class="bank-val">1503002100024279</span></div>
-          <div class="bank-row"><span class="bank-key">Swift Code</span><span class="bank-val">PUNBINBBISB</span></div>
-          <div class="bank-row"><span class="bank-key">Address</span><span class="bank-val">B-1, Community Centre, Janakpuri, New Delhi – 110058 (India)</span></div>
+          <div class="bank-row"><span class="bank-key">Account Name</span><span class="bank-val">${tmpl.bankAccountName}</span></div>
+          <div class="bank-row"><span class="bank-key">Bank Name</span><span class="bank-val">${tmpl.bankName}</span></div>
+          <div class="bank-row"><span class="bank-key">Current A/C No.</span><span class="bank-val">${tmpl.bankAccountNo}</span></div>
+          <div class="bank-row"><span class="bank-key">Swift Code</span><span class="bank-val">${tmpl.bankSwift}</span></div>
+          <div class="bank-row"><span class="bank-key">Address</span><span class="bank-val">${tmpl.bankAddress}</span></div>
         </div>
         ${inv.notes?`<div class="notes-box">${inv.notes.replace(/\n/g,'<br/>')}</div>`:''}`;
 

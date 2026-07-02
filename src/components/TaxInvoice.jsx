@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
 
-export default function TaxInvoice({ query, payments, onClose }) {
+export default function TaxInvoice({ query, payments, template, onClose }) {
+  const tmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(template||{}) };
   const pt = payments[query.id];
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});
   const tourValueINR = pt ? (parseFloat(pt.tourValue)||0)*(parseFloat(pt.roeUsed)||1) : 0;
@@ -11,7 +12,7 @@ export default function TaxInvoice({ query, payments, onClose }) {
   const [inv, setInv] = useState({
     invoiceNo: `TAX-2026-${String(Math.floor(Math.random()*900)+100)}`,
     date: today,
-    placeOfSupply: "Delhi (07)",
+    placeOfSupply: tmpl.placeOfSupply,
     items:[{ desc:`Tour Package — ${query.destination||""} (${query.nights||"??"} Days)`, hsn:"998552", qty:query.pax||1, rate:Math.round(gstBase), amount:Math.round(gstBase) }],
     igst: true,
     gstRate: 5,
@@ -87,7 +88,7 @@ export default function TaxInvoice({ query, payments, onClose }) {
         ${inv.notes?`<div class="notes-box">${inv.notes}</div>`:''}`;
 
     const closingBlock = `
-        <div style="font-size:8.5pt;color:#999;text-align:center;margin-bottom:14pt">This is a computer generated invoice. Subject to Delhi jurisdiction.<br/>${COMPANY_INFO.name} | ${COMPANY_INFO.gstin}</div>
+        <div style="font-size:8.5pt;color:#999;text-align:center;margin-bottom:14pt">${tmpl.footerNote}<br/>${COMPANY_INFO.name} | ${COMPANY_INFO.gstin}</div>
         <div style="display:flex;justify-content:space-between;margin-top:14pt;">
           <div style="text-align:center;font-size:9pt;color:#555">
             <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
