@@ -99,3 +99,81 @@ export function applyQueryRealtimeEvent(queries, eventType, newRow, oldRow) {
   next[idx] = updated;
   return next;
 }
+
+// ─── PAYMENTS DB <-> APP OBJECT MAPPING ────────────────────────────────────────
+// Merges the three payments tables (payments, payment_incoming,
+// payment_outgoing) into the { queryId, tourValue, currency, roeUsed,
+// tourValueINR, entries:[], outgoing:[] } shape EnhancedPaymentTracker
+// expects, keyed by query id. Pure function so it's testable without a live
+// DB connection; used by UnitopApp's initial load.
+export function blankPaymentRecord(queryId) {
+  return { queryId, tourValue: "", currency: "US $", roeUsed: 90, tourValueINR: "", entries: [], outgoing: [] };
+}
+
+export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
+  const map = {};
+  (payRows || []).forEach(p => {
+    map[p.query_id] = {
+      queryId: p.query_id, tourValue: p.tour_value, currency: p.currency,
+      roeUsed: p.roe_used, tourValueINR: p.tour_value_inr, entries: [], outgoing: [],
+    };
+  });
+  (incomingRows || []).forEach(e => {
+    if (!map[e.query_id]) map[e.query_id] = blankPaymentRecord(e.query_id);
+    map[e.query_id].entries.push({
+      id: e.id, type: e.type, inCurrency: e.in_currency, currOther: e.curr_other,
+      amount: e.amount, date: e.date, mode: e.mode, modeOther: e.mode_other,
+      ref: e.ref, note: e.note, receipt: e.receipt,
+    });
+  });
+  (outgoingRows || []).forEach(o => {
+    if (!map[o.query_id]) map[o.query_id] = blankPaymentRecord(o.query_id);
+    map[o.query_id].outgoing.push({
+      id: o.id, vendor: o.vendor, amount: o.amount, date: o.date, mode: o.mode,
+      ref: o.ref, note: o.note, receiptName: o.receipt_name,
+    });
+  });
+  return map;
+}
+
+// Persists a payments record (header + incoming + outgoing entries) to
+// Supabase, syncing entries by upserting everything currently present and
+// deleting any DB rows no longer present locally (handles deleted entries).
+// Takes `db` as a parameter (rather than importing it directly) so it's
+// testable against a mock without a live Supabase connection.
+export async function savePaymentsToDB(db, queryId, data) {
+  try {
+    await db.from("payments").upsert({
+      query_id: queryId,
+      tour_value: parseFloat(data.tourValue) || null,
+      currency: data.currency,
+      roe_used: parseFloat(data.roeUsed) || null,
+      tour_value_inr: parseFloat(data.tourValueINR) || null,
+    });
+
+    for (const e of (data.entries || [])) {
+      await db.from("payment_incoming").upsert({
+        id: e.id, query_id: queryId, type: e.type, in_currency: e.inCurrency,
+        curr_other: e.currOther, amount: parseFloat(e.amount) || null, date: e.date || null,
+        mode: e.mode, mode_other: e.modeOther, ref: e.ref, note: e.note, receipt: e.receipt,
+      });
+    }
+    const { data: dbIncoming } = await db.from("payment_incoming").select("id").eq("query_id", queryId);
+    const keepIncomingIds = new Set((data.entries || []).map(e => String(e.id)));
+    for (const row of (dbIncoming || [])) {
+      if (!keepIncomingIds.has(String(row.id))) await db.from("payment_incoming").eq("id", row.id).delete();
+    }
+
+    for (const o of (data.outgoing || [])) {
+      await db.from("payment_outgoing").upsert({
+        id: o.id, query_id: queryId, vendor: o.vendor, amount: parseFloat(o.amount) || null,
+        date: o.date || null, mode: o.mode, ref: o.ref, note: o.note, receipt_name: o.receiptName,
+      });
+    }
+    const { data: dbOutgoing } = await db.from("payment_outgoing").select("id").eq("query_id", queryId);
+    const keepOutgoingIds = new Set((data.outgoing || []).map(o => String(o.id)));
+    for (const row of (dbOutgoing || [])) {
+      if (!keepOutgoingIds.has(String(row.id))) await db.from("payment_outgoing").eq("id", row.id).delete();
+    }
+  } catch (e) { console.warn("Save payments to DB failed:", e); }
+}
