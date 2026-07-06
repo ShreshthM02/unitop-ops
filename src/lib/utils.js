@@ -45,6 +45,7 @@ export function mapDbQueryRow(q) {
   return {
     ...q,
     id: q.id,
+    agentId: q.agent_id,
     agentCompany: q.agent_company,
     agentCountry: q.agent_country,
     correspondent: q.correspondent,
@@ -320,4 +321,31 @@ export async function saveTourExecutionToDB(db, data) {
       transporter_notes: data.transporterNotes || null,
     });
   } catch (e) { console.warn("Save tour execution to DB failed:", e); }
+}
+
+// Persists an agent record to Supabase. Unlike Vendors (text ids, chosen
+// client-side), agents.id is a real database-generated uuid
+// (default uuid_generate_v4()) -- so a NEW agent must be INSERTed without
+// an id and the real generated one read back from the response, rather
+// than upserted with a client-invented id. Returns the saved agent object
+// (with its real id attached, if newly created) so the caller can update
+// its local state correctly.
+export async function saveAgentToDB(db, agent) {
+  const payload = {
+    company: agent.company, country: agent.country, city: agent.city,
+    market: agent.market, contact_name: agent.contactName, contact_phone: agent.contactPhone,
+    contact_email: agent.contactEmail, notes: agent.notes, active: agent.active !== false,
+  };
+  try {
+    if (agent.id) {
+      await db.from("agents").upsert({ id: agent.id, ...payload });
+      return agent;
+    }
+    const { data } = await db.from("agents").insert(payload);
+    const created = data && data[0];
+    return created ? { ...agent, id: created.id } : agent;
+  } catch (e) {
+    console.warn("Save agent to DB failed:", e);
+    return agent;
+  }
 }

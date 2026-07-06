@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
 
-export default function AgentMaster({ agents, setAgents, queries, payments, onClose }) {
+export default function AgentMaster({ agents, setAgents, queries, payments, onSaveAgent, onClose }) {
   const [selected,setSelected]=useState(null);
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
@@ -13,7 +13,19 @@ export default function AgentMaster({ agents, setAgents, queries, payments, onCl
   const agentQueries=a=>queries.filter(q=>q.agentCompany===a.company||q.agentId===a.id);
   const agentLedger=a=>agentQueries(a).map(q=>{const pt=payments[q.id];const tv=(parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);const rc=(pt?.entries||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{queryId:q.id,tourFileId:q.tourFileId,group:q.groupName||q.clientName,sector:q.destination||q.sector||"—",travelDate:q.travelDate||"—",status:q.status,tourVal:tv,received:rc,balance:tv-rc,entries:pt?.entries||[]};});
   const filtered=agents.filter(a=>!search||a.company?.toLowerCase().includes(search.toLowerCase())||a.country?.toLowerCase().includes(search.toLowerCase()));
-  const saveEdit=()=>{if(form.id)setAgents(p=>p.map(a=>a.id===form.id?form:a));else{const na={...form,id:"AGT-"+String(agents.length+1).padStart(3,"0")};setAgents(p=>[...p,na]);setSelected(na);}setEditing(false);};
+  const saveEdit=async()=>{
+    if(form.id){
+      setAgents(p=>p.map(a=>a.id===form.id?form:a));
+      onSaveAgent && await onSaveAgent(form);
+    }else{
+      // Don't invent an id client-side -- agents.id is a real DB-generated
+      // uuid. Save first, then use whatever id actually comes back.
+      const saved = onSaveAgent ? await onSaveAgent(form) : {...form, id:"AGT-"+String(agents.length+1).padStart(3,"0")};
+      setAgents(p=>[...p, saved]);
+      setSelected(saved);
+    }
+    setEditing(false);
+  };
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
