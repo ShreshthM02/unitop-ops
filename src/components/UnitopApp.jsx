@@ -35,6 +35,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [tours, setTours]         = useState(TOUR_DATA);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
+  const [staff, setStaff]         = useState(USERS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
   const [tourExecutions, setTourExecutions] = useState({});
   const [docSettings, setDocSettings] = useState(DEFAULT_DOC_SETTINGS);
@@ -150,6 +151,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
             languages: v.languages, areas: v.areas, active: v.active,
           })));
+        }
+        // Load staff (the real, uuid-keyed table your login already
+        // authenticates against -- deliberately requesting only safe display
+        // columns, never password_hash/session_token/permissions, which the
+        // client-side app has no legitimate reason to hold in memory).
+        const { data: staffData } = await db.from("staff").select("id,name,role,color,avatar,active").order("name", {ascending:true});
+        if (staffData && staffData.length > 0) {
+          setStaff(staffData.filter(s => s.active !== false));
         }
         // Load payments (header rows + incoming/outgoing entries from their
         // own child tables, merged into the same shape EnhancedPaymentTracker
@@ -445,10 +454,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
           <div className="content">
             {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
-            {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile}/>}
-            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery}/>}
+            {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile} staff={staff}/>}
+            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} staff={staff}/>}
 
-            {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)}/>}
+            {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
             {view==="chat" && (
               <div style={{textAlign:"center",padding:48,color:G.gray400}}>
                 <div style={{fontSize:32,marginBottom:8}}>💬</div>
@@ -456,7 +465,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 <button className="btn btn-primary" onClick={()=>setShowChat(true)}>Open Chat →</button>
               </div>
             )}
-            {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser}/>}
+            {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={setDocSettings}/>}
 
             {view==="cancelled" && (
@@ -631,6 +640,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             tourExecution={tourExecutions[activeQuery.id] || blankTourExecution(activeQuery.id)}
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}
+            staff={staff}
             currentUser={currentUser}
           />
         )}
@@ -690,7 +700,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>
         )}
 
-        {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents}/>}
+        {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents} staff={staff}/>}
         {toast && <Toast msg={toast} onDone={()=>setToast(null)}/>}
       </div>
     </>

@@ -71,6 +71,7 @@ export function mapDbQueryRow(q) {
     notes: q.notes,
     manualWF: q.manual_wf || [],
     date: q.date || q.created_at?.split("T")[0],
+    assignedTo: q.assigned_to,
   };
 }
 

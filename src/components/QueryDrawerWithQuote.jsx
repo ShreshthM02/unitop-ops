@@ -4,9 +4,9 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors, staff }) {
   const isCaseFile   = !!query.tourFileId;
-  const assignedUser = USERS.find(u=>u.id===query.assignedTo);
+  const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const doneByStatus = STATUS_WF_MAP[query.status]||[];
   const manualDone   = query.manualWF||[];
   const allDone      = [...new Set([...doneByStatus,...manualDone])];

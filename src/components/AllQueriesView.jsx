@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
 
-export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,currentUser}){
+export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,currentUser,staff}){
   const [search,setSearch]=React.useState('');
   const [filterStage,setFilterStage]=React.useState('All');
   const [filterAgent,setFilterAgent]=React.useState('All');
@@ -79,7 +79,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
           </thead>
           <tbody>
             {pageData.map((q,i)=>{
-              const user=USERS.find(u=>u.id===q.assignedTo);
+              const user=(staff||USERS).find(u=>u.id===q.assignedTo);
               const sc=stageColor(q.status);
               return(
                 <tr key={q.id} onClick={()=>onOpenQuery(q)} style={{background:i%2===0?G.white:G.gray50,cursor:"pointer"}}
