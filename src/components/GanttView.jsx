@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML } = Lib;
 
 export default function GanttView({ queries, tours }) {
   const [calTab, setCalTab]         = useState("gantt");
@@ -94,7 +94,7 @@ export default function GanttView({ queries, tours }) {
           ))}
         </div>
         <div style={{marginLeft:"auto",display:"flex",background:G.gray100,borderRadius:8,padding:3,gap:2}}>
-          {[["gantt","📅 Gantt"],["overlap","⚡ Overlap"]].map(([id,label])=>(
+          {[["gantt","📅 Gantt"],["overlap","⚡ Overlap"],["movement","🗂 Movement Chart"]].map(([id,label])=>(
             <button key={id} onClick={()=>setCalTab(id)}
               style={{padding:"5px 14px",borderRadius:6,border:"none",cursor:"pointer",
                 background:calTab===id?G.white:"transparent",
@@ -179,6 +179,87 @@ export default function GanttView({ queries, tours }) {
           </div>
         </div>
       )}
+
+      {/* ── MOVEMENT CHART TAB ── */}
+      {calTab==="movement" && (() => {
+        const fmtDate = d => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+        const rows = getMovementChartRows(queries, USERS, selectedYear, selectedMonth);
+        const cols = ["S.No","File Handler","Tour File","Arr. Date","Dep. Date","FTO/Agent","Sector","Pax","Remarks"];
+
+        const handlePrint = () => {
+          const tableBlock = `
+            <table class="content-table" style="font-size:9pt;">
+              <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+              <tbody>${rows.map(r=>`<tr>
+                <td>${r.sNo}</td>
+                <td>${r.fileHandler}</td>
+                <td>${r.tourFileId}</td>
+                <td>${fmtDate(r.arrDate)}</td>
+                <td>${fmtDate(r.depDate)}</td>
+                <td>${r.fto}</td>
+                <td>${r.sector}</td>
+                <td>${r.pax}</td>
+                <td>${r.remarks}</td>
+              </tr>`).join("")}</tbody>
+            </table>`;
+          printHTML(buildLetterheadDocument({
+            title: `Movement Chart — ${MONTH_NAMES[selectedMonth]} ${selectedYear}`,
+            bodyBlocks: [tableBlock],
+            orientation: "landscape",
+            showPageNum: true,
+          }));
+        };
+
+        return (
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:12,color:G.gray600}}>
+                Active tours in <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong>
+              </div>
+              <button onClick={handlePrint}
+                style={{padding:"5px 14px",borderRadius:6,border:`1px solid ${G.gray200}`,background:G.white,
+                  color:G.navy,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                🖨 Download PDF
+              </button>
+            </div>
+            <div style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,overflow:"hidden"}}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{borderCollapse:"collapse",width:"100%",minWidth:700}}>
+                  <thead>
+                    <tr>
+                      {cols.map(c=>(
+                        <th key={c} style={{padding:"8px 10px",fontSize:11,fontWeight:600,color:G.gray600,
+                          textAlign:"left",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,whiteSpace:"nowrap"}}>
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr><td colSpan={9} style={{padding:32,textAlign:"center",color:G.gray400,fontSize:12}}>
+                        No active tours in {MONTH_NAMES[selectedMonth]} {selectedYear}
+                      </td></tr>
+                    ) : rows.map((r,ri) => (
+                      <tr key={r.tourFileId} style={{background:ri%2===0?G.white:G.gray50}}>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{r.sNo}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{r.fileHandler}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12,fontWeight:500,color:G.navy}}>{r.tourFileId}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{fmtDate(r.arrDate)}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{fmtDate(r.depDate)}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{r.fto}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{r.sector}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12}}>{r.pax}</td>
+                        <td style={{padding:"6px 10px",borderBottom:`1px solid ${G.gray100}`,fontSize:12,color:G.gray500}}>{r.remarks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── OVERLAP TAB ── */}
       {calTab==="overlap" && (

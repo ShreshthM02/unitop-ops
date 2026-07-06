@@ -149,6 +149,7 @@ export function buildLetterheadDocument({
   showFooter = true,
   printOnLetterhead = false,
   showPageNum = false,
+  orientation = "portrait",
 }) {
   const effHeaderRepeat = printOnLetterhead || headerAllPages;
   const effFooterRepeat = printOnLetterhead || footerAllPages;
@@ -168,7 +169,7 @@ export function buildLetterheadDocument({
 
   return `<!DOCTYPE html><html><head><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
-    <style>@page{size:A4;margin:${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left};${showPageNum ? '@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}' : ''}}</style>
+    <style>@page{size:A4${orientation === "landscape" ? " landscape" : ""};margin:${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left};${showPageNum ? '@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}' : ''}}</style>
     <style>${extraHeadCSS}</style>
   </head><body>
     <table class="lh-doc">

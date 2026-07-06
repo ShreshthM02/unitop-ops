@@ -178,6 +178,45 @@ export async function savePaymentsToDB(db, queryId, data) {
   } catch (e) { console.warn("Save payments to DB failed:", e); }
 }
 
+export function parseLocalDateStr(str) {
+  if (!str || typeof str !== "string") return null;
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3]);
+}
+
+export function getMovementChartRows(queries, users, year, month) {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+
+  return queries
+    .filter(q => ["operations", "completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .map(q => {
+      const start = parseLocalDateStr(q.travelDate);
+      if (!start) return null;
+      const nights = parseInt(q.nights) || 0;
+      const end = new Date(start);
+      end.setDate(start.getDate() + nights);
+      return { query: q, start, end };
+    })
+    .filter(r => r && r.start <= monthEnd && r.end >= monthStart)
+    .sort((a, b) => a.start - b.start)
+    .map((r, i) => {
+      const handler = (users || []).find(u => u.id === r.query.assignedTo);
+      return {
+        sNo: i + 1,
+        fileHandler: handler ? handler.name : "",
+        tourFileId: r.query.tourFileId || r.query.id,
+        arrDate: r.start,
+        depDate: r.end,
+        fto: r.query.agentCompany || r.query.agentName || "",
+        sector: r.query.destination || r.query.sector || "",
+        pax: r.query.paxDisplay || r.query.pax || "",
+        remarks: r.query.notes || "",
+      };
+    });
+}
+
 // Persists a single facilitator record (create or update) to Supabase.
 // Takes `db` as a parameter for testability, same as savePaymentsToDB.
 export async function saveFacilitatorToDB(db, facilitator) {
