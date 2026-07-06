@@ -187,12 +187,26 @@ export const INITIAL_AGENTS = [
 ];
 
 // ─── VENDOR MASTER DATA ──────────────────────────────────────────────────────
-export const VENDOR_TYPES = ["Hotel","Restaurant","Transport","Tour Facilitator","Local Handler","Activity",,"Other"];
+export const VENDOR_TYPES = ["Hotel","Restaurant","Transport","Tour Facilitator","Local Handler","Activity","Other"];
 export const INITIAL_VENDORS = [
   { id:"VND-001", name:"Saura / Golden Tulip", type:"Hotel", city:"Agra", contactName:"Sales Manager",
     contactPhone:"+91-562-XXXXXXX", contactEmail:"sales@sauraagra.com", gstin:"", notes:"Contracted rates on file." },
   { id:"VND-002", name:"Nanking Restaurant", type:"Restaurant", city:"New Delhi", contactName:"Manager",
     contactPhone:"+91-11-XXXXXXX", contactEmail:"", gstin:"", notes:"Chinese cuisine specialist." },
+];
+
+// ─── TOUR FACILITATORS (guides/escorts) — lightweight master list ───────────
+// Separate from Vendors: facilitators are individuals (not businesses), and
+// the fields that matter for them (languages spoken, areas covered) don't
+// overlap cleanly with a Vendor record's GSTIN/contracted-rates shape.
+// Tour Briefing Sheet's guide fields select from this list by id instead of
+// free-typing a name, so "days worked" / "payments" can be reliably
+// aggregated per person in reports — free text let the same person appear
+// as "Prithvi", "Prithvee", and "PRITHVI" across different tours.
+export const INITIAL_FACILITATORS = [
+  { id:"FAC-001", name:"Prithvi", phone:"+91-98XXXXXXXX", email:"", languages:"English, Hindi", areas:"Bodhgaya, Rajgir, Nalanda", notes:"", active:true },
+  { id:"FAC-002", name:"Ashutosh", phone:"+91-98XXXXXXXX", email:"", languages:"English, Thai", areas:"Bodhgaya, Varanasi", notes:"", active:true },
+  { id:"FAC-003", name:"Manoj", phone:"+91-98XXXXXXXX", email:"", languages:"English, Hindi", areas:"Delhi, Agra", notes:"", active:true },
 ];
 
 // ─── VEHICLE TYPES (for cost sheet and exchange order) ───────────────────────

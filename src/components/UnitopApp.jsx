@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, INITIAL_FACILITATORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveFacilitatorToDB, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -25,6 +25,7 @@ import MealPlanDocument from './MealPlanDocument.jsx';
 import TourBriefingSheet from './TourBriefingSheet.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
 import VendorMaster from './VendorMaster.jsx';
+import FacilitatorMaster from './FacilitatorMaster.jsx';
 import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
@@ -35,6 +36,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [tours, setTours]         = useState(TOUR_DATA);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
+  const [facilitators, setFacilitators] = useState(INITIAL_FACILITATORS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
   const [docSettings, setDocSettings] = useState(DEFAULT_DOC_SETTINGS);
   const [docTemplates, setDocTemplates] = useState(() => {
@@ -61,6 +63,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showTourBrief,  setShowTourBrief]  = useState(null);
   const [showAgents,     setShowAgents]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
+  const [showFacilitators, setShowFacilitators] = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [showChat,       setShowChat]       = useState(false);
@@ -147,6 +150,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             id: v.id, name: v.name, type: v.type, city: v.city,
             contactName: v.contact_name, contactPhone: v.contact_phone,
             contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
+          })));
+        }
+        // Load facilitators
+        const { data: facData } = await db.from("facilitators").select("*").order("name", {ascending:true});
+        if (facData && facData.length > 0) {
+          setFacilitators(facData.map(f => ({
+            id: f.id, name: f.name, phone: f.phone, email: f.email,
+            languages: f.languages, areas: f.areas, notes: f.notes, active: f.active,
           })));
         }
         // Load payments (header rows + incoming/outgoing entries from their
@@ -342,6 +353,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Master Data",items:[
       {id:"agents",       icon:"🌐",label:"Agents / Clients"},
       {id:"vendors",      icon:"🏢",label:"Vendors"},
+      {id:"facilitators", icon:"🧭",label:"Tour Facilitators"},
     ]},
     {section:"Finance",items:[
       {id:"invoices",     icon:"🧾",label:"Invoices"},
@@ -355,7 +367,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showMealPlan||showTourBrief;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showFacilitators||showMealPlan||showTourBrief;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -534,6 +546,21 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               </div>
             )}
 
+            {view==="facilitators" && (
+              <div>
+                <div style={{marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
+                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master list of tour facilitators/escorts — selected from Tour Briefing Sheet instead of typed freehand, so reports can reliably total days worked and payments per person.</div>
+                  <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>setShowFacilitators(true)}>Open Full Facilitator Dashboard</button>
+                </div>
+                {facilitators.filter(f=>f.active!==false).map(f=>(
+                  <div key={f.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowFacilitators(true)}>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{f.name}</div><div style={{fontSize:11,color:G.gray400}}>{f.languages||"—"} · {f.areas||"—"}</div></div>
+                    <button className="btn btn-ghost" style={{fontSize:11}}>View →</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {view==="invoices" && (
               <div>
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
@@ -619,12 +646,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
         {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)}/>}
-        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} onClose={()=>setShowTourBrief(null)}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={facilitators} onClose={()=>setShowTourBrief(null)}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onClose={()=>setShowAgents(false)}/>}
         {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} onClose={()=>setShowVendors(false)}/>}
+        {showFacilitators && <FacilitatorMaster facilitators={facilitators} setFacilitators={setFacilitators} onSaveFacilitator={(f)=>saveFacilitatorToDB(db,f)} onClose={()=>setShowFacilitators(false)}/>}
 
         {/* Cancel modal */}
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}

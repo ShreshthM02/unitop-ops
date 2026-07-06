@@ -39,6 +39,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   const [extras, setExtras] = useState([]);
   const updateExtra = (i,f,v) => setExtras(p=>p.map((e,idx)=>idx===i?{...e,[f]:v}:e));
 
+  // Local Handler(s) — third-party ground operator/DMC per sector. Optional:
+  // starts empty, only appears in totals/output once at least one is added
+  // (same "add only if needed" pattern as Extra Services). Multiple entries
+  // supported since a multi-sector tour can have a different local handler
+  // per sector, each with its own per-pax/lumpsum cost.
+  const [localHandlers, setLocalHandlers] = useState([]);
+  const updateLocalHandler = (i,f,v) => setLocalHandlers(p=>p.map((h,idx)=>idx===i?{...h,[f]:v}:h));
+  const addLocalHandler = () => setLocalHandlers(p=>[...p,{id:Date.now(),sector:"",dateFrom:"",dateTo:"",mode:"pp",cost:"",singleSupp:"",remarks:""}]);
+  const removeLocalHandler = i => setLocalHandlers(p=>p.filter((_,idx)=>idx!==i));
+
   // 10.4 Slabs
   const [slabs, setSlabs] = useState([
     { id:1, label:"15–19 pax + 1 FOC", foc:15, vehicle:"Large Coach" },
@@ -67,7 +77,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   // Totals
   const totMeal    = days.reduce((s,d)=>s+n(d.mealCost),0);
   const totHotel   = days.reduce((s,d)=>s+n(d.hotelNetPP),0);
-  const totSS      = days.reduce((s,d)=>s+n(d.singleSupp),0);
+  const totSS      = days.reduce((s,d)=>s+n(d.singleSupp),0) + localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
   const monTotal   = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(monExtra);
 
   const calcSlab = (slab) => {
@@ -80,8 +90,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
     const miscPP = miscMode==="pp" ? n(miscCost) : (slab.foc>0 ? n(miscCost)/slab.foc : 0);
     // Monument
     const monPP = monMode==="pp" ? monTotal : (slab.foc>0 ? monTotal/slab.foc : 0);
+    // Local handler(s) — each entry can independently be per-pax or lumpsum
+    const localPP = localHandlers.reduce((s,h) => s + (h.mode==="pp" ? n(h.cost) : (slab.foc>0 ? n(h.cost)/slab.foc : 0)), 0);
 
-    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP;
+    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP;
     const tax = Math.round(sub * gst/100);
     const afterTax = sub + tax;
     const markupAmt = Math.round(afterTax * markup/100);
@@ -89,11 +101,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
     const finalFX = Math.ceil(sellingINR / roe);
     // Single supplement
     const ssFX = Math.ceil(((totSS + totSS*gst/100) * (1 + markup/100)) / roe);
-    return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
+    return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), localPP:Math.round(localPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
   };
 
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monuments:[...monuments] };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monuments:[...monuments], localHandlers:[...localHandlers] };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
     setVersion(v=>v+1);
   };
@@ -276,6 +288,51 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
           ))}
           <button className="btn btn-ghost" style={{fontSize:11,marginBottom:4}} onClick={addTransport}>+ Add Transport</button>
 
+          {/* ── Local Handler(s) ── */}
+          {secH("Local Handler","🤝")}
+          <div style={{marginBottom:8}}>
+            {localHandlers.map((h,hi)=>(
+              <div key={h.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr auto",gap:8,marginBottom:6}}>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Sector</div>
+                    <input style={inp} value={h.sector} onChange={e=>updateLocalHandler(hi,"sector",e.target.value)} placeholder="e.g. Bodhgaya / Rajgir"/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>From</div>
+                    <input style={inp} type="date" value={h.dateFrom} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>To</div>
+                    <input style={inp} type="date" value={h.dateTo} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
+                  </div>
+                  <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
+                    <span style={{cursor:"pointer",color:G.gray400,fontSize:16}} onClick={()=>removeLocalHandler(hi)}>✕</span>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr",gap:8}}>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Cost (₹)</div>
+                    <div style={{display:"flex",gap:4}}>
+                      <input style={{...inp,textAlign:"right"}} type="number" value={h.cost} onChange={e=>updateLocalHandler(hi,"cost",e.target.value)} placeholder="0"/>
+                      {modeBtn(h.mode,"pp","PP",v=>updateLocalHandler(hi,"mode",v))}
+                      {modeBtn(h.mode,"lumpsum","Lump",v=>updateLocalHandler(hi,"mode",v))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Single Supp. (₹)</div>
+                    <input style={{...inp,textAlign:"right"}} type="number" value={h.singleSupp} onChange={e=>updateLocalHandler(hi,"singleSupp",e.target.value)} placeholder="0"/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Remarks</div>
+                    <input style={inp} value={h.remarks} onChange={e=>updateLocalHandler(hi,"remarks",e.target.value)} placeholder="Any notes on this handler/sector"/>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button className="btn btn-ghost" style={{fontSize:11}} onClick={addLocalHandler}>+ Add Local Handler</button>
+          </div>
+
           {/* ── Extra Services ── */}
           {secH("Extra Services","✨")}
           <div style={{marginBottom:8}}>
@@ -337,7 +394,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
               <thead>
                 <tr style={{background:G.navy}}>
-                  {["Slab","Transport PP","TL/Facil. PP","Misc PP","Mon. PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
+                  {["Slab","Transport PP","TL/Facil. PP","Misc PP","Mon. PP","Local Hdlr PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
                     <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -348,7 +405,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
                   return (
                     <tr key={s.id} style={{background:i%2===0?G.white:G.gray50}}>
                       <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{s.label}<br/><span style={{fontSize:9,color:G.gray400}}>{s.vehicle}</span></td>
-                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
+                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
                         <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
                       ))}
                       <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:G.navy}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>

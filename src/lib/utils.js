@@ -177,3 +177,20 @@ export async function savePaymentsToDB(db, queryId, data) {
     }
   } catch (e) { console.warn("Save payments to DB failed:", e); }
 }
+
+// Persists a single facilitator record (create or update) to Supabase.
+// Takes `db` as a parameter for testability, same as savePaymentsToDB.
+export async function saveFacilitatorToDB(db, facilitator) {
+  try {
+    await db.from("facilitators").upsert({
+      id: facilitator.id,
+      name: facilitator.name,
+      phone: facilitator.phone,
+      email: facilitator.email,
+      languages: facilitator.languages,
+      areas: facilitator.areas,
+      notes: facilitator.notes,
+      active: facilitator.active !== false,
+    });
+  } catch (e) { console.warn("Save facilitator to DB failed:", e); }
+}
