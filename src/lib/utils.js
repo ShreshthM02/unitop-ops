@@ -178,6 +178,34 @@ export async function savePaymentsToDB(db, queryId, data) {
   } catch (e) { console.warn("Save payments to DB failed:", e); }
 }
 
+// Persists a single vendor record (create or update) to Supabase -- covers
+// every vendor type, including "Tour Facilitator" (individuals selected by
+// id in Tour Briefing Sheet rather than free-typed). Takes `db` as a
+// parameter for testability, same pattern as savePaymentsToDB.
+export async function saveVendorToDB(db, vendor) {
+  try {
+    await db.from("vendors").upsert({
+      id: vendor.id,
+      name: vendor.name,
+      type: vendor.type,
+      city: vendor.city,
+      contact_name: vendor.contactName,
+      contact_phone: vendor.contactPhone,
+      contact_email: vendor.contactEmail,
+      gstin: vendor.gstin,
+      notes: vendor.notes,
+      languages: vendor.languages,
+      areas: vendor.areas,
+      active: vendor.active !== false,
+    });
+  } catch (e) { console.warn("Save vendor to DB failed:", e); }
+}
+
+// ─── MOVEMENT CHART ─────────────────────────────────────────────────────────
+// Parse a YYYY-MM-DD string as local midnight (avoids UTC-shift off-by-one).
+// Duplicated from GanttView's own copy deliberately -- same reasoning as
+// mapDbQueryRow: keeping this as a small, pure, exported function makes it
+// directly testable without needing to render the whole calendar component.
 export function parseLocalDateStr(str) {
   if (!str || typeof str !== "string") return null;
   const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -185,6 +213,13 @@ export function parseLocalDateStr(str) {
   return new Date(+m[1], +m[2] - 1, +m[3]);
 }
 
+// Builds Movement Chart rows for a given month: tours whose date range
+// overlaps that month at all (not just ones starting in it), so a tour
+// spanning a month boundary shows up in both months' charts. Only pulls
+// fields that are reliably available on the query record itself --
+// Tour Escort/Transport/Hotels live in Tour Briefing Sheet/Cost Sheet,
+// which aren't persisted centrally yet, so they're deliberately left out
+// rather than shown as permanently-blank columns.
 export function getMovementChartRows(queries, users, year, month) {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
@@ -205,6 +240,7 @@ export function getMovementChartRows(queries, users, year, month) {
       const handler = (users || []).find(u => u.id === r.query.assignedTo);
       return {
         sNo: i + 1,
+        query: r.query,
         fileHandler: handler ? handler.name : "",
         tourFileId: r.query.tourFileId || r.query.id,
         arrDate: r.start,
@@ -217,19 +253,70 @@ export function getMovementChartRows(queries, users, year, month) {
     });
 }
 
-// Persists a single facilitator record (create or update) to Supabase.
-// Takes `db` as a parameter for testability, same as savePaymentsToDB.
-export async function saveFacilitatorToDB(db, facilitator) {
+// ─── TOUR EXECUTION DETAILS ─────────────────────────────────────────────────
+// The single operational source of truth for a Tour File's day-wise
+// itinerary/hotels, transporter, facilitator assignments, local handlers,
+// and flight/train legs -- edited from the Tour File drawer's Info
+// sub-tabs. Deliberately separate from Cost Sheet / Quotation / Itinerary
+// Builder's own day fields, which remain independent drafting tools for
+// now (see the code comment on saveTourExecutionToDB for why they aren't
+// unified yet).
+export function blankTourExecution(queryId) {
+  return {
+    queryId,
+    days: [],
+    facilitators: [],
+    localHandlers: [],
+    flights: [],
+    arrFlightDetails: "",
+    depFlightDetails: "",
+    transporterVendorId: "",
+    transporterNotes: "",
+  };
+}
+
+export function mapDbTourExecutionRow(row) {
+  return {
+    queryId: row.query_id,
+    days: row.days || [],
+    facilitators: row.facilitators || [],
+    localHandlers: row.local_handlers || [],
+    flights: row.flights || [],
+    arrFlightDetails: row.arr_flight_details || "",
+    depFlightDetails: row.dep_flight_details || "",
+    transporterVendorId: row.transporter_vendor_id || "",
+    transporterNotes: row.transporter_notes || "",
+  };
+}
+
+// Merges the loaded tour_execution rows into a map keyed by query_id, the
+// same pattern as mergePaymentsRows -- pure function, testable without a DB.
+export function mergeTourExecutionRows(rows) {
+  const map = {};
+  (rows || []).forEach(row => { map[row.query_id] = mapDbTourExecutionRow(row); });
+  return map;
+}
+
+// NOTE ON NOT UNIFYING WITH COST SHEET / QUOTATION / ITINERARY BUILDER YET:
+// Those three documents each have their own independent day-wise hotel/route
+// fields, entered separately, with no connection to this table or to each
+// other. That's a real inconsistency risk (the same tour's hotel could be
+// typed differently in two places) -- deliberately not solved in this pass.
+// Migrating those documents to read from/write to this same table is a
+// separate, later piece of work once this foundation is proven out; doing
+// it in the same pass risked destabilizing three already-working documents.
+export async function saveTourExecutionToDB(db, data) {
   try {
-    await db.from("facilitators").upsert({
-      id: facilitator.id,
-      name: facilitator.name,
-      phone: facilitator.phone,
-      email: facilitator.email,
-      languages: facilitator.languages,
-      areas: facilitator.areas,
-      notes: facilitator.notes,
-      active: facilitator.active !== false,
+    await db.from("tour_execution").upsert({
+      query_id: data.queryId,
+      days: data.days || [],
+      facilitators: data.facilitators || [],
+      local_handlers: data.localHandlers || [],
+      flights: data.flights || [],
+      arr_flight_details: data.arrFlightDetails || null,
+      dep_flight_details: data.depFlightDetails || null,
+      transporter_vendor_id: data.transporterVendorId || null,
+      transporter_notes: data.transporterNotes || null,
     });
-  } catch (e) { console.warn("Save facilitator to DB failed:", e); }
+  } catch (e) { console.warn("Save tour execution to DB failed:", e); }
 }

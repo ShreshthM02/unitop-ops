@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, INITIAL_FACILITATORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveFacilitatorToDB, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -25,7 +25,6 @@ import MealPlanDocument from './MealPlanDocument.jsx';
 import TourBriefingSheet from './TourBriefingSheet.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
 import VendorMaster from './VendorMaster.jsx';
-import FacilitatorMaster from './FacilitatorMaster.jsx';
 import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
@@ -36,8 +35,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [tours, setTours]         = useState(TOUR_DATA);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
-  const [facilitators, setFacilitators] = useState(INITIAL_FACILITATORS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
+  const [tourExecutions, setTourExecutions] = useState({});
   const [docSettings, setDocSettings] = useState(DEFAULT_DOC_SETTINGS);
   const [docTemplates, setDocTemplates] = useState(() => {
     try { return { ...DEFAULT_DOC_TEMPLATES, ...JSON.parse(localStorage.getItem("unitop_doc_templates") || "{}") }; }
@@ -63,7 +62,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showTourBrief,  setShowTourBrief]  = useState(null);
   const [showAgents,     setShowAgents]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
-  const [showFacilitators, setShowFacilitators] = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [showChat,       setShowChat]       = useState(false);
@@ -150,14 +148,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             id: v.id, name: v.name, type: v.type, city: v.city,
             contactName: v.contact_name, contactPhone: v.contact_phone,
             contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
-          })));
-        }
-        // Load facilitators
-        const { data: facData } = await db.from("facilitators").select("*").order("name", {ascending:true});
-        if (facData && facData.length > 0) {
-          setFacilitators(facData.map(f => ({
-            id: f.id, name: f.name, phone: f.phone, email: f.email,
-            languages: f.languages, areas: f.areas, notes: f.notes, active: f.active,
+            languages: v.languages, areas: v.areas, active: v.active,
           })));
         }
         // Load payments (header rows + incoming/outgoing entries from their
@@ -168,6 +159,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         const { data: outData } = await db.from("payment_outgoing").select("*").order("created_at", {ascending:true});
         const paymentsMap = mergePaymentsRows(payData, inData, outData);
         if (Object.keys(paymentsMap).length > 0) setPayments(paymentsMap);
+
+        // Load Tour Execution Details (day-wise itinerary/hotels, transporter,
+        // facilitators, local handlers, flight legs -- the operational source
+        // of truth surfaced in the Tour File drawer's Info sub-tabs).
+        const { data: teData } = await db.from("tour_execution").select("*");
+        const teMap = mergeTourExecutionRows(teData);
+        if (Object.keys(teMap).length > 0) setTourExecutions(teMap);
       } catch(e) {
         console.warn("Could not load from Supabase, using demo data:", e);
       }
@@ -235,6 +233,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const updatePayments = (queryId, data) => {
     setPayments(p => ({ ...p, [queryId]: data })); // optimistic local update, same as before
     savePaymentsToDB(db, queryId, data); // fire-and-forget persistence, mirrors saveQueryToDB's pattern
+  };
+
+  const updateTourExecution = (queryId, data) => {
+    setTourExecutions(p => ({ ...p, [queryId]: data }));
+    saveTourExecutionToDB(db, data);
+  };
+
+  // Was referenced by QueryDrawerWithQuote's "Save Changes" button but never
+  // actually passed in -- editing query details silently did nothing.
+  const handleUpdateQuery = (queryId, updates) => {
+    setQueries(qs => qs.map(q => q.id === queryId ? { ...q, ...updates } : q));
+    setActiveQuery(q => q && q.id === queryId ? { ...q, ...updates } : q);
+    saveQueryToDB({ ...updates, id: queryId }, "Updated query details");
   };
 
   const handleNewQuery = (form) => {
@@ -353,7 +364,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Master Data",items:[
       {id:"agents",       icon:"🌐",label:"Agents / Clients"},
       {id:"vendors",      icon:"🏢",label:"Vendors"},
-      {id:"facilitators", icon:"🧭",label:"Tour Facilitators"},
     ]},
     {section:"Finance",items:[
       {id:"invoices",     icon:"🧾",label:"Invoices"},
@@ -367,7 +377,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showFacilitators||showMealPlan||showTourBrief;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showMealPlan||showTourBrief;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -436,7 +446,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <div className="content">
             {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
             {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile}/>}
-            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours}/>}
+            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery}/>}
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)}/>}
             {view==="chat" && (
@@ -533,28 +543,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="vendors" && (
               <div>
                 <div style={{marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
-                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master data for all vendors — hotels, restaurants, transport, guides, handlers.</div>
+                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master data for all vendors — hotels, restaurants, transport, tour facilitators, local handlers.</div>
                   <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>setShowVendors(true)}>Open Full Vendor Dashboard</button>
                 </div>
                 {vendors.map(v=>(
                   <div key={v.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowVendors(true)}>
                     <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}</div><div style={{fontSize:11,color:G.gray400}}>{v.type} · {v.city} · {v.contactName}</div></div>
                     <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#EBF5FB",color:"#154360",fontWeight:600}}>{v.type}</span>
-                    <button className="btn btn-ghost" style={{fontSize:11}}>View →</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {view==="facilitators" && (
-              <div>
-                <div style={{marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
-                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master list of tour facilitators/escorts — selected from Tour Briefing Sheet instead of typed freehand, so reports can reliably total days worked and payments per person.</div>
-                  <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>setShowFacilitators(true)}>Open Full Facilitator Dashboard</button>
-                </div>
-                {facilitators.filter(f=>f.active!==false).map(f=>(
-                  <div key={f.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowFacilitators(true)}>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{f.name}</div><div style={{fontSize:11,color:G.gray400}}>{f.languages||"—"} · {f.areas||"—"}</div></div>
                     <button className="btn btn-ghost" style={{fontSize:11}}>View →</button>
                   </div>
                 ))}
@@ -632,6 +627,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onToggleWF={(stepId)=>handleToggleWF(activeQuery.id,stepId)}
             onCancel={()=>setCancelTarget(activeQuery)}
             onUpdateRemarks={handleAddRemark}
+            onUpdateQuery={handleUpdateQuery}
+            tourExecution={tourExecutions[activeQuery.id] || blankTourExecution(activeQuery.id)}
+            onUpdateTourExecution={updateTourExecution}
+            vendors={vendors}
             currentUser={currentUser}
           />
         )}
@@ -646,13 +645,12 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
         {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)}/>}
-        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={facilitators} onClose={()=>setShowTourBrief(null)}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} vendors={vendors} onClose={()=>setShowTourBrief(null)}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onClose={()=>setShowAgents(false)}/>}
-        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} onClose={()=>setShowVendors(false)}/>}
-        {showFacilitators && <FacilitatorMaster facilitators={facilitators} setFacilitators={setFacilitators} onSaveFacilitator={(f)=>saveFacilitatorToDB(db,f)} onClose={()=>setShowFacilitators(false)}/>}
+        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
 
         {/* Cancel modal */}
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}

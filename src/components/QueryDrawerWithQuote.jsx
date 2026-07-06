@@ -4,7 +4,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = USERS.find(u=>u.id===query.assignedTo);
   const doneByStatus = STATUS_WF_MAP[query.status]||[];
@@ -16,11 +16,29 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [remark, setRemark] = useState("");
   const [editingQuery, setEditingQuery] = useState(false);
   const [editForm, setEditForm] = useState({...query});
+  const [showUploadsInline, setShowUploadsInline] = useState(false);
+  const [infoSubTab, setInfoSubTab] = useState("details");
+  const blankTE = { queryId: query.id, days: [], facilitators: [], localHandlers: [], flights: [], arrFlightDetails: "", depFlightDetails: "", transporterVendorId: "", transporterNotes: "" };
+  const [te, setTe] = useState(tourExecution || blankTE);
+  useEffect(() => { setTe(tourExecution || blankTE); }, [query.id]); // resync working copy if the drawer is opened for a different tour
+  const teDirty = JSON.stringify(te) !== JSON.stringify(tourExecution || blankTE);
+  const saveTE = () => onUpdateTourExecution && onUpdateTourExecution(query.id, te);
+  const setTeField = (k, v) => setTe(p => ({ ...p, [k]: v }));
+  const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
+  const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", notes: "" }] }));
+  const rmDay = (i) => setTe(p => ({ ...p, days: p.days.filter((_, xi) => xi !== i) }));
+  const updList = (listKey, i, f, v) => setTe(p => ({ ...p, [listKey]: p[listKey].map((x, xi) => xi === i ? { ...x, [f]: v } : x) }));
+  const addToList = (listKey, blank) => setTe(p => ({ ...p, [listKey]: [...p[listKey], { id: Date.now(), ...blank }] }));
+  const rmFromList = (listKey, i) => setTe(p => ({ ...p, [listKey]: p[listKey].filter((_, xi) => xi !== i) }));
+  const teInp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
+  const activeFacilitatorVendors = (vendors||[]).filter(v=>v.type==="Tour Facilitator"&&v.active!==false);
+  const activeLocalHandlerVendors = (vendors||[]).filter(v=>v.type==="Local Handler"&&v.active!==false);
+  const activeTransportVendors = (vendors||[]).filter(v=>v.type==="Transport"&&v.active!==false);
   const setEF = (k,v) => setEditForm(p=>({...p,[k]:v}));
 
   // Tabs: query vs tour file, order per spec
   const TABS = isCaseFile
-    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"uploads",label:"📁 Uploads"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
+    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
     : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
 
   const sec = t => (
@@ -103,7 +121,21 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {/* ── INFO ── */}
           {tab==="info"&&(
             <div>
-              {editingQuery ? (
+              {isCaseFile && (
+                <div style={{display:"flex",gap:2,marginBottom:14,background:G.gray50,borderRadius:8,padding:3}}>
+                  {[["details","Query Details"],["itinerary","Day-wise Itinerary"],["hotels","Day-wise Hotels"],["others","Others"]].map(([id,label])=>(
+                    <button key={id} onClick={()=>setInfoSubTab(id)}
+                      style={{flex:1,padding:"6px 8px",borderRadius:6,border:"none",cursor:"pointer",
+                        background:infoSubTab===id?G.white:"transparent",color:infoSubTab===id?G.navy:G.gray400,
+                        fontSize:10.5,fontWeight:infoSubTab===id?600:400,fontFamily:"'Inter',sans-serif",
+                        boxShadow:infoSubTab===id?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(!isCaseFile || infoSubTab==="details") && (
+              editingQuery ? (
                 <div>
                   {sec("Edit Query Details")}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
@@ -207,6 +239,108 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     )}
                   </div>
                 </div>
+              )
+              )}
+
+              {isCaseFile && infoSubTab==="itinerary" && (
+                <div>
+                  {sec("Day-wise Itinerary")}
+                  <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
+                    This is the confirmed operational record for this tour. Cost Sheet's own day fields are a separate pricing draft and may not automatically match this — check both if something looks off.
+                  </div>
+                  {te.days.map((d,i)=>(
+                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
+                      <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
+                      <input style={teInp} type="date" value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
+                      <input style={teInp} value={d.route||""} placeholder="e.g. Delhi – Agra" onChange={e=>updDay(i,"route",e.target.value)}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={addDay}>+ Add Day</button>
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={saveTE}>💾 Save Itinerary</button>}
+                </div>
+              )}
+
+              {isCaseFile && infoSubTab==="hotels" && (
+                <div>
+                  {sec("Day-wise Hotels")}
+                  <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
+                    Same operational record as the Itinerary tab. Cost Sheet's own hotel fields are a separate pricing draft and may not automatically match this.
+                  </div>
+                  {te.days.length===0 ? (
+                    <div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>No days yet — add them from the Day-wise Itinerary tab first.</div>
+                  ) : te.days.map((d,i)=>(
+                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 1fr",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
+                      <div style={{fontSize:11,color:G.gray600,alignSelf:"center"}}>{d.dayLabel}{d.date?` (${d.date})`:""}</div>
+                      <input style={teInp} value={d.hotelName||""} placeholder="Hotel name" onChange={e=>updDay(i,"hotelName",e.target.value)}/>
+                      <input style={teInp} value={d.rooms||""} placeholder="e.g. 5 Twin, 1 Sgl" onChange={e=>updDay(i,"rooms",e.target.value)}/>
+                    </div>
+                  ))}
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={saveTE}>💾 Save Hotels</button>}
+                </div>
+              )}
+
+              {isCaseFile && infoSubTab==="others" && (
+                <div>
+                  {sec("Transporter")}
+                  <select style={{...teInp,marginBottom:6}} value={te.transporterVendorId||""} onChange={e=>setTeField("transporterVendorId",e.target.value)}>
+                    <option value="">Select...</option>
+                    {activeTransportVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                  <textarea style={{...teInp,minHeight:44,resize:"vertical",marginBottom:14}} value={te.transporterNotes||""} placeholder="Transport notes (vehicle count, type, etc.)" onChange={e=>setTeField("transporterNotes",e.target.value)}/>
+
+                  {sec("Tour Facilitators")}
+                  {activeFacilitatorVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Tour Facilitator vendors yet — add one under Master Data → Vendors.</div>}
+                  {te.facilitators.map((f,i)=>(
+                    <div key={f.id} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6,marginBottom:6}}>
+                      <select style={teInp} value={f.vendorId||""} onChange={e=>updList("facilitators",i,"vendorId",e.target.value)}>
+                        <option value="">Select...</option>
+                        {activeFacilitatorVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                      <input style={teInp} value={f.sector||""} placeholder="Sector (optional)" onChange={e=>updList("facilitators",i,"sector",e.target.value)}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("facilitators",i)}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("facilitators",{vendorId:"",sector:""})}>+ Add Facilitator</button>
+
+                  {sec("Local Handlers")}
+                  {activeLocalHandlerVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Local Handler vendors yet — add one under Master Data → Vendors.</div>}
+                  {te.localHandlers.map((h,i)=>(
+                    <div key={h.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6,marginBottom:6}}>
+                      <select style={teInp} value={h.vendorId||""} onChange={e=>updList("localHandlers",i,"vendorId",e.target.value)}>
+                        <option value="">Select...</option>
+                        {activeLocalHandlerVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                      <input style={teInp} value={h.sector||""} placeholder="Sector" onChange={e=>updList("localHandlers",i,"sector",e.target.value)}/>
+                      <input style={teInp} value={h.notes||""} placeholder="Notes" onChange={e=>updList("localHandlers",i,"notes",e.target.value)}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("localHandlers",i)}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("localHandlers",{vendorId:"",sector:"",notes:""})}>+ Add Local Handler</button>
+
+                  {sec("Domestic Train / Flight Legs")}
+                  {te.flights.map((f,i)=>(
+                    <div key={f.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6}}>
+                      <input style={teInp} type="date" value={f.date||""} onChange={e=>updList("flights",i,"date",e.target.value)}/>
+                      <select style={teInp} value={f.type||"Flight"} onChange={e=>updList("flights",i,"type",e.target.value)}>
+                        <option>Flight</option><option>Train</option>
+                      </select>
+                      <input style={teInp} value={f.number||""} placeholder="No." onChange={e=>updList("flights",i,"number",e.target.value)}/>
+                      <input style={teInp} value={f.from||""} placeholder="From" onChange={e=>updList("flights",i,"from",e.target.value)}/>
+                      <input style={teInp} value={f.to||""} placeholder="To" onChange={e=>updList("flights",i,"to",e.target.value)}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("flights",i)}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("flights",{date:"",type:"Flight",number:"",from:"",to:"",time:""})}>+ Add Leg</button>
+
+                  {sec("Arrival / Departure Flight Details")}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                    <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Arrival</div><input style={teInp} value={te.arrFlightDetails||""} placeholder="e.g. AI-101, 10:00 AM" onChange={e=>setTeField("arrFlightDetails",e.target.value)}/></div>
+                    <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Departure</div><input style={teInp} value={te.depFlightDetails||""} placeholder="e.g. AI-102, 6:00 PM" onChange={e=>setTeField("depFlightDetails",e.target.value)}/></div>
+                  </div>
+
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={saveTE}>💾 Save Others</button>}
+                </div>
               )}
             </div>
           )}
@@ -224,12 +358,13 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {sec(isCaseFile?"All Documents":"Query Documents")}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:isCaseFile?0:12}}>
                 {docs.map(d=>(
-                  <button key={d.label} onClick={()=>d.panel==="docregistry" ? setTab("uploads") : openPanel(d.panel)}
+                  <button key={d.label} onClick={()=>d.panel==="docregistry" ? setShowUploadsInline(p=>!p) : openPanel(d.panel)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:8,
-                      border:`1px solid ${G.gray200}`,background:G.white,cursor:"pointer",
+                      border:`1px solid ${d.panel==="docregistry"&&showUploadsInline?G.accent:G.gray200}`,
+                      background:d.panel==="docregistry"&&showUploadsInline?"#FDEDEC":G.white,cursor:"pointer",
                       fontFamily:"'Inter',sans-serif",textAlign:"left",transition:"all .15s"}}
                     onMouseEnter={e=>{e.currentTarget.style.borderColor=G.accent;e.currentTarget.style.background=G.gray50;}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor=G.gray200;e.currentTarget.style.background=G.white;}}>
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=(d.panel==="docregistry"&&showUploadsInline)?G.accent:G.gray200;e.currentTarget.style.background=(d.panel==="docregistry"&&showUploadsInline)?"#FDEDEC":G.white;}}>
                     <span style={{fontSize:20,width:26,textAlign:"center"}}>{d.icon}</span>
                     <span style={{fontSize:12,fontWeight:500,color:G.gray800}}>{d.label}</span>
                   </button>
@@ -238,6 +373,15 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {!isCaseFile&&(
                 <div style={{padding:"10px 12px",background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,fontSize:11,color:"#784212"}}>
                   ℹ Proforma, Tax Invoice, Exchange Orders and Payment Tracker become available after this query is converted to a Tour File.
+                </div>
+              )}
+              {isCaseFile&&showUploadsInline&&(
+                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${G.gray200}`}}>
+                  {sec("Document Registry")}
+                  <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
+                    Log all documents received for this tour file — booking confirmations, vouchers, visa copies, invoices, tickets.
+                  </div>
+                  <DocRegistryInline queryId={query.id} tourFileId={query.tourFileId}/>
                 </div>
               )}
             </div>
@@ -263,17 +407,6 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               <button className="convert-case-btn" style={{background:"#6C3483"}} onClick={()=>openPanel("payments")}>
                 ₹ Open Full Payment Tracker & P&L
               </button>
-            </div>
-          )}
-
-          {/* ── UPLOADS ── */}
-          {tab==="uploads"&&isCaseFile&&(
-            <div>
-              {sec("Document Registry")}
-              <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
-                Log all documents received for this tour file — booking confirmations, vouchers, visa copies, invoices, tickets.
-              </div>
-              <DocRegistryInline queryId={query.id} tourFileId={query.tourFileId}/>
             </div>
           )}
 
