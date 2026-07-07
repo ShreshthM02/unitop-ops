@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -194,37 +194,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // ── Persist query to Supabase ──────────────────────────────────────────────
   const saveQueryToDB = async (q, auditAction) => {
     try {
-      await db.from("queries").upsert({
-        id:                  q.id,
-        agent_id:            q.agentId || null,
-        agent_company:       q.agentCompany,
-        agent_country:       q.agentCountry,
-        correspondent:       q.correspondent,
-        group_name:          q.groupName,
-        client_name:         q.clientName,
-        sector:              q.sector || q.destination,
-        nights:              parseInt(q.nights) || null,
-        hotel_cat:           q.hotelCat,
-        pax_known:           q.paxKnown,
-        pax_exact:           parseInt(q.paxExact) || null,
-        pax_min:             parseInt(q.paxMin) || null,
-        pax_max:             parseInt(q.paxMax) || null,
-        pax_display:         q.paxDisplay,
-        date_known:          q.dateKnown,
-        travel_date_from:    q.travelDate || q.travelDateFrom || null,
-        travel_month:        q.travelMonth,
-        travel_season:       q.travelSeason,
-        date_display:        q.dateDisplay,
-        status:              q.status,
-        cancelled:           q.cancelled || false,
-        cancellation_reason: q.cancellationReason,
-        tour_file_id:        q.tourFileId,
-        notes:               q.notes,
-        manual_wf:           q.manualWF || [],
-        source:              q.source,
-        nationality:         q.nationality,
-        date:                q.date,
-      });
+      await db.from("queries").upsert(buildQuerySavePayload(q));
       if (auditAction) {
         await db.from("query_audit").insert({
           query_id: q.id,

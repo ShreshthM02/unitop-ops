@@ -349,3 +349,49 @@ export async function saveAgentToDB(db, agent) {
     return agent;
   }
 }
+
+// Validates a real Postgres uuid format (the standard 8-4-4-4-12 hex shape).
+export function isUuid(v) {
+  return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+// Builds the exact payload for saving a query to Supabase. Pure and
+// exported specifically so this exact class of bug -- one bad field
+// silently failing the ENTIRE upsert -- is directly testable, rather than
+// only discoverable by a real user hitting it in production. This is
+// exactly what happened with agent_id: the demo/fallback agent list (shown
+// until a real agent exists) uses ids like "AGT-001", not real uuids, and
+// Postgres rejected the whole row because of it.
+export function buildQuerySavePayload(q) {
+  return {
+    id:                  q.id,
+    agent_id:            isUuid(q.agentId) ? q.agentId : null,
+    agent_company:       q.agentCompany,
+    agent_country:       q.agentCountry,
+    correspondent:       q.correspondent,
+    group_name:          q.groupName,
+    client_name:         q.clientName,
+    sector:              q.sector || q.destination,
+    nights:              parseInt(q.nights) || null,
+    hotel_cat:           q.hotelCat,
+    pax_known:           q.paxKnown,
+    pax_exact:           parseInt(q.paxExact) || null,
+    pax_min:             parseInt(q.paxMin) || null,
+    pax_max:             parseInt(q.paxMax) || null,
+    pax_display:         q.paxDisplay,
+    date_known:          q.dateKnown,
+    travel_date_from:    q.travelDate || q.travelDateFrom || null,
+    travel_month:        q.travelMonth,
+    travel_season:       q.travelSeason,
+    date_display:        q.dateDisplay,
+    status:              q.status,
+    cancelled:           q.cancelled || false,
+    cancellation_reason: q.cancellationReason,
+    tour_file_id:        q.tourFileId,
+    notes:               q.notes,
+    manual_wf:           q.manualWF || [],
+    source:              q.source,
+    nationality:         q.nationality,
+    date:                q.date,
+  };
+}
