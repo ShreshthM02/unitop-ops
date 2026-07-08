@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadAppSetting, saveAppSetting, formatDateDMY, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadAppSetting, saveAppSetting, formatDateDMY, getAutoDetectedSteps, toggleWFStep, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -45,6 +45,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [staff, setStaff]         = useState(USERS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
   const [tourExecutions, setTourExecutions] = useState({});
+  const [costSheetExists, setCostSheetExists] = useState(new Set());
+  const [quotationExists, setQuotationExists] = useState(new Set());
   const [docSettings, setDocSettings] = useState(DEFAULT_DOC_SETTINGS);
   const [docTemplates, setDocTemplates] = useState(DEFAULT_DOC_TEMPLATES);
   const saveDocTemplates = (t) => {
@@ -141,6 +143,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           docSettingsValue, docTemplatesValue,
           { data: payData }, { data: inData }, { data: outData },
           { data: teData },
+          { data: csIdData }, { data: quoteIdData },
         ] = await Promise.all([
           db.from("queries").select("*").order("created_at", {ascending:false}),
           db.from("query_audit").select("*").order("created_at", {ascending:true}),
@@ -157,7 +160,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           db.from("payment_incoming").select("*").order("created_at", {ascending:true}),
           db.from("payment_outgoing").select("*").order("created_at", {ascending:true}),
           db.from("tour_execution").select("*"),
+          // Lightweight existence checks for the 17-step workflow tracker's
+          // real auto-detection (steps 4 and 5) -- just the ids, not the
+          // full cost sheet/quotation content.
+          db.from("cost_sheets").select("query_id"),
+          db.from("quotations").select("query_id"),
         ]);
+        setCostSheetExists(new Set((csIdData||[]).map(r=>r.query_id)));
+        setQuotationExists(new Set((quoteIdData||[]).map(r=>r.query_id)));
 
         if (qData && qData.length > 0) {
           const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
@@ -308,13 +318,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleToggleWF = (queryId, stepId) => {
-    setQueries(qs=>qs.map(q=>{
-      if(q.id!==queryId) return q;
-      const autoD = STATUS_WF_MAP[q.status]||[];
-      if(autoD.includes(stepId)) return q; // auto steps can't be toggled
-      const manualWF = q.manualWF||[];
-      return {...q, manualWF:manualWF.includes(stepId)?manualWF.filter(s=>s!==stepId):[...manualWF,stepId]};
-    }));
+    const q = queries.find(q=>q.id===queryId);
+    if (!q) return;
+    const autoDetected = getAutoDetectedSteps({
+      hasCostSheet: costSheetExists.has(queryId),
+      hasQuotation: quotationExists.has(queryId),
+      hasFacilitators: (tourExecutions[queryId]?.facilitators || []).length > 0,
+      hasPayments: (payments[queryId]?.entries || []).length > 0 || (payments[queryId]?.outgoing || []).length > 0,
+    });
+    const stepLabel = WF_STEPS.find(s=>s.id===stepId)?.label || `Step ${stepId}`;
+    const { manualWF, auditAction } = toggleWFStep(q.manualWF, stepId, autoDetected, stepLabel);
+    setQueries(qs=>qs.map(qq=>qq.id===queryId?{...qq,manualWF}:qq));
+    setActiveQuery(aq=>aq && aq.id===queryId?{...aq,manualWF}:aq);
+    saveQueryToDB({...q, manualWF}, auditAction);
   };
 
   const handleAddRemark = async (queryId, remark) => {
@@ -661,6 +677,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}
             staff={staff}
+            costSheetExists={costSheetExists.has(activeQuery.id)}
+            quotationExists={quotationExists.has(activeQuery.id)}
+            hasPayments={(payments[activeQuery.id]?.entries || []).length > 0 || (payments[activeQuery.id]?.outgoing || []).length > 0}
             currentUser={currentUser}
           />
         )}

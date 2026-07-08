@@ -1,16 +1,20 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors, staff }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
-  const doneByStatus = STATUS_WF_MAP[query.status]||[];
-  const manualDone   = query.manualWF||[];
-  const allDone      = [...new Set([...doneByStatus,...manualDone])];
+  const autoDetected = getAutoDetectedSteps({
+    hasCostSheet: costSheetExists,
+    hasQuotation: quotationExists,
+    hasFacilitators: (tourExecution?.facilitators || []).length > 0,
+    hasPayments: hasPayments,
+  });
+  const allDone      = WF_STEPS.filter(s=>getWFStepStatus(s.id, autoDetected, query.manualWF).done);
   const canAdvance   = query.status!=="completed"&&!query.cancelled;
   const nextStatusMap= {new_query:"costing",costing:"operations",operations:"finance",finance:"completed"};
   const [tab, setTab]       = useState("info");
@@ -357,7 +361,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {tab==="progress"&&(
             <div>
               {sec(`${allDone.length} of 17 steps complete — click any pending step to mark manually`)}
-              <WorkflowProgress status={query.status} manualChecked={manualDone} onToggle={onToggleWF}/>
+              <WorkflowProgress autoDetected={autoDetected} manualWF={query.manualWF} onToggle={onToggleWF}/>
             </div>
           )}
 

@@ -2,7 +2,8 @@
 // permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput.
 
 import { useEffect } from "react";
-import { ROLE_DEFAULTS, G, WF_STEPS, STATUS_WF_MAP } from "./constants.js";
+import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
+import { getWFStepStatus } from "./utils.js";
 
 // Merge role defaults with per-user overrides
 export function getPermissions(user) {
@@ -48,28 +49,27 @@ export function Toast({ msg, onDone }) {
 
 // Workflow progress — manual check/uncheck with clear visual distinction
 
-export function WorkflowProgress({ status, manualChecked, onToggle }) {
-  const doneByStatus = STATUS_WF_MAP[status] || [];
+export function WorkflowProgress({ autoDetected, manualWF, onToggle }) {
+  const auto = autoDetected || {};
+  const statuses = WF_STEPS.map(step => ({ step, ...getWFStepStatus(step.id, auto, manualWF) }));
+  const nextId = statuses.find(s => !s.done)?.step.id;
   return (
     <div className="workflow-steps">
-      {WF_STEPS.map(step => {
-        const autoD = doneByStatus.includes(step.id);
-        const manD  = (manualChecked||[]).includes(step.id);
-        const done  = autoD || manD;
-        const next  = !done && WF_STEPS.find(s=>!(doneByStatus.includes(s.id)||(manualChecked||[]).includes(s.id)))?.id===step.id;
+      {statuses.map(({ step, done, source }) => {
+        const next = !done && step.id === nextId;
         return (
           <div key={step.id}
             className={`wf-step ${done?"done":next?"active":""}`}
-            onClick={()=>!autoD && onToggle && onToggle(step.id)}
-            style={{cursor:!autoD&&onToggle?"pointer":"default"}}>
+            onClick={()=>onToggle && onToggle(step.id)}
+            style={{cursor:onToggle?"pointer":"default"}}>
             <div className={`wf-num ${done?"done":next?"active":"pending"}`}
-              style={{background:autoD?"#0E6655":manD?"#1A5276":undefined}}>
+              style={{background:source==="auto"?"#0E6655":source==="manual"&&done?"#1A5276":undefined}}>
               {done?"✓":step.id}
             </div>
             <div className="wf-label" style={{flex:1}}>{step.label}</div>
-            {autoD&&<span style={{fontSize:9,color:"#0E6655",fontWeight:600,background:"#EAFAF1",padding:"1px 5px",borderRadius:4,flexShrink:0}}>auto</span>}
-            {manD&&!autoD&&<span style={{fontSize:9,color:"#1A5276",fontWeight:600,background:"#EBF5FB",padding:"1px 5px",borderRadius:4,flexShrink:0}} title="Click to unmark">manual ✕</span>}
-            {!done&&!next&&onToggle&&<span style={{fontSize:9,color:G.gray400,flexShrink:0}}>tap</span>}
+            {source==="auto"&&<span style={{fontSize:9,color:"#0E6655",fontWeight:600,background:"#EAFAF1",padding:"1px 5px",borderRadius:4,flexShrink:0}} title="Automatically detected from real data -- click to override">auto</span>}
+            {source==="manual"&&<span style={{fontSize:9,color:"#1A5276",fontWeight:600,background:"#EBF5FB",padding:"1px 5px",borderRadius:4,flexShrink:0}} title={done?"Manually confirmed -- click to mark pending":"Manually marked pending -- click to confirm done"}>{done?"confirmed":"marked pending"}</span>}
+            {source==="pending"&&onToggle&&<span style={{fontSize:9,color:G.gray400,flexShrink:0}}>tap to confirm</span>}
           </div>
         );
       })}

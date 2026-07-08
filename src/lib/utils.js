@@ -475,13 +475,14 @@ export async function saveDocRegistry(db, queryId, docs) {
 export function mapDbCostSheetRow(row) {
   return {
     version: row.version,
-    note: row.note || null,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by,
     isFinal: row.is_final || false,
-    gst: row.gst_pct, markup: row.markup_pct, roe: row.roe, currency: row.currency,
-    tlMode: row.tl_mode, tlCost: row.tl_cost,
-    miscMode: row.misc_mode, miscCost: row.misc_cost,
-    monMode: row.mon_mode, monExtra: row.mon_extra,
+    note: row.note || "",
+    gst: row.gst_pct ?? 5, markup: row.markup_pct ?? 20, roe: row.roe ?? 90, currency: row.currency || "US $",
+    tlMode: row.tl_mode || "lumpsum", tlCost: row.tl_cost ?? "",
+    miscMode: row.misc_mode || "pp", miscCost: row.misc_cost ?? "",
+    monMode: row.mon_mode || "pp", monExtra: row.mon_extra ?? 0,
     days: row.days || [], transports: row.transports || [], slabs: row.slabs || [],
     monuments: row.monuments || [], localHandlers: row.local_handlers || [], extras: row.extras || [],
   };
@@ -508,7 +509,7 @@ export async function loadCostSheetVersions(db, queryId) {
 export async function saveCostSheetVersion(db, queryId, snap, createdBy) {
   try {
     const { data } = await db.from("cost_sheets").insert({
-      query_id: queryId, version: snap.version, is_final: false,
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       gst_pct: snap.gst, markup_pct: snap.markup, roe: snap.roe, currency: snap.currency,
       tl_mode: snap.tlMode, tl_cost: parseFloat(snap.tlCost) || 0,
       misc_mode: snap.miscMode, misc_cost: parseFloat(snap.miscCost) || 0,
@@ -535,29 +536,26 @@ export async function markCostSheetVersionFinal(db, queryId, version) {
   }
 }
 
-// ─── QUOTATION (single current draft per tour file, no versioning UI yet) ──
+// ─── QUOTATION (real versioned history, mirrors Cost Sheet exactly) ────────
 export function mapDbQuotationRow(row) {
   return {
-    version: row.version, isFinal: row.is_final, note: row.note,
-    savedAt: row.updated_at, createdBy: row.created_by,
-    attnName: row.attn_name, attnCompany: row.attn_company, attnCity: row.attn_city,
-    date: row.date, currency: row.currency, roe: row.roe, refLine: row.ref_line,
-    period: row.period, paxLine: row.pax_line,
+    version: row.version, isFinal: row.is_final || false, note: row.note || "",
+    savedAt: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by,
+    attnName: row.attn_name || "", attnCompany: row.attn_company || "", attnCity: row.attn_city || "",
+    date: row.date || "", currency: row.currency || "US $", roe: row.roe ?? "", refLine: row.ref_line || "",
+    period: row.period || "", paxLine: row.pax_line || "",
     itinerary: row.itinerary || [], hotels: row.hotels || [], slabs: row.slabs || [],
-    monuments: row.monuments || [], showMonuments: row.show_monuments,
+    monuments: row.monuments || [], showMonuments: row.show_monuments ?? true,
     includes: row.includes || [], excludes: row.excludes || [],
-    greeting: row.greeting, openingLine: row.opening_line, closingLine: row.closing_line,
-    signoff: row.signoff, monumentNote: row.monument_note, costSheetId: row.cost_sheet_id,
+    greeting: row.greeting || "", openingLine: row.opening_line || "", closingLine: row.closing_line || "",
+    signoff: row.signoff || "", monumentNote: row.monument_note || "", costSheetId: row.cost_sheet_id || null,
   };
 }
 
-export function formatDateDMY(str) {
-  if (!str) return '';
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
-  if (!m) return str;
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
-
+// Loads every saved version for a tour file, oldest first -- same shape as
+// loadCostSheetVersions, so the two histories can be merged for the
+// Pricing Timeline.
 export async function loadQuotationVersions(db, queryId) {
   try {
     const { data } = await db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: true });
@@ -568,23 +566,25 @@ export async function loadQuotationVersions(db, queryId) {
   }
 }
 
+// Inserts a NEW row -- Save Version means permanent history, matching
+// Cost Sheet exactly, since real negotiations produce real quotation
+// versions (client pushback, revised pricing, etc.) that deserve the same
+// permanent record as Cost Sheet versions do.
 export async function saveQuotationVersion(db, queryId, snap, createdBy) {
   try {
-    const payload = {
-      query_id: queryId, version: snap.version || 1,
-      is_final: snap.isFinal || false, note: snap.note || null,
+    const { data } = await db.from("quotations").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       cost_sheet_id: snap.costSheetId || null,
       attn_name: snap.attnName, attn_company: snap.attnCompany, attn_city: snap.attnCity,
-      date: snap.date || null, currency: snap.currency, roe: snap.roe || null,
-      ref_line: snap.refLine, period: snap.period, pax_line: snap.paxLine,
+      date: snap.date || null, currency: snap.currency, roe: snap.roe || null, ref_line: snap.refLine,
+      period: snap.period, pax_line: snap.paxLine,
       itinerary: snap.itinerary || [], hotels: snap.hotels || [], slabs: snap.slabs || [],
       monuments: snap.monuments || [], show_monuments: snap.showMonuments,
       includes: snap.includes || [], excludes: snap.excludes || [],
       greeting: snap.greeting, opening_line: snap.openingLine, closing_line: snap.closingLine,
       signoff: snap.signoff, monument_note: snap.monumentNote,
       created_by: isUuid(createdBy) ? createdBy : null,
-    };
-    const { data } = await db.from("quotations").insert(payload);
+    });
     return data && data[0] ? data[0].id : null;
   } catch (e) {
     console.warn("Save quotation version failed:", e);
@@ -601,70 +601,105 @@ export async function markQuotationVersionFinal(db, queryId, version) {
   }
 }
 
-export function buildPricingTimeline(costSheets, quotations, staff) {
-  const cs = (costSheets || []).map(r => ({ ...r, type: 'costsheet', by: (staff || []).find(s => s.id === r.createdBy)?.name || 'Unknown' }));
-  const qt = (quotations || []).map(r => ({ ...r, type: 'quotation', by: (staff || []).find(s => s.id === r.createdBy)?.name || 'Unknown' }));
-  return [...cs, ...qt].sort((a, b) => {
-    if (!a.createdAt) return -1;
-    if (!b.createdAt) return 1;
-    return new Date(a.createdAt) - new Date(b.createdAt);
-  });
-}
-
-export async function loadPricingTimeline(db, queryId, staff) {
-  try {
-    const [csResult, qtResult] = await Promise.all([
-      db.from("cost_sheets").select("*").eq("query_id", queryId).order("version", { ascending: true }),
-      db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: true }),
-    ]);
-    const costSheets = (csResult.data || []).map(r => ({ ...mapDbCostSheetRow(r), createdAt: r.created_at, createdBy: r.created_by }));
-    const quotations = (qtResult.data || []).map(r => ({ ...mapDbQuotationRow(r), createdAt: r.created_at, createdBy: r.created_by }));
-    return buildPricingTimeline(costSheets, quotations, staff);
-  } catch (e) {
-    console.warn("Load pricing timeline failed:", e);
-    return [];
-  }
-}
-
-export async function loadQuotation(db, queryId) {
-  try {
-    const { data } = await db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: false });
-    return data && data[0] ? mapDbQuotationRow(data[0]) : null;
-  } catch (e) {
-    console.warn("Load quotation failed:", e);
-    return null;
-  }
-}
-
-// One row per tour file for now (version always 1) -- QuotationGenerator
-// has no versions[] concept the way Cost Sheet does, so this deliberately
-// doesn't invent DB history the UI can't show or navigate yet.
-// NOTE: can't use db.from().upsert() here -- that wrapper only resolves
-// conflicts against the table's actual primary key (quotations.id, a
-// separate auto-generated uuid), not query_id. A plain upsert would have
-// silently INSERTed a brand new row on every single save instead of
-// updating the existing one. Select-then-insert-or-update instead.
-export async function saveQuotationToDB(db, queryId, q, createdBy) {
-  const payload = {
-    query_id: queryId, version: 1, is_final: true, cost_sheet_id: q.costSheetId || null,
-    attn_name: q.attnName, attn_company: q.attnCompany, attn_city: q.attnCity,
-    date: q.date || null, currency: q.currency, roe: q.roe || null, ref_line: q.refLine,
-    period: q.period, pax_line: q.paxLine,
-    itinerary: q.itinerary || [], hotels: q.hotels || [], slabs: q.slabs || [],
-    monuments: q.monuments || [], show_monuments: q.showMonuments,
-    includes: q.includes || [], excludes: q.excludes || [],
-    greeting: q.greeting, opening_line: q.openingLine, closing_line: q.closingLine,
-    signoff: q.signoff, monument_note: q.monumentNote,
-    created_by: isUuid(createdBy) ? createdBy : null,
+// ─── PRICING TIMELINE ───────────────────────────────────────────────────────
+// Merges Cost Sheet and Quotation version history into one dated,
+// chronological narrative -- the "office executive glancing at a paper
+// file" experience: what was done, by whom, why, and what's final, without
+// having to open two separate documents and cross-reference dates by hand.
+// Pure function, testable without a live DB -- takes the already-loaded
+// version arrays and a staff list (both already loaded elsewhere in the
+// app) rather than fetching anything itself.
+export function buildPricingTimeline(costSheetVersions, quotationVersions, staff) {
+  const staffName = (id) => {
+    const s = (staff || []).find(s => s.id === id);
+    return s ? s.name : "Unknown";
   };
-  try {
-    const { data: existing } = await db.from("quotations").select("id").eq("query_id", queryId);
-    if (existing && existing[0]) {
-      await db.from("quotations").eq("id", existing[0].id).update(payload);
-    } else {
-      await db.from("quotations").insert(payload);
-    }
-  } catch (e) {
-    console.warn("Save quotation failed:", e);
-  }
+  const csEntries = (costSheetVersions || []).map(v => ({
+    type: "costsheet", version: v.version, isFinal: v.isFinal, note: v.note,
+    createdAt: v.createdAt, by: staffName(v.createdBy),
+  }));
+  const qEntries = (quotationVersions || []).map(v => ({
+    type: "quotation", version: v.version, isFinal: v.isFinal, note: v.note,
+    createdAt: v.createdAt, by: staffName(v.createdBy), costSheetId: v.costSheetId,
+  }));
+  return [...csEntries, ...qEntries].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+}
+
+// Loads both histories for a tour file and merges them. Takes `staff` as a
+// parameter (already loaded app-wide) rather than querying it again here.
+export async function loadPricingTimeline(db, queryId, staff) {
+  const [costSheetVersions, quotationVersions] = await Promise.all([
+    loadCostSheetVersions(db, queryId),
+    loadQuotationVersions(db, queryId),
+  ]);
+  return buildPricingTimeline(costSheetVersions, quotationVersions, staff);
+}
+
+// Formats a yyyy-mm-dd date string (the native <input type="date"> value
+// shape) as dd-mm-yyyy for display. Returns the input unchanged if it
+// isn't in the expected shape, rather than showing something broken.
+export function formatDateDMY(isoDate) {
+  if (!isoDate || typeof isoDate !== "string") return isoDate || "";
+  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return isoDate;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+// ─── WORKFLOW PROGRESS (real auto-detection, not pipeline-stage guessing) ──
+// The old system marked steps done purely because the query reached a given
+// pipeline stage (e.g. "Operations" instantly checked off Vouchers Issued
+// and Meal Plan Generated, whether or not that work actually happened) --
+// and worse, those auto-marked steps couldn't even be unmarked. That's
+// exactly the "misleading, misrepresenting, manipulative" tracker problem.
+//
+// New rule: a step is only ever auto-marked done when there's real,
+// verifiable data behind it. Everything else defaults to pending and
+// requires a human to confirm it -- under-claiming is fine, over-claiming
+// is not. Every step, auto or not, can always be toggled by a human, and
+// every toggle is meant to be logged to the audit trail by the caller.
+
+// Which steps have a real, checkable signal, and what that signal is.
+// Steps not listed here are never auto-detected -- always default pending.
+export function getAutoDetectedSteps(signals) {
+  const s = signals || {};
+  return {
+    1: true,                 // Query acknowledged -- the query existing IS the acknowledgment
+    2: true,                 // Query number assigned -- the query's own id is the number
+    4: !!s.hasCostSheet,      // Cost sheet prepared -- a real cost_sheets row exists
+    5: !!s.hasQuotation,      // Quotation sent to client -- a real quotations row exists
+    12: !!s.hasFacilitators,  // Tour facilitator assigned -- tour_execution.facilitators is non-empty
+    14: !!s.hasPayments,      // Payment status tracked -- at least one payment entry exists
+  };
+}
+
+// manualWF used to be a flat array of step ids meaning "done" (no way to
+// override an auto-true back to pending). Normalizes both the old shape
+// and the new {step, done} override shape so existing saved data doesn't
+// break.
+export function normalizeManualWF(manualWF) {
+  return (manualWF || []).map(m => (typeof m === "number" ? { step: m, done: true } : m));
+}
+
+// The actual done/pending state for one step, and whether that came from
+// real auto-detection, a human's explicit override, or neither (pending).
+export function getWFStepStatus(stepId, autoDetected, manualWF) {
+  const override = normalizeManualWF(manualWF).find(m => m.step === stepId);
+  if (override) return { done: override.done, source: "manual" };
+  if (autoDetected[stepId]) return { done: true, source: "auto" };
+  return { done: false, source: "pending" };
+}
+
+// Computes the new manualWF array and a ready-to-log audit message for
+// toggling one step. Always produces an explicit override (even to
+// re-affirm what auto-detection already said), so a human's decision is
+// always the visible, persisted source of truth for that step going
+// forward.
+export function toggleWFStep(manualWF, stepId, autoDetected, stepLabel) {
+  const normalized = normalizeManualWF(manualWF);
+  const existing = normalized.find(m => m.step === stepId);
+  const currentlyDone = existing ? existing.done : !!autoDetected[stepId];
+  const newDone = !currentlyDone;
+  const newManualWF = [...normalized.filter(m => m.step !== stepId), { step: stepId, done: newDone }];
+  const auditAction = `${newDone ? "Marked" : "Unmarked"} step "${stepLabel}" as ${newDone ? "done" : "pending"}`;
+  return { manualWF: newManualWF, auditAction };
 }
