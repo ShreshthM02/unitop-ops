@@ -29,7 +29,8 @@ import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
 export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLedger }) {
-  const [view, setView]           = useState("dashboard");
+  const [view, setView]           = useState(() => localStorage.getItem("unitop_last_view") || "dashboard");
+  useEffect(() => { localStorage.setItem("unitop_last_view", view); }, [view]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [queries, setQueries]     = useState(INITIAL_QUERIES);
   const [tours, setTours]         = useState(TOUR_DATA);
@@ -50,6 +51,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     saveAppSetting(db, "doc_numbering", s);
   };
   const [activeQuery, setActiveQuery]   = useState(null);
+  useEffect(() => {
+    if (activeQuery) localStorage.setItem("unitop_last_query_id", activeQuery.id);
+    else localStorage.removeItem("unitop_last_query_id");
+  }, [activeQuery]);
   const [showNewQuery, setShowNewQuery] = useState(false);
   const [showSearch, setShowSearch]     = useState(false);
   const [showCostSheet,  setShowCostSheet]  = useState(null);
@@ -133,6 +138,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             q.remarks = remarkMap[q.id]  || [];
           });
           setQueries(mapped);
+          // Restore whichever query's drawer was open before a refresh --
+          // same reasoning as the view restoration above: this is
+          // legitimately personal/device-specific navigation state, not
+          // data that needs to sync across the team.
+          const lastQueryId = localStorage.getItem("unitop_last_query_id");
+          if (lastQueryId) {
+            const restored = mapped.find(q => q.id === lastQueryId);
+            if (restored) setActiveQuery(restored);
+          }
         }
         // Load agents
         const { data: agData } = await db.from("agents").select("*").order("company", {ascending:true});
