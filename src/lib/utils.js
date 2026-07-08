@@ -395,3 +395,77 @@ export function buildQuerySavePayload(q) {
     date:                q.date,
   };
 }
+
+// ─── SHARED APP SETTINGS (generic key-value pattern) ───────────────────────
+// A single reusable pattern for any app-wide setting that should be shared
+// across every staff member's device rather than sitting in localStorage on
+// just one browser. Load once at startup, save whenever it changes -- any
+// future global setting should use this same pair of functions rather than
+// reaching for localStorage and creating the same "looks configured but
+// isn't shared" gap that doc numbering/typography/templates had.
+export async function loadAppSetting(db, key, fallback) {
+  try {
+    const { data } = await db.from("app_settings").select("value").eq("key", key);
+    if (data && data[0] && data[0].value && Object.keys(data[0].value).length > 0) {
+      return { ...fallback, ...data[0].value };
+    }
+    return fallback;
+  } catch (e) {
+    console.warn(`Load app setting "${key}" failed:`, e);
+    return fallback;
+  }
+}
+
+export async function saveAppSetting(db, key, value) {
+  try {
+    await db.from("app_settings").upsert({ key, value });
+  } catch (e) {
+    console.warn(`Save app setting "${key}" failed:`, e);
+  }
+}
+
+// ─── DOCUMENT REGISTRY ──────────────────────────────────────────────────────
+// Per-tour-file document tracking (booking confirmations, vouchers, visa
+// copies, etc.) -- was localStorage-only, meaning different staff on
+// different computers saw a different log for the same tour file.
+
+export function mapDbDocRegistryRow(row) {
+  return {
+    id: row.id, name: row.name, category: row.category, from: row.from,
+    date: row.date, status: row.status, driveLink: row.drive_link,
+    notes: row.notes, addedAt: row.added_at,
+  };
+}
+
+export async function loadDocRegistry(db, queryId) {
+  try {
+    const { data } = await db.from("document_registry").select("*").eq("query_id", queryId).order("added_at", { ascending: false });
+    return (data || []).map(mapDbDocRegistryRow);
+  } catch (e) {
+    console.warn("Load document registry failed:", e);
+    return [];
+  }
+}
+
+// Saves the whole current list for a query: upserts everything present,
+// deletes anything that existed in the DB but is no longer in the local
+// array (handles removing a logged document) -- same sync pattern as
+// savePaymentsToDB's entries.
+export async function saveDocRegistry(db, queryId, docs) {
+  try {
+    for (const d of docs) {
+      await db.from("document_registry").upsert({
+        id: d.id, query_id: queryId, name: d.name, category: d.category,
+        from: d.from, date: d.date || null, status: d.status,
+        drive_link: d.driveLink, notes: d.notes,
+      });
+    }
+    const { data: existing } = await db.from("document_registry").select("id").eq("query_id", queryId);
+    const keepIds = new Set(docs.map(d => String(d.id)));
+    for (const row of (existing || [])) {
+      if (!keepIds.has(String(row.id))) await db.from("document_registry").eq("id", row.id).delete();
+    }
+  } catch (e) {
+    console.warn("Save document registry failed:", e);
+  }
+}

@@ -1,12 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadDocRegistry, saveDocRegistry, db } = Lib;
 
 export function DocumentRegistry({ query, onClose }) {
-  const storageKey = `unitop_docs_${query.id}`;
-  const [docs, setDocs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey)||"[]"); } catch(e) { return []; }
-  });
+  const [docs, setDocs] = useState([]);
+  useEffect(() => { loadDocRegistry(db, query.id).then(setDocs); }, [query.id]);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat]       = useState("All");
@@ -23,7 +21,7 @@ export function DocumentRegistry({ query, onClose }) {
   };
   const inp = {padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
 
-  const saveDocs = (updated) => { setDocs(updated); localStorage.setItem(storageKey,JSON.stringify(updated)); };
+  const saveDocs = (updated) => { setDocs(updated); saveDocRegistry(db, query.id, updated); };
   const addDoc = () => {
     if(!form.name) return;
     saveDocs([{...form,id:Date.now(),addedAt:new Date().toISOString()},...docs]);
@@ -150,16 +148,14 @@ export function DocumentRegistry({ query, onClose }) {
 
 
 export function DocRegistryInline({ queryId, tourFileId }) {
-  const storageKey = `unitop_docs_${queryId}`;
-  const [docs, setDocs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey)||"[]"); } catch(e) { return []; }
-  });
+  const [docs, setDocs] = useState([]);
+  useEffect(() => { loadDocRegistry(db, queryId).then(setDocs); }, [queryId]);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({name:"",category:"Booking Confirmation",from:"Foreign Agent",date:new Date().toISOString().split("T")[0],status:"Received",driveLink:""});
   const setF = (k,v) => setForm(p=>({...p,[k]:v}));
   const STATUS_STYLE = {Pending:{bg:"#FEF3C7",color:"#92400E"},Received:{bg:"#DBEAFE",color:"#1E40AF"},Verified:{bg:"#DCFCE7",color:"#166534"},"Shared with Client":{bg:"#F3E8FF",color:"#6B21A8"},Archived:{bg:"#F3F4F6",color:"#6B7280"}};
   const inp = {padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
-  const saveDocs = (u) => { setDocs(u); localStorage.setItem(storageKey,JSON.stringify(u)); };
+  const saveDocs = (u) => { setDocs(u); saveDocRegistry(db, queryId, u); };
   const addDoc = () => {
     if(!form.name) return;
     saveDocs([{...form,id:Date.now(),addedAt:new Date().toISOString()},...docs]);
@@ -202,4 +198,3 @@ export function DocRegistryInline({ queryId, tourFileId }) {
     </div>
   );
 }
-

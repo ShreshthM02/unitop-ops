@@ -1,13 +1,14 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, db } = Lib;
 
 export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings}){
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
   const [activePane,setActivePane]=React.useState("settings");
-  const [settings,setSettings]=React.useState(()=>{try{return{...DEFAULT_DOC_SETTINGS,...JSON.parse(localStorage.getItem("unitop_doc_settings")||"{}")}}catch(e){return DEFAULT_DOC_SETTINGS;}});
-  const [typo,setTypo]=React.useState(()=>{try{return{...TYPOGRAPHY_DEFAULTS,...JSON.parse(localStorage.getItem("unitop_typography")||"{}")}}catch(e){return TYPOGRAPHY_DEFAULTS;}});
+  const [settings,setSettings]=React.useState(()=>({...DEFAULT_DOC_SETTINGS,...(docSettings||{})}));
+  const [typo,setTypo]=React.useState(TYPOGRAPHY_DEFAULTS);
+  React.useEffect(()=>{ loadAppSetting(db,"typography",TYPOGRAPHY_DEFAULTS).then(setTypo); },[]);
   // Draft copy of ALL document templates (quotation, proforma, taxinvoice, ...),
   // seeded from the live value passed down from UnitopApp. Edits here stay
   // local until "Save All Settings" — same pattern as settings/typo above.
@@ -21,9 +22,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const addQTL=(k)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:[...p.quotation[k],""]}}));
   const rmQTL=(k,i)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].filter((_,xi)=>xi!==i)}}));
   const saveAll=()=>{
-    localStorage.setItem("unitop_doc_settings",JSON.stringify(settings));
-    localStorage.setItem("unitop_typography",JSON.stringify(typo));
-    localStorage.setItem("unitop_doc_templates",JSON.stringify(tmpl));
+    saveAppSetting(db,"typography",typo);
     if(setDocSettings)setDocSettings(settings);
     if(onSaveDocTemplates)onSaveDocTemplates(tmpl); // <-- this call was missing before: edits saved to
                                                      //     localStorage but never reached live documents.
