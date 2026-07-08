@@ -71,6 +71,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showNewQuery, setShowNewQuery] = useState(false);
   const [showSearch, setShowSearch]     = useState(false);
   const [showCostSheet,  setShowCostSheet]  = useState(null);
+  const [pendingCostSheetId, setPendingCostSheetId] = useState(null);
   const [showItinerary,  setShowItinerary]  = useState(null);
   const [showQuotation,  setShowQuotation]  = useState(null);
   const [showProforma,   setShowProforma]   = useState(null);
@@ -665,9 +666,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         )}
 
         {/* PANELS */}
-        {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={()=>{setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser}/>}
+        {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser}/>}
         {showItinerary  && <ItineraryBuilder query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser}/>}
-        {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} onClose={()=>setShowQuotation(null)} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser}/>}
+        {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser}/>}
         {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} onClose={()=>setShowProforma(null)}/>}
         {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} onClose={()=>setShowTaxInv(null)}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)}/>}

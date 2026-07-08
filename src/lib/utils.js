@@ -469,3 +469,124 @@ export async function saveDocRegistry(db, queryId, docs) {
     console.warn("Save document registry failed:", e);
   }
 }
+
+// ─── COST SHEET (real versioned persistence) ───────────────────────────────
+// Maps a cost_sheets DB row to the shape CostSheet.jsx's local state uses.
+export function mapDbCostSheetRow(row) {
+  return {
+    version: row.version,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    isFinal: row.is_final || false,
+    gst: row.gst_pct, markup: row.markup_pct, roe: row.roe, currency: row.currency,
+    tlMode: row.tl_mode, tlCost: row.tl_cost,
+    miscMode: row.misc_mode, miscCost: row.misc_cost,
+    monMode: row.mon_mode, monExtra: row.mon_extra,
+    days: row.days || [], transports: row.transports || [], slabs: row.slabs || [],
+    monuments: row.monuments || [], localHandlers: row.local_handlers || [], extras: row.extras || [],
+  };
+}
+
+// Loads every saved version for a tour file, oldest first (matches the
+// order CostSheet.jsx's own versions[] array is built in).
+export async function loadCostSheetVersions(db, queryId) {
+  try {
+    const { data } = await db.from("cost_sheets").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbCostSheetRow);
+  } catch (e) {
+    console.warn("Load cost sheet versions failed:", e);
+    return [];
+  }
+}
+
+// Inserts a NEW row -- Save Version means permanent history, never an
+// overwrite of a previous version, matching what the version/is_final
+// columns are clearly designed for.
+// createdBy is guarded with isUuid() the same way agent_id was: a demo-mode
+// user's id may not be a real staff uuid, and one bad field here would
+// otherwise silently fail the entire insert, the exact bug agent_id caused.
+export async function saveCostSheetVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("cost_sheets").insert({
+      query_id: queryId, version: snap.version, is_final: false,
+      gst_pct: snap.gst, markup_pct: snap.markup, roe: snap.roe, currency: snap.currency,
+      tl_mode: snap.tlMode, tl_cost: parseFloat(snap.tlCost) || 0,
+      misc_mode: snap.miscMode, misc_cost: parseFloat(snap.miscCost) || 0,
+      mon_mode: snap.monMode, mon_extra: parseFloat(snap.monExtra) || 0,
+      days: snap.days || [], transports: snap.transports || [], slabs: snap.slabs || [],
+      monuments: snap.monuments || [], local_handlers: snap.localHandlers || [], extras: snap.extras || [],
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save cost sheet version failed:", e);
+    return null;
+  }
+}
+
+// Marks exactly one version as final, clearing the flag on every other
+// version for the same tour file first.
+export async function markCostSheetVersionFinal(db, queryId, version) {
+  try {
+    await db.from("cost_sheets").eq("query_id", queryId).update({ is_final: false });
+    await db.from("cost_sheets").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark cost sheet version final failed:", e);
+  }
+}
+
+// ─── QUOTATION (single current draft per tour file, no versioning UI yet) ──
+export function mapDbQuotationRow(row) {
+  return {
+    attnName: row.attn_name, attnCompany: row.attn_company, attnCity: row.attn_city,
+    date: row.date, currency: row.currency, roe: row.roe, refLine: row.ref_line,
+    period: row.period, paxLine: row.pax_line,
+    itinerary: row.itinerary || [], hotels: row.hotels || [], slabs: row.slabs || [],
+    monuments: row.monuments || [], showMonuments: row.show_monuments,
+    includes: row.includes || [], excludes: row.excludes || [],
+    greeting: row.greeting, openingLine: row.opening_line, closingLine: row.closing_line,
+    signoff: row.signoff, monumentNote: row.monument_note, costSheetId: row.cost_sheet_id,
+  };
+}
+
+export async function loadQuotation(db, queryId) {
+  try {
+    const { data } = await db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: false });
+    return data && data[0] ? mapDbQuotationRow(data[0]) : null;
+  } catch (e) {
+    console.warn("Load quotation failed:", e);
+    return null;
+  }
+}
+
+// One row per tour file for now (version always 1) -- QuotationGenerator
+// has no versions[] concept the way Cost Sheet does, so this deliberately
+// doesn't invent DB history the UI can't show or navigate yet.
+// NOTE: can't use db.from().upsert() here -- that wrapper only resolves
+// conflicts against the table's actual primary key (quotations.id, a
+// separate auto-generated uuid), not query_id. A plain upsert would have
+// silently INSERTed a brand new row on every single save instead of
+// updating the existing one. Select-then-insert-or-update instead.
+export async function saveQuotationToDB(db, queryId, q, createdBy) {
+  const payload = {
+    query_id: queryId, version: 1, is_final: true, cost_sheet_id: q.costSheetId || null,
+    attn_name: q.attnName, attn_company: q.attnCompany, attn_city: q.attnCity,
+    date: q.date || null, currency: q.currency, roe: q.roe || null, ref_line: q.refLine,
+    period: q.period, pax_line: q.paxLine,
+    itinerary: q.itinerary || [], hotels: q.hotels || [], slabs: q.slabs || [],
+    monuments: q.monuments || [], show_monuments: q.showMonuments,
+    includes: q.includes || [], excludes: q.excludes || [],
+    greeting: q.greeting, opening_line: q.openingLine, closing_line: q.closingLine,
+    signoff: q.signoff, monument_note: q.monumentNote,
+    created_by: isUuid(createdBy) ? createdBy : null,
+  };
+  try {
+    const { data: existing } = await db.from("quotations").select("id").eq("query_id", queryId);
+    if (existing && existing[0]) {
+      await db.from("quotations").eq("id", existing[0].id).update(payload);
+    } else {
+      await db.from("quotations").insert(payload);
+    }
+  } catch (e) {
+    console.warn("Save quotation failed:", e);
+  }
+}

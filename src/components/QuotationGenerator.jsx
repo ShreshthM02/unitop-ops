@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotation, saveQuotationToDB, db } = Lib;
 
-export default function QuotationGenerator({ query, template, onClose, onSaved, currentUser }) {
+export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
 
   // Editable quotation fields (pre-filled from query)
@@ -38,7 +38,17 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
     closingLine: template.closingLine,
     signoff:   template.signoff,
     monumentNote: template.monumentNote,
+    costSheetId: costSheetId || null,
   });
+
+  // Load a previously saved quotation for this tour file, if one exists --
+  // continues editing the saved draft instead of starting fresh from
+  // template defaults every time the Quotation is reopened.
+  useEffect(() => {
+    loadQuotation(db, query.id).then(saved => {
+      if (saved) setQ(p => ({ ...p, ...saved, costSheetId: saved.costSheetId || costSheetId || null }));
+    });
+  }, [query.id]);
 
   const [activeTab,    setActiveTab]    = useState('content');
   const [showHeader,   setShowHeader]   = useState(true);
@@ -398,7 +408,7 @@ export default function QuotationGenerator({ query, template, onClose, onSaved, 
           <button onClick={onClose} className="btn btn-ghost">Cancel</button>
           <div style={{ flex:1 }}/>
           <button onClick={printQuotation} className="btn btn-success">🖨 Print / Export PDF</button>
-          <button className="btn btn-primary" onClick={()=>{ onSaved && onSaved(q); onClose(); }}>
+          <button className="btn btn-primary" onClick={()=>{ saveQuotationToDB(db, query.id, q, currentUser?.id); onSaved && onSaved(q); onClose(); }}>
             💾 Save Quotation
           </button>
         </div>

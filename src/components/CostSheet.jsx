@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, db } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser }) {
   const n = v => parseFloat(v)||0;
   const [version, setVersion] = useState(1);
   const [versions, setVersions] = useState([]);
   const [finalVersion, setFinalVersion] = useState(null);
+  const [lastSavedCostSheetId, setLastSavedCostSheetId] = useState(null);
 
   // 10.1 Settings
   const [gst,    setGst]    = useState(5);
@@ -54,6 +55,27 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
     { id:1, label:"15–19 pax + 1 FOC", foc:15, vehicle:"Large Coach" },
     { id:2, label:"10–14 pax + 1 FOC", foc:10, vehicle:"Mini Bus" },
   ]);
+
+  // Load previously saved versions for this tour file on mount. Continues
+  // editing from the latest saved version rather than starting blank every
+  // time the Cost Sheet is reopened -- versions[] itself becomes real
+  // history instead of resetting to empty on every open.
+  useEffect(() => {
+    loadCostSheetVersions(db, query.id).then(loaded => {
+      if (loaded.length === 0) return;
+      setVersions(loaded);
+      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+      const finalV = loaded.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      const latest = loaded[loaded.length - 1];
+      setGst(latest.gst); setMarkup(latest.markup); setRoe(latest.roe); setCurrency(latest.currency);
+      setTlMode(latest.tlMode); setTlCost(latest.tlCost);
+      setMiscMode(latest.miscMode); setMiscCost(latest.miscCost);
+      setMonMode(latest.monMode); setMonExtra(latest.monExtra); setMonuments(latest.monuments);
+      setDays(latest.days); setTransports(latest.transports); setSlabs(latest.slabs);
+      setLocalHandlers(latest.localHandlers); setExtras(latest.extras);
+    });
+  }, [query.id]);
 
   const updateDay = (i,f,v) => setDays(p=>p.map((d,idx)=>idx===i?{...d,[f]:v}:d));
   const addDay = () => setDays(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",movement:"",mealPlan:"B/L/D",mealCost:"",hotel:"",hotelAlt:"",hotelPlan:"CP",hotelNetPP:"",singleSupp:"",notes:""}]);
@@ -105,8 +127,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   };
 
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monuments:[...monuments], localHandlers:[...localHandlers] };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras] };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
+    saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(id => { if (id) setLastSavedCostSheetId(id); });
     setVersion(v=>v+1);
   };
 
@@ -134,7 +157,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
             <div style={{display:"flex",gap:4}}>
               {versions.map(v=>(
                 <div key={v.version} style={{padding:"3px 8px",borderRadius:10,background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:finalVersion===v.version?700:400}}
-                  onClick={()=>setFinalVersion(v.version)}>
+                  onClick={()=>{setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);}}>
                   v{v.version}{finalVersion===v.version?" ★":""}
                 </div>
               ))}
@@ -426,7 +449,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
           <div style={{flex:1}}/>
           <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>
           {hasFinalPrice && (
-            <button className="btn btn-success" onClick={onProceedToQuotation}>
+            <button className="btn btn-success" onClick={()=>onProceedToQuotation(lastSavedCostSheetId)}>
               📋 Proceed to Quotation →
             </button>
           )}
