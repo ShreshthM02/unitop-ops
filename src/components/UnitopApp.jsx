@@ -31,6 +31,12 @@ import { UserManagementPanel } from './UserManagementPanel.jsx';
 export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLedger }) {
   const [view, setView]           = useState(() => localStorage.getItem("unitop_last_view") || "dashboard");
   useEffect(() => { localStorage.setItem("unitop_last_view", view); }, [view]);
+  // Gates the very first render: without this, the app shows hardcoded
+  // demo data (INITIAL_QUERIES etc.) instantly, then swaps to real data a
+  // moment later once Supabase responds -- a visible flash of fake queries
+  // ("Sharma Family", "Chen Group") that's genuinely confusing for a real
+  // user. Showing a brief loading state instead avoids that entirely.
+  const [dataLoading, setDataLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [queries, setQueries]     = useState(INITIAL_QUERIES);
   const [tours, setTours]         = useState(TOUR_DATA);
@@ -204,6 +210,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         if (Object.keys(teMap).length > 0) setTourExecutions(teMap);
       } catch(e) {
         console.warn("Could not load from Supabase, using demo data:", e);
+      } finally {
+        setDataLoading(false);
       }
     };
     loadData();
@@ -394,6 +402,16 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     ))}
     </div>
   );
+
+  if (dataLoading) {
+    return (
+      <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:G.gray50,gap:14}}>
+        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy}}>Unitop Ops</div>
+        <div style={{width:32,height:32,border:`3px solid ${G.gray200}`,borderTopColor:G.accent,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
 
   return (
     <>
