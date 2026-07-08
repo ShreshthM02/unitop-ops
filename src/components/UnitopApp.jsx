@@ -405,10 +405,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
   if (dataLoading) {
     return (
-      <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:G.gray50,gap:14}}>
-        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy}}>Unitop Ops</div>
-        <div style={{width:32,height:32,border:`3px solid ${G.gray200}`,borderTopColor:G.accent,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0D1B2A,#1A3A52)",
+        display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ textAlign:"center" }}>
+          <img src={LOGO_B64} alt="Unitop" style={{ height:64, marginBottom:16, filter:"brightness(0) invert(1)" }}/>
+          <div style={{fontSize:16,fontWeight:700,fontFamily:"'Playfair Display',serif",color:"#fff",marginBottom:6}}>Unitop Ops</div>
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>Loading…</div>
+        </div>
       </div>
     );
   }
