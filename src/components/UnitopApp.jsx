@@ -51,7 +51,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     saveAppSetting(db, "doc_numbering", s);
   };
   const [activeQuery, setActiveQuery]   = useState(null);
+  const isFirstActiveQueryEffect = useRef(true);
   useEffect(() => {
+    // Skip the very first run (component mount): activeQuery's initial
+    // value is always null, and without this guard, that fires this
+    // effect's "else" branch immediately and wipes unitop_last_query_id
+    // before the data-load effect below ever gets a chance to read it --
+    // restoration was destroying its own saved value before using it.
+    if (isFirstActiveQueryEffect.current) { isFirstActiveQueryEffect.current = false; return; }
     if (activeQuery) localStorage.setItem("unitop_last_query_id", activeQuery.id);
     else localStorage.removeItem("unitop_last_query_id");
   }, [activeQuery]);
