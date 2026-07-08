@@ -408,7 +408,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0D1B2A,#1A3A52)",
         display:"flex", alignItems:"center", justifyContent:"center" }}>
         <div style={{ textAlign:"center" }}>
-          <img src={LOGO_B64} alt="Unitop" style={{ height:64, marginBottom:16, filter:"brightness(0) invert(1)" }}/>
+          <img src={LOGO_B64} alt="Unitop" style={{ height:64, marginBottom:16, borderRadius:6 }}/>
           <div style={{fontSize:16,fontWeight:700,fontFamily:"'Playfair Display',serif",color:"#fff",marginBottom:6}}>Unitop Ops</div>
           <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>Loading…</div>
         </div>
