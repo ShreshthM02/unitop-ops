@@ -129,13 +129,37 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load queries
-        const { data: qData } = await db.from("queries").select("*").order("created_at", {ascending:false});
+        // All 12 of these are independent of each other -- none needs
+        // another's RESULT to make its own request, they only get combined
+        // in JS afterward. Running them sequentially (as this used to)
+        // meant the total wait was the SUM of every round-trip; in
+        // parallel it's roughly the time of the single slowest one.
+        const [
+          { data: qData }, { data: auditData }, { data: remarkData },
+          { data: agData }, { data: vData }, { data: staffData },
+          docSettingsValue, docTemplatesValue,
+          { data: payData }, { data: inData }, { data: outData },
+          { data: teData },
+        ] = await Promise.all([
+          db.from("queries").select("*").order("created_at", {ascending:false}),
+          db.from("query_audit").select("*").order("created_at", {ascending:true}),
+          db.from("query_remarks").select("*").order("created_at", {ascending:true}),
+          db.from("agents").select("*").order("company", {ascending:true}),
+          db.from("vendors").select("*").order("name", {ascending:true}),
+          // Staff: only safe display columns, never password_hash/
+          // session_token/permissions -- the client has no legitimate
+          // reason to hold those in memory.
+          db.from("staff").select("id,name,role,color,avatar,active").order("name", {ascending:true}),
+          loadAppSetting(db, "doc_numbering", DEFAULT_DOC_SETTINGS),
+          loadAppSetting(db, "doc_templates", DEFAULT_DOC_TEMPLATES),
+          db.from("payments").select("*"),
+          db.from("payment_incoming").select("*").order("created_at", {ascending:true}),
+          db.from("payment_outgoing").select("*").order("created_at", {ascending:true}),
+          db.from("tour_execution").select("*"),
+        ]);
+
         if (qData && qData.length > 0) {
           const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
-          // Load audit trails
-          const { data: auditData } = await db.from("query_audit").select("*").order("created_at", {ascending:true});
-          const { data: remarkData } = await db.from("query_remarks").select("*").order("created_at", {ascending:true});
           const auditMap = {};
           (auditData||[]).forEach(a => {
             if (!auditMap[a.query_id]) auditMap[a.query_id] = [];
@@ -152,7 +176,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           });
           setQueries(mapped);
           // Restore whichever query's drawer was open before a refresh --
-          // same reasoning as the view restoration above: this is
           // legitimately personal/device-specific navigation state, not
           // data that needs to sync across the team.
           const lastQueryId = localStorage.getItem("unitop_last_query_id");
@@ -161,8 +184,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             if (restored) setActiveQuery(restored);
           }
         }
-        // Load agents
-        const { data: agData } = await db.from("agents").select("*").order("company", {ascending:true});
         if (agData && agData.length > 0) {
           setAgents(agData.map(a => ({
             id: a.id, company: a.company, country: a.country, city: a.city,
@@ -170,8 +191,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             contactEmail: a.contact_email, notes: a.notes, active: a.active,
           })));
         }
-        // Load vendors
-        const { data: vData } = await db.from("vendors").select("*").order("name", {ascending:true});
         if (vData && vData.length > 0) {
           setVendors(vData.map(v => ({
             id: v.id, name: v.name, type: v.type, city: v.city,
@@ -180,32 +199,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             languages: v.languages, areas: v.areas, active: v.active,
           })));
         }
-        // Load staff (the real, uuid-keyed table your login already
-        // authenticates against -- deliberately requesting only safe display
-        // columns, never password_hash/session_token/permissions, which the
-        // client-side app has no legitimate reason to hold in memory).
-        const { data: staffData } = await db.from("staff").select("id,name,role,color,avatar,active").order("name", {ascending:true});
         if (staffData && staffData.length > 0) {
           setStaff(staffData.filter(s => s.active !== false));
         }
-        // Load shared app settings (doc numbering + templates) -- these
-        // used to be localStorage-only, meaning different staff on
-        // different computers saw different settings for the same app.
-        setDocSettings(await loadAppSetting(db, "doc_numbering", DEFAULT_DOC_SETTINGS));
-        setDocTemplates(await loadAppSetting(db, "doc_templates", DEFAULT_DOC_TEMPLATES));
-        // Load payments (header rows + incoming/outgoing entries from their
-        // own child tables, merged into the same shape EnhancedPaymentTracker
-        // already expects).
-        const { data: payData } = await db.from("payments").select("*");
-        const { data: inData }  = await db.from("payment_incoming").select("*").order("created_at", {ascending:true});
-        const { data: outData } = await db.from("payment_outgoing").select("*").order("created_at", {ascending:true});
+        setDocSettings(docSettingsValue);
+        setDocTemplates(docTemplatesValue);
         const paymentsMap = mergePaymentsRows(payData, inData, outData);
         if (Object.keys(paymentsMap).length > 0) setPayments(paymentsMap);
-
-        // Load Tour Execution Details (day-wise itinerary/hotels, transporter,
-        // facilitators, local handlers, flight legs -- the operational source
-        // of truth surfaced in the Tour File drawer's Info sub-tabs).
-        const { data: teData } = await db.from("tour_execution").select("*");
         const teMap = mergeTourExecutionRows(teData);
         if (Object.keys(teMap).length > 0) setTourExecutions(teMap);
       } catch(e) {
