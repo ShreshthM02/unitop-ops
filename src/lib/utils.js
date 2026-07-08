@@ -475,6 +475,7 @@ export async function saveDocRegistry(db, queryId, docs) {
 export function mapDbCostSheetRow(row) {
   return {
     version: row.version,
+    note: row.note || null,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     isFinal: row.is_final || false,
     gst: row.gst_pct, markup: row.markup_pct, roe: row.roe, currency: row.currency,
@@ -537,6 +538,8 @@ export async function markCostSheetVersionFinal(db, queryId, version) {
 // ─── QUOTATION (single current draft per tour file, no versioning UI yet) ──
 export function mapDbQuotationRow(row) {
   return {
+    version: row.version, isFinal: row.is_final, note: row.note,
+    savedAt: row.updated_at, createdBy: row.created_by,
     attnName: row.attn_name, attnCompany: row.attn_company, attnCity: row.attn_city,
     date: row.date, currency: row.currency, roe: row.roe, refLine: row.ref_line,
     period: row.period, paxLine: row.pax_line,
@@ -546,6 +549,81 @@ export function mapDbQuotationRow(row) {
     greeting: row.greeting, openingLine: row.opening_line, closingLine: row.closing_line,
     signoff: row.signoff, monumentNote: row.monument_note, costSheetId: row.cost_sheet_id,
   };
+}
+
+export function formatDateDMY(str) {
+  if (!str) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (!m) return str;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+export async function loadQuotationVersions(db, queryId) {
+  try {
+    const { data } = await db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbQuotationRow);
+  } catch (e) {
+    console.warn("Load quotation versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveQuotationVersion(db, queryId, snap, createdBy) {
+  try {
+    const payload = {
+      query_id: queryId, version: snap.version || 1,
+      is_final: snap.isFinal || false, note: snap.note || null,
+      cost_sheet_id: snap.costSheetId || null,
+      attn_name: snap.attnName, attn_company: snap.attnCompany, attn_city: snap.attnCity,
+      date: snap.date || null, currency: snap.currency, roe: snap.roe || null,
+      ref_line: snap.refLine, period: snap.period, pax_line: snap.paxLine,
+      itinerary: snap.itinerary || [], hotels: snap.hotels || [], slabs: snap.slabs || [],
+      monuments: snap.monuments || [], show_monuments: snap.showMonuments,
+      includes: snap.includes || [], excludes: snap.excludes || [],
+      greeting: snap.greeting, opening_line: snap.openingLine, closing_line: snap.closingLine,
+      signoff: snap.signoff, monument_note: snap.monumentNote,
+      created_by: isUuid(createdBy) ? createdBy : null,
+    };
+    const { data } = await db.from("quotations").insert(payload);
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save quotation version failed:", e);
+    return null;
+  }
+}
+
+export async function markQuotationVersionFinal(db, queryId, version) {
+  try {
+    await db.from("quotations").eq("query_id", queryId).update({ is_final: false });
+    await db.from("quotations").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark quotation version final failed:", e);
+  }
+}
+
+export function buildPricingTimeline(costSheets, quotations, staff) {
+  const cs = (costSheets || []).map(r => ({ ...r, type: 'costsheet', by: (staff || []).find(s => s.id === r.createdBy)?.name || 'Unknown' }));
+  const qt = (quotations || []).map(r => ({ ...r, type: 'quotation', by: (staff || []).find(s => s.id === r.createdBy)?.name || 'Unknown' }));
+  return [...cs, ...qt].sort((a, b) => {
+    if (!a.createdAt) return -1;
+    if (!b.createdAt) return 1;
+    return new Date(a.createdAt) - new Date(b.createdAt);
+  });
+}
+
+export async function loadPricingTimeline(db, queryId, staff) {
+  try {
+    const [csResult, qtResult] = await Promise.all([
+      db.from("cost_sheets").select("*").eq("query_id", queryId).order("version", { ascending: true }),
+      db.from("quotations").select("*").eq("query_id", queryId).order("version", { ascending: true }),
+    ]);
+    const costSheets = (csResult.data || []).map(r => ({ ...mapDbCostSheetRow(r), createdAt: r.created_at, createdBy: r.created_by }));
+    const quotations = (qtResult.data || []).map(r => ({ ...mapDbQuotationRow(r), createdAt: r.created_at, createdBy: r.created_by }));
+    return buildPricingTimeline(costSheets, quotations, staff);
+  } catch (e) {
+    console.warn("Load pricing timeline failed:", e);
+    return [];
+  }
 }
 
 export async function loadQuotation(db, queryId) {

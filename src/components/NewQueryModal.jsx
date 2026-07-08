@@ -156,8 +156,8 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
           </div>
           {form.dateKnown ? (
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <div>{sl("From")}<input style={inp} type="date" value={form.travelDateFrom} onChange={e=>set("travelDateFrom",e.target.value)}/></div>
-              <div>{sl("To")}<input style={inp} type="date" value={form.travelDateTo} onChange={e=>set("travelDateTo",e.target.value)}/></div>
+              <div>{sl("From")}<input style={inp} type="date" value={form.travelDateFrom} max={form.travelDateTo||undefined} onChange={e=>set("travelDateFrom",e.target.value)}/></div>
+              <div>{sl("To")}<input style={inp} type="date" value={form.travelDateTo} min={form.travelDateFrom||undefined} onChange={e=>set("travelDateTo",e.target.value)}/></div>
             </div>
           ) : (
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>

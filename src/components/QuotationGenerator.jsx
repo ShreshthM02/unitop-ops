@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotation, saveQuotationToDB, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -41,14 +41,43 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     costSheetId: costSheetId || null,
   });
 
-  // Load a previously saved quotation for this tour file, if one exists --
-  // continues editing the saved draft instead of starting fresh from
+  // Real version history, mirroring Cost Sheet exactly -- real negotiations
+  // (client pushback, revised pricing) produce real quotation versions that
+  // deserve the same permanent record Cost Sheet versions get.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+  const [versionNote, setVersionNote] = useState("");
+
+  const loadVersionIntoDraft = (v) => {
+    setQ(p => ({ ...p, ...v }));
+    setViewingVersion(v.version);
+  };
+
+  // Load previously saved versions for this tour file, if any -- continues
+  // editing from the latest saved version instead of starting fresh from
   // template defaults every time the Quotation is reopened.
   useEffect(() => {
-    loadQuotation(db, query.id).then(saved => {
-      if (saved) setQ(p => ({ ...p, ...saved, costSheetId: saved.costSheetId || costSheetId || null }));
+    loadQuotationVersions(db, query.id).then(loaded => {
+      if (loaded.length === 0) return;
+      setVersions(loaded);
+      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+      const finalV = loaded.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      loadVersionIntoDraft(loaded[loaded.length - 1]);
     });
   }, [query.id]);
+
+  const saveVersion = () => {
+    const snap = { ...q, version, note: versionNote };
+    setVersions(p => [...p.filter(v => v.version !== version), snap]);
+    saveQuotationVersion(db, query.id, snap, currentUser?.id);
+    setViewingVersion(version);
+    setVersionNote("");
+    setVersion(v => v + 1);
+    onSaved && onSaved(q);
+  };
 
   const [activeTab,    setActiveTab]    = useState('content');
   const [showHeader,   setShowHeader]   = useState(true);
@@ -181,6 +210,22 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.id} · {query.destination}</div>
           </div>
+          {versions.length > 0 && (
+            <div style={{display:"flex",gap:4}}>
+              {versions.map(v=>(
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <button onClick={printQuotation} className="btn btn-success" style={{ fontSize:11 }}>
             🖨 Print / PDF
           </button>
@@ -404,12 +449,13 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
         {/* Footer */}
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${G.gray200}`, display:"flex",
-          gap:10, flexShrink:0, background:G.gray50 }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <div style={{ flex:1 }}/>
+          gap:10, flexShrink:0, background:G.gray50, alignItems:"center" }}>
+          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
+            style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           <button onClick={printQuotation} className="btn btn-success">🖨 Print / Export PDF</button>
-          <button className="btn btn-primary" onClick={()=>{ saveQuotationToDB(db, query.id, q, currentUser?.id); onSaved && onSaved(q); onClose(); }}>
-            💾 Save Quotation
+          <button className="btn btn-primary" onClick={saveVersion}>
+            💾 Save v{version}
           </button>
         </div>
       </div>

@@ -29,6 +29,7 @@ export { default as UnitopApp } from './UnitopApp.jsx';
 export { default as UserProfilePanel } from './UserProfilePanel.jsx';
 export { default as VendorLedgerPanel } from './VendorLedgerPanel.jsx';
 export { default as VendorMaster } from './VendorMaster.jsx';
+export { default as PricingTimeline } from './PricingTimeline.jsx';
 export { CostSheet } from './CostSheet.jsx';
 export { ServicesList } from './ServicesList.jsx';
 export { DocumentRegistry, DocRegistryInline } from './DocumentRegistry.jsx';

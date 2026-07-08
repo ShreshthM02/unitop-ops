@@ -8,6 +8,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   const [versions, setVersions] = useState([]);
   const [finalVersion, setFinalVersion] = useState(null);
   const [lastSavedCostSheetId, setLastSavedCostSheetId] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null); // which saved version is currently loaded into the draft, if any
+  const [versionNote, setVersionNote] = useState(""); // one-line reason for this save -- "client requested discount", etc.
 
   // 10.1 Settings
   const [gst,    setGst]    = useState(5);
@@ -20,7 +22,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   // Monument (10.1.3) — separate, lumpsum or PP
   const [monMode,  setMonMode]  = useState("pp");
   const [monuments, setMonuments] = useState([]); // start empty — user adds as needed
-  const [monExtra,  setMonExtra]  = useState(0); // extra misc monument cost
+  const [monExtra,  setMonExtra]  = useState(""); // extra misc monument cost -- blank by default, shows "0" only as a placeholder hint; n() already treats blank as 0 in calculations
   // Misc — separate, lumpsum or PP
   const [miscMode, setMiscMode] = useState("pp");
   const [miscCost, setMiscCost] = useState("");
@@ -60,6 +62,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   // editing from the latest saved version rather than starting blank every
   // time the Cost Sheet is reopened -- versions[] itself becomes real
   // history instead of resetting to empty on every open.
+  const loadVersionIntoDraft = (v) => {
+    setGst(v.gst); setMarkup(v.markup); setRoe(v.roe); setCurrency(v.currency);
+    setTlMode(v.tlMode); setTlCost(v.tlCost);
+    setMiscMode(v.miscMode); setMiscCost(v.miscCost);
+    setMonMode(v.monMode); setMonExtra(v.monExtra); setMonuments(v.monuments);
+    setDays(v.days); setTransports(v.transports); setSlabs(v.slabs);
+    setLocalHandlers(v.localHandlers); setExtras(v.extras);
+    setViewingVersion(v.version);
+  };
+
   useEffect(() => {
     loadCostSheetVersions(db, query.id).then(loaded => {
       if (loaded.length === 0) return;
@@ -67,13 +79,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
       setVersion(Math.max(...loaded.map(v => v.version)) + 1);
       const finalV = loaded.find(v => v.isFinal);
       if (finalV) setFinalVersion(finalV.version);
-      const latest = loaded[loaded.length - 1];
-      setGst(latest.gst); setMarkup(latest.markup); setRoe(latest.roe); setCurrency(latest.currency);
-      setTlMode(latest.tlMode); setTlCost(latest.tlCost);
-      setMiscMode(latest.miscMode); setMiscCost(latest.miscCost);
-      setMonMode(latest.monMode); setMonExtra(latest.monExtra); setMonuments(latest.monuments);
-      setDays(latest.days); setTransports(latest.transports); setSlabs(latest.slabs);
-      setLocalHandlers(latest.localHandlers); setExtras(latest.extras);
+      loadVersionIntoDraft(loaded[loaded.length - 1]);
     });
   }, [query.id]);
 
@@ -127,9 +133,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
   };
 
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras] };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
     saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(id => { if (id) setLastSavedCostSheetId(id); });
+    setViewingVersion(version);
+    setVersionNote("");
     setVersion(v=>v+1);
   };
 
@@ -156,9 +164,15 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
           {versions.length > 0 && (
             <div style={{display:"flex",gap:4}}>
               {versions.map(v=>(
-                <div key={v.version} style={{padding:"3px 8px",borderRadius:10,background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:finalVersion===v.version?700:400}}
-                  onClick={()=>{setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);}}>
-                  v{v.version}{finalVersion===v.version?" ★":""}
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
                 </div>
               ))}
             </div>
@@ -323,11 +337,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
                   </div>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>From</div>
-                    <input style={inp} type="date" value={h.dateFrom} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
+                    <input style={inp} type="date" value={h.dateFrom} max={h.dateTo||undefined} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>To</div>
-                    <input style={inp} type="date" value={h.dateTo} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
+                    <input style={inp} type="date" value={h.dateTo} min={h.dateFrom||undefined} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
                   </div>
                   <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
                     <span style={{cursor:"pointer",color:G.gray400,fontSize:16}} onClick={()=>removeLocalHandler(hi)}>✕</span>
@@ -444,9 +458,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
           </div>
         </div>
 
-        <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>
+        <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50,alignItems:"center"}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
-          <div style={{flex:1}}/>
+          <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
+            style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>
           {hasFinalPrice && (
             <button className="btn btn-success" onClick={()=>onProceedToQuotation(lastSavedCostSheetId)}>

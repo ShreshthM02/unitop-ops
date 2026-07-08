@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
+import PricingTimeline from './PricingTimeline.jsx';
 
 export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors, staff }) {
   const isCaseFile   = !!query.tourFileId;
@@ -38,8 +39,8 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
   // Tabs: query vs tour file, order per spec
   const TABS = isCaseFile
-    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
-    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
+    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"pricing",label:"💹 Pricing"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
+    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"pricing",label:"💹 Pricing"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
 
   const sec = t => (
     <div style={{fontSize:10,fontWeight:700,color:G.gray400,textTransform:"uppercase",letterSpacing:"1px",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${G.gray100}`}}>{t}</div>
@@ -161,6 +162,14 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       </select>
                     </div>
                     <div>
+                      <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Assigned To</div>
+                      <select style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800}}
+                        value={editForm.assignedTo||""} onChange={e=>setEF("assignedTo",e.target.value)}>
+                        <option value="">Unassigned</option>
+                        {(staff||USERS).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
                       <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Travel Date</div>
                       <input style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800}}
                         type="date" value={editForm.travelDate||""} onChange={e=>setEF("travelDate",e.target.value)}/>
@@ -201,7 +210,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div className="info-item"><label>Nationality</label><span>{query.nationality||"—"}</span></div>
                     <div className="info-item"><label>Pax</label><span>{query.paxDisplay||(query.pax?`${query.pax} pax`:"TBC")}</span></div>
                     <div className="info-item"><label>Nights</label><span>{query.nights?`${query.nights}N`:"—"}</span></div>
-                    <div className="info-item" style={{gridColumn:"1/-1"}}><label>Travel Period</label><span>{query.dateDisplay||query.travelDate||"TBC"}</span></div>
+                    <div className="info-item" style={{gridColumn:"1/-1"}}><label>Travel Period</label><span>{query.dateDisplay||formatDateDMY(query.travelDate)||"TBC"}</span></div>
                     <div className="info-item"><label>Hotel Category</label><span>{query.hotelCat||"—"}</span></div>
                     <div className="info-item"><label>Assigned To</label>
                       <span style={{display:"flex",alignItems:"center",gap:6}}>
@@ -384,6 +393,14 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   <DocRegistryInline queryId={query.id} tourFileId={query.tourFileId}/>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── PRICING TIMELINE ── */}
+          {tab==="pricing"&&(
+            <div>
+              {sec("Pricing History")}
+              <PricingTimeline query={query} staff={staff}/>
             </div>
           )}
 
