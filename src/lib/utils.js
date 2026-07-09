@@ -799,7 +799,7 @@ export async function updateFinalPriceAgreement(db, queryId, version, entries, c
     await db.from("quotations").eq("query_id", queryId).eq("version", version).update({
       final_price_entries: entries, confirmed_pax: confirmedPax, tour_value: tourValue,
     });
-    await logAudit(db, queryId, byName, `Final price updated (v${version} — same version, no renegotiation): ${summarizeFinalPriceEntries(entries, currency)} — Total Pax ${confirmedPax}, Tour Value ${currency || ""}${tourValue}`);
+    await logAudit(db, queryId, byName, `${FINAL_PRICE_AUDIT_PREFIX} [Updated in place, v${version}, no renegotiation] ${summarizeFinalPriceEntries(entries, currency)} — Total Pax ${confirmedPax}, Tour Value ${currency || ""}${tourValue}`);
   } catch (e) {
     console.warn("Update final price agreement failed:", e);
   }

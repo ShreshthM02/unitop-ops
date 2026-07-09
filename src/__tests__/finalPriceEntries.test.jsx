@@ -137,7 +137,7 @@ describe('updateFinalPriceAgreement (in-place update to an already-final version
     expect(row.final_price_entries).toEqual([{ paxPaying: '19', foc: '1', rate: '237' }]);
   });
 
-  it('logs an audit entry distinguishing this from a new version', async () => {
+  it('logs an audit entry distinguishing this from a new version, AND starting with FINAL_PRICE_AUDIT_PREFIX so it actually shows up in "Last Changes" (the exact bug reported: it landed in the main Audit tab but not here, because the prefix didn\'t match)', async () => {
     const auditCalls = [];
     const db = {
       from: (table) => {
@@ -151,8 +151,20 @@ describe('updateFinalPriceAgreement (in-place update to an already-final version
     };
     await updateFinalPriceAgreement(db, 'UTQ-1', 2, [{ paxPaying: '19', rate: '237' }], 'US $', 'Priya');
     expect(auditCalls.length).toBe(1);
-    expect(auditCalls[0].action).toContain('same version, no renegotiation');
+    expect(auditCalls[0].action.startsWith(FINAL_PRICE_AUDIT_PREFIX)).toBe(true);
+    expect(auditCalls[0].action).toContain('no renegotiation');
     expect(auditCalls[0].action).toContain('19 pax paying');
+  });
+
+  it('loadFinalPriceAgreementAudits actually picks up an in-place update entry, not just a new-version save (the direct regression check)', async () => {
+    const auditRow = { by_name: 'Priya', created_at: '2026-08-01', action: null };
+    const insertDb = { from: () => { const b = { eq: () => b, update: async () => ({ data: [], error: null }), insert: async (row) => { auditRow.action = row.action; return { data: [], error: null }; } }; return b; } };
+    await updateFinalPriceAgreement(insertDb, 'UTQ-1', 2, [{ paxPaying: '19', rate: '237' }], 'US $', 'Priya');
+
+    const readDb = { from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [auditRow] }) }) }) }) };
+    const audits = await loadFinalPriceAgreementAudits(readDb, 'UTQ-1');
+    expect(audits.length).toBe(1); // must not be filtered out
+    expect(audits[0].action).toContain('19 pax paying');
   });
 
   it('does not throw when the update fails', async () => {
