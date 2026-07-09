@@ -776,13 +776,24 @@ export function summarizeFinalPriceEntries(entries, currency) {
 // so they're identifiable among a query's general audit trail.
 export const FINAL_PRICE_AUDIT_PREFIX = "Final price agreement:";
 
-export async function logFinalPriceAgreementChange(db, queryId, byName, entries, currency) {
+// ─── GENERIC AUDIT LOGGING ──────────────────────────────────────────────────
+// The audit trail is meant to be the hub of every important activity on a
+// tour file -- not just query field edits. Any component that persists a
+// meaningful change should call this directly, the same way
+// logFinalPriceAgreementChange already did. Centralizing it here so every
+// caller behaves identically (same table, same shape, same silent-fail
+// safety) rather than each component rolling its own insert.
+export async function logAudit(db, queryId, byName, action) {
   try {
-    const summary = summarizeFinalPriceEntries(entries, currency);
-    await db.from("query_audit").insert({ query_id: queryId, by_name: byName, action: `${FINAL_PRICE_AUDIT_PREFIX} ${summary}` });
+    await db.from("query_audit").insert({ query_id: queryId, by_name: byName || "Unknown", action });
   } catch (e) {
-    console.warn("Log final price agreement change failed:", e);
+    console.warn("Log audit failed:", e);
   }
+}
+
+export async function logFinalPriceAgreementChange(db, queryId, byName, entries, currency) {
+  const summary = summarizeFinalPriceEntries(entries, currency);
+  await logAudit(db, queryId, byName, `${FINAL_PRICE_AUDIT_PREFIX} ${summary}`);
 }
 
 export async function loadFinalPriceAgreementAudits(db, queryId) {

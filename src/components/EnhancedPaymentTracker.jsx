@@ -6,7 +6,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   const deleteEntry = () => {
     const updated = { ...pt, entries: pt.entries.filter(x => x.id !== e.id) };
     setPt(updated);
-    onUpdatePayments(query.id, updated);
+    onUpdatePayments(query.id, updated, `Payment entry deleted: ${e.inCurrency||""} ${e.amount} (receipt ${e.receipt||"n/a"})`);
   };
 
   const printReceipt = () => {
@@ -163,14 +163,14 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
     if(!newIn.amount||!newIn.date) return;
     const receiptNo = `RCP-${new Date().getFullYear()}-${String(pt.entries.length+1).padStart(3,"0")}`;
     const updated = {...pt, tourValueINR, entries:[...pt.entries, {...newIn,id:Date.now(),receipt:receiptNo}]};
-    setPt(updated); onUpdatePayments(query.id, updated);
+    setPt(updated); onUpdatePayments(query.id, updated, `Payment received: ${newIn.inCurrency} ${newIn.amount} (${TYPE_LABELS[newIn.type]||newIn.type}, receipt ${receiptNo})`);
     setNewIn({type:"advance",inCurrency:"INR",amount:"",date:"",mode:"Remittance",ref:"",note:"",modeOther:"",currOther:""});
   };
 
   const addOutgoing = () => {
     if(!newOut.vendor||!newOut.amount) return;
     const updated = {...pt, outgoing:[...(pt.outgoing||[]), {...newOut,id:Date.now()}]};
-    setPt(updated); onUpdatePayments(query.id, updated);
+    setPt(updated); onUpdatePayments(query.id, updated, `Payment made to ${newOut.vendor}: ₹${newOut.amount}`);
     setNewOut({vendor:"",amount:"",date:"",mode:"NEFT/RTGS",ref:"",note:"",receiptName:""});
   };
 
@@ -283,7 +283,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                     {e.note&&<div style={{fontSize:11,color:G.gray400}}>{e.note}</div>}
                     {e.receiptName&&<div style={{fontSize:10,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,display:"inline-block",marginTop:3}}>📎 {e.receiptName}</div>}
                   </div>
-                  <button onClick={()=>{const u={...pt,outgoing:(pt.outgoing||[]).filter(x=>x.id!==e.id)};setPt(u);onUpdatePayments(query.id,u);}}
+                  <button onClick={()=>{const u={...pt,outgoing:(pt.outgoing||[]).filter(x=>x.id!==e.id)};setPt(u);onUpdatePayments(query.id,u,`Payment out to ${e.vendor} deleted: ₹${e.amount}`);}}
                     style={{background:"none",border:"none",cursor:"pointer",color:G.gray400,fontSize:18,padding:"0 4px",flexShrink:0}} title="Delete">✕</button>
                 </div>
               ))}

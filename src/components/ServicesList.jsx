@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, logAudit, db } = Lib;
 
 const SERVICE_STATUSES = ["requested","pending","confirmed","voucher issued","sold out","cancelled"];
 
-export function ServicesList({ query, sec }) {
+export function ServicesList({ query, sec, currentUser }) {
   const DEFAULT_SERVICES = [
     {id:1,name:"Hotel — Primary Hotel (Night 1–2)",status:"requested",date:""},
     {id:2,name:"Hotel — Primary Hotel (Night 3–4)",status:"requested",date:""},
@@ -38,6 +38,7 @@ export function ServicesList({ query, sec }) {
   const addService = () => {
     if(!newSvc.name) return;
     persist([...services,{...newSvc,id:Date.now()}]);
+    logAudit(db, query.id, currentUser?.name, `Service "${newSvc.name}" added`);
     setNewSvc({name:"",date:"",status:"requested"});
     setAdding(false);
   };
@@ -73,7 +74,7 @@ export function ServicesList({ query, sec }) {
             {s.date&&<div style={{fontSize:11,color:G.gray400}}>{s.date}</div>}
           </div>
           <select value={s.status}
-            onChange={e=>persist(services.map((x,xi)=>xi===i?{...x,status:e.target.value}:x))}
+            onChange={e=>{persist(services.map((x,xi)=>xi===i?{...x,status:e.target.value}:x));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" status changed to "${e.target.value}"`);}}
             style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontFamily:"'Inter',sans-serif",
               outline:"none",cursor:"pointer",fontWeight:600,
               border:`1px solid ${(STATUS_COLORS[s.status]||STATUS_COLORS.requested).color}`,
@@ -84,7 +85,7 @@ export function ServicesList({ query, sec }) {
             ))}
           </select>
           <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
-            onClick={()=>persist(services.filter((_,xi)=>xi!==i))}>✕</span>
+            onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
         </div>
       ))}
 
