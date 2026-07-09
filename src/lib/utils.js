@@ -703,3 +703,39 @@ export function toggleWFStep(manualWF, stepId, autoDetected, stepLabel) {
   const auditAction = `${newDone ? "Marked" : "Unmarked"} step "${stepLabel}" as ${newDone ? "done" : "pending"}`;
   return { manualWF: newManualWF, auditAction };
 }
+
+// ─── QUERY SERVICES (Service Status list, now with real persistence + order) ──
+export function mapDbServiceRow(row) {
+  return { id: row.id, name: row.name, status: row.status, date: row.date, sortOrder: row.sort_order || 0 };
+}
+
+export async function loadQueryServices(db, queryId) {
+  try {
+    const { data } = await db.from("query_services").select("*").eq("query_id", queryId).order("sort_order", { ascending: true });
+    return (data || []).map(mapDbServiceRow);
+  } catch (e) {
+    console.warn("Load query services failed:", e);
+    return [];
+  }
+}
+
+// Saves the whole current list: upserts everything present (including each
+// item's current sort_order, so drag-reorder persists), deletes anything
+// removed locally. Same sync pattern as saveDocRegistry/savePaymentsToDB.
+export async function saveQueryServices(db, queryId, services) {
+  try {
+    for (let i = 0; i < services.length; i++) {
+      const s = services[i];
+      await db.from("query_services").upsert({
+        id: s.id, query_id: queryId, name: s.name, status: s.status, date: s.date || null, sort_order: i,
+      });
+    }
+    const { data: existing } = await db.from("query_services").select("id").eq("query_id", queryId);
+    const keepIds = new Set(services.map(s => String(s.id)));
+    for (const row of (existing || [])) {
+      if (!keepIds.has(String(row.id))) await db.from("query_services").eq("id", row.id).delete();
+    }
+  } catch (e) {
+    console.warn("Save query services failed:", e);
+  }
+}
