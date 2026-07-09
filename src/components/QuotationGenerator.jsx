@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -109,7 +109,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
   // ── Final Price Agreement: multi-entry composition (e.g. 18 pax on one
   // slab + 2 pax on single supplement) instead of one flat rate. ──
-  const addFinalPriceEntry = () => setQ(prev => ({ ...prev, finalPriceEntries: [...prev.finalPriceEntries, { id: Date.now(), pax:"", source:"slab", slabLabel:"", rate:"" }] }));
+  const addFinalPriceEntry = () => setQ(prev => ({ ...prev, finalPriceEntries: [...prev.finalPriceEntries, { id: Date.now(), paxPaying:"", foc:"", source:"slab", slabLabel:"", rate:"" }] }));
   const removeFinalPriceEntry = (i) => setQ(prev => ({ ...prev, finalPriceEntries: prev.finalPriceEntries.filter((_,idx)=>idx!==i) }));
   const updateFinalPriceEntry = (i, field, val) => setQ(prev => ({
     ...prev, finalPriceEntries: prev.finalPriceEntries.map((e,idx) => {
@@ -485,10 +485,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
 
             {q.finalPriceEntries.map((e,i)=>(
-              <div key={e.id} style={{display:"grid",gridTemplateColumns:"0.8fr 1fr 1.5fr 1fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+              <div key={e.id} style={{display:"grid",gridTemplateColumns:"0.7fr 0.6fr 1fr 1.3fr 0.9fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
                 <div>
-                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Pax</div>}
-                  <input style={{...inputStyle,width:"100%"}} type="number" value={e.pax} onChange={ev=>updateFinalPriceEntry(i,"pax",ev.target.value)} placeholder="e.g. 18"/>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Pax Paying</div>}
+                  <input style={{...inputStyle,width:"100%"}} type="number" value={e.paxPaying} onChange={ev=>updateFinalPriceEntry(i,"paxPaying",ev.target.value)} placeholder="e.g. 18"/>
+                </div>
+                <div>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}} title="Free of cost -- e.g. Tour Leader travelling free. Counts toward total headcount, not toward tour value.">FOC</div>}
+                  <input style={{...inputStyle,width:"100%"}} type="number" value={e.foc} onChange={ev=>updateFinalPriceEntry(i,"foc",ev.target.value)} placeholder="0"/>
                 </div>
                 <div>
                   {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Rate Source</div>}
@@ -518,9 +522,17 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             ))}
             <button className="btn btn-ghost" style={{fontSize:11,marginBottom:16}} onClick={addFinalPriceEntry}>+ Add Rate Line</button>
 
-            <div style={{background:q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#EAFAF1":G.gray50,border:`1px solid ${q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#A9DFBF":G.gray200}`,borderRadius:8,padding:14,marginBottom:20}}>
+            <div style={{background:q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#EAFAF1":G.gray50,border:`1px solid ${q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#A9DFBF":G.gray200}`,borderRadius:8,padding:14,marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontSize:12,color:G.gray600}}>Total Confirmed Pax</span>
+                <span style={{fontSize:12,color:G.gray600}}>Pax Paying</span>
+                <span style={{fontSize:13,fontWeight:700}}>{computeFinalPriceTotals(q.finalPriceEntries).paxPaying}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:12,color:G.gray600}}>FOC</span>
+                <span style={{fontSize:13,fontWeight:700}}>{computeFinalPriceTotals(q.finalPriceEntries).foc}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:`1px solid ${G.gray200}`}}>
+                <span style={{fontSize:12,color:G.gray600,fontWeight:600}}>Total Confirmed Pax</span>
                 <span style={{fontSize:13,fontWeight:700}}>{q.confirmedPax || 0}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -528,9 +540,25 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                 <span style={{fontSize:15,fontWeight:700,color:G.navy}}>{q.currency} {q.tourValue || 0}</span>
               </div>
               {!isFinalPriceComplete(q.finalPriceEntries) && (
-                <div style={{fontSize:11,color:"#92400E",marginTop:8}}>⚠ Every line needs both a pax count and a rate before this version can be marked final.</div>
+                <div style={{fontSize:11,color:"#92400E",marginTop:8}}>⚠ Every line needs both Pax Paying and a rate before this version can be marked final. FOC is optional.</div>
               )}
             </div>
+
+            {viewingVersion===finalVersion && finalVersion!=null && (
+              <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:12,marginBottom:20}}>
+                <div style={{fontSize:11,color:"#1A5276",marginBottom:8}}>
+                  You're viewing v{finalVersion} — the version currently marked final ★. Group size often stays fluid until close to departure: if this is a refinement of the same agreed deal (not a new negotiation), update it in place instead of saving a new version.
+                </div>
+                <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{
+                  if (!isFinalPriceComplete(q.finalPriceEntries)) { alert("Every line needs Pax Paying and a rate before updating."); return; }
+                  updateFinalPriceAgreement(db, query.id, finalVersion, q.finalPriceEntries, q.currency, currentUser?.name)
+                    .then(() => {
+                      setVersions(p => p.map(v => v.version===finalVersion ? {...v, finalPriceEntries: q.finalPriceEntries, confirmedPax: q.confirmedPax, tourValue: q.tourValue} : v));
+                      loadFinalPriceAgreementAudits(db, query.id).then(setFinalPriceAudits);
+                    });
+                }}>🔄 Update Final Price (same version v{finalVersion})</button>
+              </div>
+            )}
 
             <div style={{borderTop:`1px solid ${G.gray200}`,paddingTop:14}}>
               <div style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Last Changes</div>

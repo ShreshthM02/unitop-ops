@@ -745,22 +745,31 @@ export async function saveQueryServices(db, queryId, services) {
 // ─── FINAL PRICE AGREEMENT (multi-entry composition) ───────────────────────
 // A confirmed group's price is often split across multiple rate lines --
 // e.g. 18 pax on one slab + 2 pax on single supplement -- rather than one
-// flat rate. Each entry is { id, pax, source: "slab"|"custom", slabLabel,
-// rate }. Totals are always derived from the entries, never entered
-// separately, so the numbers can't drift apart from what's actually listed.
+// flat rate. Each entry is { id, paxPaying, foc, source: "slab"|"custom",
+// slabLabel, rate }. FOC (free-of-cost, e.g. a Tour Leader travelling free)
+// counts toward the group's total headcount but contributes nothing to
+// tour value -- only paying pax get multiplied by rate. Totals are always
+// derived from the entries, never entered separately, so the numbers
+// can't drift apart from what's actually listed.
+// entryPaxPaying reads paxPaying with a fallback to the old single "pax"
+// field, for entries saved before FOC was split out as its own field.
+function entryPaxPaying(e) { return e.paxPaying ?? e.pax ?? ""; }
+
 export function computeFinalPriceTotals(entries) {
   const list = entries || [];
-  const confirmedPax = list.reduce((s, e) => s + (parseInt(e.pax) || 0), 0);
-  const tourValue = list.reduce((s, e) => s + (parseInt(e.pax) || 0) * (parseFloat(e.rate) || 0), 0);
-  return { confirmedPax, tourValue };
+  const paxPaying = list.reduce((s, e) => s + (parseInt(entryPaxPaying(e)) || 0), 0);
+  const foc = list.reduce((s, e) => s + (parseInt(e.foc) || 0), 0);
+  const tourValue = list.reduce((s, e) => s + (parseInt(entryPaxPaying(e)) || 0) * (parseFloat(e.rate) || 0), 0);
+  return { confirmedPax: paxPaying + foc, paxPaying, foc, tourValue };
 }
 
-// True only once every entry has both a pax count and a resolved rate --
-// this is the actual gate for allowing a version to be marked final.
+// True only once every entry has both a paying-pax count and a resolved
+// rate -- this is the actual gate for allowing a version to be marked
+// final. FOC is optional (many lines have none) and defaults to 0.
 export function isFinalPriceComplete(entries) {
   const list = entries || [];
   if (list.length === 0) return false;
-  return list.every(e => (parseInt(e.pax) || 0) > 0 && (parseFloat(e.rate) || 0) > 0);
+  return list.every(e => (parseInt(entryPaxPaying(e)) || 0) > 0 && (parseFloat(e.rate) || 0) > 0);
 }
 
 // Builds a short, human-readable summary of a final price entries list,
@@ -768,13 +777,33 @@ export function isFinalPriceComplete(entries) {
 export function summarizeFinalPriceEntries(entries, currency) {
   const list = entries || [];
   if (list.length === 0) return "no entries";
-  return list.map(e => `${e.pax} pax @ ${currency || ""}${e.rate} (${e.source === "custom" ? "Custom" : e.slabLabel || "Slab"})`).join(" + ");
+  return list.map(e => {
+    const foc = parseInt(e.foc) || 0;
+    return `${entryPaxPaying(e)} pax paying${foc ? ` + ${foc} FOC` : ""} @ ${currency || ""}${e.rate} (${e.source === "custom" ? "Custom" : e.slabLabel || "Slab"})`;
+  }).join(" + ");
 }
 
 // "Last change" audits specific to the final price agreement section --
 // separate from the broader Pricing Timeline, filtered by a fixed prefix
 // so they're identifiable among a query's general audit trail.
 export const FINAL_PRICE_AUDIT_PREFIX = "Final price agreement:";
+
+// Updates the price entries on an ALREADY-final version in place, rather
+// than requiring a new version number. Real group sizes often stay fluid
+// until close to departure -- refining the same agreed deal isn't a new
+// negotiation, and shouldn't clutter version history the way a genuinely
+// new price would. Every update is still logged to the audit trail.
+export async function updateFinalPriceAgreement(db, queryId, version, entries, currency, byName) {
+  const { confirmedPax, tourValue } = computeFinalPriceTotals(entries);
+  try {
+    await db.from("quotations").eq("query_id", queryId).eq("version", version).update({
+      final_price_entries: entries, confirmed_pax: confirmedPax, tour_value: tourValue,
+    });
+    await logAudit(db, queryId, byName, `Final price updated (v${version} — same version, no renegotiation): ${summarizeFinalPriceEntries(entries, currency)} — Total Pax ${confirmedPax}, Tour Value ${currency || ""}${tourValue}`);
+  } catch (e) {
+    console.warn("Update final price agreement failed:", e);
+  }
+}
 
 // ─── GENERIC AUDIT LOGGING ──────────────────────────────────────────────────
 // The audit trail is meant to be the hub of every important activity on a
