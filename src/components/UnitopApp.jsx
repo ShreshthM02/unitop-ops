@@ -319,6 +319,25 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     showToast(`Query moved to ${label}`);
   };
 
+  // Recovering a cancelled query/tour file back into active work. Distinct
+  // from a normal stage advance (handleAdvance) since it also clears the
+  // cancelled flag and requires a stated reason -- reversing a cancellation
+  // is a meaningfully different event from routine progress and deserves
+  // its own clear audit trail entry, not to be confused with either the
+  // original cancellation or a plain stage move.
+  const handleRecoverQuery = (queryId, reason, targetStatus) => {
+    const q = queries.find(qq=>qq.id===queryId);
+    if (!q) return;
+    const now = new Date().toLocaleString("en-IN");
+    const label = KANBAN_COLS.find(c=>c.id===targetStatus)?.label || targetStatus;
+    const auditAction = `RECOVERED from cancelled — moved to ${label} — Reason: ${reason}`;
+    const updatedQ = {...q, cancelled:false, status:targetStatus, audit:[...q.audit,{by:currentUser.name,at:now,action:auditAction}]};
+    setQueries(qs=>qs.map(qq=>qq.id===queryId?updatedQ:qq));
+    setActiveQuery(aq=>aq&&aq.id===queryId?updatedQ:aq);
+    saveQueryToDB({...q, cancelled:false, status:targetStatus}, auditAction);
+    showToast(`Recovered — moved to ${label}`);
+  };
+
   const handleToggleWF = (queryId, stepId) => {
     const q = queries.find(q=>q.id===queryId);
     if (!q) return;
@@ -512,7 +531,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 {queries.filter(q=>q.cancelled).length===0?(
                   <div style={{textAlign:"center",padding:48,color:G.gray400}}><div style={{fontSize:32,marginBottom:8}}>✓</div><div style={{fontSize:14}}>No cancelled queries</div></div>
                 ):queries.filter(q=>q.cancelled).map(q=>(
-                  <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85}}>
+                  <div key={q.id} onClick={()=>setActiveQuery(q)} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85,cursor:"pointer"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                       <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>CANCELLED</span>
                       <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</span><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.id} · {q.destination||q.sector}</span></div>
@@ -675,6 +694,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onCancel={()=>setCancelTarget(activeQuery)}
             onUpdateRemarks={handleAddRemark}
             onUpdateQuery={handleUpdateQuery}
+            onRecoverQuery={handleRecoverQuery}
             tourExecution={tourExecutions[activeQuery.id] || blankTourExecution(activeQuery.id)}
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}

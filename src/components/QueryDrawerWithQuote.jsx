@@ -5,7 +5,7 @@ import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const autoDetected = getAutoDetectedSteps({
@@ -20,6 +20,9 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [tab, setTab]       = useState("info");
   const [remark, setRemark] = useState("");
   const [editingQuery, setEditingQuery] = useState(false);
+  const [showRecoverForm, setShowRecoverForm] = useState(false);
+  const [recoverReason, setRecoverReason] = useState("");
+  const [recoverTarget, setRecoverTarget] = useState("costing");
   const [editForm, setEditForm] = useState({...query});
   const [showUploadsInline, setShowUploadsInline] = useState(false);
   const [infoSubTab, setInfoSubTab] = useState("details");
@@ -226,8 +229,10 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div style={{marginTop:10,padding:"8px 10px",background:G.gray50,borderRadius:6,fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{query.notes}</div>
                   )}
                   <div style={{marginTop:10}}>
-                    <button className="btn btn-ghost" style={{fontSize:11,width:"100%"}}
-                      onClick={()=>setEditingQuery(true)}>✏ Edit {isCaseFile?"Tour":"Query"} Details</button>
+                    {!query.cancelled&&(
+                      <button className="btn btn-ghost" style={{fontSize:11,width:"100%"}}
+                        onClick={()=>setEditingQuery(true)}>✏ Edit {isCaseFile?"Tour":"Query"} Details</button>
+                    )}
                   </div>
                   <div style={{marginTop:10}}>
                     {!isCaseFile&&query.status==="operations"&&(
@@ -249,6 +254,39 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                           cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
                         ✕ Cancel this {isCaseFile?"Tour File":"Query"}
                       </button>
+                    )}
+                    {query.cancelled&&!showRecoverForm&&(
+                      <button onClick={()=>setShowRecoverForm(true)}
+                        style={{width:"100%",padding:"8px",background:"#EAFAF1",color:"#0E6655",
+                          border:"1px solid #A9DFBF",borderRadius:6,fontSize:12,fontWeight:600,
+                          cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                        🔄 Recover this {isCaseFile?"Tour File":"Query"}
+                      </button>
+                    )}
+                    {query.cancelled&&showRecoverForm&&(
+                      <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:8,padding:12}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#0E6655",marginBottom:8}}>Recover this {isCaseFile?"Tour File":"Query"}</div>
+                        <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Reason for recovery</div>
+                        <textarea value={recoverReason} onChange={e=>setRecoverReason(e.target.value)}
+                          placeholder="e.g. Client reconfirmed the booking"
+                          style={{width:"100%",minHeight:50,resize:"vertical",padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",marginBottom:8}}/>
+                        <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Move to stage</div>
+                        <select value={recoverTarget} onChange={e=>setRecoverTarget(e.target.value)}
+                          style={{width:"100%",padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",marginBottom:10}}>
+                          {PIPELINE_STAGES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>{setShowRecoverForm(false);setRecoverReason("");}} className="btn btn-ghost" style={{fontSize:11,flex:1}}>Cancel</button>
+                          <button onClick={()=>{
+                              if(!recoverReason.trim()){alert("Please state a reason for recovery.");return;}
+                              onRecoverQuery&&onRecoverQuery(query.id,recoverReason.trim(),recoverTarget);
+                              setShowRecoverForm(false);setRecoverReason("");
+                            }}
+                            style={{flex:1,padding:"7px",background:"#0E6655",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                            Confirm Recovery
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -375,7 +413,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {tab==="progress"&&(
             <div>
               {sec(`${allDone.length} of 17 steps complete — click any pending step to mark manually`)}
-              <WorkflowProgress autoDetected={autoDetected} manualWF={query.manualWF} onToggle={onToggleWF}/>
+              <WorkflowProgress autoDetected={autoDetected} manualWF={query.manualWF} onToggle={query.cancelled?null:onToggleWF}/>
             </div>
           )}
 
