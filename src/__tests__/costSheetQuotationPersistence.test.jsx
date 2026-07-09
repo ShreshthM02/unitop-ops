@@ -121,15 +121,16 @@ describe('mapDbQuotationRow', () => {
   });
 
   it('maps the final price agreement fields', () => {
-    const mapped = mapDbQuotationRow({ agreed_slab_label: '15-19 Pax Paying', confirmed_pax: 17, tour_value: 4250 });
-    expect(mapped.agreedSlabLabel).toBe('15-19 Pax Paying');
+    const entries = [{ id: 1, pax: '18', source: 'slab', slabLabel: '15-19 Pax Paying', rate: '237' }];
+    const mapped = mapDbQuotationRow({ final_price_entries: entries, confirmed_pax: 17, tour_value: 4250 });
+    expect(mapped.finalPriceEntries).toEqual(entries);
     expect(mapped.confirmedPax).toBe(17);
     expect(mapped.tourValue).toBe(4250);
   });
 
-  it('defaults the final price agreement fields to blank when not yet set, not null/undefined', () => {
+  it('defaults the final price agreement fields to blank/empty when not yet set, not null/undefined', () => {
     const mapped = mapDbQuotationRow({});
-    expect(mapped.agreedSlabLabel).toBe('');
+    expect(mapped.finalPriceEntries).toEqual([]);
     expect(mapped.confirmedPax).toBe('');
     expect(mapped.tourValue).toBe('');
   });
@@ -168,22 +169,23 @@ describe('saveQuotationVersion (INSERT only, mirrors saveCostSheetVersion -- neg
     expect(savedId).toBe('real-quotation-uuid');
   });
 
-  it('includes the final price agreement fields (agreed slab, confirmed pax, tour value) when present', async () => {
+  it('includes the final price agreement fields (entries list, confirmed pax, tour value) when present', async () => {
     const insert = vi.fn(async () => ({ data: [{ id: 'x' }], error: null }));
     const db = { from: () => ({ insert }) };
-    await saveQuotationVersion(db, 'UTQ-1', { version: 1, agreedSlabLabel: '15-19 Pax Paying', confirmedPax: '17', tourValue: '4250' }, null);
+    const entries = [{ id: 1, pax: '18', source: 'slab', slabLabel: '15-19 Pax Paying', rate: '237' }];
+    await saveQuotationVersion(db, 'UTQ-1', { version: 1, finalPriceEntries: entries, confirmedPax: '17', tourValue: '4250' }, null);
     const row = insert.mock.calls[0][0];
-    expect(row.agreed_slab_label).toBe('15-19 Pax Paying');
+    expect(row.final_price_entries).toEqual(entries);
     expect(row.confirmed_pax).toBe(17);
     expect(row.tour_value).toBe(4250);
   });
 
-  it('sends null for the final price agreement fields when not yet filled in', async () => {
+  it('sends an empty entries list and null totals when not yet filled in', async () => {
     const insert = vi.fn(async () => ({ data: [{ id: 'x' }], error: null }));
     const db = { from: () => ({ insert }) };
     await saveQuotationVersion(db, 'UTQ-1', { version: 1 }, null);
     const row = insert.mock.calls[0][0];
-    expect(row.agreed_slab_label).toBeNull();
+    expect(row.final_price_entries).toEqual([]);
     expect(row.confirmed_pax).toBeNull();
     expect(row.tour_value).toBeNull();
   });

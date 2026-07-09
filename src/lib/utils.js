@@ -539,7 +539,7 @@ export function mapDbQuotationRow(row) {
     version: row.version, isFinal: row.is_final || false, note: row.note || "",
     savedAt: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by,
-    agreedSlabLabel: row.agreed_slab_label || "", confirmedPax: row.confirmed_pax ?? "", tourValue: row.tour_value ?? "",
+    finalPriceEntries: row.final_price_entries || [], confirmedPax: row.confirmed_pax ?? "", tourValue: row.tour_value ?? "",
     attnName: row.attn_name || "", attnCompany: row.attn_company || "", attnCity: row.attn_city || "",
     date: row.date || "", currency: row.currency || "US $", roe: row.roe ?? "", refLine: row.ref_line || "",
     period: row.period || "", paxLine: row.pax_line || "",
@@ -573,7 +573,7 @@ export async function saveQuotationVersion(db, queryId, snap, createdBy) {
     const { data } = await db.from("quotations").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       cost_sheet_id: snap.costSheetId || null,
-      agreed_slab_label: snap.agreedSlabLabel || null,
+      final_price_entries: snap.finalPriceEntries || [],
       confirmed_pax: snap.confirmedPax ? parseInt(snap.confirmedPax) : null,
       tour_value: snap.tourValue ? parseFloat(snap.tourValue) : null,
       attn_name: snap.attnName, attn_company: snap.attnCompany, attn_city: snap.attnCity,
@@ -622,7 +622,7 @@ export function buildPricingTimeline(costSheetVersions, quotationVersions, staff
   const qEntries = (quotationVersions || []).map(v => ({
     type: "quotation", version: v.version, isFinal: v.isFinal, note: v.note,
     createdAt: v.createdAt, by: staffName(v.createdBy), costSheetId: v.costSheetId,
-    agreedSlabLabel: v.agreedSlabLabel, confirmedPax: v.confirmedPax, tourValue: v.tourValue,
+    finalPriceEntries: v.finalPriceEntries, confirmedPax: v.confirmedPax, tourValue: v.tourValue,
   }));
   return [...csEntries, ...qEntries].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
 }
@@ -739,5 +739,60 @@ export async function saveQueryServices(db, queryId, services) {
     }
   } catch (e) {
     console.warn("Save query services failed:", e);
+  }
+}
+
+// ─── FINAL PRICE AGREEMENT (multi-entry composition) ───────────────────────
+// A confirmed group's price is often split across multiple rate lines --
+// e.g. 18 pax on one slab + 2 pax on single supplement -- rather than one
+// flat rate. Each entry is { id, pax, source: "slab"|"custom", slabLabel,
+// rate }. Totals are always derived from the entries, never entered
+// separately, so the numbers can't drift apart from what's actually listed.
+export function computeFinalPriceTotals(entries) {
+  const list = entries || [];
+  const confirmedPax = list.reduce((s, e) => s + (parseInt(e.pax) || 0), 0);
+  const tourValue = list.reduce((s, e) => s + (parseInt(e.pax) || 0) * (parseFloat(e.rate) || 0), 0);
+  return { confirmedPax, tourValue };
+}
+
+// True only once every entry has both a pax count and a resolved rate --
+// this is the actual gate for allowing a version to be marked final.
+export function isFinalPriceComplete(entries) {
+  const list = entries || [];
+  if (list.length === 0) return false;
+  return list.every(e => (parseInt(e.pax) || 0) > 0 && (parseFloat(e.rate) || 0) > 0);
+}
+
+// Builds a short, human-readable summary of a final price entries list,
+// used both for the audit log message and for display.
+export function summarizeFinalPriceEntries(entries, currency) {
+  const list = entries || [];
+  if (list.length === 0) return "no entries";
+  return list.map(e => `${e.pax} pax @ ${currency || ""}${e.rate} (${e.source === "custom" ? "Custom" : e.slabLabel || "Slab"})`).join(" + ");
+}
+
+// "Last change" audits specific to the final price agreement section --
+// separate from the broader Pricing Timeline, filtered by a fixed prefix
+// so they're identifiable among a query's general audit trail.
+export const FINAL_PRICE_AUDIT_PREFIX = "Final price agreement:";
+
+export async function logFinalPriceAgreementChange(db, queryId, byName, entries, currency) {
+  try {
+    const summary = summarizeFinalPriceEntries(entries, currency);
+    await db.from("query_audit").insert({ query_id: queryId, by_name: byName, action: `${FINAL_PRICE_AUDIT_PREFIX} ${summary}` });
+  } catch (e) {
+    console.warn("Log final price agreement change failed:", e);
+  }
+}
+
+export async function loadFinalPriceAgreementAudits(db, queryId) {
+  try {
+    const { data } = await db.from("query_audit").select("*").eq("query_id", queryId).order("created_at", { ascending: false });
+    return (data || [])
+      .filter(a => (a.action || "").startsWith(FINAL_PRICE_AUDIT_PREFIX))
+      .map(a => ({ by: a.by_name, at: a.created_at, action: a.action.replace(FINAL_PRICE_AUDIT_PREFIX, "").trim() }));
+  } catch (e) {
+    console.warn("Load final price agreement audits failed:", e);
+    return [];
   }
 }

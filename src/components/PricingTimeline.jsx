@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, loadPricingTimeline, db } = Lib;
+const { G, loadPricingTimeline, summarizeFinalPriceEntries, db } = Lib;
 
 export default function PricingTimeline({ query, staff }) {
   const [timeline, setTimeline] = useState(null); // null = loading, [] = loaded but empty
@@ -50,7 +50,7 @@ export default function PricingTimeline({ query, staff }) {
                 <div style={{fontSize:12,color:G.gray600}}>by <strong>{entry.by}</strong></div>
                 {entry.type==="quotation" && entry.isFinal && entry.tourValue && (
                   <div style={{marginTop:6,fontSize:12,color:"#166534",background:"#DCFCE7",borderRadius:6,padding:"6px 10px",fontWeight:600}}>
-                    ✓ Agreed: {entry.agreedSlabLabel} · {entry.confirmedPax} pax · Tour Value {entry.tourValue}
+                    ✓ Agreed: {summarizeFinalPriceEntries(entry.finalPriceEntries, "")} · {entry.confirmedPax} pax total · Tour Value {entry.tourValue}
                   </div>
                 )}
                 {entry.note && <div style={{marginTop:6,fontSize:12,color:G.gray800,background:G.gray50,borderRadius:6,padding:"6px 10px",borderLeft:`3px solid ${meta.color}`}}>{entry.note}</div>}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -39,7 +39,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     signoff:   template.signoff,
     monumentNote: template.monumentNote,
     costSheetId: costSheetId || null,
-    agreedSlabLabel: "", confirmedPax: "", tourValue: "",
+    confirmedPax: "", tourValue: "",
+    finalPriceEntries: [],
   });
 
   // Real version history, mirroring Cost Sheet exactly -- real negotiations
@@ -74,6 +75,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     const snap = { ...q, version, note: versionNote };
     setVersions(p => [...p.filter(v => v.version !== version), snap]);
     saveQuotationVersion(db, query.id, snap, currentUser?.id);
+    if (q.finalPriceEntries.length > 0) {
+      logFinalPriceAgreementChange(db, query.id, currentUser?.name || "Unknown", q.finalPriceEntries, q.currency)
+        .then(() => loadFinalPriceAgreementAudits(db, query.id).then(setFinalPriceAudits));
+    }
     setViewingVersion(version);
     setVersionNote("");
     setVersion(v => v + 1);
@@ -100,6 +105,33 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   }));
   const addSlab = () => setQ(prev => ({ ...prev, slabs: [...prev.slabs, { label:"", price:"" }] }));
   const removeSlab = (i) => setQ(prev => ({ ...prev, slabs: prev.slabs.filter((_,idx)=>idx!==i) }));
+
+  // ── Final Price Agreement: multi-entry composition (e.g. 18 pax on one
+  // slab + 2 pax on single supplement) instead of one flat rate. ──
+  const addFinalPriceEntry = () => setQ(prev => ({ ...prev, finalPriceEntries: [...prev.finalPriceEntries, { id: Date.now(), pax:"", source:"slab", slabLabel:"", rate:"" }] }));
+  const removeFinalPriceEntry = (i) => setQ(prev => ({ ...prev, finalPriceEntries: prev.finalPriceEntries.filter((_,idx)=>idx!==i) }));
+  const updateFinalPriceEntry = (i, field, val) => setQ(prev => ({
+    ...prev, finalPriceEntries: prev.finalPriceEntries.map((e,idx) => {
+      if (idx !== i) return e;
+      if (field === "slabLabel") {
+        const slab = prev.slabs.find(s => s.label === val);
+        return { ...e, slabLabel: val, rate: slab ? slab.price : e.rate };
+      }
+      if (field === "source" && val === "custom") return { ...e, source: "custom", slabLabel: "" };
+      if (field === "source" && val === "slab") return { ...e, source: "slab", rate: "" };
+      return { ...e, [field]: val };
+    }),
+  }));
+  // Totals are always derived from the entries, never entered separately --
+  // keeps them from silently drifting apart from what's actually listed.
+  useEffect(() => {
+    const { confirmedPax, tourValue } = computeFinalPriceTotals(q.finalPriceEntries);
+    setQ(prev => (prev.confirmedPax === confirmedPax && prev.tourValue === tourValue) ? prev : { ...prev, confirmedPax, tourValue });
+  }, [q.finalPriceEntries]);
+
+  const [finalPriceAudits, setFinalPriceAudits] = useState([]);
+  useEffect(() => { loadFinalPriceAgreementAudits(db, query.id).then(setFinalPriceAudits); }, [query.id]);
+
   const updateItinerary = (i, field, val) => setQ(prev => ({
     ...prev, itinerary: prev.itinerary.map((r,idx) => idx===i ? {...r,[field]:val} : r)
   }));
@@ -220,8 +252,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                     v{v.version}
                   </div>
                   <div onClick={()=>{
-                      if (!v.agreedSlabLabel || !v.confirmedPax || !v.tourValue) {
-                        alert('Before marking this version final: open it, fill in "Final Price Agreement" below (which slab was agreed, confirmed pax, and tour value), then save it again.');
+                      if (!isFinalPriceComplete(v.finalPriceEntries)) {
+                        alert('Before marking this version final: open it, go to the "Final Price" tab, add at least one rate line with pax and rate filled in, then save it again.');
                         return;
                       }
                       setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
@@ -246,7 +278,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         </div>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
-          {[['content','✏ Content'],['preview','👁 Preview']].map(([id,label])=>(
+          {[['content','✏ Content'],['final','💰 Final Price'],['preview','👁 Preview']].map(([id,label])=>(
             <button key={id} onClick={()=>setActiveTab(id)}
               style={{padding:'9px 16px',border:'none',cursor:'pointer',fontSize:12,fontFamily:"'Inter',sans-serif",
                 background:'none',color:activeTab===id?G.accent:G.gray600,fontWeight:activeTab===id?700:400,
@@ -380,38 +412,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           ))}
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addSlab}>+ Add Slab</button>
 
-          {/* ── FINAL PRICE AGREEMENT ── */}
-          {secTitle("💰 Final Price Agreement")}
-          <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16}}>
-            <div style={{fontSize:11,color:"#784212",marginBottom:10}}>
-              Required before this version can be marked final ★ — when a quotation has multiple pax-tier slabs, this is what pins down which one was actually agreed, so the tour value ties cleanly to invoicing later.
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8,marginBottom:8}}>
-              <div>
-                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Agreed Slab</div>
-                <select style={{...inputStyle,width:"100%"}} value={q.agreedSlabLabel} onChange={e=>setQ(p=>({...p,agreedSlabLabel:e.target.value}))}>
-                  <option value="">Select which slab was agreed...</option>
-                  {q.slabs.filter(s=>s.label).map((s,i)=><option key={i} value={s.label}>{s.label} — {q.currency} {s.price||0}/pax</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Confirmed Pax</div>
-                <input style={{...inputStyle,width:"100%"}} type="number" value={q.confirmedPax} onChange={e=>setQ(p=>({...p,confirmedPax:e.target.value}))} placeholder="e.g. 17"/>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Tour Value ({q.currency})</div>
-                <input style={{...inputStyle,width:"100%"}} type="number" value={q.tourValue} onChange={e=>setQ(p=>({...p,tourValue:e.target.value}))} placeholder="0"/>
-              </div>
-              <button className="btn btn-ghost" style={{fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{
-                const slab = q.slabs.find(s=>s.label===q.agreedSlabLabel);
-                if (!slab || !q.confirmedPax) { alert("Select an agreed slab and enter confirmed pax first."); return; }
-                setQ(p=>({...p, tourValue: String((parseFloat(slab.price)||0) * (parseInt(q.confirmedPax)||0))}));
-              }}>= Calculate (slab × pax)</button>
-            </div>
-          </div>
-
           {/* ── MONUMENTS ── */}
           {secTitle("🏛 Monument Fees")}
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
@@ -474,6 +474,76 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
           <div style={{ height:24 }} />
         </div>}
+
+        {/* FINAL PRICE AGREEMENT TAB */}
+        {activeTab==='final' && (
+          <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+            <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16,fontSize:11,color:"#784212"}}>
+              Required before this version can be marked final ★. Compose the actual agreed price as one or more lines — e.g. 18 pax on one slab + 2 pax on Single Supplement — pulling rates from this quotation's own slabs, or typing a custom rate when the agreed amount doesn't match any slab exactly.
+            </div>
+
+            {q.finalPriceEntries.map((e,i)=>(
+              <div key={e.id} style={{display:"grid",gridTemplateColumns:"0.8fr 1fr 1.5fr 1fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+                <div>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Pax</div>}
+                  <input style={{...inputStyle,width:"100%"}} type="number" value={e.pax} onChange={ev=>updateFinalPriceEntry(i,"pax",ev.target.value)} placeholder="e.g. 18"/>
+                </div>
+                <div>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Rate Source</div>}
+                  <select style={{...inputStyle,width:"100%"}} value={e.source} onChange={ev=>updateFinalPriceEntry(i,"source",ev.target.value)}>
+                    <option value="slab">From a slab</option>
+                    <option value="custom">Custom rate</option>
+                  </select>
+                </div>
+                <div>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{e.source==="custom"?"Description":"Slab"}</div>}
+                  {e.source==="slab" ? (
+                    <select style={{...inputStyle,width:"100%"}} value={e.slabLabel} onChange={ev=>updateFinalPriceEntry(i,"slabLabel",ev.target.value)}>
+                      <option value="">Select slab...</option>
+                      {q.slabs.filter(s=>s.label).map((s,si)=><option key={si} value={s.label}>{s.label} — {q.currency} {s.price||0}/pax</option>)}
+                    </select>
+                  ) : (
+                    <input style={{...inputStyle,width:"100%"}} value={e.slabLabel} onChange={ev=>updateFinalPriceEntry(i,"slabLabel",ev.target.value)} placeholder="e.g. Single Supplement"/>
+                  )}
+                </div>
+                <div>
+                  {i===0 && <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Rate ({q.currency})</div>}
+                  <input style={{...inputStyle,width:"100%",background:e.source==="slab"?G.gray50:G.white}} type="number" value={e.rate}
+                    readOnly={e.source==="slab"} onChange={ev=>updateFinalPriceEntry(i,"rate",ev.target.value)} placeholder="0"/>
+                </div>
+                <span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>removeFinalPriceEntry(i)}>✕</span>
+              </div>
+            ))}
+            <button className="btn btn-ghost" style={{fontSize:11,marginBottom:16}} onClick={addFinalPriceEntry}>+ Add Rate Line</button>
+
+            <div style={{background:q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#EAFAF1":G.gray50,border:`1px solid ${q.finalPriceEntries.length && isFinalPriceComplete(q.finalPriceEntries)?"#A9DFBF":G.gray200}`,borderRadius:8,padding:14,marginBottom:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:12,color:G.gray600}}>Total Confirmed Pax</span>
+                <span style={{fontSize:13,fontWeight:700}}>{q.confirmedPax || 0}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:12,color:G.gray600}}>Total Tour Value</span>
+                <span style={{fontSize:15,fontWeight:700,color:G.navy}}>{q.currency} {q.tourValue || 0}</span>
+              </div>
+              {!isFinalPriceComplete(q.finalPriceEntries) && (
+                <div style={{fontSize:11,color:"#92400E",marginTop:8}}>⚠ Every line needs both a pax count and a rate before this version can be marked final.</div>
+              )}
+            </div>
+
+            <div style={{borderTop:`1px solid ${G.gray200}`,paddingTop:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Last Changes</div>
+              {finalPriceAudits.length===0 ? (
+                <div style={{fontSize:11,color:G.gray400}}>No changes logged yet — this fills in as the agreement is saved.</div>
+              ) : finalPriceAudits.map((a,i)=>(
+                <div key={i} style={{fontSize:11,color:G.gray600,marginBottom:6,paddingLeft:10,borderLeft:`2px solid ${G.gray200}`}}>
+                  <strong>{a.by}</strong> · {a.at ? new Date(a.at).toLocaleString("en-IN") : ""}<br/>{a.action}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ height:24 }} />
+          </div>
+        )}
 
         {/* PREVIEW TAB */}
         {activeTab==='preview' && (

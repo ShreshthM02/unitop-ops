@@ -42,7 +42,7 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
             onDrop={e => handleDrop(e, stage.id)}
             onDragLeave={() => setDragOver(null)}
             style={{
-              minWidth:220, width:220, flexShrink:0,
+              minWidth:190, flex:"1 1 0",
               display:"flex", flexDirection:"column",
               background: isDragTarget ? stage.bg : "#F8F9FA",
               border:`2px solid ${isDragTarget ? stage.color : "#E5E7EB"}`,
