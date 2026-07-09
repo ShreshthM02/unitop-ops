@@ -190,23 +190,18 @@ export const INITIAL_AGENTS = [
 export const VENDOR_TYPES = ["Hotel","Restaurant","Transport","Tour Facilitator","Local Handler","Activity","Other"];
 export const INITIAL_VENDORS = [
   { id:"VND-001", name:"Saura / Golden Tulip", type:"Hotel", city:"Agra", contactName:"Sales Manager",
-    contactPhone:"+91-562-XXXXXXX", contactEmail:"sales@sauraagra.com", gstin:"", notes:"Contracted rates on file." },
+    contactPhone:"+91-562-XXXXXXX", contactEmail:"sales@sauraagra.com", gstin:"", notes:"Contracted rates on file.", active:true },
   { id:"VND-002", name:"Nanking Restaurant", type:"Restaurant", city:"New Delhi", contactName:"Manager",
-    contactPhone:"+91-11-XXXXXXX", contactEmail:"", gstin:"", notes:"Chinese cuisine specialist." },
-];
-
-// ─── TOUR FACILITATORS (guides/escorts) — lightweight master list ───────────
-// Separate from Vendors: facilitators are individuals (not businesses), and
-// the fields that matter for them (languages spoken, areas covered) don't
-// overlap cleanly with a Vendor record's GSTIN/contracted-rates shape.
-// Tour Briefing Sheet's guide fields select from this list by id instead of
-// free-typing a name, so "days worked" / "payments" can be reliably
-// aggregated per person in reports — free text let the same person appear
-// as "Prithvi", "Prithvee", and "PRITHVI" across different tours.
-export const INITIAL_FACILITATORS = [
-  { id:"FAC-001", name:"Prithvi", phone:"+91-98XXXXXXXX", email:"", languages:"English, Hindi", areas:"Bodhgaya, Rajgir, Nalanda", notes:"", active:true },
-  { id:"FAC-002", name:"Ashutosh", phone:"+91-98XXXXXXXX", email:"", languages:"English, Thai", areas:"Bodhgaya, Varanasi", notes:"", active:true },
-  { id:"FAC-003", name:"Manoj", phone:"+91-98XXXXXXXX", email:"", languages:"English, Hindi", areas:"Delhi, Agra", notes:"", active:true },
+    contactPhone:"+91-11-XXXXXXX", contactEmail:"", gstin:"", notes:"Chinese cuisine specialist.", active:true },
+  // Tour Facilitators are vendors too (type: "Tour Facilitator") -- individuals,
+  // not businesses, so `languages`/`areas` matter more than gstin/city for
+  // this type. Tour Briefing Sheet selects from these by id instead of
+  // free-typing a name, so "days worked"/"payments" reports can reliably
+  // total per person -- free text let the same person appear as "Prithvi",
+  // "Prithvee", and "PRITHVI" across different tours.
+  { id:"VND-003", name:"Prithvi", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Bodhgaya, Rajgir, Nalanda", active:true },
+  { id:"VND-004", name:"Ashutosh", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Thai", areas:"Bodhgaya, Varanasi", active:true },
+  { id:"VND-005", name:"Manoj", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Delhi, Agra", active:true },
 ];
 
 // ─── VEHICLE TYPES (for cost sheet and exchange order) ───────────────────────
@@ -495,7 +490,6 @@ export const STATUS_WF_MAP = {
 export const PIPELINE_STAGES = [
   { id:"new_query",  label:"New Query",       color:"#1A5276", bg:"#EBF5FB", hint:"Incoming queries awaiting qualification" },
   { id:"costing",    label:"Costing & Quote", color:"#784212", bg:"#FEF9E7", hint:"Cost sheet being prepared or quote sent" },
-  { id:"followup",   label:"Follow-up",       color:"#6C3483", bg:"#F5EEF8", hint:"Awaiting client response or decision" },
   { id:"operations", label:"Operations",      color:"#0E6655", bg:"#EAFAF1", hint:"Confirmed — tour file being serviced" },
   { id:"finance",    label:"Finance",         color:"#4A235A", bg:"#F0E6F6", hint:"Services done — pending payment closure" },
   { id:"completed",  label:"Completed",       color:"#145A32", bg:"#E9F7EF", hint:"Tour done, payment received" },

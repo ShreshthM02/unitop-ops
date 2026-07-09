@@ -8,28 +8,34 @@ describe('blankTourExecution', () => {
     expect(blank.days).toEqual([]);
     expect(blank.facilitators).toEqual([]);
     expect(blank.localHandlers).toEqual([]);
+    expect(blank.transporters).toEqual([]); // now a list, matching Local Handler's shape
     expect(blank.flights).toEqual([]);
   });
 });
 
 describe('mapDbTourExecutionRow', () => {
   it('maps snake_case DB fields to camelCase, defaulting null jsonb arrays to []', () => {
-    const row = { query_id: 'UTQ-2026-100', days: null, facilitators: [{id:1,vendorId:'VND-003',sector:'Bodhgaya'}], local_handlers: null, flights: null, arr_flight_details: 'AI-101', dep_flight_details: null, transporter_vendor_id: 'VND-010', transporter_notes: 'Confirmed' };
+    const row = { query_id: 'UTQ-2026-100', days: null, facilitators: [{id:1,vendorId:'VND-003',sector:'Bodhgaya'}], local_handlers: null, transporters: [{id:1,vendorId:'VND-010',sector:'Delhi',notes:'A/C coach'}], flights: null, arr_flight_details: 'AI-101', dep_flight_details: null };
     const mapped = mapDbTourExecutionRow(row);
     expect(mapped.days).toEqual([]);
     expect(mapped.facilitators).toEqual([{id:1,vendorId:'VND-003',sector:'Bodhgaya'}]);
     expect(mapped.localHandlers).toEqual([]);
+    expect(mapped.transporters).toEqual([{id:1,vendorId:'VND-010',sector:'Delhi',notes:'A/C coach'}]);
     expect(mapped.arrFlightDetails).toBe('AI-101');
     expect(mapped.depFlightDetails).toBe('');
-    expect(mapped.transporterVendorId).toBe('VND-010');
+  });
+
+  it('defaults transporters to [] when null (multiple transporters per sector, like Local Handler)', () => {
+    const mapped = mapDbTourExecutionRow({ query_id: 'X', transporters: null });
+    expect(mapped.transporters).toEqual([]);
   });
 });
 
 describe('mergeTourExecutionRows', () => {
   it('keys the map by query_id and handles multiple rows independently', () => {
     const rows = [
-      { query_id: 'A', days: [{id:1,dayLabel:'Day 1'}], facilitators: [], local_handlers: [], flights: [] },
-      { query_id: 'B', days: [], facilitators: [{id:1,vendorId:'VND-003'}], local_handlers: [], flights: [] },
+      { query_id: 'A', days: [{id:1,dayLabel:'Day 1'}], facilitators: [], local_handlers: [], transporters: [], flights: [] },
+      { query_id: 'B', days: [], facilitators: [{id:1,vendorId:'VND-003'}], local_handlers: [], transporters: [], flights: [] },
     ];
     const map = mergeTourExecutionRows(rows);
     expect(map['A'].days.length).toBe(1);
@@ -44,7 +50,7 @@ describe('mergeTourExecutionRows', () => {
 });
 
 describe('saveTourExecutionToDB', () => {
-  it('upserts with correct snake_case field mapping', async () => {
+  it('upserts with correct snake_case field mapping, transporters as a list, flights with fromTime/toTime', async () => {
     const upsert = vi.fn(async () => ({ data: [], error: null }));
     const db = { from: () => ({ upsert }) };
     const data = {
@@ -52,17 +58,21 @@ describe('saveTourExecutionToDB', () => {
       days: [{id:1,dayLabel:'Day 1',date:'2026-08-10',route:'Delhi-Agra',hotelName:'Taj View',rooms:'5 Twin',notes:''}],
       facilitators: [{id:1,vendorId:'VND-003',sector:'Bodhgaya'}],
       localHandlers: [{id:1,vendorId:'VND-020',sector:'Rajgir',notes:''}],
-      flights: [{id:1,date:'2026-08-12',type:'Flight',number:'6E123',from:'DEL',to:'VNS',time:'10:00'}],
+      transporters: [{id:1,vendorId:'VND-010',sector:'Delhi',notes:'Confirmed A/C coach'}],
+      flights: [{id:1,date:'2026-08-12',type:'Flight',number:'6E123',from:'DEL',fromTime:'10:00',to:'VNS',toTime:'11:30'}],
       arrFlightDetails: 'AI-101 10:00', depFlightDetails: 'AI-102 18:00',
-      transporterVendorId: 'VND-010', transporterNotes: 'Confirmed A/C coach',
     };
     await saveTourExecutionToDB(db, data);
     expect(upsert).toHaveBeenCalledWith({
       query_id: 'UTQ-2026-100',
-      days: data.days, facilitators: data.facilitators, local_handlers: data.localHandlers, flights: data.flights,
+      days: data.days, facilitators: data.facilitators, local_handlers: data.localHandlers,
+      transporters: data.transporters, flights: data.flights,
       arr_flight_details: 'AI-101 10:00', dep_flight_details: 'AI-102 18:00',
-      transporter_vendor_id: 'VND-010', transporter_notes: 'Confirmed A/C coach',
     });
+    // Confirm the flight leg actually carries both timing fields through untouched
+    const savedFlight = upsert.mock.calls[0][0].flights[0];
+    expect(savedFlight.fromTime).toBe('10:00');
+    expect(savedFlight.toTime).toBe('11:30');
   });
 
   it('does not throw when the db call fails', async () => {
@@ -76,6 +86,6 @@ describe('saveTourExecutionToDB', () => {
     await saveTourExecutionToDB(db, blankTourExecution('UTQ-X'));
     const call = upsert.mock.calls[0][0];
     expect(call.arr_flight_details).toBeNull();
-    expect(call.transporter_vendor_id).toBeNull();
+    expect(call.transporters).toEqual([]); // empty list, not null -- consistent with other list fields
   });
 });

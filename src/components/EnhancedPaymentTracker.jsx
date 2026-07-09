@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQuotationVersions, db } = Lib;
 
 function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO }) {
   const deleteEntry = () => {
@@ -140,6 +140,19 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const setNI=(k,v)=>setNewIn(p=>({...p,[k]:v}));
   const setNO=(k,v)=>setNewOut(p=>({...p,[k]:v}));
 
+  // Reference only -- deliberately NOT auto-syncing into pt.tourValue.
+  // Tour Value here is independently editable (may be a different currency,
+  // may include adjustments this tracker doesn't know about), so silently
+  // overwriting it risked the exact "which number do I trust" confusion
+  // this was meant to fix. Shown so staff can cross-check by eye instead.
+  const [finalQuotation, setFinalQuotation] = useState(null);
+  useEffect(() => {
+    loadQuotationVersions(db, query.id).then(versions => {
+      const final = versions.find(v => v.isFinal);
+      setFinalQuotation(final || null);
+    });
+  }, [query.id]);
+
   const totalIn  = pt.entries.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
   const totalOut = (pt.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
   const tourValueINR = (parseFloat(pt.tourValue)||0)*(parseFloat(pt.roeUsed)||1);
@@ -176,6 +189,11 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
         </div>
 
         <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+          {finalQuotation && finalQuotation.tourValue && (
+            <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1A5276"}}>
+              📋 Final quotation (v{finalQuotation.version}) agreed: <strong>{finalQuotation.agreedSlabLabel}</strong> · {finalQuotation.confirmedPax} pax · Tour Value <strong>{finalQuotation.tourValue}</strong>. Cross-check against the Tour Value below — not auto-filled, since currency/adjustments here may differ.
+            </div>
+          )}
           {/* Tour value */}
           <div style={{background:G.gray50,borderRadius:8,border:`1px solid ${G.gray200}`,padding:12,marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Tour Value</div>

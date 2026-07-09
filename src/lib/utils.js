@@ -269,11 +269,10 @@ export function blankTourExecution(queryId) {
     days: [],
     facilitators: [],
     localHandlers: [],
+    transporters: [],
     flights: [],
     arrFlightDetails: "",
     depFlightDetails: "",
-    transporterVendorId: "",
-    transporterNotes: "",
   };
 }
 
@@ -283,11 +282,10 @@ export function mapDbTourExecutionRow(row) {
     days: row.days || [],
     facilitators: row.facilitators || [],
     localHandlers: row.local_handlers || [],
+    transporters: row.transporters || [],
     flights: row.flights || [],
     arrFlightDetails: row.arr_flight_details || "",
     depFlightDetails: row.dep_flight_details || "",
-    transporterVendorId: row.transporter_vendor_id || "",
-    transporterNotes: row.transporter_notes || "",
   };
 }
 
@@ -314,11 +312,10 @@ export async function saveTourExecutionToDB(db, data) {
       days: data.days || [],
       facilitators: data.facilitators || [],
       local_handlers: data.localHandlers || [],
+      transporters: data.transporters || [],
       flights: data.flights || [],
       arr_flight_details: data.arrFlightDetails || null,
       dep_flight_details: data.depFlightDetails || null,
-      transporter_vendor_id: data.transporterVendorId || null,
-      transporter_notes: data.transporterNotes || null,
     });
   } catch (e) { console.warn("Save tour execution to DB failed:", e); }
 }
@@ -542,6 +539,7 @@ export function mapDbQuotationRow(row) {
     version: row.version, isFinal: row.is_final || false, note: row.note || "",
     savedAt: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by,
+    agreedSlabLabel: row.agreed_slab_label || "", confirmedPax: row.confirmed_pax ?? "", tourValue: row.tour_value ?? "",
     attnName: row.attn_name || "", attnCompany: row.attn_company || "", attnCity: row.attn_city || "",
     date: row.date || "", currency: row.currency || "US $", roe: row.roe ?? "", refLine: row.ref_line || "",
     period: row.period || "", paxLine: row.pax_line || "",
@@ -575,6 +573,9 @@ export async function saveQuotationVersion(db, queryId, snap, createdBy) {
     const { data } = await db.from("quotations").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       cost_sheet_id: snap.costSheetId || null,
+      agreed_slab_label: snap.agreedSlabLabel || null,
+      confirmed_pax: snap.confirmedPax ? parseInt(snap.confirmedPax) : null,
+      tour_value: snap.tourValue ? parseFloat(snap.tourValue) : null,
       attn_name: snap.attnName, attn_company: snap.attnCompany, attn_city: snap.attnCity,
       date: snap.date || null, currency: snap.currency, roe: snap.roe || null, ref_line: snap.refLine,
       period: snap.period, pax_line: snap.paxLine,
@@ -621,6 +622,7 @@ export function buildPricingTimeline(costSheetVersions, quotationVersions, staff
   const qEntries = (quotationVersions || []).map(v => ({
     type: "quotation", version: v.version, isFinal: v.isFinal, note: v.note,
     createdAt: v.createdAt, by: staffName(v.createdBy), costSheetId: v.costSheetId,
+    agreedSlabLabel: v.agreedSlabLabel, confirmedPax: v.confirmedPax, tourValue: v.tourValue,
   }));
   return [...csEntries, ...qEntries].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
 }

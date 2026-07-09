@@ -261,9 +261,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     savePaymentsToDB(db, queryId, data); // fire-and-forget persistence, mirrors saveQueryToDB's pattern
   };
 
-  const updateTourExecution = (queryId, data) => {
+  const updateTourExecution = (queryId, data, auditAction) => {
     setTourExecutions(p => ({ ...p, [queryId]: data }));
     saveTourExecutionToDB(db, data);
+    if (auditAction) db.from("query_audit").insert({ query_id: queryId, by_name: currentUser.name, action: auditAction });
   };
 
   // Was referenced by QueryDrawerWithQuote's "Save Changes" button but never

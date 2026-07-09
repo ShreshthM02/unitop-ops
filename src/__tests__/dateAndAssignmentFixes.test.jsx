@@ -46,7 +46,7 @@ describe('Assigned To is now editable in the query edit form (was missing entire
 
   it('shows an Assigned To dropdown when editing, populated from the real staff list', () => {
     render(<QueryDrawerWithQuote query={tourFileQuery} onClose={()=>{}} onConvert={()=>{}} onAdvance={()=>{}} onGenerateQuote={()=>{}} onToggleWF={()=>{}} onCancel={()=>{}} onUpdateRemarks={()=>{}} onUpdateQuery={()=>{}} staff={staff} currentUser={{id:'staff-1',name:'Priya'}}/>);
-    fireEvent.click(screen.getByText('✏ Edit Query Details'));
+    fireEvent.click(screen.getByText('✏ Edit Tour Details'));
     expect(screen.getByText('Assigned To')).toBeTruthy();
     expect(screen.getByText('Priya')).toBeTruthy();
     expect(screen.getByText('Ravi')).toBeTruthy();
@@ -55,7 +55,7 @@ describe('Assigned To is now editable in the query edit form (was missing entire
   it('changing Assigned To and saving calls onUpdateQuery with the new value', () => {
     const onUpdateQuery = vi.fn();
     render(<QueryDrawerWithQuote query={tourFileQuery} onClose={()=>{}} onConvert={()=>{}} onAdvance={()=>{}} onGenerateQuote={()=>{}} onToggleWF={()=>{}} onCancel={()=>{}} onUpdateRemarks={()=>{}} onUpdateQuery={onUpdateQuery} staff={staff} currentUser={{id:'staff-1',name:'Priya'}}/>);
-    fireEvent.click(screen.getByText('✏ Edit Query Details'));
+    fireEvent.click(screen.getByText('✏ Edit Tour Details'));
     const selects = document.querySelectorAll('select');
     const assignedToSelect = Array.from(selects).find(s => Array.from(s.options).some(o => o.textContent === 'Ravi'));
     fireEvent.change(assignedToSelect, { target: { value: 'staff-2' } });

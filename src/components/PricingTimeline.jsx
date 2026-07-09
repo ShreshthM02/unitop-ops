@@ -48,6 +48,11 @@ export default function PricingTimeline({ query, staff }) {
                   <span style={{fontSize:10,color:G.gray400,marginLeft:"auto"}}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : ""}</span>
                 </div>
                 <div style={{fontSize:12,color:G.gray600}}>by <strong>{entry.by}</strong></div>
+                {entry.type==="quotation" && entry.isFinal && entry.tourValue && (
+                  <div style={{marginTop:6,fontSize:12,color:"#166534",background:"#DCFCE7",borderRadius:6,padding:"6px 10px",fontWeight:600}}>
+                    ✓ Agreed: {entry.agreedSlabLabel} · {entry.confirmedPax} pax · Tour Value {entry.tourValue}
+                  </div>
+                )}
                 {entry.note && <div style={{marginTop:6,fontSize:12,color:G.gray800,background:G.gray50,borderRadius:6,padding:"6px 10px",borderLeft:`3px solid ${meta.color}`}}>{entry.note}</div>}
               </div>
             </div>

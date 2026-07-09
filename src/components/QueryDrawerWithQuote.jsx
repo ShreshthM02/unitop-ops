@@ -23,11 +23,11 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [editForm, setEditForm] = useState({...query});
   const [showUploadsInline, setShowUploadsInline] = useState(false);
   const [infoSubTab, setInfoSubTab] = useState("details");
-  const blankTE = { queryId: query.id, days: [], facilitators: [], localHandlers: [], flights: [], arrFlightDetails: "", depFlightDetails: "", transporterVendorId: "", transporterNotes: "" };
+  const blankTE = { queryId: query.id, days: [], facilitators: [], localHandlers: [], transporters: [], flights: [], arrFlightDetails: "", depFlightDetails: "" };
   const [te, setTe] = useState(tourExecution || blankTE);
   useEffect(() => { setTe(tourExecution || blankTE); }, [query.id]); // resync working copy if the drawer is opened for a different tour
   const teDirty = JSON.stringify(te) !== JSON.stringify(tourExecution || blankTE);
-  const saveTE = () => onUpdateTourExecution && onUpdateTourExecution(query.id, te);
+  const saveTE = (label) => onUpdateTourExecution && onUpdateTourExecution(query.id, te, label);
   const setTeField = (k, v) => setTe(p => ({ ...p, [k]: v }));
   const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
   const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", notes: "" }] }));
@@ -43,8 +43,8 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
   // Tabs: query vs tour file, order per spec
   const TABS = isCaseFile
-    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"pricing",label:"💹 Pricing"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
-    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"pricing",label:"💹 Pricing"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
+    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
+    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
 
   const sec = t => (
     <div style={{fontSize:10,fontWeight:700,color:G.gray400,textTransform:"uppercase",letterSpacing:"1px",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${G.gray100}`}}>{t}</div>
@@ -128,7 +128,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
             <div>
               {isCaseFile && (
                 <div style={{display:"flex",gap:2,marginBottom:14,background:G.gray50,borderRadius:8,padding:3}}>
-                  {[["details","Query Details"],["itinerary","Day-wise Itinerary"],["hotels","Day-wise Hotels"],["others","Others"]].map(([id,label])=>(
+                  {[["details","Tour Details"],["itinerary","Day-wise Itinerary"],["hotels","Day-wise Hotels"],["others","Others"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setInfoSubTab(id)}
                       style={{flex:1,padding:"6px 8px",borderRadius:6,border:"none",cursor:"pointer",
                         background:infoSubTab===id?G.white:"transparent",color:infoSubTab===id?G.navy:G.gray400,
@@ -142,7 +142,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {(!isCaseFile || infoSubTab==="details") && (
               editingQuery ? (
                 <div>
-                  {sec("Edit Query Details")}
+                  {sec(isCaseFile?"Edit Tour Details":"Edit Query Details")}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
                     {[
                       ["Foreign Agency","agentCompany","text"],
@@ -204,7 +204,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                 </div>
               ) : (
                 <div>
-                  {sec("Query Details")}
+                  {sec(isCaseFile?"Tour Details":"Query Details")}
                   <div className="info-grid">
                     <div className="info-item"><label>Status</label><StatusBadge status={query.status}/></div>
                     <div className="info-item"><label>Source</label><span style={{color:SOURCE_COLORS[query.source]||G.gray600}}>● {query.source}{query.sourceOther?" ("+query.sourceOther+")":""}</span></div>
@@ -227,7 +227,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   )}
                   <div style={{marginTop:10}}>
                     <button className="btn btn-ghost" style={{fontSize:11,width:"100%"}}
-                      onClick={()=>setEditingQuery(true)}>✏ Edit Query Details</button>
+                      onClick={()=>setEditingQuery(true)}>✏ Edit {isCaseFile?"Tour":"Query"} Details</button>
                   </div>
                   <div style={{marginTop:10}}>
                     {!isCaseFile&&query.status==="operations"&&(
@@ -270,7 +270,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={addDay}>+ Add Day</button>
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={saveTE}>💾 Save Itinerary</button>}
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated day-wise itinerary")}>💾 Save Itinerary</button>}
                 </div>
               )}
 
@@ -289,18 +289,26 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <input style={teInp} value={d.rooms||""} placeholder="e.g. 5 Twin, 1 Sgl" onChange={e=>updDay(i,"rooms",e.target.value)}/>
                     </div>
                   ))}
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={saveTE}>💾 Save Hotels</button>}
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={()=>saveTE("Updated day-wise hotels")}>💾 Save Hotels</button>}
                 </div>
               )}
 
               {isCaseFile && infoSubTab==="others" && (
                 <div>
                   {sec("Transporter")}
-                  <select style={{...teInp,marginBottom:6}} value={te.transporterVendorId||""} onChange={e=>setTeField("transporterVendorId",e.target.value)}>
-                    <option value="">Select...</option>
-                    {activeTransportVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-                  </select>
-                  <textarea style={{...teInp,minHeight:44,resize:"vertical",marginBottom:14}} value={te.transporterNotes||""} placeholder="Transport notes (vehicle count, type, etc.)" onChange={e=>setTeField("transporterNotes",e.target.value)}/>
+                  {activeTransportVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Transport vendors yet — add one under Master Data → Vendors.</div>}
+                  {te.transporters.map((t,i)=>(
+                    <div key={t.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6,marginBottom:6}}>
+                      <select style={teInp} value={t.vendorId||""} onChange={e=>updList("transporters",i,"vendorId",e.target.value)}>
+                        <option value="">Select...</option>
+                        {activeTransportVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                      <input style={teInp} value={t.sector||""} placeholder="Sector" onChange={e=>updList("transporters",i,"sector",e.target.value)}/>
+                      <input style={teInp} value={t.notes||""} placeholder="Notes (vehicle count, type, etc.)" onChange={e=>updList("transporters",i,"notes",e.target.value)}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("transporters",i)}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("transporters",{vendorId:"",sector:"",notes:""})}>+ Add Transporter</button>
 
                   {sec("Tour Facilitators")}
                   {activeFacilitatorVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Tour Facilitator vendors yet — add one under Master Data → Vendors.</div>}
@@ -333,18 +341,24 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
                   {sec("Domestic Train / Flight Legs")}
                   {te.flights.map((f,i)=>(
-                    <div key={f.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6}}>
-                      <input style={teInp} type="date" value={f.date||""} onChange={e=>updList("flights",i,"date",e.target.value)}/>
-                      <select style={teInp} value={f.type||"Flight"} onChange={e=>updList("flights",i,"type",e.target.value)}>
-                        <option>Flight</option><option>Train</option>
-                      </select>
-                      <input style={teInp} value={f.number||""} placeholder="No." onChange={e=>updList("flights",i,"number",e.target.value)}/>
-                      <input style={teInp} value={f.from||""} placeholder="From" onChange={e=>updList("flights",i,"from",e.target.value)}/>
-                      <input style={teInp} value={f.to||""} placeholder="To" onChange={e=>updList("flights",i,"to",e.target.value)}/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("flights",i)}>✕</span>
+                    <div key={f.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:6,padding:8,marginBottom:6}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:6,marginBottom:6}}>
+                        <input style={teInp} type="date" value={f.date||""} onChange={e=>updList("flights",i,"date",e.target.value)}/>
+                        <select style={teInp} value={f.type||"Flight"} onChange={e=>updList("flights",i,"type",e.target.value)}>
+                          <option>Flight</option><option>Train</option>
+                        </select>
+                        <input style={teInp} value={f.number||""} placeholder="No." onChange={e=>updList("flights",i,"number",e.target.value)}/>
+                        <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("flights",i)}>✕</span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6}}>
+                        <input style={teInp} value={f.from||""} placeholder="From" onChange={e=>updList("flights",i,"from",e.target.value)}/>
+                        <input style={teInp} type="time" value={f.fromTime||""} title="Departure time from origin" onChange={e=>updList("flights",i,"fromTime",e.target.value)}/>
+                        <input style={teInp} value={f.to||""} placeholder="To" onChange={e=>updList("flights",i,"to",e.target.value)}/>
+                        <input style={teInp} type="time" value={f.toTime||""} title="Arrival time at destination" onChange={e=>updList("flights",i,"toTime",e.target.value)}/>
+                      </div>
                     </div>
                   ))}
-                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("flights",{date:"",type:"Flight",number:"",from:"",to:"",time:""})}>+ Add Leg</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("flights",{date:"",type:"Flight",number:"",from:"",fromTime:"",to:"",toTime:""})}>+ Add Leg</button>
 
                   {sec("Arrival / Departure Flight Details")}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
@@ -352,7 +366,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Departure</div><input style={teInp} value={te.depFlightDetails||""} placeholder="e.g. AI-102, 6:00 PM" onChange={e=>setTeField("depFlightDetails",e.target.value)}/></div>
                   </div>
 
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={saveTE}>💾 Save Others</button>}
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated transporter/facilitators/handlers/flights")}>💾 Save Others</button>}
                 </div>
               )}
             </div>
@@ -400,14 +414,6 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
             </div>
           )}
 
-          {/* ── PRICING TIMELINE ── */}
-          {tab==="pricing"&&(
-            <div>
-              {sec("Pricing History")}
-              <PricingTimeline query={query} staff={staff}/>
-            </div>
-          )}
-
           {/* ── SERVICES (tour file only) ── */}
           {tab==="services"&&isCaseFile&&(
             <ServicesList query={query} sec={sec}/>
@@ -428,6 +434,10 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               <button className="convert-case-btn" style={{background:"#6C3483"}} onClick={()=>openPanel("payments")}>
                 ₹ Open Full Payment Tracker & P&L
               </button>
+              <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${G.gray200}`}}>
+                {sec("Pricing History")}
+                <PricingTimeline query={query} staff={staff}/>
+              </div>
             </div>
           )}
 

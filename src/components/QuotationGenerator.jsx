@@ -39,6 +39,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     signoff:   template.signoff,
     monumentNote: template.monumentNote,
     costSheetId: costSheetId || null,
+    agreedSlabLabel: "", confirmedPax: "", tourValue: "",
   });
 
   // Real version history, mirroring Cost Sheet exactly -- real negotiations
@@ -218,7 +219,13 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                     style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
                     v{v.version}
                   </div>
-                  <div onClick={()=>{setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);}} title="Mark as final"
+                  <div onClick={()=>{
+                      if (!v.agreedSlabLabel || !v.confirmedPax || !v.tourValue) {
+                        alert('Before marking this version final: open it, fill in "Final Price Agreement" below (which slab was agreed, confirmed pax, and tour value), then save it again.');
+                        return;
+                      }
+                      setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
+                    }} title="Mark as final"
                     style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
                     {finalVersion===v.version?"★":"☆"}
                   </div>
@@ -372,6 +379,38 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
           ))}
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addSlab}>+ Add Slab</button>
+
+          {/* ── FINAL PRICE AGREEMENT ── */}
+          {secTitle("💰 Final Price Agreement")}
+          <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16}}>
+            <div style={{fontSize:11,color:"#784212",marginBottom:10}}>
+              Required before this version can be marked final ★ — when a quotation has multiple pax-tier slabs, this is what pins down which one was actually agreed, so the tour value ties cleanly to invoicing later.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8,marginBottom:8}}>
+              <div>
+                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Agreed Slab</div>
+                <select style={{...inputStyle,width:"100%"}} value={q.agreedSlabLabel} onChange={e=>setQ(p=>({...p,agreedSlabLabel:e.target.value}))}>
+                  <option value="">Select which slab was agreed...</option>
+                  {q.slabs.filter(s=>s.label).map((s,i)=><option key={i} value={s.label}>{s.label} — {q.currency} {s.price||0}/pax</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Confirmed Pax</div>
+                <input style={{...inputStyle,width:"100%"}} type="number" value={q.confirmedPax} onChange={e=>setQ(p=>({...p,confirmedPax:e.target.value}))} placeholder="e.g. 17"/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Tour Value ({q.currency})</div>
+                <input style={{...inputStyle,width:"100%"}} type="number" value={q.tourValue} onChange={e=>setQ(p=>({...p,tourValue:e.target.value}))} placeholder="0"/>
+              </div>
+              <button className="btn btn-ghost" style={{fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{
+                const slab = q.slabs.find(s=>s.label===q.agreedSlabLabel);
+                if (!slab || !q.confirmedPax) { alert("Select an agreed slab and enter confirmed pax first."); return; }
+                setQ(p=>({...p, tourValue: String((parseFloat(slab.price)||0) * (parseInt(q.confirmedPax)||0))}));
+              }}>= Calculate (slab × pax)</button>
+            </div>
+          </div>
 
           {/* ── MONUMENTS ── */}
           {secTitle("🏛 Monument Fees")}
