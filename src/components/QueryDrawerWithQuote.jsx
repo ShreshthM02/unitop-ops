@@ -294,7 +294,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               )}
 
               {isCaseFile && infoSubTab==="itinerary" && (
-                <div>
+                <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Day-wise Itinerary")}
                   <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
                     This is the confirmed operational record for this tour. Cost Sheet's own day fields are a separate pricing draft and may not automatically match this — check both if something looks off.
@@ -304,16 +304,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
                       <input style={teInp} type="date" value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
                       <input style={teInp} value={d.route||""} placeholder="e.g. Delhi – Agra" onChange={e=>updDay(i,"route",e.target.value)}/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>
+                      {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>}
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={addDay}>+ Add Day</button>
                   {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated day-wise itinerary")}>💾 Save Itinerary</button>}
-                </div>
+                </fieldset>
               )}
 
               {isCaseFile && infoSubTab==="hotels" && (
-                <div>
+                <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Day-wise Hotels")}
                   <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
                     Same operational record as the Itinerary tab. Cost Sheet's own hotel fields are a separate pricing draft and may not automatically match this.
@@ -328,11 +328,11 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                   ))}
                   {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={()=>saveTE("Updated day-wise hotels")}>💾 Save Hotels</button>}
-                </div>
+                </fieldset>
               )}
 
               {isCaseFile && infoSubTab==="others" && (
-                <div>
+                <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Transporter")}
                   {activeTransportVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Transport vendors yet — add one under Master Data → Vendors.</div>}
                   {te.transporters.map((t,i)=>(
@@ -343,7 +343,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       </select>
                       <input style={teInp} value={t.sector||""} placeholder="Sector" onChange={e=>updList("transporters",i,"sector",e.target.value)}/>
                       <input style={teInp} value={t.notes||""} placeholder="Notes (vehicle count, type, etc.)" onChange={e=>updList("transporters",i,"notes",e.target.value)}/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("transporters",i)}>✕</span>
+                      {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("transporters",i)}>✕</span>}
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("transporters",{vendorId:"",sector:"",notes:""})}>+ Add Transporter</button>
@@ -357,7 +357,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                         {activeFacilitatorVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                       </select>
                       <input style={teInp} value={f.sector||""} placeholder="Sector (optional)" onChange={e=>updList("facilitators",i,"sector",e.target.value)}/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("facilitators",i)}>✕</span>
+                      {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("facilitators",i)}>✕</span>}
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("facilitators",{vendorId:"",sector:""})}>+ Add Facilitator</button>
@@ -372,7 +372,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       </select>
                       <input style={teInp} value={h.sector||""} placeholder="Sector" onChange={e=>updList("localHandlers",i,"sector",e.target.value)}/>
                       <input style={teInp} value={h.notes||""} placeholder="Notes" onChange={e=>updList("localHandlers",i,"notes",e.target.value)}/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("localHandlers",i)}>✕</span>
+                      {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("localHandlers",i)}>✕</span>}
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("localHandlers",{vendorId:"",sector:"",notes:""})}>+ Add Local Handler</button>
@@ -386,7 +386,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                           <option>Flight</option><option>Train</option>
                         </select>
                         <input style={teInp} value={f.number||""} placeholder="No." onChange={e=>updList("flights",i,"number",e.target.value)}/>
-                        <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("flights",i)}>✕</span>
+                        {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("flights",i)}>✕</span>}
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6}}>
                         <input style={teInp} value={f.from||""} placeholder="From" onChange={e=>updList("flights",i,"from",e.target.value)}/>
@@ -405,7 +405,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   </div>
 
                   {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated transporter/facilitators/handlers/flights")}>💾 Save Others</button>}
-                </div>
+                </fieldset>
               )}
             </div>
           )}
