@@ -506,6 +506,7 @@ export const ALL_REPORTS = [
   {id:"cancellations",       cat:"Operations",            icon:"✕", label:"Cancellation Report",         desc:"All cancelled queries/tour files with reason and stage"},
   {id:"conversion_rate",     cat:"Operations",            icon:"📈",label:"Query-to-Booking Conversion", desc:"How many queries convert to tour files, by month and agent"},
   {id:"workload",            cat:"Operations",            icon:"👥",label:"Staff Workload Report",       desc:"Queries and tour files assigned per staff member"},
+  {id:"tour_facilitator_report", cat:"Operations",        icon:"🧭",label:"Tour Facilitator Report",      desc:"Which facilitator worked which tour, sector, dates and days"},
   {id:"pl_summary",          cat:"Financial",             icon:"₹", label:"P&L Summary",                desc:"Revenue, costs, gross profit and margin per tour file"},
   {id:"pl_detailed",         cat:"Financial",             icon:"₹", label:"P&L Detailed (Per Tour File)",desc:"Full income and cost breakdown per tour file"},
   {id:"revenue_monthly",     cat:"Financial",             icon:"📅",label:"Monthly Revenue Report",      desc:"Incoming payments received each month"},

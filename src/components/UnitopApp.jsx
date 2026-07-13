@@ -663,7 +663,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             )}
 
             {view==="reports" && (
-              <ReportsView queries={queries} payments={payments} currentUser={currentUser}/>
+              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions}/>
             )}
 
           </div>{/* end content */}
@@ -701,7 +701,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled}/>}
         {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} onClose={()=>setShowProforma(null)}/>}
         {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} onClose={()=>setShowTaxInv(null)}/>}
-        {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled}/>}
+        {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
         {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)}/>}

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQuotationVersions, summarizeFinalPriceEntries, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db } = Lib;
 
-function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO }) {
+function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO, currentUser }) {
   const deleteEntry = () => {
     const updated = { ...pt, entries: pt.entries.filter(x => x.id !== e.id) };
     setPt(updated);
@@ -91,6 +91,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
 </body></html>`;
     const w = window.open("", "_blank", "width=700,height=900");
     if (w) { w.document.write(html); w.document.close(); }
+    logAudit(db, query.id, currentUser?.name, `Payment receipt printed: ${e.receipt||"n/a"} (${e.inCurrency||"INR"} ${e.amount})`);
   };
 
   return (
@@ -129,7 +130,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   );
 }
 
-export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose, readOnly }) {
+export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose, readOnly, currentUser }) {
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
@@ -248,7 +249,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                 <IncomingEntryRow key={e.id} entry={e}
                   TYPE_COLORS={TYPE_COLORS} TYPE_TEXT={TYPE_TEXT} TYPE_LABELS={TYPE_LABELS}
                   query={query} pt={pt} setPt={setPt} onUpdatePayments={onUpdatePayments}
-                  LOGO_B64={LOGO_B64} COMPANY_INFO={COMPANY_INFO}/>
+                  LOGO_B64={LOGO_B64} COMPANY_INFO={COMPANY_INFO} currentUser={currentUser}/>
               ))}
               <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:8,padding:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#0E6655",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>+ Record Incoming Payment</div>
