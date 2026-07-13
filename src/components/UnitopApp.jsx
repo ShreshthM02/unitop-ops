@@ -516,7 +516,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <div className="content">
             {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
             {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile} staff={staff}/>}
-            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} staff={staff}/>}
+            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>}
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}

@@ -75,3 +75,54 @@ describe('getMovementChartRows', () => {
     expect(rows[1].sNo).toBe(2);
   });
 });
+
+describe('getMovementChartRows: new operational columns (Arr/Dep Flight, Route, Rooming, Transporter)', () => {
+  const users = [{ id: 'u1', name: 'Priya' }];
+  const query = { id: 'UTQ-1', tourFileId: 'TF-1', status: 'operations', travelDate: '2026-08-10', nights: 3, cancelled: false };
+  const vendors = [{ id: 'v1', name: 'Delhi Coaches' }, { id: 'v2', name: 'Rajasthan Rides' }];
+
+  it('pulls arrival/departure flight details from tourExecution', () => {
+    const tourExecutions = { 'UTQ-1': { arrFlightDetails: 'AI-101 10:00', depFlightDetails: 'AI-102 18:00', days: [], transporters: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].arrFlight).toBe('AI-101 10:00');
+    expect(rows[0].depFlight).toBe('AI-102 18:00');
+  });
+
+  it('builds Route from unique day routes, in order, without duplicates', () => {
+    const tourExecutions = { 'UTQ-1': { days: [
+      { route: 'Delhi – Agra' }, { route: 'Agra – Jaipur' }, { route: 'Agra – Jaipur' }, { route: '' },
+    ], transporters: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].route).toBe('Delhi – Agra → Agra – Jaipur');
+  });
+
+  it('builds Rooming from unique hotel+room combos across days', () => {
+    const tourExecutions = { 'UTQ-1': { days: [
+      { hotelName: 'Taj View', rooms: '5 Twin, 1 Sgl' }, { hotelName: 'Taj View', rooms: '5 Twin, 1 Sgl' }, { hotelName: 'Rambagh Palace', rooms: '3 Twin' },
+    ], transporters: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].rooming).toBe('Taj View (5 Twin, 1 Sgl); Rambagh Palace (3 Twin)');
+  });
+
+  it('resolves Transporter vendor ids to real names, deduplicated', () => {
+    const tourExecutions = { 'UTQ-1': { days: [], transporters: [
+      { vendorId: 'v1', sector: 'Delhi' }, { vendorId: 'v1', sector: 'Agra' }, { vendorId: 'v2', sector: 'Jaipur' },
+    ] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].transporter).toBe('Delhi Coaches, Rajasthan Rides');
+  });
+
+  it('leaves all new fields blank without throwing when tourExecutions/vendors are not passed at all', () => {
+    const rows = getMovementChartRows([query], users, 2026, 7);
+    expect(rows[0].arrFlight).toBe('');
+    expect(rows[0].route).toBe('');
+    expect(rows[0].rooming).toBe('');
+    expect(rows[0].transporter).toBe('');
+  });
+
+  it('leaves fields blank when this specific query has no tour_execution row yet, without crashing', () => {
+    const rows = getMovementChartRows([query], users, 2026, 7, {}, vendors);
+    expect(rows[0].route).toBe('');
+    expect(rows[0].transporter).toBe('');
+  });
+});

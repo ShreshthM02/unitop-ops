@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML } = Lib;
 
-export default function GanttView({ queries, tours, onOpenQuery, staff }) {
+export default function GanttView({ queries, tours, onOpenQuery, staff, vendors, tourExecutions }) {
   const [calTab, setCalTab]         = useState("gantt");
+  const [visibleCols, setVisibleCols] = useState({});
+  const [showColPicker, setShowColPicker] = useState(false);
   const [selectedYear,  setYear]    = useState(()=>new Date().getFullYear());
   const [selectedMonth, setMonth]   = useState(()=>new Date().getMonth()); // 0-indexed, defaults to current month
 
@@ -254,10 +256,18 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
 
       {/* ── MOVEMENT CHART TAB ── */}
       {calTab==="movement" && (()=>{
-        const rows = getMovementChartRows(queries, staff||USERS, selectedYear, selectedMonth);
+        const EXTRA_COLS = [
+          {id:"arrFlight", label:"Arr. Flight"},
+          {id:"depFlight", label:"Dep. Flight"},
+          {id:"route", label:"Route"},
+          {id:"rooming", label:"Rooming"},
+          {id:"transporter", label:"Transporter"},
+        ];
+        const rows = getMovementChartRows(queries, staff||USERS, selectedYear, selectedMonth, tourExecutions, vendors);
         const fmtD = (d) => d ? d.toLocaleDateString("en-IN",{day:"2-digit",month:"short"}) : "";
 
         const buildMovementChartHTML = () => {
+          const activeExtra = EXTRA_COLS.filter(c => visibleCols[c.id]);
           const tableRows = rows.map(r => `
             <tr>
               <td style="text-align:center">${r.sNo}</td>
@@ -268,17 +278,22 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
               <td>${r.fto||"—"}</td>
               <td>${r.sector||"—"}</td>
               <td style="text-align:center">${r.pax||"—"}</td>
+              ${activeExtra.map(c=>`<td>${r[c.id]||"—"}</td>`).join("")}
               <td>${r.remarks||""}</td>
             </tr>`).join("");
+          const baseColWidth = 9, extraColWidth = activeExtra.length ? Math.round(29 / (activeExtra.length + 1)) : 0;
+          const remarksWidth = 29 - activeExtra.length * extraColWidth;
           const tableBlock = `
             <div class="inv-title" style="margin-bottom:10pt">Movement Chart — ${MONTH_NAMES[selectedMonth]} ${selectedYear}</div>
             <table class="content-table">
               <thead><tr>
                 <th style="width:4%">S.No</th><th style="width:9%">File Handler</th><th style="width:9%">Tour File</th>
                 <th style="width:7%">Arr. Date</th><th style="width:7%">Dep. Date</th><th style="width:14%">FTO / Agent</th>
-                <th style="width:16%">Sector</th><th style="width:5%">Pax</th><th style="width:29%">Remarks</th>
+                <th style="width:16%">Sector</th><th style="width:5%">Pax</th>
+                ${activeExtra.map(c=>`<th style="width:${extraColWidth}%">${c.label}</th>`).join("")}
+                <th style="width:${remarksWidth}%">Remarks</th>
               </tr></thead>
-              <tbody>${tableRows || `<tr><td colspan="9" style="text-align:center;color:#999;padding:14pt">No active tours in ${MONTH_NAMES[selectedMonth]} ${selectedYear}</td></tr>`}</tbody>
+              <tbody>${tableRows || `<tr><td colspan="${9+activeExtra.length}" style="text-align:center;color:#999;padding:14pt">No active tours in ${MONTH_NAMES[selectedMonth]} ${selectedYear}</td></tr>`}</tbody>
             </table>`;
           return buildLetterheadDocument({
             title: `Movement Chart — ${MONTH_NAMES[selectedMonth]} ${selectedYear}`,
@@ -294,6 +309,20 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
               <div style={{fontSize:12,color:G.gray600,flex:1}}>
                 At-a-glance operational summary for <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong> — click any row to open that Tour File. Full detail (hotels, transport, itinerary) lives in each Tour File's own documents.
               </div>
+              <div style={{position:"relative"}}>
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowColPicker(p=>!p)}>☰ Columns</button>
+                {showColPicker && (
+                  <div style={{position:"absolute",top:"110%",right:0,background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",padding:8,zIndex:10,minWidth:160}}>
+                    <div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",padding:"2px 6px 6px"}}>Optional columns</div>
+                    {EXTRA_COLS.map(c=>(
+                      <label key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",fontSize:12,cursor:"pointer",borderRadius:4}}>
+                        <input type="checkbox" checked={!!visibleCols[c.id]} onChange={()=>setVisibleCols(p=>({...p,[c.id]:!p[c.id]}))}/>
+                        {c.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>printHTML(buildMovementChartHTML())}>🖨 Download PDF</button>
             </div>
             <div style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,overflow:"hidden"}}>
@@ -301,14 +330,18 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
                 <table style={{borderCollapse:"collapse",width:"100%",minWidth:900,fontSize:12}}>
                   <thead>
                     <tr style={{background:G.gray50}}>
-                      {["S.No","File Handler","Tour File","Arr. Date","Dep. Date","FTO / Agent","Sector","Pax","Remarks"].map(h=>(
+                      {["S.No","File Handler","Tour File","Arr. Date","Dep. Date","FTO / Agent","Sector","Pax"].map(h=>(
                         <th key={h} style={{padding:"8px 10px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
+                      {EXTRA_COLS.filter(c=>visibleCols[c.id]).map(c=>(
+                        <th key={c.id} style={{padding:"8px 10px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,whiteSpace:"nowrap"}}>{c.label}</th>
+                      ))}
+                      <th style={{padding:"8px 10px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,whiteSpace:"nowrap"}}>Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.length===0 && (
-                      <tr><td colSpan={9} style={{padding:32,textAlign:"center",color:G.gray400,fontSize:12}}>
+                      <tr><td colSpan={9+EXTRA_COLS.filter(c=>visibleCols[c.id]).length} style={{padding:32,textAlign:"center",color:G.gray400,fontSize:12}}>
                         No active tours in {MONTH_NAMES[selectedMonth]} {selectedYear}
                       </td></tr>
                     )}
@@ -322,6 +355,9 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
                         <td style={{padding:"7px 10px",borderBottom:`1px solid ${G.gray100}`}}>{r.fto||"—"}</td>
                         <td style={{padding:"7px 10px",borderBottom:`1px solid ${G.gray100}`}}>{r.sector||"—"}</td>
                         <td style={{padding:"7px 10px",borderBottom:`1px solid ${G.gray100}`,textAlign:"center"}}>{r.pax||"—"}</td>
+                        {EXTRA_COLS.filter(c=>visibleCols[c.id]).map(c=>(
+                          <td key={c.id} style={{padding:"7px 10px",borderBottom:`1px solid ${G.gray100}`,color:G.gray600,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r[c.id]}>{r[c.id]||"—"}</td>
+                        ))}
                         <td style={{padding:"7px 10px",borderBottom:`1px solid ${G.gray100}`,color:G.gray600}}>{r.remarks||""}</td>
                       </tr>
                     ))}

@@ -223,7 +223,7 @@ export function parseLocalDateStr(str) {
 // Tour Escort/Transport/Hotels live in Tour Briefing Sheet/Cost Sheet,
 // which aren't persisted centrally yet, so they're deliberately left out
 // rather than shown as permanently-blank columns.
-export function getMovementChartRows(queries, users, year, month) {
+export function getMovementChartRows(queries, users, year, month, tourExecutions, vendors) {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
 
@@ -241,6 +241,11 @@ export function getMovementChartRows(queries, users, year, month) {
     .sort((a, b) => a.start - b.start)
     .map((r, i) => {
       const handler = (users || []).find(u => u.id === r.query.assignedTo);
+      const te = (tourExecutions || {})[r.query.id];
+      const days = te?.days || [];
+      const route = [...new Set(days.map(d => d.route).filter(Boolean))].join(" → ");
+      const rooming = [...new Set(days.filter(d => d.hotelName).map(d => `${d.hotelName}${d.rooms ? " (" + d.rooms + ")" : ""}`))].join("; ");
+      const transporter = [...new Set((te?.transporters || []).map(t => (vendors || []).find(v => v.id === t.vendorId)?.name).filter(Boolean))].join(", ");
       return {
         sNo: i + 1,
         query: r.query,
@@ -252,6 +257,11 @@ export function getMovementChartRows(queries, users, year, month) {
         sector: r.query.destination || r.query.sector || "",
         pax: r.query.paxDisplay || r.query.pax || "",
         remarks: r.query.notes || "",
+        arrFlight: te?.arrFlightDetails || "",
+        depFlight: te?.depFlightDetails || "",
+        route,
+        rooming,
+        transporter,
       };
     });
 }
