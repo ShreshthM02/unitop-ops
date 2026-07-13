@@ -49,3 +49,25 @@ describe('buildQuerySavePayload (the exact regression this round)', () => {
     expect(payload.tour_file_id).toBe('TF-1');
   });
 });
+
+describe('buildQuerySavePayload: assigned_to and file_type (real gaps found and fixed)', () => {
+  it('includes assigned_to -- this was silently missing entirely, meaning "Assigned To" edits never actually persisted despite the UI and callback both working correctly', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', assignedTo: 'staff-uuid-1' });
+    expect(payload.assigned_to).toBe('staff-uuid-1');
+  });
+
+  it('sends null for assigned_to when unassigned, not undefined (undefined would be dropped from the JSON body silently)', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1' });
+    expect(payload.assigned_to).toBeNull();
+  });
+
+  it('includes file_type (FIT/GIT) when set', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', fileType: 'GIT' });
+    expect(payload.file_type).toBe('GIT');
+  });
+
+  it('sends null for file_type when not set', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1' });
+    expect(payload.file_type).toBeNull();
+  });
+});

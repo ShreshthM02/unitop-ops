@@ -28,7 +28,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
                                                      //     localStorage but never reached live documents.
     setSaved("✓ Saved");setTimeout(()=>setSaved(""),2500);
   };
-  const prevFn=(d)=>{const s=settings[d];if(!s)return "";return(s.pattern||"{prefix}-{seq}").replace("{prefix}",s.prefix||"DOC").replace("{seq}",String(s.serial||1).padStart(3,"0")).replace("{group}","NCH_Holidays").replace("{date}",new Date().toISOString().split("T")[0]).replace("{year}",new Date().getFullYear()).replace("{sector}","Golden_Triangle").replace("{tourfile}","TUR-2025-019");};
+  const prevFn=(d)=>{const s=settings[d];if(!s)return "";const now=new Date();const ddmmyyyy=`${String(now.getDate()).padStart(2,"0")}-${String(now.getMonth()+1).padStart(2,"0")}-${now.getFullYear()}`;return(s.pattern||"{prefix}-{seq}").replace("{prefix}",s.prefix||"DOC").replace("{seq}",String(s.serial||1).padStart(3,"0")).replace("{group}","NCH_Holidays").replace("{date}",ddmmyyyy).replace("{year}",now.getFullYear()).replace("{sector}","Golden_Triangle").replace("{tourfile}","TUR-2025-019");};
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const lbl={fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4,display:"block"};
   const sm=DOC_TYPES.find(d=>d.id===selectedDoc);

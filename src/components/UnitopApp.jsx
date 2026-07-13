@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadAppSetting, saveAppSetting, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadAppSetting, saveAppSetting, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -473,7 +473,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 <div className="nav-section">{sec.section}</div>
                 {sec.items.map(item=>(
                   <div key={item.id} className={`nav-item ${view===item.id?"active":""}`}
-                    onClick={()=>{setView(item.id);setSidebarOpen(false);}}>
+                    onClick={()=>{
+                      if(item.id==="chat"){setShowChat(true);setSidebarOpen(false);return;}
+                      if(item.id==="usermgmt"){setShowUserMgmt(true);setSidebarOpen(false);return;}
+                      setView(item.id);setSidebarOpen(false);
+                    }}>
                     <span className="nav-icon">{item.icon}</span>{item.label}
                   </div>
                 ))}
@@ -515,13 +519,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} staff={staff}/>}
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
-            {view==="chat" && (
-              <div style={{textAlign:"center",padding:48,color:G.gray400}}>
-                <div style={{fontSize:32,marginBottom:8}}>💬</div>
-                <div style={{fontSize:14,fontWeight:500,color:G.gray600,marginBottom:12}}>Team Chat</div>
-                <button className="btn btn-primary" onClick={()=>setShowChat(true)}>Open Chat →</button>
-              </div>
-            )}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings}/>}
 
@@ -534,7 +531,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   <div key={q.id} onClick={()=>setActiveQuery(q)} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85,cursor:"pointer"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                       <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>CANCELLED</span>
-                      <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</span><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.id} · {q.destination||q.sector}</span></div>
+                      <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</span><FileTypeBadge fileType={q.fileType}/><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.id} · {q.destination||q.sector}</span></div>
                     </div>
                     {q.cancellationReason&&<div style={{fontSize:12,color:"#991B1B",background:"#FFF5F5",borderRadius:6,padding:"6px 10px",marginBottom:6}}>Reason: {q.cancellationReason}</div>}
                     <div style={{fontSize:11,color:G.gray400}}>{q.audit[q.audit.length-1]?.at} · by {q.audit[q.audit.length-1]?.by}</div>
@@ -559,7 +556,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{fontSize:22}}>✅</div>
                       <div style={{flex:1}}>
                         {q.tourFileId&&<div style={{fontSize:11,fontWeight:700,color:G.navy,marginBottom:1}}>{q.tourFileId}</div>}
-                        <div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</div>
+                        <div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/></div>
                         <div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector} · {q.travelDate||q.travelMonth||""}</div>
                       </div>
                       <StatusBadge status={q.status}/>
@@ -579,7 +576,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{fontSize:22}}>📁</div>
                       <div style={{flex:1}}>
                         <div style={{fontSize:14,fontWeight:700,fontFamily:"'Playfair Display',serif"}}>{q.tourFileId}</div>
-                        <div style={{fontSize:13,color:G.gray600}}>{q.clientName||q.groupName} — {q.destination||q.sector}</div>
+                        <div style={{fontSize:13,color:G.gray600}}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/> — {q.destination||q.sector}</div>
                         <div style={{fontSize:11,color:G.gray400}}>Travel: {q.travelDate||q.travelMonth||"TBC"} · {q.pax} pax · {q.nights}N</div>
                       </div>
                       <StatusBadge status={q.status}/>
@@ -626,7 +623,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               <div>
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</div><div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector}</div></div>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector}</div></div>
                     <StatusBadge status={q.status}/>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowProforma(q)}>🧾 Proforma</button>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowTaxInv(q)}>🧾 Tax Inv.</button>
@@ -645,7 +642,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   return (
                     <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}</div><div style={{fontSize:11,color:G.gray400}}>{q.id}</div></div>
+                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.id}</div></div>
                         <StatusBadge status={q.status}/>
                         <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowPayments(q)}>₹ Open Tracker</button>
                       </div>
@@ -662,14 +659,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     </div>
                   );
                 })}
-              </div>
-            )}
-
-            {view==="usermgmt" && can("user_management") && (
-              <div style={{textAlign:"center",padding:48,color:G.gray400}}>
-                <div style={{fontSize:24,marginBottom:8}}>👥</div>
-                <div style={{fontSize:14,fontWeight:500,marginBottom:8}}>User Management</div>
-                <button className="btn btn-primary" onClick={()=>setShowUserMgmt(true)}>Open User Management →</button>
               </div>
             )}
 

@@ -551,7 +551,7 @@ export const PATTERN_PLACEHOLDERS = [
   {key:"{prefix}",   desc:"Document prefix (e.g. QT, PI, TI)"},
   {key:"{seq}",      desc:"Serial number — auto-increments"},
   {key:"{group}",    desc:"Group / client name"},
-  {key:"{date}",     desc:"Today's date (YYYY-MM-DD)"},
+  {key:"{date}",     desc:"Today's date (DD-MM-YYYY)"},
   {key:"{sector}",   desc:"Tour sector / destination"},
   {key:"{id}",       desc:"Query ID"},
   {key:"{tourfile}", desc:"Tour File number"},

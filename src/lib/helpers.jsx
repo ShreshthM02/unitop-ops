@@ -42,6 +42,24 @@ export function StatusBadge({ status }) {
   return <span className="status-badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
 }
 
+// FIT (15 pax or less, yellow) vs GIT (16 pax or more, green) -- a small,
+// deliberately subtle label meant to sit inline next to a tour/query name
+// without competing with it. Manually set and edited by staff, not derived
+// from any pax field, so it never silently misclassifies a group.
+export function FileTypeBadge({ fileType }) {
+  if (!fileType) return null;
+  const isFit = fileType === "FIT";
+  return (
+    <span title={isFit ? "FIT — 15 pax or less" : "GIT — 16 pax or more"} style={{
+      fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+      background: isFit ? "#FEF9E7" : "#EAFAF1",
+      color: isFit ? "#7D6608" : "#0E6655",
+      border: `1px solid ${isFit ? "#F7DC6F" : "#A9DFBF"}`,
+      marginLeft: 5, letterSpacing: "0.3px", whiteSpace: "nowrap", display: "inline-block",
+    }}>{fileType}</span>
+  );
+}
+
 export function Toast({ msg, onDone }) {
   useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, []);
   return <div className="toast">✓ {msg}</div>;

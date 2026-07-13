@@ -73,6 +73,7 @@ export function mapDbQueryRow(q) {
     manualWF: q.manual_wf || [],
     date: q.date || q.created_at?.split("T")[0],
     assignedTo: q.assigned_to,
+    fileType: q.file_type || "",
   };
 }
 
@@ -390,6 +391,8 @@ export function buildQuerySavePayload(q) {
     source:              q.source,
     nationality:         q.nationality,
     date:                q.date,
+    assigned_to:         q.assignedTo || null,
+    file_type:           q.fileType || null,
   };
 }
 

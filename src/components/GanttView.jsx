@@ -142,7 +142,7 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
                   )}
                   {ganttTours.map((tour,ti)=>(
                     <tr key={tour.query.id} style={{background:ti%2===0?G.white:G.gray50}}>
-                      <td style={{padding:"6px 12px",borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle",position:"sticky",left:0,background:ti%2===0?G.white:G.gray50,zIndex:1}}>
+                      <td onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{padding:"6px 12px",borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle",position:"sticky",left:0,background:ti%2===0?G.white:G.gray50,zIndex:1,cursor:onOpenQuery?"pointer":"default"}}>
                         <div style={{fontSize:12,fontWeight:500}}>{tour.query.clientName||tour.query.groupName}</div>
                         <div style={{fontSize:10,color:G.gray400}}>{tour.query.id} · {tour.query.destination||tour.query.sector||""}</div>
                       </td>
@@ -151,9 +151,9 @@ export default function GanttView({ queries, tours, onOpenQuery, staff }) {
                         return (
                           <td key={d} style={{padding:"3px 1px",borderBottom:`1px solid ${G.gray100}`,borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",height:36}}>
                             {bar && (
-                              <div style={{height:18,background:tour.color,opacity:0.85,margin:"0 1px",
+                              <div onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{height:18,background:tour.color,opacity:0.85,margin:"0 1px",
                                 borderRadius:bar.isFirst&&bar.isLast?"4px":bar.isFirst?"4px 0 0 4px":bar.isLast?"0 4px 4px 0":"0",
-                                display:"flex",alignItems:"center",overflow:"hidden"}}>
+                                display:"flex",alignItems:"center",overflow:"hidden",cursor:onOpenQuery?"pointer":"default"}}>
                                 {bar.isFirst&&<span style={{fontSize:9,color:"#fff",paddingLeft:4,whiteSpace:"nowrap",overflow:"hidden",fontWeight:600}}>
                                   {(tour.query.clientName||tour.query.groupName||"").split(" ")[0]}
                                 </span>}
