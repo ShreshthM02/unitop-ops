@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, db } = Lib;
 
-export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser }) {
+export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
 
   // Editable quotation fields (pre-filled from query)
@@ -253,6 +253,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                     v{v.version}
                   </div>
                   <div onClick={()=>{
+                      if (readOnly) return;
                       if (!isFinalPriceComplete(v.finalPriceEntries)) {
                         alert('Before marking this version final: open it, go to the "Final Price" tab, add at least one rate line with pax and rate filled in, then save it again.');
                         return;
@@ -260,7 +261,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                       setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
                       logAudit(db,query.id,currentUser?.name,`Quotation v${v.version} marked final`);
                     }} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
                     {finalVersion===v.version?"★":"☆"}
                   </div>
                 </div>
@@ -273,6 +274,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <button onClick={onClose} className="btn btn-ghost"
             style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
         </div>
+
+        {readOnly && (
+          <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"8px 18px",fontSize:12,color:"#92400E",flexShrink:0}}>
+            🔒 This tour file is cancelled — viewing only, nothing here is editable.
+          </div>
+        )}
 
         {/* Toggles */}
         <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,alignItems:'center',flexWrap:'wrap'}}>
@@ -290,7 +297,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           ))}
         </div>
 
-        {activeTab==='content' && <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+        {activeTab==='content' && <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
 
           {/* ── ADDRESSEE ── */}
           {secTitle("📬 Addressee")}
@@ -475,11 +482,11 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
 
           <div style={{ height:24 }} />
-        </div>}
+        </fieldset>}
 
         {/* FINAL PRICE AGREEMENT TAB */}
         {activeTab==='final' && (
-          <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+          <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
             <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16,fontSize:11,color:"#784212"}}>
               Required before this version can be marked final ★. Compose the actual agreed price as one or more lines — e.g. 18 pax on one slab + 2 pax on Single Supplement — pulling rates from this quotation's own slabs, or typing a custom rate when the agreed amount doesn't match any slab exactly.
             </div>
@@ -572,7 +579,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
 
             <div style={{ height:24 }} />
-          </div>
+          </fieldset>
         )}
 
         {/* PREVIEW TAB */}
@@ -591,11 +598,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           gap:10, flexShrink:0, background:G.gray50, alignItems:"center" }}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
+            disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           <button onClick={printQuotation} className="btn btn-success">🖨 Print / Export PDF</button>
-          <button className="btn btn-primary" onClick={saveVersion}>
-            💾 Save v{version}
-          </button>
+          {!readOnly && (
+            <button className="btn btn-primary" onClick={saveVersion}>
+              💾 Save v{version}
+            </button>
+          )}
         </div>
       </div>
     </div>

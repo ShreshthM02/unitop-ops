@@ -4,7 +4,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 
 const SERVICE_STATUSES = ["requested","pending","confirmed","voucher issued","sold out","cancelled"];
 
-export function ServicesList({ query, sec, currentUser }) {
+export function ServicesList({ query, sec, currentUser, readOnly }) {
   const DEFAULT_SERVICES = [
     {id:1,name:"Hotel — Primary Hotel (Night 1–2)",status:"requested",date:""},
     {id:2,name:"Hotel — Primary Hotel (Night 3–4)",status:"requested",date:""},
@@ -58,17 +58,22 @@ export function ServicesList({ query, sec, currentUser }) {
   if (!loaded) return <div>{sec("Service Status")}<div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>Loading…</div></div>;
 
   return (
-    <div>
+    <fieldset disabled={readOnly} style={{border:"none",margin:0,padding:0,minWidth:0}}>
       {sec("Service Status")}
-      <div style={{fontSize:10,color:G.gray400,marginBottom:6}}>Drag ⠿ to reorder</div>
+      {readOnly && (
+        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#92400E",marginBottom:10}}>
+          🔒 This tour file is cancelled — viewing only, nothing here is editable.
+        </div>
+      )}
+      <div style={{fontSize:10,color:G.gray400,marginBottom:6}}>{readOnly?"":"Drag ⠿ to reorder"}</div>
       {services.map((s,i)=>(
-        <div key={s.id} draggable
-          onDragStart={()=>dragIndex.current=i}
+        <div key={s.id} draggable={!readOnly}
+          onDragStart={()=>!readOnly&&(dragIndex.current=i)}
           onDragOver={e=>e.preventDefault()}
-          onDrop={()=>handleDrop(i)}
+          onDrop={()=>!readOnly&&handleDrop(i)}
           style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-          background:G.white,border:`1px solid ${G.gray200}`,borderRadius:7,marginBottom:6,cursor:"grab"}}>
-          <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>
+          background:G.white,border:`1px solid ${G.gray200}`,borderRadius:7,marginBottom:6,cursor:readOnly?"default":"grab"}}>
+          {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
           <div style={{flex:1}}>
             <div style={{fontSize:12,fontWeight:500}}>{s.name}</div>
             {s.date&&<div style={{fontSize:11,color:G.gray400}}>{s.date}</div>}
@@ -84,8 +89,10 @@ export function ServicesList({ query, sec, currentUser }) {
               <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)}</option>
             ))}
           </select>
-          <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
-            onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
+          {!readOnly && (
+            <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
+              onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
+          )}
         </div>
       ))}
 
@@ -119,7 +126,7 @@ export function ServicesList({ query, sec, currentUser }) {
       <div style={{marginTop:8,fontSize:11,color:G.gray400,background:G.gray50,padding:"8px 10px",borderRadius:6}}>
         ℹ Select "Voucher Issued" once an Exchange Order has actually been issued for this service — this is a manual confirmation, not automatic, to avoid misrepresenting status due to a naming mismatch.
       </div>
-    </div>
+    </fieldset>
   );
 }
 

@@ -129,7 +129,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   );
 }
 
-export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose }) {
+export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose, readOnly }) {
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
@@ -188,7 +188,12 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
           <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id} · {query.destination||query.sector}</div>
         </div>
 
-        <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"16px 20px",border:"none",margin:0,minWidth:0}}>
+          {readOnly && (
+            <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#92400E",marginBottom:14}}>
+              🔒 This tour file is cancelled — viewing only, nothing here is editable.
+            </div>
+          )}
           {finalQuotation && finalQuotation.tourValue && (
             <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1A5276"}}>
               📋 Final quotation (v{finalQuotation.version}) agreed: <strong>{summarizeFinalPriceEntries(finalQuotation.finalPriceEntries, "")}</strong> · {finalQuotation.confirmedPax} pax total · Tour Value <strong>{finalQuotation.tourValue}</strong>. Cross-check against the Tour Value below — not auto-filled, since currency/adjustments here may differ.
@@ -373,7 +378,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
               })()}
             </div>
           )}
-        </div>
+        </fieldset>
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
         </div>

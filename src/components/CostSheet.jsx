@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, logAudit, db } = Lib;
 
-export function CostSheet({ query, onClose, onProceedToQuotation, currentUser }) {
+export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly }) {
   const n = v => parseFloat(v)||0;
   const [version, setVersion] = useState(1);
   const [versions, setVersions] = useState([]);
@@ -170,19 +170,25 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
                     style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
                     v{v.version}
                   </div>
-                  <div onClick={()=>{setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Cost Sheet v${v.version} marked final`);}} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Cost Sheet v${v.version} marked final`);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
                     {finalVersion===v.version?"★":"☆"}
                   </div>
                 </div>
               ))}
             </div>
           )}
-          <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
 
-        <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+        {readOnly && (
+          <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"8px 18px",fontSize:12,color:"#92400E",flexShrink:0}}>
+            🔒 This tour file is cancelled — viewing only, nothing here is editable.
+          </div>
+        )}
+
+        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0}}>
 
           {/* 10.1 Settings */}
           {secH("Settings","⚙")}
@@ -457,14 +463,15 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser })
           <div style={{fontSize:10,color:G.gray400,fontStyle:"italic"}}>
             SS = cumulative single supplement from hotel day rows (editable). Final price rounded up to nearest whole unit.
           </div>
-        </div>
+        </fieldset>
 
         <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50,alignItems:"center"}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
+            disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
-          <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>
-          {hasFinalPrice && (
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>}
+          {!readOnly && hasFinalPrice && (
             <button className="btn btn-success" onClick={()=>onProceedToQuotation(lastSavedCostSheetId)}>
               📋 Proceed to Quotation →
             </button>

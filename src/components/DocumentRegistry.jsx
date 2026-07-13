@@ -147,7 +147,7 @@ export function DocumentRegistry({ query, onClose }) {
 }
 
 
-export function DocRegistryInline({ queryId, tourFileId, currentUser }) {
+export function DocRegistryInline({ queryId, tourFileId, currentUser, readOnly }) {
   const [docs, setDocs] = useState([]);
   useEffect(() => { loadDocRegistry(db, queryId).then(setDocs); }, [queryId]);
   const [adding, setAdding] = useState(false);
@@ -164,7 +164,12 @@ export function DocRegistryInline({ queryId, tourFileId, currentUser }) {
     setAdding(false);
   };
   return (
-    <div>
+    <fieldset disabled={readOnly} style={{border:"none",margin:0,padding:0,minWidth:0}}>
+      {readOnly && (
+        <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#92400E",marginBottom:10}}>
+          🔒 This tour file is cancelled — viewing only, nothing here is editable.
+        </div>
+      )}
       {!adding?<button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={()=>setAdding(true)}>+ Log Document</button>:(
         <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:12,marginBottom:12}}>
           <input style={{...inp,marginBottom:8}} value={form.name} onChange={e=>setF("name",e.target.value)} placeholder="Document name..."/>
@@ -196,6 +201,6 @@ export function DocRegistryInline({ queryId, tourFileId, currentUser }) {
           </div>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
