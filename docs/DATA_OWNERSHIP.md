@@ -96,6 +96,17 @@ These exist in Supabase but have **zero rows and zero code references**. They ar
 4. **`q.pax` / `query.pax` — a field that has never existed — was referenced across 10 different files**: Dashboard, Kanban, All Queries, Tour Files, Payment Tracker, Exchange Order Generator, Proforma Invoice, Tax Invoice, Tour Briefing Sheet, and the Active Pipeline report. Only `paxDisplay` has ever actually held a value. This meant pax count silently showed blank/dash across nearly the entire app, everywhere except the few places that happened to use the correct field name (Movement Chart, built correctly last round). Fixed everywhere it was found; each document generator's own local `pax` form field is now correctly seeded from `paxDisplay` at open time, then remains independently editable within that document (SNAPSHOT, same pattern as everything else).
 5. **Confirmed correct, not a bug:** individual per-staff permission overrides (set in User Management) looked suspicious at first — the general `staff` list load deliberately excludes the `permissions` column (bundled in with genuinely sensitive fields like `password_hash` during earlier security hardening). But permission *enforcement* never reads from that list — `currentUser` comes from the `staff_login` RPC, which correctly returns the real `permissions` value from the row directly. Verified by reading the actual RPC function body in Postgres, not just the client code. The UI's own "changes take effect on next login" notice is accurate, not a symptom of a deeper bug.
 6. **RLS policies checked for consistency across all 19 tables** — every one has an appropriate anon-access policy; `staff` is correctly read-only-safe-columns for anon, by design. No silent access-denial gaps found.
+7. **`document_registry.tour_file_id`** — a real column, available at the call site (`DocRegistryInline` already receives `tourFileId` as a prop), but never threaded through to `saveDocRegistry`. Found by the new schema-completeness test (see below) on its first run. Fixed.
+
+---
+
+## Standing safeguard: schema-completeness tests
+
+`src/__tests__/schemaCompleteness.test.jsx` mechanically checks every save function against the live column list for its table — not from memory, but a snapshot captured directly from Supabase. Each test calls the real save function and asserts every real column actually appears as a key in what gets sent to the database. This is the direct fix for the bug class this whole document exists to prevent: a column existing on the live table with a working UI field feeding it, silently dropped because the save function never included that key.
+
+**This is not optional maintenance — it already found a real bug (`document_registry.tour_file_id`) on its first run**, before it could sit undetected the way `vendors.languages`/`assigned_to` did.
+
+**When a migration changes a table's columns, `EXPECTED_COLUMNS` in this test file must be updated in the same change** — same discipline as this document itself. A column intentionally left unused (like `version_name`) gets added to the relevant exclusion list with a one-line reason, not silently ignored.
 
 ---
 

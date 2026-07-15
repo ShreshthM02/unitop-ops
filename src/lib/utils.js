@@ -499,11 +499,11 @@ export async function loadDocRegistry(db, queryId) {
 // deletes anything that existed in the DB but is no longer in the local
 // array (handles removing a logged document) -- same sync pattern as
 // savePaymentsToDB's entries.
-export async function saveDocRegistry(db, queryId, docs) {
+export async function saveDocRegistry(db, queryId, docs, tourFileId) {
   try {
     for (const d of docs) {
       await db.from("document_registry").upsert({
-        id: d.id, query_id: queryId, name: d.name, category: d.category,
+        id: d.id, query_id: queryId, tour_file_id: tourFileId || null, name: d.name, category: d.category,
         from: d.from, date: d.date || null, status: d.status,
         drive_link: d.driveLink, notes: d.notes,
       });

@@ -155,7 +155,7 @@ export function DocRegistryInline({ queryId, tourFileId, currentUser, readOnly }
   const setF = (k,v) => setForm(p=>({...p,[k]:v}));
   const STATUS_STYLE = {Pending:{bg:"#FEF3C7",color:"#92400E"},Received:{bg:"#DBEAFE",color:"#1E40AF"},Verified:{bg:"#DCFCE7",color:"#166534"},"Shared with Client":{bg:"#F3E8FF",color:"#6B21A8"},Archived:{bg:"#F3F4F6",color:"#6B7280"}};
   const inp = {padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
-  const saveDocs = (u) => { setDocs(u); saveDocRegistry(db, queryId, u); };
+  const saveDocs = (u) => { setDocs(u); saveDocRegistry(db, queryId, u, tourFileId); };
   const addDoc = () => {
     if(!form.name) return;
     saveDocs([{...form,id:Date.now(),addedAt:new Date().toISOString()},...docs]);

@@ -40,3 +40,20 @@ describe('DocRegistryInline uses real Supabase persistence, not localStorage', (
     expect(screen.getByText('Test Voucher')).toBeTruthy();
   });
 });
+
+describe('DocRegistryInline: tour_file_id now actually passed through (found by schema-completeness test)', () => {
+  it('saveDocs passes tourFileId through to saveDocRegistry', async () => {
+    const upsertSpy = vi.fn(async ()=>({data:[],error:null}));
+    const mockDb = { from: () => ({ select:()=>({eq:()=>({order:async()=>({data:[]})})}), upsert: upsertSpy }) };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { DocRegistryInline } = await import('../components/DocumentRegistry.jsx');
+    render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:'x',name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText('+ Log Document')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Log Document'));
+    fireEvent.change(screen.getByPlaceholderText('Document name...'), { target: { value: 'New Doc' } });
+    fireEvent.click(screen.getByText('Log'));
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalled());
+    expect(upsertSpy.mock.calls[0][0].tour_file_id).toBe('TF-1');
+  });
+});
