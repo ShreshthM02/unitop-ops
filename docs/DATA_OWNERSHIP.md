@@ -34,7 +34,7 @@ Each fact has:
 
 | Holder | Column(s) | Type | Notes |
 |---|---|---|---|
-| `queries` | `pax_display`, `pax_exact`, `pax_min`, `pax_max` | SNAPSHOT (early estimate) | The query-stage estimate, often "TBC" until close to departure. Free text (`pax_display`) plus optional exact/range numbers. |
+| `queries` | `pax_display`, `pax_exact`, `pax_min`, `pax_max` | SNAPSHOT (early estimate) | The query-stage estimate, often "TBC" until close to departure. Free text (`pax_display`) plus optional exact/range numbers. **There is no bare `pax` field — that name has never existed.** If you write `query.pax` or `q.pax`, it will always be `undefined`. Use `query.paxDisplay`. |
 | **`quotations`** (starred version) | `confirmed_pax`, plus the paying/FOC breakdown inside `final_price_entries` | **Canonical once it exists** | The real, confirmed number. Once a final quotation exists, this — not `queries.pax_display` — is the answer to "how many people." |
 | `cost_sheets.slabs` | — | Not a count at all | Pricing *tiers* (e.g. "15–19 pax"), used only for rate calculation. Never read as "the pax count" anywhere — if you're tempted to, don't; use `quotations.confirmed_pax` instead. |
 
@@ -60,6 +60,9 @@ Each fact has:
 |---|---|---|---|
 | **`vendors`** | `id`, `name`, `type`, `languages`, `areas`, contact fields | **Canonical vendor master data** | One real vendor record per person/company, filtered by `type` in the UI (Transport / Tour Facilitator / Local Handler / Hotel / etc). |
 | `tour_execution` | `transporters[]`, `facilitators[]`, `local_handlers[]` | Reference only | Each entry is `{vendorId, sector, notes}` — a pointer into `vendors`, not a copy of vendor data. Clean owner/reference relationship, no duplication risk here. |
+| `payment_outgoing.vendor` | — | Free text, NOT a reference | Deliberately not tied to `vendors.id` — outgoing payments can go to non-vendor-master payees (airlines, railways, one-off charges), so a strict FK isn't right here. VendorMaster's "Related Payments" section matches this against vendor name as best-effort, not a guaranteed link — labeled as such in the UI. |
+
+**VendorMaster's "Service History" tab** now reads real assignment history from `tour_execution`, matched strictly by `vendor.id` — this is the correct, reliable signal for "which tours has this vendor actually worked on." It used to be built entirely from `payment_outgoing` name-matching (and that matching was additionally broken by a missing prop — see bugs log), so assigning a facilitator in the Tour File drawer's Info tab never showed up there at all. Fixed 2026-07-16.
 
 ---
 
@@ -89,6 +92,10 @@ These exist in Supabase but have **zero rows and zero code references**. They ar
 
 1. **`vendors.languages` / `vendors.areas` never existed as columns**, despite `VendorMaster.jsx` having fully working UI for them and `saveVendorToDB` always sending them. Every vendor save has been failing outright since the feature was built — confirmed via a live insert test, which errored with `column "languages" of relation "vendors" does not exist`. The `vendors` table had **zero rows, ever**. Fixed by adding the missing columns; verified end-to-end as the anon role.
 2. **`queries.source_other`, `queries.travel_date_to`, `queries.internal_correspondent`** — all three are typed into working UI fields but were never included in `buildQuerySavePayload`, so silently never persisted. Same bug class as the earlier `assigned_to` gap. Fixed.
+3. **`VendorMaster`'s "Service History" tab had nothing to do with tour assignments.** It was built entirely from `payment_outgoing` entries matched by fuzzy name substring against the vendor's name — meaning assigning a Tour Facilitator/Local Handler/Transporter in the Tour File drawer's Info tab never appeared there, ever. Compounding this: `payments` was declared as a prop in `VendorMaster`'s signature but never actually passed in the render call, so this tab (and "Financial Ledger") had been showing empty results regardless of any real payment data. Fixed by (a) passing the missing prop, and (b) adding a real, `vendor.id`-matched assignment history as the primary content of the tab, with the payment-based data kept as a separate, clearly-labeled secondary section.
+4. **`q.pax` / `query.pax` — a field that has never existed — was referenced across 10 different files**: Dashboard, Kanban, All Queries, Tour Files, Payment Tracker, Exchange Order Generator, Proforma Invoice, Tax Invoice, Tour Briefing Sheet, and the Active Pipeline report. Only `paxDisplay` has ever actually held a value. This meant pax count silently showed blank/dash across nearly the entire app, everywhere except the few places that happened to use the correct field name (Movement Chart, built correctly last round). Fixed everywhere it was found; each document generator's own local `pax` form field is now correctly seeded from `paxDisplay` at open time, then remains independently editable within that document (SNAPSHOT, same pattern as everything else).
+5. **Confirmed correct, not a bug:** individual per-staff permission overrides (set in User Management) looked suspicious at first — the general `staff` list load deliberately excludes the `permissions` column (bundled in with genuinely sensitive fields like `password_hash` during earlier security hardening). But permission *enforcement* never reads from that list — `currentUser` comes from the `staff_login` RPC, which correctly returns the real `permissions` value from the row directly. Verified by reading the actual RPC function body in Postgres, not just the client code. The UI's own "changes take effect on next login" notice is accurate, not a symptom of a deeper bug.
+6. **RLS policies checked for consistency across all 19 tables** — every one has an appropriate anon-access policy; `staff` is correctly read-only-safe-columns for anon, by design. No silent access-denial gaps found.
 
 ---
 

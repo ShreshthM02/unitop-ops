@@ -13,7 +13,7 @@ export default function TaxInvoice({ query, payments, template, onClose }) {
     invoiceNo: `TAX-2026-${String(Math.floor(Math.random()*900)+100)}`,
     date: today,
     placeOfSupply: tmpl.placeOfSupply,
-    items:[{ desc:`Tour Package — ${query.destination||""} (${query.nights||"??"} Days)`, hsn:"998552", qty:query.pax||1, rate:Math.round(gstBase), amount:Math.round(gstBase) }],
+    items:[{ desc:`Tour Package — ${query.destination||""} (${query.nights||"??"} Days)`, hsn:"998552", qty:query.paxDisplay||1, rate:Math.round(gstBase), amount:Math.round(gstBase) }],
     igst: true,
     gstRate: 5,
     notes:"",

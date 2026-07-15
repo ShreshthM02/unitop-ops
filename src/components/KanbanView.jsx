@@ -99,8 +99,8 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     {/* Meta row */}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
                       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                        {q.pax && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,
-                          background:"#F3F4F6",color:"#555",fontWeight:500}}>{q.pax} pax</span>}
+                        {q.paxDisplay && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,
+                          background:"#F3F4F6",color:"#555",fontWeight:500}}>{q.paxDisplay} pax</span>}
                         {q.nights && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,
                           background:"#F3F4F6",color:"#555",fontWeight:500}}>{q.nights}N</span>}
                         {q.tourFileId && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,

@@ -56,7 +56,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     <div class="party-det">
       ${query.agentCompany?`Via: ${query.agentCompany}<br/>`:""}
       Tour File: ${query.tourFileId||query.id} &nbsp;|&nbsp; ${query.destination||query.sector||""}
-      ${query.pax?` &nbsp;|&nbsp; ${query.pax} pax`:""}
+      ${query.paxDisplay?` &nbsp;|&nbsp; ${query.paxDisplay} pax`:""}
     </div>
   </div>
 

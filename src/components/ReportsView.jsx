@@ -28,7 +28,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
       case "active_pipeline":
         return queries.filter(q=>!q.cancelled&&q.status!=="completed").map(q=>({
           "Query ID":q.id,"Group":q.groupName||q.clientName,"Agent":q.agentCompany||"—",
-          "Sector":q.destination||q.sector||"—","Status":q.status,"Travel Date":q.travelDate||"TBC","Pax":q.pax||"—",
+          "Sector":q.destination||q.sector||"—","Status":q.status,"Travel Date":q.travelDate||"TBC","Pax":q.paxDisplay||"—",
         }));
       case "query_log":
         return queries.map(q=>({

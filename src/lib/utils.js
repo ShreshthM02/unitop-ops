@@ -887,3 +887,43 @@ export async function loadFinalPriceAgreementAudits(db, queryId) {
     return [];
   }
 }
+
+// ─── VENDOR ASSIGNMENT HISTORY (the real "Service History") ────────────────
+// The old "Service History" tab in VendorMaster was actually payment
+// history matched by fuzzy name substring against payment_outgoing.vendor
+// (a free-text field, since outgoing payments can go to non-vendor payees
+// like airlines) -- it had nothing to do with tour assignments at all, so
+// assigning a facilitator/handler/transporter in the Tour File drawer's
+// Info tab never showed up here. This is the real thing: every tour this
+// vendor has actually been assigned to, matched reliably by vendor id
+// (not name), read from tour_execution -- the single canonical source for
+// assignments, per DATA_OWNERSHIP.md.
+export function getVendorAssignmentHistory(vendorId, tourExecutions, queries) {
+  const rows = [];
+  Object.entries(tourExecutions || {}).forEach(([queryId, te]) => {
+    const q = (queries || []).find(qq => qq.id === queryId);
+    if (!q) return;
+    const roleLists = [
+      { role: "Tour Facilitator", list: te?.facilitators },
+      { role: "Local Handler", list: te?.localHandlers },
+      { role: "Transporter", list: te?.transporters },
+    ];
+    roleLists.forEach(({ role, list }) => {
+      (list || []).forEach(entry => {
+        if (entry.vendorId !== vendorId) return;
+        rows.push({
+          tourFileId: q.tourFileId || q.id,
+          queryId: q.id,
+          groupName: q.groupName || q.clientName || "",
+          sector: entry.sector || q.destination || q.sector || "",
+          travelDate: q.travelDate || "",
+          status: q.status,
+          cancelled: !!q.cancelled,
+          role,
+          notes: entry.notes || "",
+        });
+      });
+    });
+  });
+  return rows.sort((a, b) => new Date(b.travelDate || 0) - new Date(a.travelDate || 0));
+}

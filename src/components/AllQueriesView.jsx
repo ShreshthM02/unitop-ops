@@ -43,7 +43,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
   const pageData=sorted.slice((page-1)*PER_PAGE,page*PER_PAGE);
   const onSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}setPage(1);};
   const SortIcon=({col})=>sortCol===col?<span style={{marginLeft:3,fontSize:10}}>{sortDir==='asc'?'▲':'▼'}</span>:<span style={{marginLeft:3,fontSize:10,opacity:0.3}}>⇅</span>;
-  const exportCSV=()=>{const cols=['ID','Group/Client','Destination','Agent','Stage','Travel Date','Pax','Source','Tour File'];const rows=sorted.map(q=>[q.id,q.groupName||q.clientName,q.destination||q.sector,q.agentCompany,stageLabel(q.status),q.travelDate,q.pax,q.source,q.tourFileId||'']);const csv=[cols,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='queries.csv';a.click();URL.revokeObjectURL(url);};
+  const exportCSV=()=>{const cols=['ID','Group/Client','Destination','Agent','Stage','Travel Date','Pax','Source','Tour File'];const rows=sorted.map(q=>[q.id,q.groupName||q.clientName,q.destination||q.sector,q.agentCompany,stageLabel(q.status),q.travelDate,q.paxDisplay,q.source,q.tourFileId||'']);const csv=[cols,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='queries.csv';a.click();URL.revokeObjectURL(url);};
   const inp={padding:"6px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none",color:G.gray800,background:G.white};
   const th={padding:"9px 10px",textAlign:"left",fontSize:11,fontWeight:700,color:G.white,background:G.navy,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderRight:"1px solid rgba(255,255,255,0.1)"};
   const td={padding:"8px 10px",fontSize:11,borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle"};
@@ -92,7 +92,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
                   <td style={{...td,fontSize:10,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.agentCompany||'—'}</td>
                   <td style={td}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:sc+'22',color:sc,fontWeight:600,whiteSpace:"nowrap"}}>{stageLabel(q.status)}</span></td>
                   <td style={{...td,fontSize:10,whiteSpace:"nowrap"}}>{q.travelDate||'—'}</td>
-                  <td style={{...td,textAlign:"center"}}>{q.pax||'—'}</td>
+                  <td style={{...td,textAlign:"center"}}>{q.paxDisplay||'—'}</td>
                   <td style={{...td,textAlign:"center"}} onClick={e=>e.stopPropagation()}>{user&&<Avatar user={user} size={20}/>}</td>
                 </tr>
               );

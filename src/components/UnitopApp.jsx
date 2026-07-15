@@ -303,7 +303,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     const auditMsg = `Converted to Tour File — Tour No. ${tourNum} assigned`;
     const updQ = {...query,tourFileId:tourNum,audit:[...(query.audit||[]),{by:currentUser.name,at:now,action:auditMsg}]};
     setQueries(qs=>qs.map(q=>q.id===query.id?updQ:q));
-    setTours(ts=>[...ts,{id:tourNum,queryId:query.id,name:`${query.clientName} — ${query.destination||query.sector||""}`,dates:query.travelDate,pax:query.pax,status:"Upcoming",color:"#C0392B",ganttStart:16,ganttLen:Number(query.nights)||7}]);
+    setTours(ts=>[...ts,{id:tourNum,queryId:query.id,name:`${query.clientName} — ${query.destination||query.sector||""}`,dates:query.travelDate,pax:query.paxDisplay,status:"Upcoming",color:"#C0392B",ganttStart:16,ganttLen:Number(query.nights)||7}]);
     setActiveQuery(q=>q?{...q,tourFileId:tourNum}:null);
     saveQueryToDB(updQ, auditMsg);
     showToast(`Tour File opened — ${tourNum}`);
@@ -577,7 +577,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{flex:1}}>
                         <div style={{fontSize:14,fontWeight:700,fontFamily:"'Playfair Display',serif"}}>{q.tourFileId}</div>
                         <div style={{fontSize:13,color:G.gray600}}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/> — {q.destination||q.sector}</div>
-                        <div style={{fontSize:11,color:G.gray400}}>Travel: {q.travelDate||q.travelMonth||"TBC"} · {q.pax} pax · {q.nights}N</div>
+                        <div style={{fontSize:11,color:G.gray400}}>Travel: {q.travelDate||q.travelMonth||"TBC"} · {q.paxDisplay} pax · {q.nights}N</div>
                       </div>
                       <StatusBadge status={q.status}/>
                     </div>
@@ -710,7 +710,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
-        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
+        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
 
         {/* Cancel modal */}
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}

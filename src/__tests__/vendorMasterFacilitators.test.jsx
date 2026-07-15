@@ -100,3 +100,33 @@ describe('saveVendorToDB: languages/areas columns (the actual bug found in the l
     expect(row.areas).toBe('Bangkok');
   });
 });
+
+describe('VendorMaster: Service History now shows real tour assignments (the actual reported bug)', () => {
+  const assignedVendor = { id: 'v1', name: 'Prithvi', type: 'Tour Facilitator', contactPhone: '', languages: 'English', areas: 'Kerala', active: true };
+  const assignedQueries = [
+    { id: 'UTQ-1', tourFileId: 'TF-1', groupName: 'Kerala Group', destination: 'Kerala', travelDate: '2026-08-01', status: 'operations', cancelled: false },
+  ];
+  const tourExecutions = { 'UTQ-1': { facilitators: [{ vendorId: 'v1', sector: 'North Kerala', notes: 'Confirmed for the trip' }] } };
+
+  it('clicking a vendor and opening Service History shows the tour they are actually assigned to', () => {
+    render(<VendorMaster vendors={[assignedVendor]} setVendors={()=>{}} queries={assignedQueries} payments={{}} tourExecutions={tourExecutions} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Prithvi'));
+    fireEvent.click(screen.getByText('Service History'));
+    expect(screen.getAllByText('Tour Facilitator').length).toBeGreaterThan(0);
+    expect(screen.getByText(/TF-1/)).toBeTruthy();
+    expect(screen.getByText(/Kerala Group/)).toBeTruthy();
+    expect(screen.getByText('Confirmed for the trip')).toBeTruthy();
+  });
+
+  it('shows a clear empty state, not a blank screen, when nothing is assigned yet', () => {
+    const unassignedVendor = { id: 'v2', name: 'Unassigned Person', type: 'Tour Facilitator', active: true };
+    render(<VendorMaster vendors={[unassignedVendor]} setVendors={()=>{}} queries={[]} payments={{}} tourExecutions={{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Unassigned Person'));
+    fireEvent.click(screen.getByText('Service History'));
+    expect(screen.getByText(/No tours assigned yet/)).toBeTruthy();
+  });
+
+  it('renders without crashing when payments/tourExecutions are not passed at all (defensive)', () => {
+    expect(() => render(<VendorMaster vendors={[assignedVendor]} setVendors={()=>{}} queries={assignedQueries} onClose={()=>{}}/>)).not.toThrow();
+  });
+});

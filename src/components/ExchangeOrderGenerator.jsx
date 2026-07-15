@@ -23,7 +23,7 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     // Service-specific fields
     serviceDetail: "",  // free text instruction line
     time: "",
-    pax: query.pax || "",
+    pax: query.paxDisplay || "",
     nationality: query.nationality || "",
     escort: "",
     escortPhone: "",
