@@ -223,6 +223,29 @@ export function parseLocalDateStr(str) {
 // Tour Escort/Transport/Hotels live in Tour Briefing Sheet/Cost Sheet,
 // which aren't persisted centrally yet, so they're deliberately left out
 // rather than shown as permanently-blank columns.
+// Builds the Route column as a list of per-stop lines (not a single joined
+// string): each day's route ("Khajuraho - Orchha - Jhansi - Agra") is split
+// into individual stops, and the last stop of the day -- where the group
+// actually overnights -- gets the confirmed hotel name attached, since a
+// bare list of place names doesn't answer "where are they staying." A stop
+// that exactly repeats the previous day's last stop is not repeated.
+export function buildRouteLines(days) {
+  const lines = [];
+  let lastStop = null;
+  (days || []).forEach(d => {
+    if (!d.route) return;
+    const stops = d.route.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+    stops.forEach((stop, idx) => {
+      const upperStop = stop.toUpperCase();
+      if (upperStop === lastStop) return;
+      const isLast = idx === stops.length - 1;
+      lines.push(isLast && d.hotelName ? `${upperStop} - ${d.hotelName}` : upperStop);
+      lastStop = upperStop;
+    });
+  });
+  return lines;
+}
+
 export function getMovementChartRows(queries, users, year, month, tourExecutions, vendors) {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
@@ -241,11 +264,18 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
     .sort((a, b) => a.start - b.start)
     .map((r, i) => {
       const handler = (users || []).find(u => u.id === r.query.assignedTo);
+      // Single source of truth: tour_execution, populated only via the Tour
+      // File drawer's Info tab (Day-wise Itinerary / Hotels / Others).
+      // Never read route/hotel/facilitator/handler data from anywhere else
+      // (e.g. Cost Sheet's own day fields are a separate pricing draft).
       const te = (tourExecutions || {})[r.query.id];
       const days = te?.days || [];
-      const route = [...new Set(days.map(d => d.route).filter(Boolean))].join(" → ");
+      const routeLines = buildRouteLines(days);
       const rooming = [...new Set(days.filter(d => d.hotelName).map(d => `${d.hotelName}${d.rooms ? " (" + d.rooms + ")" : ""}`))].join("; ");
-      const transporter = [...new Set((te?.transporters || []).map(t => (vendors || []).find(v => v.id === t.vendorId)?.name).filter(Boolean))].join(", ");
+      const resolveVendorNames = (list) => [...new Set((list || []).map(x => (vendors || []).find(v => v.id === x.vendorId)?.name).filter(Boolean))].join(", ");
+      const transporter = resolveVendorNames(te?.transporters);
+      const facilitator = resolveVendorNames(te?.facilitators);
+      const localHandler = resolveVendorNames(te?.localHandlers);
       return {
         sNo: i + 1,
         query: r.query,
@@ -259,9 +289,11 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
         remarks: r.query.notes || "",
         arrFlight: te?.arrFlightDetails || "",
         depFlight: te?.depFlightDetails || "",
-        route,
+        routeLines,
         rooming,
         transporter,
+        facilitator,
+        localHandler,
       };
     });
 }

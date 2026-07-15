@@ -57,8 +57,39 @@ describe('Movement Chart field selector', () => {
     const label = screen.getByText('Route').closest('label');
     const routeCheckbox = label.querySelector('input[type="checkbox"]');
     fireEvent.click(routeCheckbox); // on
-    expect(screen.getByText('Delhi – Agra')).toBeTruthy();
+    expect(screen.getByText(/DELHI/)).toBeTruthy();
     fireEvent.click(routeCheckbox); // off
-    expect(screen.queryByText('Delhi – Agra')).toBeNull();
+    expect(screen.queryByText(/DELHI/)).toBeNull();
+  });
+
+  it('Arr. Flight column header sits immediately after Arr. Date, and Dep. Flight immediately after Dep. Date', () => {
+    render(<GanttView queries={[query]} tours={[]} onOpenQuery={()=>{}} staff={[]} vendors={vendors} tourExecutions={tourExecutions}/>);
+    openMovementChart();
+    fireEvent.click(screen.getByText(/☰ Columns/));
+    const arrFlightLabel = screen.getByText('Arr. Flight').closest('label');
+    fireEvent.click(arrFlightLabel.querySelector('input[type="checkbox"]'));
+    const depFlightLabel = screen.getByText('Dep. Flight').closest('label');
+    fireEvent.click(depFlightLabel.querySelector('input[type="checkbox"]'));
+
+    const headers = Array.from(document.querySelectorAll('th')).map(th => th.textContent);
+    expect(headers.indexOf('Arr. Flight')).toBe(headers.indexOf('Arr. Date') + 1);
+    expect(headers.indexOf('Dep. Flight')).toBe(headers.indexOf('Dep. Date') + 1);
+  });
+
+  it('checking Arr. Flight shows the real flight detail for the row', () => {
+    render(<GanttView queries={[query]} tours={[]} onOpenQuery={()=>{}} staff={[]} vendors={vendors} tourExecutions={tourExecutions}/>);
+    openMovementChart();
+    fireEvent.click(screen.getByText(/☰ Columns/));
+    const label = screen.getByText('Arr. Flight').closest('label');
+    fireEvent.click(label.querySelector('input[type="checkbox"]'));
+    expect(screen.getByText('AI-101 10:00')).toBeTruthy();
+  });
+
+  it('offers Tour Facilitator and Local Handler as additional optional columns', () => {
+    render(<GanttView queries={[query]} tours={[]} onOpenQuery={()=>{}} staff={[]} vendors={vendors} tourExecutions={tourExecutions}/>);
+    openMovementChart();
+    fireEvent.click(screen.getByText(/☰ Columns/));
+    expect(screen.getByText('Tour Facilitator')).toBeTruthy();
+    expect(screen.getByText('Local Handler')).toBeTruthy();
   });
 });

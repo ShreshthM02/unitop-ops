@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMovementChartRows } from '../lib/utils.js';
+import { getMovementChartRows, buildRouteLines } from '../lib/utils.js';
 
 const users = [{ id: 1, name: 'Harsh' }, { id: 2, name: 'Priya' }];
 
@@ -88,12 +88,27 @@ describe('getMovementChartRows: new operational columns (Arr/Dep Flight, Route, 
     expect(rows[0].depFlight).toBe('AI-102 18:00');
   });
 
-  it('builds Route from unique day routes, in order, without duplicates', () => {
+  it('builds Route as per-stop lines, uppercased, with the overnight hotel attached to the last stop of each day -- the actual Khajuraho example', () => {
     const tourExecutions = { 'UTQ-1': { days: [
-      { route: 'Delhi – Agra' }, { route: 'Agra – Jaipur' }, { route: 'Agra – Jaipur' }, { route: '' },
+      { route: 'Khajuraho - Orchha - Jhansi - Agra', hotelName: 'Trident Agra' },
     ], transporters: [] } };
     const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
-    expect(rows[0].route).toBe('Delhi – Agra → Agra – Jaipur');
+    expect(rows[0].routeLines).toEqual(['KHAJURAHO', 'ORCHHA', 'JHANSI', 'AGRA - Trident Agra']);
+  });
+
+  it('does not repeat a stop that exactly matches the previous day\'s last stop', () => {
+    const tourExecutions = { 'UTQ-1': { days: [
+      { route: 'Delhi - Agra', hotelName: 'Taj View' },
+      { route: 'Agra - Jaipur', hotelName: 'Rambagh Palace' },
+    ], transporters: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].routeLines).toEqual(['DELHI', 'AGRA - Taj View', 'JAIPUR - Rambagh Palace']);
+  });
+
+  it('leaves a stop with no hotel set as a plain line, without a trailing " - "', () => {
+    const tourExecutions = { 'UTQ-1': { days: [{ route: 'Delhi - Agra' }], transporters: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].routeLines).toEqual(['DELHI', 'AGRA']);
   });
 
   it('builds Rooming from unique hotel+room combos across days', () => {
@@ -115,14 +130,71 @@ describe('getMovementChartRows: new operational columns (Arr/Dep Flight, Route, 
   it('leaves all new fields blank without throwing when tourExecutions/vendors are not passed at all', () => {
     const rows = getMovementChartRows([query], users, 2026, 7);
     expect(rows[0].arrFlight).toBe('');
-    expect(rows[0].route).toBe('');
+    expect(rows[0].routeLines).toEqual([]);
     expect(rows[0].rooming).toBe('');
     expect(rows[0].transporter).toBe('');
   });
 
   it('leaves fields blank when this specific query has no tour_execution row yet, without crashing', () => {
     const rows = getMovementChartRows([query], users, 2026, 7, {}, vendors);
-    expect(rows[0].route).toBe('');
+    expect(rows[0].routeLines).toEqual([]);
     expect(rows[0].transporter).toBe('');
+  });
+});
+
+describe('buildRouteLines (pure function, tested directly)', () => {
+  it('handles multiple days with mixed hotel/no-hotel and repeated boundary stops correctly', () => {
+    const days = [
+      { route: 'Delhi - Agra', hotelName: 'Taj View' },
+      { route: 'Agra - Khajuraho - Orchha', hotelName: 'Orchha Resort' },
+      { route: '' }, // blank route -- skipped entirely
+      { route: 'Orchha - Jhansi - Varanasi', hotelName: 'Ganges View' },
+    ];
+    expect(buildRouteLines(days)).toEqual([
+      'DELHI', 'AGRA - Taj View',
+      'KHAJURAHO', 'ORCHHA - Orchha Resort',
+      'JHANSI', 'VARANASI - Ganges View',
+    ]);
+  });
+
+  it('returns an empty array for no days or all-blank routes', () => {
+    expect(buildRouteLines([])).toEqual([]);
+    expect(buildRouteLines([{ route: '' }, { route: null }])).toEqual([]);
+    expect(buildRouteLines(null)).toEqual([]);
+  });
+
+  it('handles a single-stop day (no hyphen) correctly', () => {
+    expect(buildRouteLines([{ route: 'Udaipur', hotelName: 'Lake Palace' }])).toEqual(['UDAIPUR - Lake Palace']);
+  });
+});
+
+describe('getMovementChartRows: Tour Facilitator and Local Handler columns (same single-source discipline as Transporter)', () => {
+  const users = [{ id: 'u1', name: 'Priya' }];
+  const query = { id: 'UTQ-1', tourFileId: 'TF-1', status: 'operations', travelDate: '2026-08-10', nights: 3, cancelled: false };
+  const vendors = [{ id: 'v1', name: 'Prithvi' }, { id: 'v2', name: 'Rajgir Handlers Co' }];
+
+  it('resolves Tour Facilitator vendor ids to real names, deduplicated', () => {
+    const tourExecutions = { 'UTQ-1': { days: [], facilitators: [{ vendorId: 'v1', sector: 'Bodhgaya' }, { vendorId: 'v1', sector: 'Varanasi' }] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].facilitator).toBe('Prithvi');
+  });
+
+  it('resolves Local Handler vendor ids to real names, deduplicated', () => {
+    const tourExecutions = { 'UTQ-1': { days: [], localHandlers: [{ vendorId: 'v2', sector: 'Rajgir' }] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].localHandler).toBe('Rajgir Handlers Co');
+  });
+
+  it('both are read exclusively from tour_execution (te.facilitators / te.localHandlers), never any other source', () => {
+    const tourExecutions = { 'UTQ-1': { days: [], facilitators: [], localHandlers: [] } };
+    const rows = getMovementChartRows([query], users, 2026, 7, tourExecutions, vendors);
+    expect(rows[0].facilitator).toBe('');
+    expect(rows[0].localHandler).toBe('');
+  });
+
+  it('leaves both blank without throwing when tour_execution is entirely missing', () => {
+    const rows = getMovementChartRows([query], users, 2026, 7, {}, vendors);
+    expect(rows[0].facilitator).toBe('');
+    expect(rows[0].localHandler).toBe('');
   });
 });
