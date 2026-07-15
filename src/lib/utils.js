@@ -74,6 +74,9 @@ export function mapDbQueryRow(q) {
     date: q.date || q.created_at?.split("T")[0],
     assignedTo: q.assigned_to,
     fileType: q.file_type || "",
+    sourceOther: q.source_other,
+    travelDateTo: q.travel_date_to ? q.travel_date_to.split("T")[0] : "",
+    internalCorrespondent: q.internal_correspondent,
   };
 }
 
@@ -431,10 +434,13 @@ export function buildQuerySavePayload(q) {
     notes:               q.notes,
     manual_wf:           q.manualWF || [],
     source:              q.source,
+    source_other:        q.sourceOther,
     nationality:         q.nationality,
     date:                q.date,
     assigned_to:         q.assignedTo || null,
     file_type:           q.fileType || null,
+    travel_date_to:      q.travelDateTo || null,
+    internal_correspondent: q.internalCorrespondent,
   };
 }
 

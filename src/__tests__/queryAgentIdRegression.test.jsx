@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isUuid, buildQuerySavePayload } from '../lib/utils.js';
+import { isUuid, buildQuerySavePayload, mapDbQueryRow } from '../lib/utils.js';
 
 describe('isUuid', () => {
   it('accepts a real uuid', () => {
@@ -69,5 +69,29 @@ describe('buildQuerySavePayload: assigned_to and file_type (real gaps found and 
   it('sends null for file_type when not set', () => {
     const payload = buildQuerySavePayload({ id: 'UTQ-1' });
     expect(payload.file_type).toBeNull();
+  });
+});
+
+describe('buildQuerySavePayload / mapDbQueryRow: 3 more silently-lost fields found via live schema audit', () => {
+  it('includes source_other -- previously lost when Source = "Others"', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', sourceOther: 'Referred by past client' });
+    expect(payload.source_other).toBe('Referred by past client');
+  });
+
+  it('includes travel_date_to -- previously lost even though the column has always existed', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', travelDateTo: '2026-08-20' });
+    expect(payload.travel_date_to).toBe('2026-08-20');
+  });
+
+  it('includes internal_correspondent -- previously lost', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', internalCorrespondent: 'Priya' });
+    expect(payload.internal_correspondent).toBe('Priya');
+  });
+
+  it('mapDbQueryRow reads all three back correctly on the load side', () => {
+    const mapped = mapDbQueryRow({ id: 'UTQ-1', source_other: 'Referral', travel_date_to: '2026-08-20T00:00:00', internal_correspondent: 'Priya' });
+    expect(mapped.sourceOther).toBe('Referral');
+    expect(mapped.travelDateTo).toBe('2026-08-20');
+    expect(mapped.internalCorrespondent).toBe('Priya');
   });
 });

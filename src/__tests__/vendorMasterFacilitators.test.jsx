@@ -89,3 +89,14 @@ describe('saveVendorToDB', () => {
     await expect(saveVendorToDB(db, { id: 'VND-999', name: 'X' })).resolves.toBeUndefined();
   });
 });
+
+describe('saveVendorToDB: languages/areas columns (the actual bug found in the live-schema audit)', () => {
+  it('includes languages and areas in the save payload -- these columns were missing from the live table entirely, silently failing every vendor save until fixed directly in Supabase', async () => {
+    const upsert = vi.fn(async () => ({ data: [], error: null }));
+    const db = { from: () => ({ upsert }) };
+    await saveVendorToDB(db, { id: 'VND-010', name: 'New Facilitator', type: 'Tour Facilitator', languages: 'English, Thai', areas: 'Bangkok' });
+    const row = upsert.mock.calls[0][0];
+    expect(row.languages).toBe('English, Thai');
+    expect(row.areas).toBe('Bangkok');
+  });
+});
