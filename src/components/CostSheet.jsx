@@ -120,8 +120,12 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const monPP = monMode==="pp" ? monTotal : (slab.foc>0 ? monTotal/slab.foc : 0);
     // Local handler(s) — each entry can independently be per-pax or lumpsum
     const localPP = localHandlers.reduce((s,h) => s + (h.mode==="pp" ? n(h.cost) : (slab.foc>0 ? n(h.cost)/slab.foc : 0)), 0);
+    // Extra services — "PP" is already per-pax; Lumpsum/Per Vehicle/Per
+    // Group are all a single total cost for the group, divided across
+    // paying pax the same way local handler lumpsum costs are.
+    const extrasPP = extras.reduce((s,e) => s + (e.mode==="PP" ? n(e.cost) : (slab.foc>0 ? n(e.cost)/slab.foc : 0)), 0);
 
-    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP;
+    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
     const tax = Math.round(sub * gst/100);
     const afterTax = sub + tax;
     const markupAmt = Math.round(afterTax * markup/100);
@@ -129,7 +133,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const finalFX = Math.ceil(sellingINR / roe);
     // Single supplement
     const ssFX = Math.ceil(((totSS + totSS*gst/100) * (1 + markup/100)) / roe);
-    return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), localPP:Math.round(localPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
+    return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), localPP:Math.round(localPP), extrasPP:Math.round(extrasPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
   };
 
   const saveVersion = () => {
@@ -434,11 +438,26 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
           {/* 10.5 Final price summary */}
           {secH("Final Price Summary","💰")}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
+              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Accommodation (per pax)</div>
+              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totHotel).toLocaleString()}</div>
+            </div>
+            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
+              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Meals (per pax)</div>
+              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totMeal).toLocaleString()}</div>
+            </div>
+            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
+              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supplement (total)</div>
+              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totSS).toLocaleString()}</div>
+            </div>
+          </div>
+          <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Accommodation and Extra Meals are the same across every slab below (from the day-wise section), shown once here rather than repeated in each row. Everything else below varies by slab, since it's split across each slab's own paying-pax count.</div>
           <div style={{overflowX:"auto",marginBottom:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:760}}>
               <thead>
                 <tr style={{background:G.navy}}>
-                  {["Slab","Transport PP","TL/Facil. PP","Misc PP","Mon. PP","Local Hdlr PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
+                  {["Slab","Transport PP","TL/Facil. PP","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
                     <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -449,7 +468,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                   return (
                     <tr key={s.id} style={{background:i%2===0?G.white:G.gray50}}>
                       <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{s.label}<br/><span style={{fontSize:9,color:G.gray400}}>{s.vehicle}</span></td>
-                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
+                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
                         <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
                       ))}
                       <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:G.navy}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
