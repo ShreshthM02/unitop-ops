@@ -74,17 +74,17 @@ Each fact has:
 
 ---
 
-## Orphaned tables (found via live-schema audit, 2026-07-15)
+## Orphaned tables — dropped 2026-07-17
 
-These exist in Supabase but have **zero rows and zero code references**. They are not part of the current data model — do not read from or write to them without first understanding why they're empty and unused:
+These existed in Supabase with zero rows and zero code references, confirmed across three separate audits (2026-07-15, 2026-07-16, 2026-07-17) before removal:
 
-- `agent_ledger`
+- `agent_ledger` (a VIEW)
 - `agent_lumpsum_payments`
 - `lumpsum_allocations`
-- `payments_incoming` *(note the "s" — this is different from the real, active `payment_incoming` table. The near-identical name is a genuine hazard; recommend dropping this one specifically to remove the risk of ever using it by mistake.)*
+- `payments_incoming` *(the near-identical-name hazard vs the real, active `payment_incoming` — the main motivation for dropping rather than just documenting)*
 - `facilitators` *(standalone table — superseded by `vendors` filtered by `type = 'Tour Facilitator'`)*
 
-**Recommendation:** drop all five. Confirmed zero data loss risk. Pending explicit confirmation before executing, since dropping DB objects deserves a heads-up even when safe.
+All five are gone. `agent_lumpsum_payments` had a foreign-key dependency from `lumpsum_allocations`, dropped in the correct order rather than via `CASCADE`, to avoid silently removing anything unexpected.
 
 ---
 

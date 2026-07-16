@@ -336,6 +336,28 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     showToast(`Recovered — moved to ${label}`);
   };
 
+  // Admin-only correction for a tour file that got moved to the wrong
+  // stage by mistake (e.g. accidentally advanced straight to Finance or
+  // Completed). Distinct from both a normal forward "Moved to X" progress
+  // step and cancelled-query recovery -- this is explicitly an override,
+  // always requires a stated reason, and is gated by the force_move_stage
+  // permission (admin role only by default) checked here as well as in
+  // the UI, not just trusted from the button being clicked.
+  const handleForceMoveStage = (queryId, targetStatus, reason) => {
+    if (!getPermissions(currentUser).force_move_stage) return;
+    const q = queries.find(qq=>qq.id===queryId);
+    if (!q) return;
+    const now = new Date().toLocaleString("en-IN");
+    const fromLabel = KANBAN_COLS.find(c=>c.id===q.status)?.label || q.status;
+    const toLabel = KANBAN_COLS.find(c=>c.id===targetStatus)?.label || targetStatus;
+    const auditAction = `ADMIN OVERRIDE — moved from ${fromLabel} to ${toLabel} — Reason: ${reason}`;
+    const updatedQ = {...q, status:targetStatus, audit:[...q.audit,{by:currentUser.name,at:now,action:auditAction}]};
+    setQueries(qs=>qs.map(qq=>qq.id===queryId?updatedQ:qq));
+    setActiveQuery(aq=>aq&&aq.id===queryId?updatedQ:aq);
+    saveQueryToDB({...q, status:targetStatus}, auditAction);
+    showToast(`Moved to ${toLabel} (admin override)`);
+  };
+
   const handleToggleWF = (queryId, stepId) => {
     const q = queries.find(q=>q.id===queryId);
     if (!q) return;
@@ -682,6 +704,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onUpdateRemarks={handleAddRemark}
             onUpdateQuery={handleUpdateQuery}
             onRecoverQuery={handleRecoverQuery}
+            onForceMoveStage={handleForceMoveStage}
             tourExecution={tourExecutions[activeQuery.id] || blankTourExecution(activeQuery.id)}
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}

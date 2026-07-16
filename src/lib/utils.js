@@ -254,7 +254,7 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
   const monthEnd = new Date(year, month + 1, 0);
 
   return queries
-    .filter(q => ["operations", "completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .filter(q => ["operations", "finance", "completed"].includes(q.status) && !q.cancelled && q.travelDate)
     .map(q => {
       const start = parseLocalDateStr(q.travelDate);
       if (!start) return null;

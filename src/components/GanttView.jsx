@@ -29,7 +29,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
 
   // Only show queries that are in operations or completed AND have a confirmed travel date
   const ganttTours = queries
-    .filter(q=>["operations","completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .filter(q=>["operations","finance","completed"].includes(q.status) && !q.cancelled && q.travelDate)
     .map((q,idx)=>{
       const nights = parseInt(q.nights)||7;
       const tDate  = parseLocalDate(q.travelDate);

@@ -198,3 +198,12 @@ describe('getMovementChartRows: Tour Facilitator and Local Handler columns (same
     expect(rows[0].localHandler).toBe('');
   });
 });
+
+describe('getMovementChartRows: finance-status tour files are included (real gap found 2026-07-17)', () => {
+  it('includes a tour file in finance status, not just operations/completed', () => {
+    const users = [{ id: 'u1', name: 'Priya' }];
+    const financeQuery = { id: 'UTQ-1', tourFileId: 'TF-1', status: 'finance', travelDate: '2026-08-10', nights: 3, cancelled: false };
+    const rows = getMovementChartRows([financeQuery], users, 2026, 7);
+    expect(rows.length).toBe(1);
+  });
+});

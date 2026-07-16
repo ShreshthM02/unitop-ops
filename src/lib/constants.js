@@ -228,28 +228,28 @@ export const ROLE_DEFAULTS = {
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:true,
-    templates:true, user_management:true,
+    templates:true, user_management:true, force_move_stage:true,
   },
   sales: {
     queries_create:true, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:true,
-    templates:false, user_management:false,
+    templates:false, user_management:false, force_move_stage:false,
   },
   ops: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false,
+    templates:false, user_management:false, force_move_stage:false,
   },
   accounts: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false,
+    templates:false, user_management:false, force_move_stage:false,
   },
 };
 
@@ -269,6 +269,7 @@ export const PERM_LABELS = {
   cancel_query:     "Cancel Queries / Tour Files",
   templates:        "Edit Quote Templates (Admin)",
   user_management:  "User Management (Admin)",
+  force_move_stage: "Move Tour File to Any Stage (Admin)",
 };
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────

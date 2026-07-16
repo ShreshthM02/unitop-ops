@@ -5,7 +5,7 @@ import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const autoDetected = getAutoDetectedSteps({
@@ -23,6 +23,9 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [showRecoverForm, setShowRecoverForm] = useState(false);
   const [recoverReason, setRecoverReason] = useState("");
   const [recoverTarget, setRecoverTarget] = useState("costing");
+  const [showMoveBackForm, setShowMoveBackForm] = useState(false);
+  const [moveBackReason, setMoveBackReason] = useState("");
+  const [moveBackTarget, setMoveBackTarget] = useState("operations");
   const [editForm, setEditForm] = useState({...query});
   const [showUploadsInline, setShowUploadsInline] = useState(false);
   const [infoSubTab, setInfoSubTab] = useState("details");
@@ -293,6 +296,41 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                             }}
                             style={{flex:1,padding:"7px",background:"#0E6655",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
                             Confirm Recovery
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {isCaseFile&&!query.cancelled&&getPermissions(currentUser).force_move_stage&&!showMoveBackForm&&(
+                      <button onClick={()=>{setMoveBackTarget(query.status);setShowMoveBackForm(true);}}
+                        style={{width:"100%",padding:"8px",background:"#EBF5FB",color:"#1A5276",
+                          border:"1px solid #A9CCE3",borderRadius:6,fontSize:12,fontWeight:600,
+                          cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:8}}>
+                        🔓 Admin: Move to Any Stage
+                      </button>
+                    )}
+                    {isCaseFile&&!query.cancelled&&getPermissions(currentUser).force_move_stage&&showMoveBackForm&&(
+                      <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:12,marginTop:8}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#1A5276",marginBottom:8}}>Move to Any Stage (Admin Override)</div>
+                        <div style={{fontSize:10,color:"#1A5276",marginBottom:8}}>For correcting a tour file moved to the wrong stage by mistake — e.g. accidentally advanced straight to Finance or Completed. This is separate from normal stage progress and always requires a reason.</div>
+                        <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Reason</div>
+                        <textarea value={moveBackReason} onChange={e=>setMoveBackReason(e.target.value)}
+                          placeholder="e.g. Moved to Completed by mistake, still in Operations"
+                          style={{width:"100%",minHeight:50,resize:"vertical",padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",marginBottom:8}}/>
+                        <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Move to stage</div>
+                        <select value={moveBackTarget} onChange={e=>setMoveBackTarget(e.target.value)}
+                          style={{width:"100%",padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",marginBottom:10}}>
+                          {PIPELINE_STAGES.map(s=><option key={s.id} value={s.id}>{s.label}{s.id===query.status?" (current)":""}</option>)}
+                        </select>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>{setShowMoveBackForm(false);setMoveBackReason("");}} className="btn btn-ghost" style={{fontSize:11,flex:1}}>Cancel</button>
+                          <button onClick={()=>{
+                              if(!moveBackReason.trim()){alert("Please state a reason for this move.");return;}
+                              if(moveBackTarget===query.status){alert("Select a different stage to move to.");return;}
+                              onForceMoveStage&&onForceMoveStage(query.id,moveBackTarget,moveBackReason.trim());
+                              setShowMoveBackForm(false);setMoveBackReason("");
+                            }}
+                            style={{flex:1,padding:"7px",background:"#1A5276",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                            Confirm Move
                           </button>
                         </div>
                       </div>
