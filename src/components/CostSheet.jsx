@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, logAudit, buildLetterheadDocument, printHTML, db } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly }) {
   const n = v => parseFloat(v)||0;
@@ -147,12 +147,96 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   };
 
   const inp = {padding:"4px 6px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
+
+  // ── EXPORTS: PDF (landscape A4) and XLSX ──
+  const currentVersionLabel = viewingVersion || version;
+  const savedTimestamp = versions.find(v=>v.version===currentVersionLabel)?.date || "Not yet saved";
+
+  const buildCostSheetPDFHTML = () => {
+    const headerBlock = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6pt">
+        <div class="inv-title">COST SHEET</div>
+        <div style="text-align:right;font-size:9pt;color:#555">Version ${currentVersionLabel} &middot; Saved ${savedTimestamp}</div>
+      </div>
+      <div style="font-size:10pt;margin-bottom:10pt">
+        <b>${query.groupName||query.clientName||""}</b> &middot; ${query.destination||query.sector||""} &middot; Tour File: ${query.tourFileId||query.id}
+      </div>`;
+    const settingsBlock = `
+      <table style="width:100%;margin-bottom:10pt;font-size:9pt"><tr>
+        <td><b>GST:</b> ${gst}%</td><td><b>Markup:</b> ${markup}%</td><td><b>ROE:</b> ${roe}</td><td><b>Currency:</b> ${currency}</td>
+        <td><b>TL Cost:</b> ${tlMode==="pp"?"Per Pax":"Lumpsum"}</td><td><b>Misc Cost:</b> ${miscMode==="pp"?"Per Pax":"Lumpsum"}</td><td><b>Monument:</b> ${monMode==="pp"?"Per Pax":"Lumpsum"}</td>
+      </tr></table>`;
+    const dayRows = days.map(d => `<tr><td>${d.day}</td><td>${d.date||""}</td><td>${d.movement||""}</td><td>${d.mealPlan||""}</td><td style="text-align:right">${n(d.mealCost)?"₹"+n(d.mealCost).toLocaleString():"—"}</td><td>${d.hotel||""}</td><td>${d.hotelPlan||""}</td><td style="text-align:right">${n(d.hotelNetPP)?"₹"+n(d.hotelNetPP).toLocaleString():"—"}</td><td style="text-align:right">${n(d.singleSupp)?"₹"+n(d.singleSupp).toLocaleString():"—"}</td></tr>`).join("");
+    const dayTableBlock = `
+      <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
+      <table class="content-table">
+        <thead><tr><th>Day</th><th>Date</th><th>Movement</th><th>Meal Plan</th><th>Meal Cost</th><th>Hotel</th><th>Plan</th><th>Net PP</th><th>Sngl Supp</th></tr></thead>
+        <tbody>${dayRows||'<tr><td colspan="9" style="text-align:center;color:#999">No days added</td></tr>'}</tbody>
+      </table>`;
+    const slabRows = slabs.map(s => {
+      const c = calcSlab(s);
+      return `<tr><td>${s.label}<br/><span style="font-size:7pt;color:#888">${s.vehicle||""}</span></td><td style="text-align:right">${c.tptPP||"—"}</td><td style="text-align:right">${c.tlPP||"—"}</td><td style="text-align:right">${c.miscPP||"—"}</td><td style="text-align:right">${c.monPP||"—"}</td><td style="text-align:right">${c.localPP||"—"}</td><td style="text-align:right">${c.extrasPP||"—"}</td><td style="text-align:right">₹${c.sub}</td><td style="text-align:right">₹${c.tax}</td><td style="text-align:right">₹${c.afterTax}</td><td style="text-align:right">₹${c.markupAmt}</td><td style="text-align:right"><b>${c.finalFX?currency+" "+c.finalFX:"—"}</b></td><td style="text-align:right">${c.ssFX?currency+" "+c.ssFX:"—"}</td></tr>`;
+    }).join("");
+    const summaryBlock = `
+      <div class="inv-title" style="margin:14pt 0 8pt">Final Price Summary</div>
+      <table style="width:100%;margin-bottom:8pt;font-size:9pt"><tr>
+        <td><b>Accommodation (PP):</b> ₹${Math.round(totHotel).toLocaleString()}</td>
+        <td><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</td>
+        <td><b>Single Supplement (total):</b> ₹${Math.round(totSS).toLocaleString()}</td>
+      </tr></table>
+      <table class="content-table">
+        <thead><tr><th>Slab</th><th>Transport</th><th>TL/Facil</th><th>Misc</th><th>Mon.</th><th>Local Hdlr</th><th>Extras</th><th>Sub-total</th><th>GST</th><th>After Tax</th><th>Markup</th><th>Final Price</th><th>SS</th></tr></thead>
+        <tbody>${slabRows||'<tr><td colspan="13" style="text-align:center;color:#999">No slabs added</td></tr>'}</tbody>
+      </table>`;
+    return buildLetterheadDocument({
+      title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
+      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, summaryBlock],
+      orientation: "landscape",
+      showPageNum: true,
+    });
+  };
+
+  const exportPDF = () => {
+    printHTML(buildCostSheetPDFHTML());
+    logAudit(db, query.id, currentUser?.name, `Cost Sheet v${currentVersionLabel} exported to PDF`);
+  };
+
+  const exportXLSX = async () => {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["Cost Sheet", `${query.tourFileId||query.id} — v${currentVersionLabel}`],
+      ["Saved", savedTimestamp],
+      ["Group / Client", query.groupName||query.clientName||""],
+      ["Destination", query.destination||query.sector||""],
+      [],
+      ["GST %", gst], ["Markup %", markup], ["ROE", roe], ["Currency", currency],
+      ["TL Cost Mode", tlMode==="pp"?"Per Pax":"Lumpsum"], ["Misc Cost Mode", miscMode==="pp"?"Per Pax":"Lumpsum"], ["Monument Mode", monMode==="pp"?"Per Pax":"Lumpsum"],
+      [],
+      ["Accommodation (PP)", Math.round(totHotel)], ["Extra Meals (PP)", Math.round(totMeal)], ["Single Supplement (total)", Math.round(totSS)],
+    ]), "Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Single Supp","Notes"],
+      ...days.map(d=>[d.day,d.date,d.movement,d.mealPlan,n(d.mealCost),d.hotel,d.hotelAlt,d.hotelPlan,n(d.hotelNetPP),n(d.singleSupp),d.notes]),
+    ]), "Day-wise");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["Slab","Vehicle","Transport PP","TL/Facil PP","Misc PP","Mon PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Final Price","SS"],
+      ...slabs.map(s=>{const c=calcSlab(s);return [s.label,s.vehicle,c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.finalFX?`${currency} ${c.finalFX}`:"",c.ssFX?`${currency} ${c.ssFX}`:""];}),
+    ]), "Final Price");
+    const blob = new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `CostSheet_${query.tourFileId||query.id}_v${currentVersionLabel}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+    logAudit(db, query.id, currentUser?.name, `Cost Sheet v${currentVersionLabel} exported to XLSX`);
+  };
+
   const secH = (t,icon) => <div style={{background:G.navy,color:"#fff",padding:"5px 10px",borderRadius:5,fontSize:11,fontWeight:700,letterSpacing:"0.5px",margin:"14px 0 8px",display:"flex",alignItems:"center",gap:6}}><span>{icon}</span>{t}</div>;
   const modeBtn = (cur,val,label,setter) => (
     <button onClick={()=>setter(val)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${cur===val?G.accent:G.gray200}`,background:cur===val?"#FDEDEC":G.white,color:cur===val?G.accent:G.gray600,fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:cur===val?600:400}}>{label}</button>
   );
 
-  const hasFinalPrice = slabs.length > 0 && calcSlab(slabs[0]).finalFX > 0;
+  const hasFinalPrice = slabs.length > 0 && calcSlab(slabs[0]).finalFX > 0 && !!lastSavedCostSheetId;
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -288,6 +372,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                 ))}
                 <tr style={{background:G.gray100,fontWeight:700}}>
                   <td colSpan={3} style={{padding:"5px 4px",fontSize:11,color:G.gray600}}>TOTALS</td>
+                  <td></td>
                   <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totMeal>0?`₹ ${totMeal.toLocaleString()}`:"—"}</td>
                   <td colSpan={3}></td>
                   <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totHotel>0?`₹ ${totHotel.toLocaleString()}`:"—"}</td>
@@ -490,6 +575,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>}
+          <button onClick={exportPDF} className="btn btn-ghost" title="Export as landscape A4 PDF">🖨 Export PDF</button>
+          <button onClick={exportXLSX} className="btn btn-ghost" title="Export as Excel workbook (Summary, Day-wise, Final Price sheets)">📊 Export XLSX</button>
+          {!readOnly && slabs.length>0 && calcSlab(slabs[0]).finalFX>0 && !lastSavedCostSheetId && (
+            <span style={{fontSize:10,color:"#92400E",whiteSpace:"nowrap"}} title="Proceed to Quotation needs at least one saved version">⚠ Save a version to proceed</span>
+          )}
           {!readOnly && hasFinalPrice && (
             <button className="btn btn-success" onClick={()=>onProceedToQuotation(lastSavedCostSheetId)}>
               📋 Proceed to Quotation →
