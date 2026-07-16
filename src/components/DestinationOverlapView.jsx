@@ -98,14 +98,14 @@ export default function DestinationOverlapView({ queries, tours }) {
                             <div style={{position:"relative",display:"inline-block"}}>
                               <div style={{width:22,height:22,borderRadius:4,background:"#FEF3C7",border:"1.5px solid #F59E0B",
                                 display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#92400E",
-                                cursor:"pointer"}} title={activeGroups.map(q=>q.clientName||q.groupName).join(", ")}>
+                                cursor:"pointer"}} title={activeGroups.map(q=>q.groupName||q.clientName).join(", ")}>
                                 {activeGroups.length}⚡
                               </div>
                             </div>
                           ) : hasAny ? (
                             <div style={{width:20,height:20,borderRadius:3,
                               background:cityColors[ci%cityColors.length],opacity:0.7,margin:"0 auto"}}
-                              title={activeGroups[0]?.clientName||activeGroups[0]?.groupName}/>
+                              title={activeGroups[0]?.groupName||activeGroups[0]?.clientName}/>
                           ) : null}
                         </td>
                       );

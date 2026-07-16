@@ -108,6 +108,16 @@ There used to be a second, frozen copy of core tour facts (`name`, `dates`, `pax
 
 ---
 
+## Group / Client Name (a display-priority bug, not a duplication worth keeping)
+
+`queries.group_name` and `queries.client_name` are two separate columns for the same concept: the tour's display name. **`group_name` is the only one with an actual input field anywhere in the app** — `client_name` has never had an editable UI field, but real historical data still holds old values in it (found live: `UTQ-2026-037` has `group_name: "UTT Golden Triangle"` and a stale, unrelated `client_name: "Golden Triangle Tour"`).
+
+Every view fell back with `groupName || clientName` — checking the actual editable field first — **except** Dashboard, GanttView, the drawer's own header, SmartSearch, VendorMaster, VendorLedgerPanel, and `DestinationOverlapView` (dead code), which all checked `clientName || groupName` instead. For any query with a stale `client_name` value, those views would show the old name forever, no matter how many times `group_name` was correctly edited and saved — looking exactly like a persistence failure when the save was actually working the whole time. Found 2026-07-17 via a direct report ("changed tour name still not visible") that survived two earlier, real, but different fixes (the `tours` snapshot and the `finance`-status filter gap).
+
+**Fixed by standardizing `groupName || clientName` everywhere.** Not treating this as an intentional LIVE/SNAPSHOT pair worth keeping distinct — `client_name` has no legitimate independent role right now, it's just an unused column with old data sitting in it. If a genuine "client name distinct from group name" concept is ever wanted, it needs its own editable UI field first, not a silent fallback-order dependency.
+
+---
+
 ## Standing safeguard: schema-completeness tests
 
 `src/__tests__/schemaCompleteness.test.jsx` mechanically checks every save function against the live column list for its table — not from memory, but a snapshot captured directly from Supabase. Each test calls the real save function and asserts every real column actually appears as a key in what gets sent to the database. This is the direct fix for the bug class this whole document exists to prevent: a column existing on the live table with a working UI field feeding it, silently dropped because the save function never included that key.

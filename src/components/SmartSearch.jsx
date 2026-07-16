@@ -38,7 +38,7 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
   };
 
   const getTitle = r => {
-    if(r._type==="query") return r.clientName||r.groupName||r.agentCompany;
+    if(r._type==="query") return r.groupName||r.clientName||r.agentCompany;
     if(r._type==="agent") return r.company;
     if(r._type==="vendor") return r.name;
     return "";

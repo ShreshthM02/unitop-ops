@@ -145,7 +145,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                   {ganttTours.map((tour,ti)=>(
                     <tr key={tour.query.id} style={{background:ti%2===0?G.white:G.gray50}}>
                       <td onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{padding:"6px 12px",borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle",position:"sticky",left:0,background:ti%2===0?G.white:G.gray50,zIndex:1,cursor:onOpenQuery?"pointer":"default"}}>
-                        <div style={{fontSize:12,fontWeight:500}}>{tour.query.clientName||tour.query.groupName}</div>
+                        <div style={{fontSize:12,fontWeight:500}}>{tour.query.groupName||tour.query.clientName}</div>
                         <div style={{fontSize:10,color:G.gray400}}>{tour.query.id} · {tour.query.destination||tour.query.sector||""}</div>
                       </td>
                       {monthDays.map(d=>{
@@ -157,7 +157,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                                 borderRadius:bar.isFirst&&bar.isLast?"4px":bar.isFirst?"4px 0 0 4px":bar.isLast?"0 4px 4px 0":"0",
                                 display:"flex",alignItems:"center",overflow:"hidden",cursor:onOpenQuery?"pointer":"default"}}>
                                 {bar.isFirst&&<span style={{fontSize:9,color:"#fff",paddingLeft:4,whiteSpace:"nowrap",overflow:"hidden",fontWeight:600}}>
-                                  {(tour.query.clientName||tour.query.groupName||"").split(" ")[0]}
+                                  {(tour.query.groupName||tour.query.clientName||"").split(" ")[0]}
                                 </span>}
                               </div>
                             )}
@@ -173,7 +173,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
               {ganttTours.slice(0,6).map(t=>(
                 <span key={t.query.id} style={{display:"flex",alignItems:"center",gap:5}}>
                   <span style={{width:10,height:10,borderRadius:2,background:t.color,display:"inline-block"}}/>
-                  {t.query.clientName||t.query.groupName}
+                  {t.query.groupName||t.query.clientName}
                 </span>
               ))}
               {ganttTours.length>6&&<span>+{ganttTours.length-6} more</span>}
@@ -230,12 +230,12 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                               {active.length>1 ? (
                                 <div style={{width:22,height:18,borderRadius:3,background:"#FEF3C7",border:"1.5px solid #F59E0B",
                                   display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#92400E",margin:"0 auto",cursor:"pointer"}}
-                                  title={active.map(q=>q.clientName||q.groupName).join(", ")}>
+                                  title={active.map(q=>q.groupName||q.clientName).join(", ")}>
                                   {active.length}⚡
                                 </div>
                               ) : active.length===1 ? (
                                 <div style={{width:18,height:18,borderRadius:3,background:DEST_COLORS[ci%DEST_COLORS.length],opacity:0.75,margin:"0 auto"}}
-                                  title={active[0].clientName||active[0].groupName}/>
+                                  title={active[0].groupName||active[0].clientName}/>
                               ) : null}
                             </td>
                           );

@@ -33,7 +33,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
     .sort((a,b)=>new Date(a.travelDate||0)-new Date(b.travelDate||0))
     .map((q,idx)=>({
       id: q.id, query: q,
-      name: `${q.clientName||q.groupName||""} — ${q.destination||q.sector||""}`,
+      name: `${q.groupName||q.clientName||""} — ${q.destination||q.sector||""}`,
       dates: q.travelDate||"TBC", pax: q.paxDisplay||"",
       color: DEST_COLORS[idx%DEST_COLORS.length],
       statusLabel: q.status==="completed"?"Completed":q.status==="operations"?"On Ground":"Upcoming",
@@ -79,7 +79,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseEnter={e => e.currentTarget.style.background = G.gray50}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{q.clientName||q.groupName}<FileTypeBadge fileType={q.fileType}/></div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div>
                 <div style={{ fontSize: 11, color: G.gray400 }}>{q.id} · {q.destination||q.sector}</div>
               </div>
               <StatusBadge status={q.status} />

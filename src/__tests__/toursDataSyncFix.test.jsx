@@ -13,7 +13,7 @@ describe('Dashboard: "Tour Calendar" widget now reflects live query edits, not a
     // Simulates the tour having been renamed/re-dated AFTER conversion --
     // the old bug would still show whatever the name/dates were at the
     // moment "Convert to Tour File" was first clicked.
-    const editedQuery = { ...convertedQuery, clientName: 'Renamed After Edit', travelDate: '2026-09-15' };
+    const editedQuery = { ...convertedQuery, groupName: 'Renamed After Edit', clientName: '', travelDate: '2026-09-15' };
     render(<Dashboard queries={[editedQuery]} onOpenQuery={()=>{}} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
     expect(screen.getAllByText(/Renamed After Edit/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/2026-09-15/).length).toBeGreaterThan(0);

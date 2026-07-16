@@ -14,7 +14,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"}];
   const filtered=vendors.filter(v=>(showInactive||v.active!==false)&&(filterType==="All"||v.type===filterType)&&(!search||v.name?.toLowerCase().includes(search.toLowerCase())||v.city?.toLowerCase().includes(search.toLowerCase())));
-  const getLedger=v=>{const entries=[];Object.entries(payments||{}).forEach(([qId,pt])=>{(pt.outgoing||[]).forEach(e=>{if((e.vendor||"").toLowerCase().includes((v.name||"").toLowerCase())){const q=queries.find(q=>q.id===qId);entries.push({...e,queryId:qId,tourFileId:q?.tourFileId,clientName:q?.clientName||q?.groupName,sector:q?.destination||q?.sector});}});});return entries.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));};
+  const getLedger=v=>{const entries=[];Object.entries(payments||{}).forEach(([qId,pt])=>{(pt.outgoing||[]).forEach(e=>{if((e.vendor||"").toLowerCase().includes((v.name||"").toLowerCase())){const q=queries.find(q=>q.id===qId);entries.push({...e,queryId:qId,tourFileId:q?.tourFileId,clientName:q?.groupName||q?.clientName,sector:q?.destination||q?.sector});}});});return entries.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));};
   const ROLE_STYLE={"Tour Facilitator":{bg:"#EAFAF1",color:"#0E6655"},"Local Handler":{bg:"#EBF5FB",color:"#1A5276"},"Transporter":{bg:"#F5EEF8",color:"#6C3483"}};
   const saveEdit=()=>{
     if(form.id){
@@ -113,7 +113,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                                 <div style={{flex:1}}>
                                   <div style={{fontSize:12,fontWeight:700,color:G.navy}}>📁 {tfId}</div>
-                                  {q&&<div style={{fontSize:11,color:G.gray600}}>{q.clientName||q.groupName} · {q.destination||q.sector} · {q.travelDate||""}</div>}
+                                  {q&&<div style={{fontSize:11,color:G.gray600}}>{q.groupName||q.clientName} · {q.destination||q.sector} · {q.travelDate||""}</div>}
                                 </div>
                                 <div style={{fontSize:13,fontWeight:700,color:G.navy}}>₹ {Math.round(total).toLocaleString()}</div>
                               </div>

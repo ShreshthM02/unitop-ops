@@ -92,7 +92,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
         <div className="drawer-head">
           <div style={{flex:1}}>
             <div className="drawer-id">{isCaseFile?`📁 ${query.tourFileId} · `:""}{query.id}</div>
-            <div className="drawer-name">{query.clientName||query.groupName||query.agentCompany}<FileTypeBadge fileType={query.fileType}/></div>
+            <div className="drawer-name">{query.groupName||query.clientName||query.agentCompany}<FileTypeBadge fileType={query.fileType}/></div>
             <div className="drawer-dest">
               {query.destination||query.sector||""}
               {query.nights?` · ${query.nights}N`:""}

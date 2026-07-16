@@ -10,7 +10,7 @@ export default function VendorLedgerPanel({ vendor, queries, allPayments, onClos
       if (e.vendor && (e.vendor.toLowerCase().includes(vendor.name.toLowerCase()) ||
           e.vendorId === vendor.id)) {
         const q = queries.find(q=>q.id===queryId);
-        ledgerEntries.push({ ...e, queryId, tourFileId: q?.tourFileId, clientName: q?.clientName||q?.groupName });
+        ledgerEntries.push({ ...e, queryId, tourFileId: q?.tourFileId, clientName: q?.groupName||q?.clientName });
       }
     });
   });
