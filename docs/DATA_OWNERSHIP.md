@@ -100,6 +100,14 @@ These exist in Supabase but have **zero rows and zero code references**. They ar
 
 ---
 
+## Tour Identity/Display (name, dates, pax shown in Dashboard/Search — eliminated, not documented as a duplicate)
+
+There used to be a second, frozen copy of core tour facts (`name`, `dates`, `pax`, `status`) in a separate `tours` state array, captured once at "Convert to Tour File" time and never updated again. `Dashboard`'s "Tour Calendar" widget and the "Tours On Ground" stat read from it directly; `SmartSearch` searched it as a second, duplicate result type that did nothing when clicked; `GanttView` received it as a prop but never actually used it (dead prop).
+
+**This was not a LIVE/SNAPSHOT split worth keeping — it was pure duplication with no purpose**, so it was removed entirely rather than documented as an intentional pattern. `Dashboard` and `SmartSearch` now derive tour name/dates/pax/status fresh from `queries` on every render, the same way `GanttView` already correctly did. Found 2026-07-17 after a direct user report that Info tab edits weren't reflecting on Dashboard/Tour Calendar. Fixed by deleting the `tours` state, not by adding a sync step — one less place for a fact to drift out of date.
+
+---
+
 ## Standing safeguard: schema-completeness tests
 
 `src/__tests__/schemaCompleteness.test.jsx` mechanically checks every save function against the live column list for its table — not from memory, but a snapshot captured directly from Supabase. Each test calls the real save function and asserts every real column actually appears as a key in what gets sent to the database. This is the direct fix for the bug class this whole document exists to prevent: a column existing on the live table with a working UI field feeding it, silently dropped because the save function never included that key.

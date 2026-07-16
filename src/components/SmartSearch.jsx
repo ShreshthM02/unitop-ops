@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
 
-export default function SmartSearch({ queries, tours, agents, vendors, onSelectQuery, onClose }) {
+export default function SmartSearch({ queries, agents, vendors, onSelectQuery, onClose }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const inputRef = React.useRef(null);
@@ -26,14 +26,13 @@ export default function SmartSearch({ queries, tours, agents, vendors, onSelectQ
     const qr = queries.map(item=>({...item,_type:"query",_score:score(item,q)})).filter(i=>i._score>0);
     const ag = agents.map(item=>({...item,_type:"agent",_score:score(item,q)})).filter(i=>i._score>0);
     const vn = vendors.map(item=>({...item,_type:"vendor",_score:score(item,q)})).filter(i=>i._score>0);
-    const tr = tours.map(item=>({...item,_type:"tour",_score:score(item,q)})).filter(i=>i._score>0);
-    const all = [...qr,...ag,...vn,...tr].sort((a,b)=>b._score-a._score).slice(0,12);
+    const all = [...qr,...ag,...vn].sort((a,b)=>b._score-a._score).slice(0,12);
     setResults(all);
   },[q]);
 
   const TypeBadge = ({type}) => {
     const map = {query:{label:"Query",bg:"#DBEAFE",color:"#1E40AF"},agent:{label:"Agent",bg:"#D1FAE5",color:"#065F46"},
-      vendor:{label:"Vendor",bg:"#FEF3C7",color:"#92400E"},tour:{label:"Tour",bg:"#F3E8FF",color:"#6B21A8"}};
+      vendor:{label:"Vendor",bg:"#FEF3C7",color:"#92400E"}};
     const s=map[type]||map.query;
     return <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:s.bg,color:s.color,fontWeight:600}}>{s.label}</span>;
   };
@@ -42,14 +41,12 @@ export default function SmartSearch({ queries, tours, agents, vendors, onSelectQ
     if(r._type==="query") return r.clientName||r.groupName||r.agentCompany;
     if(r._type==="agent") return r.company;
     if(r._type==="vendor") return r.name;
-    if(r._type==="tour") return r.name;
     return "";
   };
   const getSub = r => {
     if(r._type==="query") return `${r.id} · ${r.destination||r.sector||""} · ${r.travelDate||r.travelMonth||""}`;
     if(r._type==="agent") return `${r.country} · ${r.contactName}`;
     if(r._type==="vendor") return `${r.type} · ${r.city}`;
-    if(r._type==="tour") return `${r.id} · ${r.dates}`;
     return "";
   };
 

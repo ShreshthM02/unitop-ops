@@ -39,7 +39,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [dataLoading, setDataLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [queries, setQueries]     = useState(INITIAL_QUERIES);
-  const [tours, setTours]         = useState(TOUR_DATA);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
   const [staff, setStaff]         = useState(USERS);
@@ -298,12 +297,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleConvertToCaseFile = (query) => {
-    const tourNum = "TUR-2025-0"+(tours.length+19);
+    const tourNum = "TUR-2025-0"+(queries.filter(q=>q.tourFileId).length+19);
     const now = new Date().toLocaleString("en-IN");
     const auditMsg = `Converted to Tour File — Tour No. ${tourNum} assigned`;
     const updQ = {...query,tourFileId:tourNum,audit:[...(query.audit||[]),{by:currentUser.name,at:now,action:auditMsg}]};
     setQueries(qs=>qs.map(q=>q.id===query.id?updQ:q));
-    setTours(ts=>[...ts,{id:tourNum,queryId:query.id,name:`${query.clientName} — ${query.destination||query.sector||""}`,dates:query.travelDate,pax:query.paxDisplay,status:"Upcoming",color:"#C0392B",ganttStart:16,ganttLen:Number(query.nights)||7}]);
     setActiveQuery(q=>q?{...q,tourFileId:tourNum}:null);
     saveQueryToDB(updQ, auditMsg);
     showToast(`Tour File opened — ${tourNum}`);
@@ -514,9 +512,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>
 
           <div className="content">
-            {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
+            {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
             {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile} staff={staff}/>}
-            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} tours={tours} onOpenQuery={setActiveQuery} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>}
+            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>}
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
@@ -716,7 +714,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}
 
         {/* Smart Search */}
-        {showSearch && <SmartSearch queries={queries} tours={tours} agents={agents} vendors={vendors} onSelectQuery={q=>{setActiveQuery(q);}} onClose={()=>setShowSearch(false)}/>}
+        {showSearch && <SmartSearch queries={queries} agents={agents} vendors={vendors} onSelectQuery={q=>{setActiveQuery(q);}} onClose={()=>setShowSearch(false)}/>}
 
         {/* Stat filter list modal */}
         {statFilter && (
