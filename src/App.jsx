@@ -58,6 +58,7 @@ export default function App() {
       <div style={demoMode?{paddingTop:30}:{}}>
         <UnitopApp
           authUser={currentUserData}
+          onUpdateAuthUser={(user)=>setCurrentUserData(user)}
           onOpenVendorLedger={(vendor, queries, payments) => setShowVendorLedger({vendor,queries,payments})}
           onOpenAgentLedger={(agent, queries, payments) => setShowAgentLedger({agent,queries,payments})}
         />

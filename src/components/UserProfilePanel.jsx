@@ -13,7 +13,22 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
   const [saving,setSaving]=React.useState(false);
   const [saved,setSaved]=React.useState(false);
   const inp={padding:"8px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:13,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
-  const handleSave=()=>{if(onSave)onSave({...currentUser,name,color});setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const [saveError,setSaveError]=React.useState("");
+  const handleSave=async()=>{
+    setSaveError(""); setSaving(true);
+    try {
+      const res = await db.auth.updateOwnProfile(name, color);
+      if (res?.success) {
+        if(onSave) onSave(res.user);
+        setSaved(true); setTimeout(()=>setSaved(false),2000);
+      } else {
+        setSaveError(res?.error || "Save failed — please try again");
+      }
+    } catch(e) {
+      setSaveError("Cannot reach server. Check your connection and try again.");
+    }
+    setSaving(false);
+  };
   const handlePwChange=async()=>{setPwError("");if(newPw.length<8){setPwError("Min 8 chars");return;}if(newPw!==confirmPw){setPwError("Don't match");return;}setSaving(true);try{const res=await db.auth.changePassword(currentUser.id,newPw);if(res?.success){setShowPw(false);setTimeout(async()=>{await db.auth.logout();window.location.reload();},1500);}else setPwError(res?.error||"Failed");}catch(e){setPwError(e.message);}setSaving(false);};
   const initials=(name||"??").split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   return(
@@ -27,7 +42,8 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
         <div style={{padding:"16px 20px"}}>
           <div style={{marginBottom:12}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Display Name</div><input style={inp} value={name} onChange={e=>setName(e.target.value)}/></div>
           <div style={{marginBottom:14}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Avatar Colour</div><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{AVATAR_COLORS.map(c=><div key={c} onClick={()=>setColor(c)} style={{width:26,height:26,borderRadius:"50%",background:c,cursor:"pointer",border:color===c?"3px solid #fff":"3px solid transparent",boxShadow:color===c?`0 0 0 2px ${c}`:"none"}}/>)}</div></div>
-          <button className="btn btn-primary" style={{width:"100%",fontSize:12,marginBottom:10}} onClick={handleSave}>{saved?"✓ Saved":"Save Profile"}</button>
+          {saveError&&<div style={{fontSize:11,color:"#991B1B",background:"#FEE2E2",borderRadius:5,padding:"5px 8px",marginBottom:8}}>{saveError}</div>}
+          <button className="btn btn-primary" style={{width:"100%",fontSize:12,marginBottom:10}} onClick={handleSave} disabled={saving}>{saving?"Saving…":saved?"✓ Saved":"Save Profile"}</button>
           <div style={{borderTop:`1px solid ${G.gray100}`,paddingTop:10}}>
             {!showPw?<button className="btn btn-ghost" style={{width:"100%",fontSize:12}} onClick={()=>setShowPw(true)}>🔑 Change Password</button>:(
               <div>
