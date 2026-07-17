@@ -49,7 +49,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
     expect(slabHeaderRow).toBeTruthy();
-    const finalPriceCell = sheet.getCell(slabHeaderRow+1, 15); // first slab row, Final Price column (shifted +1 for the new T/L Surcharge column)
+    const finalPriceCell = sheet.getCell(slabHeaderRow+1, 14); // first slab row, Final Price column
     expect(finalPriceCell.formula).toBeTruthy();
     expect(finalPriceCell.formula).toContain('CEILING(');
     // Should reference the ROE settings cell, not a hardcoded number
@@ -60,7 +60,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     const sheet = await exportAndReload();
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    const taxCell = sheet.getCell(slabHeaderRow+1, 12); // GST column (shifted +1 for the new T/L Surcharge column)
+    const taxCell = sheet.getCell(slabHeaderRow+1, 11); // GST column
     expect(taxCell.formula).toContain('ROUND(');
     expect(taxCell.formula).not.toMatch(/\*\(?5\/100\)?/); // not a hardcoded 5% literal
   }, 15000);
@@ -114,8 +114,8 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     const sheet = await exportAndReload();
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    expect(sheet.getCell(slabHeaderRow, 15).value).toContain('Final Price');
-    expect(sheet.getCell(slabHeaderRow, 15).value).toContain('(');
+    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('Final Price');
+    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('(');
   }, 15000);
 });
 
@@ -164,13 +164,45 @@ describe('CostSheet XLSX: Client/Agent, Assigned Staff, and Tour Leader Slab row
 });
 
 describe('CostSheet XLSX: T/L Surcharge is a genuinely separate column from Tour Facilitator', () => {
-  it('the slab header row includes both TL/Facil and T/L Surcharge as distinct columns', async () => {
-    const sheet = await exportAndReload();
-    let slabHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    const headerValues = [];
-    for (let c = 1; c <= 16; c++) headerValues.push(sheet.getCell(slabHeaderRow,c).value);
-    expect(headerValues).toContain('TL/Facil');
-    expect(headerValues).toContain('T/L Surcharge');
-  });
+  it('group slab table has Tour Facil but never T/L Surcharge (not even blank), and T/L slabs get their own separate section with both', async () => {
+    let capturedBlob = null;
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
+    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      const el = realCreateElement(tag);
+      if (tag === 'a') el.click = vi.fn();
+      return el;
+    });
+
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
+
+    const buffer = await capturedBlob.arrayBuffer();
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const sheet = wb.worksheets[0];
+
+    let slabHeaderRow = null, tlHeaderRow = null;
+    for (let r = 1; r <= sheet.rowCount; r++) {
+      if (sheet.getCell(r,1).value === 'Slab') slabHeaderRow = r;
+      if (sheet.getCell(r,1).value === 'T/L Slab') tlHeaderRow = r;
+    }
+    expect(slabHeaderRow).toBeTruthy();
+    expect(tlHeaderRow).toBeTruthy();
+    expect(tlHeaderRow).not.toBe(slabHeaderRow); // genuinely separate rows/sections
+
+    const groupHeaders = []; for (let c=1;c<=15;c++) groupHeaders.push(sheet.getCell(slabHeaderRow,c).value);
+    expect(groupHeaders).toContain('Tour Facil');
+    expect(groupHeaders).not.toContain('T/L Surcharge');
+
+    const tlHeaders = []; for (let c=1;c<=16;c++) tlHeaders.push(sheet.getCell(tlHeaderRow,c).value);
+    expect(tlHeaders).toContain('Tour Facil');
+    expect(tlHeaders).toContain('T/L Surcharge');
+
+    createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
+  }, 15000);
 });

@@ -137,11 +137,17 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     expect(html).toContain('<colgroup>');
   });
 
-  it('Tour Facilitator and T/L Surcharge are genuinely separate columns in the Final Price Summary', async () => {
+  it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    expect(html).toContain('TL/Facil');
+    let html = capturedHTML();
+    expect(html).toContain('Tour Facil');
+    expect(html).not.toContain('T/L Surcharge'); // no T/L slabs added yet
+
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    html = capturedHTML();
+    expect(html).toContain('Tour Leader Slabs'); // its own section title
     expect(html).toContain('T/L Surcharge');
   });
 
@@ -153,7 +159,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
     // Tour Facilitator: lumpsum 6000 / 6 pax = 1000, should appear as a
-    // real number in the TL/Facil column for the T/L slab row too.
+    // real number in the Tour Facil column for the T/L slab row too.
     expect(html).toMatch(/₹1,000/);
   });
 });

@@ -302,22 +302,22 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       const c = calcSlab(s);
       return rowHTML([
         `${s.label}<br/><span style="font-size:7pt;color:#888">${s.vehicle==="Others"?s.vehicleOther:s.vehicle||""}</span>`,
-        c.tptPP?"₹"+c.tptPP.toLocaleString():"—", c.tlPP?"₹"+c.tlPP.toLocaleString():"—", "—", c.miscPP?"₹"+c.miscPP.toLocaleString():"—",
+        c.tptPP?"₹"+c.tptPP.toLocaleString():"—", c.tlPP?"₹"+c.tlPP.toLocaleString():"—", c.miscPP?"₹"+c.miscPP.toLocaleString():"—",
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12,13]);
+      ], [1,2,3,4,5,6,7,8,9,10,11,12]);
     }).join("");
     const tlSlabRows = tlSlabs.map(tl => {
       const c = calcTlSlab(tl);
       return rowHTML([
-        `${tl.label}<br/><span style="font-size:7pt;color:#888">${tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||""}</span>`,
+        tl.label, tl.vehicle==="Others"?(tl.vehicleOther||"—"):(tl.vehicle||"—"), n(tl.pax)||"—",
         c.tptPP?"₹"+c.tptPP.toLocaleString():"—", c.tlPP?"₹"+c.tlPP.toLocaleString():"—",
         `<b>${c.surchargePP?"₹"+c.surchargePP.toLocaleString():"—"}</b>`, c.miscPP?"₹"+c.miscPP.toLocaleString():"—",
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12,13]);
+      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
     }).join("");
 
     const summaryBlock = `
@@ -327,12 +327,20 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         <td><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</td>
         <td><b>Single Supplement (total):</b> ₹${Math.round(totSS).toLocaleString()}</td>
       </tr></table>
-      ${tableBlock(["Slab","Transport","TL/Facil","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [1,2,3,4,5,6,7,8,9,10,11,12,13], slabRows+tlSlabRows, "No slabs added")}`;
+      ${tableBlock(["Slab","Transport","Tour Facil.","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
+        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added")}`;
+
+    // Tour Leader Slabs are deliberately their own table -- never a column
+    // (not even blank) inside the group slabs table, since T/L Surcharge
+    // simply does not apply to a group slab at all.
+    const tlSummaryBlock = tlSlabs.length ? `
+      <div class="inv-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
+      ${tableBlock(["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil.","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
+        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "")}` : "";
 
     return buildLetterheadDocument({
       title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
-      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, tptBlock, lhBlock, exBlock, summaryBlock].filter(Boolean),
+      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, tptBlock, lhBlock, exBlock, summaryBlock, tlSummaryBlock].filter(Boolean),
       extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
@@ -520,7 +528,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const ssTotalAddr = addr(row+1,7);
     row += 3;
 
-    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","TL/Facil","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
+    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","Tour Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
     slabHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; });
     row++;
     slabs.forEach((s,si)=>{
@@ -537,13 +545,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       const tlFormula = `IF(${tlModeAddr}="pp",${tlCostAddr},${tlCostAddr}/${focAddr})`;
       formulaCell(row,5,tlFormula,c0.tlPP,"#,##0");
 
-      // T/L Surcharge does not apply to a regular group slab -- left blank
-      // rather than 0, so it visually reads as "not applicable" the same
-      // way the on-screen table and PDF show "—" here.
-      sheet.getCell(row,6).font={size:9,color:{argb:GREY}};
-
       const miscFormula = `IF(${miscModeAddr}="pp",${miscCostAddr},${miscCostAddr}/${focAddr})`;
-      formulaCell(row,7,miscFormula,c0.miscPP,"#,##0");
+      formulaCell(row,6,miscFormula,c0.miscPP,"#,##0");
 
       // Monument mode isn't per-slab in the app either -- it's one global
       // mode (monMode state), so reference the tl/misc pattern but against
@@ -551,62 +554,68 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       // separate labeled input cell above, since there's no dedicated
       // "Monument Mode" input row -- match the app's actual current model).
       const monFormula = monMode==="pp" ? `${monTotalAddr}` : `${monTotalAddr}/${focAddr}`;
-      formulaCell(row,8,monFormula,c0.monPP,"#,##0");
+      formulaCell(row,7,monFormula,c0.monPP,"#,##0");
 
       const lhFormula = `SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}="pp")*B${lhFirstRow}:B${lhLastRow})+SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}<>"pp")*B${lhFirstRow}:B${lhLastRow})/${focAddr}`;
-      formulaCell(row,9,lhFormula,c0.localPP,"#,##0");
+      formulaCell(row,8,lhFormula,c0.localPP,"#,##0");
 
       const exFormula = `SUMPRODUCT((C${exFirstRow}:C${exLastRow}="PP")*B${exFirstRow}:B${exLastRow})+SUMPRODUCT((C${exFirstRow}:C${exLastRow}<>"PP")*B${exFirstRow}:B${exLastRow})/${focAddr}`;
-      formulaCell(row,10,exFormula,c0.extrasPP,"#,##0");
+      formulaCell(row,9,exFormula,c0.extrasPP,"#,##0");
 
-      // T/L Surcharge column (6) deliberately excluded from the sub-total
-      // for group slabs -- it's blank/not-applicable for them.
-      const d4=addr(row,4),d5=addr(row,5),d7=addr(row,7),d8=addr(row,8),d9=addr(row,9),d10=addr(row,10);
-      const subFormula = `${hotelTotalAddr}+${mealTotalAddr}+${d4}+${d5}+${d7}+${d8}+${d9}+${d10}`;
-      formulaCell(row,11,subFormula,c0.sub,"#,##0");
-      const subAddr = addr(row,11);
+      const d4=addr(row,4),d5=addr(row,5),d6=addr(row,6),d7=addr(row,7),d8=addr(row,8),d9=addr(row,9);
+      const subFormula = `${hotelTotalAddr}+${mealTotalAddr}+${d4}+${d5}+${d6}+${d7}+${d8}+${d9}`;
+      formulaCell(row,10,subFormula,c0.sub,"#,##0");
+      const subAddr = addr(row,10);
 
       const taxFormula = `ROUND(${subAddr}*${gstFrac},0)`;
-      formulaCell(row,12,taxFormula,c0.tax,"#,##0");
-      const taxAddr = addr(row,12);
+      formulaCell(row,11,taxFormula,c0.tax,"#,##0");
+      const taxAddr = addr(row,11);
 
       const afterTaxFormula = `${subAddr}+${taxAddr}`;
-      formulaCell(row,13,afterTaxFormula,c0.afterTax,"#,##0");
-      const afterTaxAddr = addr(row,13);
+      formulaCell(row,12,afterTaxFormula,c0.afterTax,"#,##0");
+      const afterTaxAddr = addr(row,12);
 
       const markupFormula = `ROUND(${afterTaxAddr}*${markupFrac},0)`;
-      formulaCell(row,14,markupFormula,c0.markupAmt,"#,##0");
-      const markupCellAddr = addr(row,14);
+      formulaCell(row,13,markupFormula,c0.markupAmt,"#,##0");
+      const markupCellAddr = addr(row,13);
 
       const finalFormula = `CEILING((${afterTaxAddr}+${markupCellAddr})/${roeAddr},1)`;
-      const finalC = formulaCell(row,15,finalFormula,c0.finalFX,"#,##0",{bold:true,color:{argb:ACCENT},size:11});
+      const finalC = formulaCell(row,14,finalFormula,c0.finalFX,"#,##0",{bold:true,color:{argb:ACCENT},size:11});
 
       const ssFormula = `CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstFrac})*(1+${markupFrac})/${roeAddr},1)`;
-      formulaCell(row,16,ssFormula,c0.ssFX,"#,##0");
+      formulaCell(row,15,ssFormula,c0.ssFX,"#,##0");
 
-      if (si%2===1) for(let c=1;c<=16;c++) { const cell=sheet.getCell(row,c); if(!cell.fill||cell.fill.fgColor?.argb!==INPUT_BG) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; }
+      if (si%2===1) for(let c=1;c<=15;c++) { const cell=sheet.getCell(row,c); if(!cell.fill||cell.fill.fgColor?.argb!==INPUT_BG) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; }
       row++;
     });
 
-    // Tour Leader Slab rows -- shown as reference values matching the
-    // app's own calcTlSlab computation exactly, not live formulas. A full
-    // formula-driven version would need its own dedicated input section
-    // (label/vehicle/pax/6 cost fields/6 include checkboxes) the way group
-    // slabs and the other cost sections have -- reasonable next step if
-    // wanted, kept as reference-only for now given everything else in
-    // this round.
-    tlSlabs.forEach((tl,ti)=>{
-      const c = calcTlSlab(tl);
-      inputCell(row,1,tl.label).font={bold:true,color:{argb:"FF7D6608"}};
-      inputCell(row,2,tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||""); inputCell(row,3,Number(tl.pax)||0);
-      [c.tptPP,c.tlPP,c.surchargePP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt].forEach((v,i)=>{
-        const cell=sheet.getCell(row,4+i); cell.value=v; cell.numFmt="#,##0"; cell.font=i===2?{bold:true,color:{argb:"FF7D6608"},size:9}:{size:9};
+    // Tour Leader Slabs get their own separate section entirely -- never
+    // a column (not even blank) inside the group slabs table above, since
+    // T/L Surcharge simply doesn't apply to a group slab. Shown as
+    // reference values matching the app's own calcTlSlab computation
+    // exactly, not live formulas. A full formula-driven version would
+    // need its own dedicated input section (label/vehicle/pax/6 cost
+    // fields/6 include checkboxes) the way group slabs and the other cost
+    // sections have -- reasonable next step if wanted.
+    if (tlSlabs.length) {
+      row += 1;
+      navyBand(row, "TOUR LEADER SLABS", 16); row++;
+      const tlHeaders = ["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
+      tlHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF7D6608"}}; });
+      row++;
+      tlSlabs.forEach((tl,ti)=>{
+        const c = calcTlSlab(tl);
+        inputCell(row,1,tl.label).font={bold:true,color:{argb:"FF7D6608"}};
+        inputCell(row,2,tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||""); inputCell(row,3,Number(tl.pax)||0);
+        [c.tptPP,c.tlPP,c.surchargePP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt].forEach((v,i)=>{
+          const cell=sheet.getCell(row,4+i); cell.value=v; cell.numFmt="#,##0"; cell.font=i===2?{bold:true,color:{argb:"FF7D6608"},size:9}:{size:9};
+        });
+        const finalCell = sheet.getCell(row,15); finalCell.value=c.finalFX; finalCell.numFmt="#,##0"; finalCell.font={bold:true,color:{argb:"FF7D6608"},size:11};
+        const ssCell = sheet.getCell(row,16); ssCell.value=c.ssFX; ssCell.numFmt="#,##0"; ssCell.font={size:9};
+        for(let cc=1;cc<=16;cc++) sheet.getCell(row,cc).fill={type:"pattern",pattern:"solid",fgColor:{argb:ti%2===0?"FFFFFBEB":"FFFEF3C7"}};
+        row++;
       });
-      const finalCell = sheet.getCell(row,15); finalCell.value=c.finalFX; finalCell.numFmt="#,##0"; finalCell.font={bold:true,color:{argb:"FF7D6608"},size:11};
-      const ssCell = sheet.getCell(row,16); ssCell.value=c.ssFX; ssCell.numFmt="#,##0"; ssCell.font={size:9};
-      for(let cc=1;cc<=16;cc++) sheet.getCell(row,cc).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFBEB"}};
-      row++;
-    });
+    }
 
     sheet.columns.forEach((col,i)=>{ col.width = i===0?24:i===1?14:12; });
     sheet.views = [{ state:"frozen", ySplit:0 }];
@@ -1006,10 +1015,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
           <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Accommodation and Extra Meals are the same across every slab below (from the day-wise section), shown once here rather than repeated in each row. Everything else below varies by slab, since it's split across each slab's own paying-pax count.</div>
           <div style={{overflowX:"auto",marginBottom:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:820}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:760}}>
               <thead>
                 <tr style={{background:G.navy}}>
-                  {["Slab","Transport PP","TL/Facil. PP","T/L Surcharge","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
+                  {["Slab","Transport PP","Tour Facil. PP","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
                     <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -1020,10 +1029,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                   return (
                     <tr key={s.id} style={{background:i%2===0?G.white:G.gray50}}>
                       <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{s.label}<br/><span style={{fontSize:9,color:G.gray400}}>{s.vehicle==="Others"?s.vehicleOther:s.vehicle}</span></td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tptPP>0?`₹ ${Math.round(c.tptPP).toLocaleString()}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tlPP>0?`₹ ${Math.round(c.tlPP).toLocaleString()}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11,color:G.gray400}}>—</td>
-                      {[c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
+                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
                         <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
                       ))}
                       <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:G.navy}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
@@ -1031,28 +1037,53 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                     </tr>
                   );
                 })}
-                {tlSlabs.map((tl,i)=>{
-                  const c = calcTlSlab(tl);
-                  return (
-                    <tr key={tl.id} style={{background:"#FFFBEB"}}>
-                      <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>🧑‍✈️ {tl.label}<br/><span style={{fontSize:9,color:G.gray400}}>{tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle}</span></td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tptPP>0?`₹ ${Math.round(c.tptPP).toLocaleString()}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tlPP>0?`₹ ${Math.round(c.tlPP).toLocaleString()}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:11,fontWeight:600,color:"#7D6608"}}>{c.surchargePP>0?`₹ ${Math.round(c.surchargePP).toLocaleString()}`:"—"}</td>
-                      {[c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
-                        <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
-                      ))}
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:"#7D6608"}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:12,color:G.accent,fontWeight:600}}>{c.ssFX>0?`${currency} ${c.ssFX}`:"—"}</td>
-                    </tr>
-                  );
-                })}
+                {slabs.length===0 && (
+                  <tr><td colSpan={14} style={{padding:24,textAlign:"center",color:G.gray400,fontSize:12}}>No group slabs added</td></tr>
+                )}
               </tbody>
             </table>
           </div>
-          <div style={{fontSize:10,color:G.gray400,fontStyle:"italic"}}>
-            SS = cumulative single supplement from hotel day rows (editable). Final price rounded up to nearest whole unit. 🧑‍✈️ rows are Tour Leader Slabs — "TL/Facil. PP" shows the T/L surcharge for that slab, not the global Tour Facilitator setting.
+          <div style={{fontSize:10,color:G.gray400,fontStyle:"italic",marginBottom:tlSlabs.length?16:0}}>
+            SS = cumulative single supplement from hotel day rows (editable). Final price rounded up to nearest whole unit.
           </div>
+
+          {tlSlabs.length>0 && (
+            <>
+              <div style={{fontSize:11,fontWeight:700,color:"#7D6608",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>🧑‍✈️ Tour Leader Slabs</div>
+              <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Same math as a group slab above, plus the T/L Surcharge — the foreign agent's own escort's costs, spread across this slab's paying pax, since the T/L doesn't pay. Kept as its own table so it's never mistaken for a group slab.</div>
+              <div style={{overflowX:"auto",marginBottom:8}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:920}}>
+                  <thead>
+                    <tr style={{background:"#7D6608"}}>
+                      {["T/L Slab","Vehicle","Paying Pax","Transport PP","Tour Facil. PP","T/L Surcharge","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
+                        <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="T/L Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tlSlabs.map((tl,i)=>{
+                      const c = calcTlSlab(tl);
+                      return (
+                        <tr key={tl.id} style={{background:i%2===0?"#FFFBEB":"#FEF3C7"}}>
+                          <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{tl.label}</td>
+                          <td style={{padding:"7px 6px",fontSize:11,color:G.gray600}}>{tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||"—"}</td>
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{n(tl.pax)||"—"}</td>
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tptPP>0?`₹ ${Math.round(c.tptPP).toLocaleString()}`:"—"}</td>
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tlPP>0?`₹ ${Math.round(c.tlPP).toLocaleString()}`:"—"}</td>
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11,fontWeight:600,color:"#7D6608"}}>{c.surchargePP>0?`₹ ${Math.round(c.surchargePP).toLocaleString()}`:"—"}</td>
+                          {[c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
+                            <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
+                          ))}
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:"#7D6608"}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
+                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:12,color:G.accent,fontWeight:600}}>{c.ssFX>0?`${currency} ${c.ssFX}`:"—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </fieldset>
 
         <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50,alignItems:"center"}}>
