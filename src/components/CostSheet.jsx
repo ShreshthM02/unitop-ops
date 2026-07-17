@@ -13,7 +13,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   // 10.1 Settings
   const [gst,    setGst]    = useState(5);
-  const [markup, setMarkup] = useState(20);
+  const [markup, setMarkup] = useState(15);
   const [roe,    setRoe]    = useState(90);
   const [currency, setCurrency] = useState("US $");
   // Tour Facilitator (10.1.1) — lumpsum or PP toggle
@@ -24,7 +24,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const [monuments, setMonuments] = useState([]); // start empty — user adds as needed
   const [monExtra,  setMonExtra]  = useState(""); // extra misc monument cost -- blank by default, shows "0" only as a placeholder hint; n() already treats blank as 0 in calculations
   // Misc — separate, lumpsum or PP
-  const [miscMode, setMiscMode] = useState("pp");
+  const [miscMode, setMiscMode] = useState("lumpsum");
   const [miscCost, setMiscCost] = useState("");
 
   // 10.2 Day rows
@@ -54,8 +54,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   // 10.4 Slabs
   const [slabs, setSlabs] = useState([
-    { id:1, label:"15–19 pax + 1 FOC", foc:15, vehicle:"Large Coach" },
-    { id:2, label:"10–14 pax + 1 FOC", foc:10, vehicle:"Mini Bus" },
+    { id:1, label:"15-19 pax + 1 FOC", foc:15, vehicle:"Mini Bus" },
+    { id:2, label:"20-24 pax + 1 FOC", foc:20, vehicle:"Large Coach" },
+    { id:3, label:"25-29 pax + 1 FOC", foc:25, vehicle:"Large Coach" },
+    { id:4, label:"30-34 pax + 2 FOC", foc:30, vehicle:"Large Coach" },
+    { id:5, label:"35-39 pax + 2 FOC", foc:35, vehicle:"Large Coach" },
   ]);
 
   // Load previously saved versions for this tour file on mount. Continues

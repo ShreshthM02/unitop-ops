@@ -27,11 +27,11 @@ describe('CostSheet: Extra Services now actually included in the Final Price Sum
     const modeSelect = row.querySelector('select');
     fireEvent.change(modeSelect, { target: { value: 'Lumpsum' } });
 
-    // Default slab: foc=15, gst=5%, markup=20%, roe=90, currency=US $.
+    // Default slab: foc=15, gst=5%, markup=15%, roe=90, currency=US $.
     // extrasPP = 15000/15 = 1000. sub = 1000 (no other costs entered).
     // tax = round(1000*0.05) = 50. afterTax = 1050.
-    // markupAmt = round(1050*0.20) = 210. sellingINR = 1260.
-    // finalFX = ceil(1260/90) = 14.
+    // markupAmt = round(1050*0.15) = 158. sellingINR = 1208.
+    // finalFX = ceil(1208/90) = 14.
     expect(screen.getByText('US $ 14')).toBeTruthy();
   });
 
@@ -46,7 +46,7 @@ describe('CostSheet: Extra Services now actually included in the Final Price Sum
     // Mode already defaults to "PP" -- no change needed.
 
     // sub = 100 (added directly, not divided). tax = round(100*0.05) = 5.
-    // afterTax = 105. markupAmt = round(105*0.20) = 21. sellingINR = 126.
+    // afterTax = 105. markupAmt = round(105*0.15) = 16. sellingINR = 121.
     // finalFX = ceil(126/90) = 2.
     expect(screen.getAllByText('US $ 2').length).toBeGreaterThan(0);
   });
