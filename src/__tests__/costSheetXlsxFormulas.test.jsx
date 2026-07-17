@@ -118,3 +118,47 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     expect(sheet.getCell(slabHeaderRow, 14).value).toContain('(');
   }, 15000);
 });
+
+describe('CostSheet XLSX: Client/Agent, Assigned Staff, and Tour Leader Slab rows', () => {
+  it('includes editable Client/Foreign Agent and Assigned Staff cells', async () => {
+    const sheet = await exportAndReload();
+    let agentLabelRow = null;
+    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Client / Foreign Agent') { agentLabelRow = r; break; } }
+    expect(agentLabelRow).toBeTruthy();
+    const agentValueCell = sheet.getCell(agentLabelRow+1, 1);
+    expect(agentValueCell.fill.fgColor.argb).toBe('FFFFFDE7'); // marked editable
+  }, 15000);
+
+  it('a T/L slab appears as its own labeled row in the slab table', async () => {
+    let capturedBlob = null;
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
+    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      const el = realCreateElement(tag);
+      if (tag === 'a') el.click = vi.fn();
+      return el;
+    });
+
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
+    fireEvent.change(labelInput, { target: { value: 'XLSX T/L Row Test' } });
+    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
+
+    const buffer = await capturedBlob.arrayBuffer();
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const sheet = wb.worksheets[0];
+
+    let found = false;
+    for (let r = 1; r <= sheet.rowCount; r++) {
+      if (String(sheet.getCell(r,1).value||'').includes('XLSX T/L Row Test')) { found = true; break; }
+    }
+    expect(found).toBe(true);
+
+    createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
+  }, 15000);
+});

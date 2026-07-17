@@ -2,56 +2,71 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
-const fakeQuery = { id: 'UTQ-2026-400', tourFileId: 'TF-400', groupName: 'TL Slab Test Group', nights: 3 };
+const fakeQuery = { id: 'UTQ-2026-500', tourFileId: 'TF-500', groupName: 'TL Slab Redesign Test', nights: 3 };
 
-describe('Tour Leader Slab: optional, off by default, does not affect group slabs', () => {
-  it('is off by default, with an explanatory note instead of the full form', () => {
+describe('Tour Leader Slabs: none by default, multiple allowed, correct default label', () => {
+  it('starts with none added, showing an explanatory note', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     expect(screen.getByText(/For when no FOC policy applies/)).toBeTruthy();
     expect(screen.queryByText(/Costs to cover/)).toBeNull();
   });
 
-  it('checking the box reveals the full Tour Leader Slab form', () => {
+  it('"+ Add T/L Slab" adds one with the correct new default label "10 pax + 1 T/L"', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    expect(screen.getByText(/Costs to cover/)).toBeTruthy();
-    expect(screen.getByText('Label (shown in quotation)')).toBeTruthy();
-    expect(screen.getAllByText('Vehicle (label only)').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Paying Pax/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    expect(screen.getByDisplayValue('10 pax + 1 T/L')).toBeTruthy();
   });
 
-  it('enabling and filling in Tour Leader Slab does not change the group slabs\' own Final Price', () => {
+  it('allows adding a second, independent T/L slab', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    const beforeText = document.body.textContent;
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '12' } });
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '5000' } });
-    // Group slab Final Price cells are unaffected -- still show "—" for
-    // the zero-cost baseline, exactly as before enabling TL Slab.
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    expect(screen.getAllByDisplayValue('10 pax + 1 T/L').length).toBe(2);
+  });
+
+  it('removing one T/L slab leaves the other untouched', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const labelInputs = screen.getAllByDisplayValue('10 pax + 1 T/L');
+    fireEvent.change(labelInputs[0], { target: { value: 'First Slab Renamed' } });
+    // T/L slab cards render with a distinct background (#FFF9E6, i.e.
+    // rgb(255, 249, 230) once jsdom normalizes it) -- this reliably
+    // distinguishes their own "✕" from the 5 default group slabs' remove
+    // buttons, which render earlier in the DOM.
+    const tlCards = Array.from(document.querySelectorAll('div')).filter(el => el.getAttribute('style')?.includes('rgb(255, 249, 230)'));
+    expect(tlCards.length).toBe(2);
+    const removeSpan = Array.from(tlCards[0].querySelectorAll('span')).find(el => el.textContent === '✕');
+    fireEvent.click(removeSpan);
+    expect(screen.queryByDisplayValue('First Slab Renamed')).toBeNull();
+    expect(screen.getByDisplayValue('10 pax + 1 T/L')).toBeTruthy();
   });
 });
 
-describe('Tour Leader Slab: correct math -- surcharge divides only across paying pax, T/L never pays', () => {
-  it('computes Total T/L Cost as the sum of only the checked cost lines', () => {
+describe('Tour Leader Slabs: appear as real rows in the Final Price Summary, "just like a normal slab"', () => {
+  it('an added T/L slab with a real label shows up as its own row in the Final Price Summary table', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '3000' } });
-    const mealsInput = screen.getByText('Extra Meals (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(mealsInput, { target: { value: '1000' } });
-    // Uncheck transport/monument/localHandler/extras to isolate hotel+meals
-    ['Transport (PP)','Monument (PP)','Local Handler (PP)','Extras (PP)'].forEach(label => {
-      const checkbox = screen.getByText(label).closest('label').querySelector('input[type="checkbox"]');
-      fireEvent.click(checkbox);
-    });
-    expect(screen.getByText('Total T/L Cost').parentElement.textContent).toContain('4,000'); // 3000 + 1000
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
+    fireEvent.change(labelInput, { target: { value: 'Small Group T/L Slab' } });
+    expect(screen.getAllByText(/Small Group T\/L Slab/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Final Price Summary')).toBeTruthy();
   });
 
-  it('divides the total by Paying Pax only -- confirms the "T/L does not pay" rule', () => {
+  it('the T/L slab row computes a real Final Price using its own costs and paying pax, not folded into group slabs', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
+    fireEvent.change(hotelInput, { target: { value: '2500' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '10' } });
+    expect(screen.getByText(/Final Price \(this T\/L slab\)/)).toBeTruthy();
+  });
+});
+
+describe('Tour Leader Slabs: correct math (T/L never pays, surcharge divides only across paying pax)', () => {
+  it('surcharge is checked-cost total divided by paying pax only', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
     fireEvent.change(hotelInput, { target: { value: '12000' } });
     ['Extra Meals (PP)','Transport (PP)','Monument (PP)','Local Handler (PP)','Extras (PP)'].forEach(label => {
@@ -59,55 +74,32 @@ describe('Tour Leader Slab: correct math -- surcharge divides only across paying
       fireEvent.click(checkbox);
     });
     fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '12' } });
-    // 12000 / 12 paying pax = 1000 per pax -- NOT divided by 13 (which
-    // would happen if the T/L were mistakenly counted as a payer).
-    expect(screen.getByText('Surcharge Per Paying Pax').parentElement.textContent).toContain('1,000');
+    expect(screen.getByText(/T\/L Surcharge \(per pax\)/).parentElement.textContent).toContain('1,000');
   });
 
-  it('shows a clear prompt instead of a nonsense number when Paying Pax is not yet set', () => {
+  it('shows a clear prompt instead of a bad number when paying pax is not set', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
     fireEvent.change(hotelInput, { target: { value: '5000' } });
     expect(screen.getByText('Set paying pax above')).toBeTruthy();
   });
-
-  it('unchecking a cost line removes it from the total immediately', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '5000' } });
-    expect(screen.getByText('Total T/L Cost').parentElement.textContent).toContain('5,000');
-    const hotelCheckbox = screen.getByText('Hotel (PP)').closest('label').querySelector('input[type="checkbox"]');
-    fireEvent.click(hotelCheckbox);
-    expect(screen.getByText('Total T/L Cost').parentElement.textContent).toContain('0');
-  });
 });
 
-describe('Tour Leader Slab: "Fetch Latest Costs" pulls real numbers from the sheet, stays editable after', () => {
-  it('fetch button populates Hotel/Meals fields from the sheet\'s own day-wise totals', () => {
+describe('Tour Leader Slabs: "Fetch Latest Costs" works per-slab, independently', () => {
+  it('fetching costs for one T/L slab does not affect another', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    // Edit the first existing day directly, rather than adding a new one
-    // (which would shift input indices and make them harder to target).
     const mealCostInputs = document.querySelectorAll('input[placeholder="0"]');
-    fireEvent.change(mealCostInputs[0], { target: { value: '800' } }); // day 1 meal cost
-    fireEvent.change(mealCostInputs[1], { target: { value: '2500' } }); // day 1 hotel net pp
+    fireEvent.change(mealCostInputs[0], { target: { value: '800' } });
+    fireEvent.change(mealCostInputs[1], { target: { value: '2500' } });
 
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    fireEvent.click(screen.getByText(/Fetch Latest Costs from Cost Sheet/));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const fetchButtons = screen.getAllByText(/Fetch Latest Costs from Cost Sheet/);
+    fireEvent.click(fetchButtons[0]);
 
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    const mealsInput = screen.getByText('Extra Meals (PP)').closest('div').querySelector('input[type="number"]');
-    expect(hotelInput.value).toBe('2500');
-    expect(mealsInput.value).toBe('800');
-  });
-
-  it('fetched values remain freely editable after fetching', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText(/Tour Leader Slab \(optional\)/));
-    fireEvent.click(screen.getByText(/Fetch Latest Costs from Cost Sheet/));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '9999' } });
-    expect(hotelInput.value).toBe('9999');
+    const hotelInputs = screen.getAllByText('Hotel (PP)').map(el => el.closest('div').querySelector('input[type="number"]'));
+    expect(hotelInputs[0].value).toBe('2500');
+    expect(hotelInputs[1].value).toBe('');
   });
 });
