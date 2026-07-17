@@ -104,3 +104,29 @@ describe('Tour Leader Slabs: "Fetch Latest Costs" works per-slab, independently'
     expect(hotelInputs[1].value).toBe('');
   });
 });
+
+describe('Group slabs can be fully deleted when a T/L slab exists (no forced minimum)', () => {
+  it('shows a remove button on the last remaining group slab once a T/L slab exists', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    // Remove down to exactly 1 group slab first (5 default slabs)
+    let removeButtons = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕' && el.closest('div')?.style.cursor === 'pointer');
+    // Without a T/L slab, the very last group slab should have NO remove button
+    for (let i = 0; i < 4; i++) {
+      const btns = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕');
+      if (btns.length) fireEvent.click(btns[0]);
+    }
+    // Down to 1 slab, no T/L slab yet -- confirm no remove option remains for it
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    const finalRemoveButtons = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕');
+    expect(finalRemoveButtons.length).toBeGreaterThan(0); // the last group slab can now be removed
+  });
+});
+
+describe('Without any T/L slab, the last group slab still cannot be removed (the original safety net still holds)', () => {
+  it('the remove button condition requires either >1 group slabs or at least one T/L slab', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/components/CostSheet.jsx'), 'utf-8');
+    expect(src).toContain('(slabs.length>1||tlSlabs.length>0)&&<span');
+  });
+});

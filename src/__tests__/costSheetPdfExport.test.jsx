@@ -163,3 +163,34 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     expect(html).toMatch(/₹1,000/);
   });
 });
+
+describe('CostSheet PDF: every table\'s column widths actually sum to 100% (the real cause of "uneven spacing")', () => {
+  it('every colgroup in the generated PDF sums its column percentages to ~100%', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+
+    const colgroups = html.match(/<colgroup>.*?<\/colgroup>/gs) || [];
+    expect(colgroups.length).toBeGreaterThan(0);
+    colgroups.forEach(cg => {
+      const widths = [...cg.matchAll(/width:([\d.]+)%/g)].map(m => parseFloat(m[1]));
+      const sum = widths.reduce((a,b)=>a+b, 0);
+      expect(sum).toBeGreaterThan(99);
+      expect(sum).toBeLessThan(101);
+    });
+  });
+
+  it('the Settings table and Final Price Summary callout table also use fixed layout (previously the actual gap, not the tableBlock-driven tables)', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    // Both non-tableBlock tables should now carry table-layout:fixed and
+    // their own colgroup, not just the ones built via the shared helper.
+    const fixedTableCount = (html.match(/table-layout:fixed/g) || []).length;
+    expect(fixedTableCount).toBeGreaterThanOrEqual(3); // settings + callout + at least one content table
+  });
+});

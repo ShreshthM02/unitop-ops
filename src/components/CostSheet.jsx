@@ -226,16 +226,20 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // Right-align is set on BOTH header and data cells together here,
     // rather than separately, since a header defaulting to left-align
     // while its numeric column right-aligns underneath was the actual
-    // cause of the "columns don't line up" complaint. table-layout:fixed
-    // with explicit, proportional widths (first column wider for labels,
-    // remaining columns evenly split) fixes the separate "uneven spacing"
-    // issue -- without it, each table auto-sized independently based on
-    // its own content, so tables never lined up consistently with each
-    // other and columns within a table could look arbitrarily uneven.
-    const tableBlock = (headers, alignRight, rows, emptyLabel) => {
-      const firstColPct = headers.length > 6 ? 14 : 22;
-      const restPct = ((100 - firstColPct) / (headers.length - 1)).toFixed(2);
-      const colgroup = `<colgroup><col style="width:${firstColPct}%"/>${headers.slice(1).map(()=>`<col style="width:${restPct}%"/>`).join("")}</colgroup>`;
+    // cause of the earlier "columns don't line up" complaint.
+    //
+    // Widths are explicit per table, not auto-derived from column count --
+    // an earlier version assumed "first column is always the longest
+    // content" and gave it a fixed share of the width, which looked fine
+    // for slab tables but broke down for the day-wise table (where "Day"
+    // is short and "Movement"/"Hotel" need real room) and for narrow
+    // tables like Monuments (where splitting the remaining space evenly
+    // gave "Fee"/"Included" far more room than short values need). Each
+    // call site now passes its own widths, sized to what that table's
+    // columns actually hold.
+    const tableBlock = (headers, alignRight, rows, emptyLabel, widths) => {
+      const w = widths || headers.map(() => (100 / headers.length).toFixed(2));
+      const colgroup = `<colgroup>${w.map(pct=>`<col style="width:${pct}%"/>`).join("")}</colgroup>`;
       return `
       <table class="content-table" style="table-layout:fixed">
         ${colgroup}
@@ -256,7 +260,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       </div>`;
 
     const settingsBlock = `
-      <table style="width:100%;margin-bottom:10pt;font-size:9pt"><tr>
+      <table style="width:100%;table-layout:fixed;margin-bottom:10pt;font-size:9pt">
+        <colgroup><col style="width:25%"/><col style="width:25%"/><col style="width:25%"/><col style="width:25%"/></colgroup>
+        <tr>
         <td><b>GST:</b> ${gst}%</td><td><b>Markup:</b> ${markup}%</td><td><b>ROE:</b> ${roe}</td><td><b>Currency:</b> ${currency}</td>
       </tr><tr>
         <td><b>Tour Facilitator:</b> ${tlMode==="pp"?"Per Pax":"Lumpsum"} &mdash; ₹${n(tlCost).toLocaleString()}</td>
@@ -275,28 +281,33 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const dayTableBlock = `
       <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
       ${tableBlock(["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp"], [4,8,9],
-        days.length ? dayRows + totalsRow : "", "No days added")}`;
+        days.length ? dayRows + totalsRow : "", "No days added",
+        [5,8,16,8,9,14,12,7,10,11])}`;
 
     const monBlock = monuments.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
-        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1])).join(""), "")}
+        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1])).join(""), "",
+        [70,15,15])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2])).join(""), "")}` : "";
+        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2])).join(""), "",
+        [35,20,15,30])}` : "";
 
     const lhBlock = localHandlers.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
-        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3])).join(""), "")}` : "";
+        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3])).join(""), "",
+        [40,20,20,20])}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
-        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1])).join(""), "")}` : "";
+        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1])).join(""), "",
+        [60,20,20])}` : "";
 
     const slabRows = slabs.map(s => {
       const c = calcSlab(s);
@@ -322,13 +333,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
     const summaryBlock = `
       <div class="inv-title" style="margin:14pt 0 8pt">Final Price Summary</div>
-      <table style="width:100%;margin-bottom:8pt;font-size:9pt"><tr>
+      <table style="width:100%;table-layout:fixed;margin-bottom:8pt;font-size:9pt">
+        <colgroup><col style="width:33.33%"/><col style="width:33.33%"/><col style="width:33.34%"/></colgroup>
+        <tr>
         <td><b>Accommodation (PP):</b> ₹${Math.round(totHotel).toLocaleString()}</td>
         <td><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</td>
         <td><b>Single Supplement (total):</b> ₹${Math.round(totSS).toLocaleString()}</td>
       </tr></table>
       ${tableBlock(["Slab","Transport","Tour Facil.","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added")}`;
+        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added",
+        [15,7,7,6,6,7,6,8,6,8,7,9,8])}`;
 
     // Tour Leader Slabs are deliberately their own table -- never a column
     // (not even blank) inside the group slabs table, since T/L Surcharge
@@ -336,7 +350,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const tlSummaryBlock = tlSlabs.length ? `
       <div class="inv-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
       ${tableBlock(["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil.","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "")}` : "";
+        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "",
+        [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6])}` : "";
 
     return buildLetterheadDocument({
       title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
@@ -924,7 +939,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
               <div key={s.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                   <span style={{fontSize:11,fontWeight:600,color:G.gray600}}>Slab {i+1}</span>
-                  {slabs.length>1&&<span style={{cursor:"pointer",color:G.gray400,fontSize:12}} onClick={()=>setSlabs(p=>p.filter((_,idx)=>idx!==i))}>✕</span>}
+                  {(slabs.length>1||tlSlabs.length>0)&&<span style={{cursor:"pointer",color:G.gray400,fontSize:12}} onClick={()=>setSlabs(p=>p.filter((_,idx)=>idx!==i))}>✕</span>}
                 </div>
                 <div style={{marginBottom:6}}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Label (shown in final price)</div>
                   <input style={inp} value={s.label} onChange={e=>updateSlab(i,"label",e.target.value)}/></div>
