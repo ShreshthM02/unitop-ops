@@ -173,6 +173,25 @@ export const _supa = (() => {
       });
       return await r.json();
     },
+    // Self-service update for the logged-in user's own display name and
+    // avatar color -- deliberately separate from updatePermissions, which
+    // is admin-only and requires a target user. On success, also updates
+    // the cached session (both in memory and localStorage) so the change
+    // is immediately reflected everywhere without needing a refresh, and
+    // survives one.
+    updateOwnProfile: async (name, color) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/update_own_profile`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_name:name, p_color:color })
+      });
+      const data = await r.json();
+      if (data?.success && data.user && _session) {
+        _session.user = data.user;
+        localStorage.setItem("unitop_session", JSON.stringify(_session));
+      }
+      return data;
+    },
     getStaffList: async () => {
       const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,active,last_login,permissions&order=name.asc`, {
         headers:{ "apikey":key, "Authorization":`Bearer ${key}` }

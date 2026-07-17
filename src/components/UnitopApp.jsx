@@ -28,7 +28,7 @@ import VendorMaster from './VendorMaster.jsx';
 import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
-export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLedger }) {
+export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLedger, onUpdateAuthUser }) {
   const [view, setView]           = useState(() => localStorage.getItem("unitop_last_view") || "dashboard");
   useEffect(() => { localStorage.setItem("unitop_last_view", view); }, [view]);
   // Gates the very first render: without this, the app shows hardcoded
@@ -690,7 +690,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         </div>{/* end main */}
 
         {showChat    && <InAppChat currentUser={currentUser} queries={queries} onClose={()=>setShowChat(false)}/>}
-        {showProfile && <UserProfilePanel currentUser={currentUser} onClose={()=>setShowProfile(false)} onSave={(u)=>{}}/>}
+        {showProfile && <UserProfilePanel currentUser={currentUser} onClose={()=>setShowProfile(false)} onSave={onUpdateAuthUser}/>}
 
         {activeQuery&&!anyPanel&&!cancelTarget&&(
           <QueryDrawerWithQuote
