@@ -201,29 +201,92 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     logAudit(db, query.id, currentUser?.name, `Cost Sheet v${currentVersionLabel} exported to PDF`);
   };
 
+  const buildCostSheetWorkbook = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Unitop Ops"; wb.created = new Date();
+    const sheet = wb.addWorksheet("Cost Sheet");
+
+    const NAVY="FF0D1B2A", ACCENT="FFC0392B", LIGHT="FFF3F4F6", WHITE="FFFFFFFF", GREY="FF6B7280", ZEBRA="FFFAFAFA", BORDER="FFD1D5DB";
+    const navyBand = (r, text, span=14) => {
+      sheet.mergeCells(r,1,r,span);
+      const c = sheet.getCell(r,1);
+      c.value = text; c.font = {bold:true,size:11,color:{argb:WHITE}}; c.fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+      c.alignment = {vertical:"middle"};
+      sheet.getRow(r).height = 20;
+    };
+    const label = (r,c,text) => { const cell=sheet.getCell(r,c); cell.value=text; cell.font={bold:true,size:9,color:{argb:GREY}}; };
+    const bigVal = (r,c,val,fmt) => { const cell=sheet.getCell(r,c); cell.value=val; cell.font={bold:true,size:13}; if(fmt) cell.numFmt=fmt; };
+
+    let row = 1;
+    // Title band: name + version/timestamp
+    sheet.mergeCells(row,1,row,9);
+    sheet.getCell(row,1).value = "COST SHEET"; sheet.getCell(row,1).font = {bold:true,size:18,color:{argb:WHITE}};
+    sheet.getCell(row,1).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; sheet.getCell(row,1).alignment = {vertical:"middle"};
+    sheet.mergeCells(row,10,row,14);
+    sheet.getCell(row,10).value = `Version ${currentVersionLabel}  •  Saved ${savedTimestamp}`;
+    sheet.getCell(row,10).font = {italic:true,size:10,color:{argb:WHITE}}; sheet.getCell(row,10).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+    sheet.getCell(row,10).alignment = {vertical:"middle",horizontal:"right"};
+    for(let c=1;c<=14;c++) sheet.getCell(row,c).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+    sheet.getRow(row).height = 30; row++;
+
+    sheet.mergeCells(row,1,row,14);
+    sheet.getCell(row,1).value = `${query.groupName||query.clientName||""}   •   ${query.destination||query.sector||""}   •   Tour File: ${query.tourFileId||query.id}`;
+    sheet.getCell(row,1).font = {bold:true,size:12}; row += 2;
+
+    // Settings bar
+    const settings = [["GST %",gst],["Markup %",markup],["ROE",roe],["Currency",currency],["TL Cost",tlMode==="pp"?"Per Pax":"Lumpsum"],["Misc Cost",miscMode==="pp"?"Per Pax":"Lumpsum"],["Monument",monMode==="pp"?"Per Pax":"Lumpsum"]];
+    settings.forEach(([lbl,val],i)=>{ label(row,i*2+1,lbl); bigVal(row+1,i*2+1,val); });
+    row += 3;
+
+    // Day-wise
+    navyBand(row, "📅  DAY-WISE ITINERARY & ACCOMMODATION", 11); row++;
+    const dayHeaders = ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp","Notes"];
+    dayHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:LIGHT}}; c.border={bottom:{style:"thin",color:{argb:BORDER}}}; });
+    row++;
+    days.forEach((d,i)=>{
+      const vals = [d.day,d.date,d.movement,d.mealPlan,n(d.mealCost)||null,d.hotel,d.hotelAlt,d.hotelPlan,n(d.hotelNetPP)||null,n(d.singleSupp)||null,d.notes];
+      vals.forEach((v,j)=>{ const c=sheet.getCell(row,j+1); c.value=v; if(i%2===1) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; if([4,8,9].includes(j)) c.numFmt="#,##0"; });
+      row++;
+    });
+    sheet.mergeCells(row,1,row,3); sheet.getCell(row,1).value="TOTALS"; sheet.getCell(row,1).font={bold:true};
+    if(totMeal){ const c=sheet.getCell(row,5); c.value=Math.round(totMeal); c.font={bold:true}; c.numFmt="#,##0"; }
+    if(totHotel){ const c=sheet.getCell(row,9); c.value=Math.round(totHotel); c.font={bold:true}; c.numFmt="#,##0"; }
+    if(totSS){ const c=sheet.getCell(row,10); c.value=Math.round(totSS); c.font={bold:true}; c.numFmt="#,##0"; }
+    row += 3;
+
+    // Final Price Summary
+    navyBand(row, "💰  FINAL PRICE SUMMARY", 14); row++;
+    label(row,1,"Accommodation (PP)"); bigVal(row+1,1,Math.round(totHotel),"#,##0");
+    label(row,4,"Extra Meals (PP)"); bigVal(row+1,4,Math.round(totMeal),"#,##0");
+    label(row,7,"Single Supplement (total)"); bigVal(row+1,7,Math.round(totSS),"#,##0");
+    row += 3;
+
+    const slabHeaders = ["Slab","Vehicle","Transport","TL/Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"];
+    slabHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; });
+    row++;
+    slabs.forEach((s,i)=>{
+      const c0 = calcSlab(s);
+      const vals = [s.label,s.vehicle,c0.tptPP||null,c0.tlPP||null,c0.miscPP||null,c0.monPP||null,c0.localPP||null,c0.extrasPP||null,c0.sub||null,c0.tax||null,c0.afterTax||null,c0.markupAmt||null,c0.finalFX||null,c0.ssFX||null];
+      vals.forEach((v,j)=>{
+        const cell=sheet.getCell(row,j+1); cell.value=v;
+        if(i%2===1) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
+        if(j>=2&&j<=11) cell.numFmt="#,##0";
+        if(j===12){ cell.font={bold:true,color:{argb:ACCENT},size:11}; cell.numFmt=`"${currency}" #,##0`; }
+        if(j===13) cell.numFmt=`"${currency}" #,##0`;
+      });
+      row++;
+    });
+
+    sheet.columns.forEach((col,i)=>{ col.width = i===0?26:i===1?12:11; });
+    sheet.views = [{ state:"frozen", ySplit:0 }];
+    return wb;
+  };
+
   const exportXLSX = async () => {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ["Cost Sheet", `${query.tourFileId||query.id} — v${currentVersionLabel}`],
-      ["Saved", savedTimestamp],
-      ["Group / Client", query.groupName||query.clientName||""],
-      ["Destination", query.destination||query.sector||""],
-      [],
-      ["GST %", gst], ["Markup %", markup], ["ROE", roe], ["Currency", currency],
-      ["TL Cost Mode", tlMode==="pp"?"Per Pax":"Lumpsum"], ["Misc Cost Mode", miscMode==="pp"?"Per Pax":"Lumpsum"], ["Monument Mode", monMode==="pp"?"Per Pax":"Lumpsum"],
-      [],
-      ["Accommodation (PP)", Math.round(totHotel)], ["Extra Meals (PP)", Math.round(totMeal)], ["Single Supplement (total)", Math.round(totSS)],
-    ]), "Summary");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Single Supp","Notes"],
-      ...days.map(d=>[d.day,d.date,d.movement,d.mealPlan,n(d.mealCost),d.hotel,d.hotelAlt,d.hotelPlan,n(d.hotelNetPP),n(d.singleSupp),d.notes]),
-    ]), "Day-wise");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ["Slab","Vehicle","Transport PP","TL/Facil PP","Misc PP","Mon PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-      ...slabs.map(s=>{const c=calcSlab(s);return [s.label,s.vehicle,c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.finalFX?`${currency} ${c.finalFX}`:"",c.ssFX?`${currency} ${c.ssFX}`:""];}),
-    ]), "Final Price");
-    const blob = new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const wb = await buildCostSheetWorkbook();
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `CostSheet_${query.tourFileId||query.id}_v${currentVersionLabel}.xlsx`; a.click();

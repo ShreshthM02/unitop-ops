@@ -20,6 +20,53 @@ describe('CostSheet: PDF and XLSX export buttons now exist (item #1)', () => {
   });
 });
 
+describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare 3-sheet dump (item requested: "modern 2026 style")', () => {
+  it('clicking Export XLSX generates a real, single-sheet workbook with actual styling and content', async () => {
+    // Capture the Blob passed to a real download instead of mocking
+    // exceljs itself -- this exercises the actual cell/style-building
+    // code, then re-reads the generated file with exceljs to confirm the
+    // output is genuinely correct, not just "a function ran without
+    // throwing." vi.stubGlobal + a real <a> intercepted before click()
+    // avoids JSDOM's awkward Blob-URL/navigation behavior.
+    let capturedBlob = null;
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
+    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const realCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      const el = realCreateElement(tag);
+      if (tag === 'a') el.click = vi.fn();
+      return el;
+    });
+
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    // exceljs writeBuffer on a fully styled workbook genuinely takes
+    // variable time -- poll rather than assume a fixed delay is enough.
+    for (let i = 0; i < 40 && !capturedBlob; i++) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    expect(capturedBlob).toBeTruthy();
+    const buffer = await capturedBlob.arrayBuffer();
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+
+    expect(wb.worksheets.length).toBe(1); // single sheet, not three
+    const sheet = wb.worksheets[0];
+    expect(sheet.name).toBe('Cost Sheet');
+
+    const titleCell = sheet.getCell(1,1);
+    expect(titleCell.value).toBe('COST SHEET');
+    expect(titleCell.font.bold).toBe(true);
+    expect(titleCell.fill.fgColor.argb).toBe('FF0D1B2A'); // navy, matching the app's own color
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+    document.createElement.mockRestore();
+  }, 15000);
+});
+
 describe('CostSheet: Proceed to Quotation now requires an actual saved version (item #10)', () => {
   it('does not show Proceed to Quotation until a version is actually saved, even with valid pricing entered', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
