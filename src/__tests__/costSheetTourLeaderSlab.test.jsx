@@ -130,3 +130,11 @@ describe('Without any T/L slab, the last group slab still cannot be removed (the
     expect(src).toContain('(slabs.length>1||tlSlabs.length>0)&&<span');
   });
 });
+
+describe('CostSheet: scroll anchoring disabled on the main content area (mitigates the "jumps to top" report when adding a T/L slab)', () => {
+  it('the scrollable fieldset has overflow-anchor disabled', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    const fieldset = document.querySelector('fieldset');
+    expect(fieldset.style.overflowAnchor).toBe('none');
+  });
+});

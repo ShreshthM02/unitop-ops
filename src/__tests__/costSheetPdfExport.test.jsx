@@ -194,3 +194,19 @@ describe('CostSheet PDF: every table\'s column widths actually sum to 100% (the 
     expect(fixedTableCount).toBeGreaterThanOrEqual(3); // settings + callout + at least one content table
   });
 });
+
+describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match real observed data (not the old assumption that names are always long)', () => {
+  it('Monuments, Transport, and Local Handler widths are rebalanced away from the old over-wide first column', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    // Old, too-wide-first-column arrays should no longer appear.
+    expect(html).not.toContain('width:70%');
+    // New, rebalanced Monuments widths
+    expect(html).toContain('width:40%');
+    // New, rebalanced Transport widths (Applies To gets the most room now)
+    expect(html).toContain('width:45%');
+  });
+});

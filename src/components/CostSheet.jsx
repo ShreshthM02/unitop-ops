@@ -288,20 +288,20 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
         monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1])).join(""), "",
-        [70,15,15])}
+        [40,35,25])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
         transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2])).join(""), "",
-        [35,20,15,30])}` : "";
+        [20,20,15,45])}` : "";
 
     const lhBlock = localHandlers.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
         localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3])).join(""), "",
-        [40,20,20,20])}` : "";
+        [25,25,20,30])}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
@@ -694,7 +694,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
         )}
 
-        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0}}>
+        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0,overflowAnchor:"none"}}>
 
           {/* 10.1 Settings */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
