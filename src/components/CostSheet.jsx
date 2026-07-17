@@ -61,6 +61,23 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     { id:5, label:"35-39 pax + 2 FOC", foc:35, vehicle:"Large Coach" },
   ]);
 
+  // Tour Leader Slab — optional, one global setting (not one per group
+  // slab). Covers the scenario where no FOC policy applies (small groups,
+  // typically below the first slab's threshold) and the T/L's own costs
+  // need to be spread across the paying guests, since the T/L doesn't pay.
+  // Every cost line is pre-filled from the sheet's own computed per-pax
+  // costs (via "Fetch Latest") but stays fully editable afterward, and can
+  // be individually included/excluded from the surcharge. Deliberately a
+  // separate, clearly-labeled reference figure -- never silently folded
+  // into the group slabs' own totals, since it only applies in this one
+  // specific scenario.
+  const [tlSlabEnabled, setTlSlabEnabled] = useState(false);
+  const [tlSlabLabel, setTlSlabLabel] = useState("Tour Leader Surcharge (No FOC Applicable)");
+  const [tlSlabVehicle, setTlSlabVehicle] = useState("");
+  const [tlSlabPax, setTlSlabPax] = useState("");
+  const [tlSlabCosts, setTlSlabCosts] = useState({ hotel:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" });
+  const [tlSlabIncludes, setTlSlabIncludes] = useState({ hotel:true, meals:true, transport:true, monument:true, localHandler:true, extras:true });
+
   // Load previously saved versions for this tour file on mount. Continues
   // editing from the latest saved version rather than starting blank every
   // time the Cost Sheet is reopened -- versions[] itself becomes real
@@ -72,6 +89,12 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     setMonMode(v.monMode); setMonExtra(v.monExtra); setMonuments(v.monuments);
     setDays(v.days); setTransports(v.transports); setSlabs(v.slabs);
     setLocalHandlers(v.localHandlers); setExtras(v.extras);
+    // Defensive fallbacks: versions saved before Tour Leader Slab existed
+    // won't have these fields at all.
+    setTlSlabEnabled(v.tlSlabEnabled||false); setTlSlabLabel(v.tlSlabLabel||"Tour Leader Surcharge (No FOC Applicable)");
+    setTlSlabVehicle(v.tlSlabVehicle||""); setTlSlabPax(v.tlSlabPax||"");
+    setTlSlabCosts(v.tlSlabCosts||{hotel:"",meals:"",transport:"",monument:"",localHandler:"",extras:""});
+    setTlSlabIncludes(v.tlSlabIncludes||{hotel:true,meals:true,transport:true,monument:true,localHandler:true,extras:true});
     setViewingVersion(v.version);
   };
 
@@ -141,8 +164,27 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), localPP:Math.round(localPP), extrasPP:Math.round(extrasPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
   };
 
+  // Pull the sheet's own current per-pax costs into the Tour Leader Slab
+  // fields. Uses the first group slab as the reference point (the T/L
+  // surcharge scenario is specifically for small groups below the first
+  // slab's FOC threshold), but every value stays freely editable after —
+  // this is a one-time fetch, not a live link.
+  const fetchTlSlabCosts = () => {
+    const ref = slabs[0] ? calcSlab(slabs[0]) : null;
+    setTlSlabCosts({
+      hotel: Math.round(totHotel) || "",
+      meals: Math.round(totMeal) || "",
+      transport: ref ? ref.tptPP || "" : "",
+      monument: ref ? ref.monPP || "" : "",
+      localHandler: ref ? ref.localPP || "" : "",
+      extras: ref ? ref.extrasPP || "" : "",
+    });
+  };
+  const tlSlabTotal = Object.entries(tlSlabCosts).reduce((s,[k,v]) => s + (tlSlabIncludes[k] ? n(v) : 0), 0);
+  const tlSlabPerPax = n(tlSlabPax) > 0 ? tlSlabTotal / n(tlSlabPax) : 0;
+
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabEnabled, tlSlabLabel, tlSlabVehicle, tlSlabPax, tlSlabCosts:{...tlSlabCosts}, tlSlabIncludes:{...tlSlabIncludes} };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
     saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(id => { if (id) setLastSavedCostSheetId(id); });
     logAudit(db, query.id, currentUser?.name, `Cost Sheet v${version} saved${versionNote?" — "+versionNote:""}`);
@@ -748,6 +790,54 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             ))}
             <div style={{border:`1px dashed ${G.gray200}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",minHeight:100,color:G.gray400,fontSize:12}} onClick={addSlab}>+ Add Slab</div>
           </div>
+
+          {/* ── Tour Leader Slab (optional) ── */}
+          <div style={{display:"flex",alignItems:"center",gap:8,margin:"14px 0 8px"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+              <input type="checkbox" checked={tlSlabEnabled} onChange={e=>setTlSlabEnabled(e.target.checked)}/>
+              <span style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧑‍✈️ Tour Leader Slab (optional)</span>
+            </label>
+          </div>
+          {!tlSlabEnabled && (
+            <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>For when no FOC policy applies (small groups) — works out how much extra the paying guests need to cover for the Tour Leader's own costs. Off by default, doesn't affect the group slabs above.</div>
+          )}
+          {tlSlabEnabled && (
+            <div style={{background:"#FFF9E6",border:"1px solid #F5D97A",borderRadius:8,padding:12,marginBottom:10}}>
+              <div style={{fontSize:10,color:"#7D6608",marginBottom:10}}>The Tour Leader doesn't pay — their costs get spread only across paying guests. This is a separate reference figure, shown alongside the group slabs below, never folded into their totals.</div>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:10}}>
+                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Label (shown in quotation)</div>
+                  <input style={inp} value={tlSlabLabel} onChange={e=>setTlSlabLabel(e.target.value)}/></div>
+                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vehicle (label only)</div>
+                  <select style={inp} value={tlSlabVehicle} onChange={e=>setTlSlabVehicle(e.target.value)}>
+                    <option value="">—</option>
+                    {VEHICLE_TYPES.map(v=><option key={v}>{v}</option>)}
+                  </select></div>
+                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Paying Pax (for this calc)</div>
+                  <input style={{...inp,textAlign:"right"}} type="number" value={tlSlabPax} onChange={e=>setTlSlabPax(e.target.value)} placeholder="e.g. 12"/></div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Costs to cover — check which apply</div>
+                <button className="btn btn-ghost" style={{fontSize:10}} onClick={fetchTlSlabCosts}>↻ Fetch Latest Costs from Cost Sheet</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+                {[["hotel","Hotel (PP)"],["meals","Extra Meals (PP)"],["transport","Transport (PP)"],["monument","Monument (PP)"],["localHandler","Local Handler (PP)"],["extras","Extras (PP)"]].map(([key,label])=>(
+                  <div key={key} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:6,padding:8}}>
+                    <label style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,cursor:"pointer"}}>
+                      <input type="checkbox" checked={tlSlabIncludes[key]} onChange={e=>setTlSlabIncludes(p=>({...p,[key]:e.target.checked}))}/>
+                      <span style={{fontSize:9,color:G.gray600,fontWeight:600}}>{label}</span>
+                    </label>
+                    <input style={{...inp,textAlign:"right"}} type="number" value={tlSlabCosts[key]} onChange={e=>setTlSlabCosts(p=>({...p,[key]:e.target.value}))} placeholder="0"/>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:16,paddingTop:8,borderTop:"1px solid #F5D97A"}}>
+                <div><div style={{fontSize:9,color:"#7D6608",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total T/L Cost</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#7D6608"}}>₹ {Math.round(tlSlabTotal).toLocaleString()}</div></div>
+                <div><div style={{fontSize:9,color:"#7D6608",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Surcharge Per Paying Pax</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#7D6608"}}>{tlSlabPerPax>0?`₹ ${Math.round(tlSlabPerPax).toLocaleString()}`:"—"}{n(tlSlabPax)<=0&&<span style={{fontSize:9,fontWeight:400,marginLeft:6}}>Set paying pax above</span>}</div></div>
+              </div>
+            </div>
+          )}
 
           {/* 10.5 Final price summary */}
           {secH("Final Price Summary","💰")}
