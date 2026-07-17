@@ -43,7 +43,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     // Fresh instance, no monuments added -- section should not appear.
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    expect(capturedHTML()).not.toContain('🏛 Monuments');
+    expect(capturedHTML()).not.toContain('Monuments');
 
     // Now add one and confirm the section appears.
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
@@ -51,7 +51,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     fireEvent.change(nameInputs[nameInputs.length-1], { target: { value: 'Taj Mahal' } });
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    expect(html).toContain('🏛 Monuments');
+    expect(html).toContain('Monuments');
     expect(html).toContain('Taj Mahal');
   });
 
@@ -77,9 +77,9 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    expect(html).toContain('🚌 Transport'); // default cost sheet already has 1 transport row
-    expect(html).toContain('🤝 Local Handler');
-    expect(html).toContain('✨ Extra Services');
+    expect(html).toContain('>Transport<'); // default cost sheet already has 1 transport row, and no emoji per item #6
+    expect(html).toContain('Local Handler');
+    expect(html).toContain('Extra Services');
   });
 
   it('#7: numeric column headers and their data cells use matching alignment', async () => {
@@ -112,5 +112,48 @@ describe('CostSheet PDF export: Tour Leader Slabs and Client/Agent + Assigned St
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
     expect(html).toContain('Small Group PDF Test');
+  });
+});
+
+describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, emoji removal, spacing)', () => {
+  it('#6: no emoji appear in any section title', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const titleMatches = html.match(/<div class="inv-title"[^>]*>([^<]*)<\/div>/g) || [];
+    titleMatches.forEach(title => {
+      expect(title).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+    });
+  });
+
+  it('#7: tables use table-layout:fixed with explicit column widths for even, consistent spacing', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('table-layout:fixed');
+    expect(html).toContain('<colgroup>');
+  });
+
+  it('Tour Facilitator and T/L Surcharge are genuinely separate columns in the Final Price Summary', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('TL/Facil');
+    expect(html).toContain('T/L Surcharge');
+  });
+
+  it('a T/L slab row shows the same Tour Facilitator cost as a group slab would (not the surcharge in that column)', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '6000' } });
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '6' } });
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    // Tour Facilitator: lumpsum 6000 / 6 pax = 1000, should appear as a
+    // real number in the TL/Facil column for the T/L slab row too.
+    expect(html).toMatch(/₹1,000/);
   });
 });

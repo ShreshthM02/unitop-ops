@@ -49,7 +49,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
     expect(slabHeaderRow).toBeTruthy();
-    const finalPriceCell = sheet.getCell(slabHeaderRow+1, 14); // first slab row, Final Price column
+    const finalPriceCell = sheet.getCell(slabHeaderRow+1, 15); // first slab row, Final Price column (shifted +1 for the new T/L Surcharge column)
     expect(finalPriceCell.formula).toBeTruthy();
     expect(finalPriceCell.formula).toContain('CEILING(');
     // Should reference the ROE settings cell, not a hardcoded number
@@ -60,7 +60,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     const sheet = await exportAndReload();
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    const taxCell = sheet.getCell(slabHeaderRow+1, 11); // GST column
+    const taxCell = sheet.getCell(slabHeaderRow+1, 12); // GST column (shifted +1 for the new T/L Surcharge column)
     expect(taxCell.formula).toContain('ROUND(');
     expect(taxCell.formula).not.toMatch(/\*\(?5\/100\)?/); // not a hardcoded 5% literal
   }, 15000);
@@ -114,8 +114,8 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     const sheet = await exportAndReload();
     let slabHeaderRow = null;
     for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('Final Price');
-    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('(');
+    expect(sheet.getCell(slabHeaderRow, 15).value).toContain('Final Price');
+    expect(sheet.getCell(slabHeaderRow, 15).value).toContain('(');
   }, 15000);
 });
 
@@ -161,4 +161,16 @@ describe('CostSheet XLSX: Client/Agent, Assigned Staff, and Tour Leader Slab row
 
     createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
   }, 15000);
+});
+
+describe('CostSheet XLSX: T/L Surcharge is a genuinely separate column from Tour Facilitator', () => {
+  it('the slab header row includes both TL/Facil and T/L Surcharge as distinct columns', async () => {
+    const sheet = await exportAndReload();
+    let slabHeaderRow = null;
+    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
+    const headerValues = [];
+    for (let c = 1; c <= 16; c++) headerValues.push(sheet.getCell(slabHeaderRow,c).value);
+    expect(headerValues).toContain('TL/Facil');
+    expect(headerValues).toContain('T/L Surcharge');
+  });
 });

@@ -53,13 +53,14 @@ describe('Tour Leader Slabs: appear as real rows in the Final Price Summary, "ju
     expect(screen.getByText('Final Price Summary')).toBeTruthy();
   });
 
-  it('the T/L slab row computes a real Final Price using its own costs and paying pax, not folded into group slabs', () => {
+  it('the T/L slab row computes real Total T/L Cost and Surcharge, not folded into group slabs', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
     fireEvent.change(hotelInput, { target: { value: '2500' } });
     fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '10' } });
-    expect(screen.getByText(/Final Price \(this T\/L slab\)/)).toBeTruthy();
+    expect(screen.getByText('Total T/L Cost')).toBeTruthy();
+    expect(screen.getByText('Surcharge Per Paying Pax')).toBeTruthy();
   });
 });
 
@@ -74,7 +75,7 @@ describe('Tour Leader Slabs: correct math (T/L never pays, surcharge divides onl
       fireEvent.click(checkbox);
     });
     fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '12' } });
-    expect(screen.getByText(/T\/L Surcharge \(per pax\)/).parentElement.textContent).toContain('1,000');
+    expect(screen.getByText('Surcharge Per Paying Pax').parentElement.textContent).toContain('1,000');
   });
 
   it('shows a clear prompt instead of a bad number when paying pax is not set', () => {
