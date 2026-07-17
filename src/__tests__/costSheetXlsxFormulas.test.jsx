@@ -98,4 +98,23 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     const gstValueCell = sheet.getCell(gstLabelRow+1, 1);
     expect(gstValueCell.fill.fgColor.argb).toBe('FFFFFDE7');
   }, 15000);
+
+  it('no number format code embeds the currency symbol -- the real cause of the "we found a problem with some content" Excel repair prompt, since $ has special meaning in format-code syntax even inside quotes', async () => {
+    const sheet = await exportAndReload();
+    let badFormats = [];
+    sheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.numFmt && cell.numFmt.includes('$')) badFormats.push({ address: cell.address, numFmt: cell.numFmt });
+      });
+    });
+    expect(badFormats).toEqual([]);
+  }, 15000);
+
+  it('the currency label appears in the column header instead, where it is safe as plain text', async () => {
+    const sheet = await exportAndReload();
+    let slabHeaderRow = null;
+    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
+    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('Final Price');
+    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('(');
+  }, 15000);
 });

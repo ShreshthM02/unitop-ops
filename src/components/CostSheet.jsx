@@ -374,7 +374,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const ssTotalAddr = addr(row+1,7);
     row += 3;
 
-    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","TL/Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"];
+    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","TL/Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
     slabHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; });
     row++;
     slabs.forEach((s,si)=>{
@@ -426,10 +426,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       const markupCellAddr = addr(row,13);
 
       const finalFormula = `CEILING((${afterTaxAddr}+${markupCellAddr})/${roeAddr},1)`;
-      const finalC = formulaCell(row,14,finalFormula,c0.finalFX,`"${currency}" #,##0`,{bold:true,color:{argb:ACCENT},size:11});
+      const finalC = formulaCell(row,14,finalFormula,c0.finalFX,"#,##0",{bold:true,color:{argb:ACCENT},size:11});
 
       const ssFormula = `CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstFrac})*(1+${markupFrac})/${roeAddr},1)`;
-      formulaCell(row,15,ssFormula,c0.ssFX,`"${currency}" #,##0`);
+      formulaCell(row,15,ssFormula,c0.ssFX,"#,##0");
 
       if (si%2===1) for(let c=1;c<=15;c++) { const cell=sheet.getCell(row,c); if(!cell.fill||cell.fill.fgColor?.argb!==INPUT_BG) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; }
       row++;
