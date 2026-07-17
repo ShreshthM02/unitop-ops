@@ -105,7 +105,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // Totals
   const totMeal    = days.reduce((s,d)=>s+n(d.mealCost),0);
   const totHotel   = days.reduce((s,d)=>s+n(d.hotelNetPP),0);
-  const totSS      = days.reduce((s,d)=>s+n(d.singleSupp),0) + localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
+  const daySS      = days.reduce((s,d)=>s+n(d.singleSupp),0);
+  const handlerSS  = localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
+  const totSS      = daySS + handlerSS;
   const monTotal   = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(monExtra);
 
   const calcSlab = (slab) => {
@@ -191,6 +193,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return buildLetterheadDocument({
       title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
       bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, summaryBlock],
+      extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
     });
@@ -207,7 +210,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     wb.creator = "Unitop Ops"; wb.created = new Date();
     const sheet = wb.addWorksheet("Cost Sheet");
 
-    const NAVY="FF0D1B2A", ACCENT="FFC0392B", LIGHT="FFF3F4F6", WHITE="FFFFFFFF", GREY="FF6B7280", ZEBRA="FFFAFAFA", BORDER="FFD1D5DB";
+    const NAVY="FF0D1B2A", ACCENT="FFC0392B", LIGHT="FFF3F4F6", WHITE="FFFFFFFF", GREY="FF6B7280", ZEBRA="FFFAFAFA", BORDER="FFD1D5DB", INPUT_BG="FFFFFDE7";
+    const colLetter = (c) => { let s=""; while(c>0){ const m=(c-1)%26; s=String.fromCharCode(65+m)+s; c=Math.floor((c-1)/26); } return s; };
+    const addr = (r,c) => `${colLetter(c)}${r}`;
     const navyBand = (r, text, span=14) => {
       sheet.mergeCells(r,1,r,span);
       const c = sheet.getCell(r,1);
@@ -217,9 +222,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     };
     const label = (r,c,text) => { const cell=sheet.getCell(r,c); cell.value=text; cell.font={bold:true,size:9,color:{argb:GREY}}; };
     const bigVal = (r,c,val,fmt) => { const cell=sheet.getCell(r,c); cell.value=val; cell.font={bold:true,size:13}; if(fmt) cell.numFmt=fmt; };
+    // Editable input cells get a pale-yellow fill so it's visually obvious
+    // which cells are meant to be typed into offline, vs. formula-driven
+    // cells that recalculate automatically -- the whole point of this
+    // being a *working* spreadsheet, not just a printout.
+    const inputCell = (r,c,val,fmt) => { const cell=sheet.getCell(r,c); cell.value=val; cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:INPUT_BG}}; if(fmt) cell.numFmt=fmt; return cell; };
+    const formulaCell = (r,c,formula,result,fmt,extraFont={}) => { const cell=sheet.getCell(r,c); cell.value={formula,result:result??0}; if(fmt) cell.numFmt=fmt; cell.font={size:9,...extraFont}; return cell; };
+    const sectionHeaders = (r, headers, startCol=1) => { headers.forEach((h,i)=>{ const c=sheet.getCell(r,startCol+i); c.value=h; c.font={bold:true,size:9,color:{argb:"FF374151"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:LIGHT}}; c.border={bottom:{style:"thin",color:{argb:BORDER}}}; }); };
 
     let row = 1;
-    // Title band: name + version/timestamp
+    // ── Title band ──
     sheet.mergeCells(row,1,row,9);
     sheet.getCell(row,1).value = "COST SHEET"; sheet.getCell(row,1).font = {bold:true,size:18,color:{argb:WHITE}};
     sheet.getCell(row,1).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; sheet.getCell(row,1).alignment = {vertical:"middle"};
@@ -234,51 +246,196 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     sheet.getCell(row,1).value = `${query.groupName||query.clientName||""}   •   ${query.destination||query.sector||""}   •   Tour File: ${query.tourFileId||query.id}`;
     sheet.getCell(row,1).font = {bold:true,size:12}; row += 2;
 
-    // Settings bar
-    const settings = [["GST %",gst],["Markup %",markup],["ROE",roe],["Currency",currency],["TL Cost",tlMode==="pp"?"Per Pax":"Lumpsum"],["Misc Cost",miscMode==="pp"?"Per Pax":"Lumpsum"],["Monument",monMode==="pp"?"Per Pax":"Lumpsum"]];
-    settings.forEach(([lbl,val],i)=>{ label(row,i*2+1,lbl); bigVal(row+1,i*2+1,val); });
-    row += 3;
-
-    // Day-wise
-    navyBand(row, "📅  DAY-WISE ITINERARY & ACCOMMODATION", 11); row++;
-    const dayHeaders = ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp","Notes"];
-    dayHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:LIGHT}}; c.border={bottom:{style:"thin",color:{argb:BORDER}}}; });
+    // ── Settings (real input cells, everything downstream references these) ──
+    navyBand(row, "⚙️  SETTINGS — edit these, every price below recalculates", 14); row++;
+    label(row,1,"GST %"); label(row,3,"Markup %"); label(row,5,"ROE"); label(row,7,"Currency");
     row++;
+    const gstCell = inputCell(row,1,Number(gst)||0,"0.0"); gstCell.font={bold:true,size:13};
+    const markupCell = inputCell(row,3,Number(markup)||0,"0.0"); markupCell.font={bold:true,size:13};
+    const roeCell = inputCell(row,5,Number(roe)||0,"0.0"); roeCell.font={bold:true,size:13};
+    const currencyCell = inputCell(row,7,currency||"US $"); currencyCell.font={bold:true,size:13};
+    const gstAddr = addr(row,1), markupAddr = addr(row,3), roeAddr = addr(row,5), currencyAddr = addr(row,7);
+    const gstFrac = `(${gstAddr}/100)`, markupFrac = `(${markupAddr}/100)`;
+    row += 2;
+
+    // ── Day-wise Itinerary & Accommodation ──
+    navyBand(row, "📅  DAY-WISE ITINERARY & ACCOMMODATION", 11); row++;
+    sectionHeaders(row, ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp","Notes"]);
+    row++;
+    const dayFirstRow = row;
     days.forEach((d,i)=>{
-      const vals = [d.day,d.date,d.movement,d.mealPlan,n(d.mealCost)||null,d.hotel,d.hotelAlt,d.hotelPlan,n(d.hotelNetPP)||null,n(d.singleSupp)||null,d.notes];
-      vals.forEach((v,j)=>{ const c=sheet.getCell(row,j+1); c.value=v; if(i%2===1) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; if([4,8,9].includes(j)) c.numFmt="#,##0"; });
+      inputCell(row,1,d.day); inputCell(row,2,d.date||""); inputCell(row,3,d.movement||""); inputCell(row,4,d.mealPlan||"");
+      inputCell(row,5,n(d.mealCost)||0,"#,##0"); inputCell(row,6,d.hotel||""); inputCell(row,7,d.hotelAlt||""); inputCell(row,8,d.hotelPlan||"");
+      inputCell(row,9,n(d.hotelNetPP)||0,"#,##0"); inputCell(row,10,n(d.singleSupp)||0,"#,##0"); inputCell(row,11,d.notes||"");
+      if(i%2===1) for(let c=1;c<=11;c++) sheet.getCell(row,c).fill = sheet.getCell(row,c).fill.fgColor?.argb===INPUT_BG ? sheet.getCell(row,c).fill : {type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
       row++;
     });
+    const dayLastRow = row-1;
     sheet.mergeCells(row,1,row,3); sheet.getCell(row,1).value="TOTALS"; sheet.getCell(row,1).font={bold:true};
-    if(totMeal){ const c=sheet.getCell(row,5); c.value=Math.round(totMeal); c.font={bold:true}; c.numFmt="#,##0"; }
-    if(totHotel){ const c=sheet.getCell(row,9); c.value=Math.round(totHotel); c.font={bold:true}; c.numFmt="#,##0"; }
-    if(totSS){ const c=sheet.getCell(row,10); c.value=Math.round(totSS); c.font={bold:true}; c.numFmt="#,##0"; }
+    const mealTotalCell = formulaCell(row,5,`SUM(E${dayFirstRow}:E${dayLastRow})`,Math.round(totMeal),"#,##0",{bold:true});
+    const hotelTotalCell = formulaCell(row,9,`SUM(I${dayFirstRow}:I${dayLastRow})`,Math.round(totHotel),"#,##0",{bold:true});
+    const daySSTotalCell = formulaCell(row,10,`SUM(J${dayFirstRow}:J${dayLastRow})`,Math.round(daySS),"#,##0",{bold:true});
+    const mealTotalAddr = addr(row,5), hotelTotalAddr = addr(row,9), daySSTotalAddr = addr(row,10);
     row += 3;
 
-    // Final Price Summary
+    // ── Cost Line Items ──
+    navyBand(row, "💵  COST LINE ITEMS", 14); row++;
+
+    // Tour Leader / Facilitator Cost
+    label(row,1,"Tour Leader / Facilitator Cost — Mode (pp / lumpsum)"); label(row,4,"Amount");
+    row++;
+    const tlModeCell = inputCell(row,1,tlMode||"lumpsum"); const tlCostCell = inputCell(row,4,n(tlCost)||0,"#,##0");
+    const tlModeAddr = addr(row,1), tlCostAddr = addr(row,4);
+    row += 2;
+
+    // Misc Cost
+    label(row,1,"Misc Cost — Mode (pp / lumpsum)"); label(row,4,"Amount");
+    row++;
+    const miscModeCell = inputCell(row,1,miscMode||"pp"); const miscCostCell = inputCell(row,4,n(miscCost)||0,"#,##0");
+    const miscModeAddr = addr(row,1), miscCostAddr = addr(row,4);
+    row += 2;
+
+    // Monuments
+    label(row,1,"Monuments"); row++;
+    sectionHeaders(row, ["Monument","Fee","Include (Y/N)"]);
+    row++;
+    const monFirstRow = row;
+    const monRowCount = Math.max(monuments.length + 3, 4);
+    for (let i=0;i<monRowCount;i++) {
+      const m = monuments[i];
+      inputCell(row,1,m?.name||""); inputCell(row,2,m?m.fee?n(m.fee):0:0,"#,##0"); inputCell(row,3,m?(m.include?"Y":"N"):"N");
+      row++;
+    }
+    const monLastRow = row-1;
+    label(row,1,"Extra Monument Cost (not tied to a specific monument)");
+    const monExtraCell = inputCell(row,4,n(monExtra)||0,"#,##0");
+    const monExtraAddr = addr(row,4);
+    row++;
+    label(row,1,"Monument Total");
+    const monTotalCell = formulaCell(row,4,`SUMIF(C${monFirstRow}:C${monLastRow},"Y",B${monFirstRow}:B${monLastRow})+${monExtraAddr}`,Math.round(monTotal),"#,##0",{bold:true});
+    const monTotalAddr = addr(row,4);
+    row += 2;
+
+    // Local Handler(s)
+    label(row,1,"Local Handler(s)"); row++;
+    sectionHeaders(row, ["Sector","Cost","Mode (pp / lumpsum)","Single Supp"]);
+    row++;
+    const lhFirstRow = row;
+    const lhRowCount = Math.max(localHandlers.length + 3, 4);
+    for (let i=0;i<lhRowCount;i++) {
+      const h = localHandlers[i];
+      inputCell(row,1,h?.sector||""); inputCell(row,2,h?n(h.cost)||0:0,"#,##0"); inputCell(row,3,h?.mode||"pp"); inputCell(row,4,h?n(h.singleSupp)||0:0,"#,##0");
+      row++;
+    }
+    const lhLastRow = row-1;
+    label(row,1,"Local Handler Single Supp Total");
+    const handlerSSCell = formulaCell(row,4,`SUM(D${lhFirstRow}:D${lhLastRow})`,Math.round(handlerSS),"#,##0",{bold:true});
+    const handlerSSAddr = addr(row,4);
+    row += 2;
+
+    // Extra Services
+    label(row,1,"Extra Services"); row++;
+    sectionHeaders(row, ["Description","Cost","Mode (PP / Lumpsum / Per Vehicle / Per Group)"]);
+    row++;
+    const exFirstRow = row;
+    const exRowCount = Math.max(extras.length + 3, 4);
+    for (let i=0;i<exRowCount;i++) {
+      const e = extras[i];
+      inputCell(row,1,e?.description||""); inputCell(row,2,e?n(e.cost)||0:0,"#,##0"); inputCell(row,3,e?.mode||"PP");
+      row++;
+    }
+    const exLastRow = row-1;
+    row++;
+
+    // Transportation — matrix: one column per slab, marked "Y" if that
+    // transport line applies to that slab. Requested specifically: a
+    // clearer way to show which transport costs feed which slabs than a
+    // hidden checkbox list.
+    label(row,1,"Transportation — mark Y under each slab this line applies to"); row++;
+    const tptHeaders = ["Sector / Description","Cost", ...slabs.map(s=>s.label)];
+    sectionHeaders(row, tptHeaders);
+    row++;
+    const tptFirstRow = row;
+    const tptRowCount = Math.max(transports.length + 3, 4);
+    for (let i=0;i<tptRowCount;i++) {
+      const t = transports[i];
+      inputCell(row,1,t?.sector||t?.vehicleType||""); inputCell(row,2,t?n(t.cost)||0:0,"#,##0");
+      slabs.forEach((s,si)=>{ inputCell(row,3+si,t&&t.slabs?.includes(s.id)?"Y":""); });
+      row++;
+    }
+    const tptLastRow = row-1;
+    row += 2;
+
+    // ── Final Price Summary ──
     navyBand(row, "💰  FINAL PRICE SUMMARY", 14); row++;
-    label(row,1,"Accommodation (PP)"); bigVal(row+1,1,Math.round(totHotel),"#,##0");
-    label(row,4,"Extra Meals (PP)"); bigVal(row+1,4,Math.round(totMeal),"#,##0");
-    label(row,7,"Single Supplement (total)"); bigVal(row+1,7,Math.round(totSS),"#,##0");
+    label(row,1,"Accommodation (PP)"); formulaCell(row+1,1,`${hotelTotalAddr}`,Math.round(totHotel),"#,##0",{bold:true,size:13});
+    label(row,4,"Extra Meals (PP)"); formulaCell(row+1,4,`${mealTotalAddr}`,Math.round(totMeal),"#,##0",{bold:true,size:13});
+    label(row,7,"Single Supplement (total)"); formulaCell(row+1,7,`${daySSTotalAddr}+${handlerSSAddr}`,Math.round(totSS),"#,##0",{bold:true,size:13,color:{argb:ACCENT}});
+    const ssTotalAddr = addr(row+1,7);
     row += 3;
 
-    const slabHeaders = ["Slab","Vehicle","Transport","TL/Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"];
+    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","TL/Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"];
     slabHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; });
     row++;
-    slabs.forEach((s,i)=>{
+    slabs.forEach((s,si)=>{
       const c0 = calcSlab(s);
-      const vals = [s.label,s.vehicle,c0.tptPP||null,c0.tlPP||null,c0.miscPP||null,c0.monPP||null,c0.localPP||null,c0.extrasPP||null,c0.sub||null,c0.tax||null,c0.afterTax||null,c0.markupAmt||null,c0.finalFX||null,c0.ssFX||null];
-      vals.forEach((v,j)=>{
-        const cell=sheet.getCell(row,j+1); cell.value=v;
-        if(i%2===1) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
-        if(j>=2&&j<=11) cell.numFmt="#,##0";
-        if(j===12){ cell.font={bold:true,color:{argb:ACCENT},size:11}; cell.numFmt=`"${currency}" #,##0`; }
-        if(j===13) cell.numFmt=`"${currency}" #,##0`;
-      });
+      const slabCol = 3 + si; // this slab's column in the transport matrix
+      const slabColLetter = colLetter(slabCol);
+      inputCell(row,1,s.label); inputCell(row,2,s.vehicle||"");
+      const focCell = inputCell(row,3,Number(s.foc)||0); focCell.font={bold:true};
+      const focAddr = addr(row,3);
+
+      const tptFormula = `SUMPRODUCT((${slabColLetter}${tptFirstRow}:${slabColLetter}${tptLastRow}="Y")*B${tptFirstRow}:B${tptLastRow})/${focAddr}`;
+      formulaCell(row,4,tptFormula,c0.tptPP,"#,##0");
+
+      const tlFormula = `IF(${tlModeAddr}="pp",${tlCostAddr},${tlCostAddr}/${focAddr})`;
+      formulaCell(row,5,tlFormula,c0.tlPP,"#,##0");
+
+      const miscFormula = `IF(${miscModeAddr}="pp",${miscCostAddr},${miscCostAddr}/${focAddr})`;
+      formulaCell(row,6,miscFormula,c0.miscPP,"#,##0");
+
+      // Monument mode isn't per-slab in the app either -- it's one global
+      // mode (monMode state), so reference the tl/misc pattern but against
+      // the app's own monMode value baked in at export time (it isn't a
+      // separate labeled input cell above, since there's no dedicated
+      // "Monument Mode" input row -- match the app's actual current model).
+      const monFormula = monMode==="pp" ? `${monTotalAddr}` : `${monTotalAddr}/${focAddr}`;
+      formulaCell(row,7,monFormula,c0.monPP,"#,##0");
+
+      const lhFormula = `SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}="pp")*B${lhFirstRow}:B${lhLastRow})+SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}<>"pp")*B${lhFirstRow}:B${lhLastRow})/${focAddr}`;
+      formulaCell(row,8,lhFormula,c0.localPP,"#,##0");
+
+      const exFormula = `SUMPRODUCT((C${exFirstRow}:C${exLastRow}="PP")*B${exFirstRow}:B${exLastRow})+SUMPRODUCT((C${exFirstRow}:C${exLastRow}<>"PP")*B${exFirstRow}:B${exLastRow})/${focAddr}`;
+      formulaCell(row,9,exFormula,c0.extrasPP,"#,##0");
+
+      const d4=addr(row,4),d5=addr(row,5),d6=addr(row,6),d7=addr(row,7),d8=addr(row,8),d9=addr(row,9);
+      const subFormula = `${hotelTotalAddr}+${mealTotalAddr}+${d4}+${d5}+${d6}+${d7}+${d8}+${d9}`;
+      formulaCell(row,10,subFormula,c0.sub,"#,##0");
+      const subAddr = addr(row,10);
+
+      const taxFormula = `ROUND(${subAddr}*${gstFrac},0)`;
+      formulaCell(row,11,taxFormula,c0.tax,"#,##0");
+      const taxAddr = addr(row,11);
+
+      const afterTaxFormula = `${subAddr}+${taxAddr}`;
+      formulaCell(row,12,afterTaxFormula,c0.afterTax,"#,##0");
+      const afterTaxAddr = addr(row,12);
+
+      const markupFormula = `ROUND(${afterTaxAddr}*${markupFrac},0)`;
+      formulaCell(row,13,markupFormula,c0.markupAmt,"#,##0");
+      const markupCellAddr = addr(row,13);
+
+      const finalFormula = `CEILING((${afterTaxAddr}+${markupCellAddr})/${roeAddr},1)`;
+      const finalC = formulaCell(row,14,finalFormula,c0.finalFX,`"${currency}" #,##0`,{bold:true,color:{argb:ACCENT},size:11});
+
+      const ssFormula = `CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstFrac})*(1+${markupFrac})/${roeAddr},1)`;
+      formulaCell(row,15,ssFormula,c0.ssFX,`"${currency}" #,##0`);
+
+      if (si%2===1) for(let c=1;c<=15;c++) { const cell=sheet.getCell(row,c); if(!cell.fill||cell.fill.fgColor?.argb!==INPUT_BG) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; }
       row++;
     });
 
-    sheet.columns.forEach((col,i)=>{ col.width = i===0?26:i===1?12:11; });
+    sheet.columns.forEach((col,i)=>{ col.width = i===0?24:i===1?14:12; });
     sheet.views = [{ state:"frozen", ySplit:0 }];
     return wb;
   };
@@ -439,7 +596,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                   <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totMeal>0?`₹ ${totMeal.toLocaleString()}`:"—"}</td>
                   <td colSpan={3}></td>
                   <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totHotel>0?`₹ ${totHotel.toLocaleString()}`:"—"}</td>
-                  <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totSS>0?`₹ ${totSS.toLocaleString()}`:"—"}</td>
+                  <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{daySS>0?`₹ ${daySS.toLocaleString()}`:"—"}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tbody>
@@ -526,6 +683,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                 </div>
               </div>
             ))}
+            {handlerSS>0 && (
+              <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#784212",marginBottom:8}}>
+                Local Handler Single Supplement adds up to ₹{handlerSS.toLocaleString()} — this is combined with the Day-wise Single Supplement total (₹{daySS.toLocaleString()}) in the Final Price Summary below, not shown separately there.
+              </div>
+            )}
             <button className="btn btn-ghost" style={{fontSize:11}} onClick={addLocalHandler}>+ Add Local Handler</button>
           </div>
 
@@ -598,6 +760,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
               <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supplement (total)</div>
               <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totSS).toLocaleString()}</div>
+              {handlerSS>0 && <div style={{fontSize:9,color:G.gray400,marginTop:2}}>Day-wise ₹{daySS.toLocaleString()} + Local Handler ₹{handlerSS.toLocaleString()}</div>}
             </div>
           </div>
           <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Accommodation and Extra Meals are the same across every slab below (from the day-wise section), shown once here rather than repeated in each row. Everything else below varies by slab, since it's split across each slab's own paying-pax count.</div>

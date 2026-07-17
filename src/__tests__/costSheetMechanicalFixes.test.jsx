@@ -117,3 +117,29 @@ describe('CostSheet: Day-wise TOTALS row alignment (item #7)', () => {
     expect(cells[2].textContent).toContain('500'); // Meal Cost total
   });
 });
+
+describe('CostSheet: Single Supplement breakdown is now transparent (the 29750 question)', () => {
+  it('the day-wise TOTALS row shows only day-wise SS, not silently combined with local handler SS', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    fireEvent.click(screen.getByText('+ Add Day'));
+    const ssInputs = document.querySelectorAll('input[placeholder="0"]');
+    // Day single supp is the 3rd "0"-placeholder number input in the day row
+    fireEvent.change(ssInputs[2], { target: { value: '1750' } });
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
+    fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
+
+    const totalsRow = screen.getByText('TOTALS').closest('tr');
+    // Day-wise TOTALS row's SS cell should show only 1750, not 29750
+    expect(totalsRow.textContent).toContain('1,750');
+    expect(totalsRow.textContent).not.toContain('29,750');
+  });
+
+  it('shows a clear callout explaining Local Handler SS combines into the final total', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
+    fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
+    expect(screen.getByText(/combined with the Day-wise Single Supplement total/)).toBeTruthy();
+  });
+});
