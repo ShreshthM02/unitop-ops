@@ -132,9 +132,18 @@ describe('Without any T/L slab, the last group slab still cannot be removed (the
 });
 
 describe('CostSheet: scroll anchoring disabled on the main content area (mitigates the "jumps to top" report when adding a T/L slab)', () => {
-  it('the scrollable fieldset has overflow-anchor disabled', () => {
+  it('the fieldset has minHeight:0 -- the actual root cause fix. Without it, a flex:1 child in a column layout never shrinks to fit its container and never actually scrolls itself, silently pushing all scrolling onto the outer 100vh wrapper instead, which is what made the scroll position unstable when content was added', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     const fieldset = document.querySelector('fieldset');
+    expect(fieldset.style.minHeight).toBe('0px');
     expect(fieldset.style.overflowAnchor).toBe('none');
+  });
+
+  it('the outer panel wrapper no longer has its own overflow:auto competing with the fieldset for scroll responsibility', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    const fieldset = document.querySelector('fieldset');
+    const outer = fieldset.closest('div[style*="height: 100vh"]') || Array.from(document.querySelectorAll('div')).find(d => d.style.height === '100vh');
+    expect(outer).toBeTruthy();
+    expect(outer.style.overflowY).toBe('hidden');
   });
 });

@@ -658,7 +658,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:960,height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
+      <div style={{background:G.white,width:960,height:"100vh",overflowY:"hidden",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
 
         {/* Header */}
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -694,7 +694,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
         )}
 
-        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0,overflowAnchor:"none"}}>
+        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0,minHeight:0,overflowAnchor:"none"}}>
 
           {/* 10.1 Settings */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
