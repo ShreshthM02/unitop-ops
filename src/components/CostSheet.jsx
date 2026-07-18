@@ -258,11 +258,19 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // gave "Fee"/"Included" far more room than short values need). Each
     // call site now passes its own widths, sized to what that table's
     // columns actually hold.
-    const tableBlock = (headers, alignRight, rows, emptyLabel, widths) => {
+    // tableWidthPct lets a table genuinely be narrower than the page,
+    // rather than always spanning 100% and distributing percentages
+    // within that full width. Confirmed via live DevTools measurement
+    // that column percentages were rendering exactly as specified (e.g.
+    // 40% of a 1550px page = 620px) -- the actual problem was forcing a
+    // 3-column table with short content (a monument name, a price,
+    // Yes/No) to fill the entire page width regardless, which stretches
+    // everything out no matter how the percentages are split internally.
+    const tableBlock = (headers, alignRight, rows, emptyLabel, widths, tableWidthPct=100) => {
       const w = widths || headers.map(() => (100 / headers.length).toFixed(2));
       const colgroup = `<colgroup>${w.map(pct=>`<col style="width:${pct}%"/>`).join("")}</colgroup>`;
       return `
-      <table class="content-table" style="table-layout:fixed">
+      <table class="content-table" style="table-layout:fixed;width:${tableWidthPct}%">
         ${colgroup}
         <thead><tr>${headers.map((h,i)=>`<th style="text-align:${alignRight.includes(i)?"right":"left"};width:${w[i]}%">${h}</th>`).join("")}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${headers.length}" style="text-align:center;color:#999">${emptyLabel}</td></tr>`}</tbody>
@@ -315,7 +323,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
         monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], [40,35,25])).join(""), "",
-        [40,35,25])}
+        [40,35,25], 45)}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
@@ -328,13 +336,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
         localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], [25,25,20,30])).join(""), "",
-        [25,25,20,30])}` : "";
+        [25,25,20,30], 65)}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
         extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], [60,20,20])).join(""), "",
-        [60,20,20])}` : "";
+        [60,20,20], 55)}` : "";
 
     const slabRows = slabs.map(s => {
       const c = calcSlab(s);

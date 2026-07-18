@@ -226,3 +226,24 @@ describe('CostSheet PDF: widths applied directly on every cell, not just inherit
     expect(tdMatch).toBeTruthy();
   });
 });
+
+describe('CostSheet PDF: narrow-content tables (Monuments, Local Handler, Extra Services) are genuinely narrower tables, not just narrow columns inside a full-width one', () => {
+  it('Monuments table itself is set to less than 100% width, confirmed via live DevTools measurement that column percentages were already rendering exactly as specified', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const monumentsIdx = html.indexOf('Monuments</div>');
+    const tableSnippet = html.slice(monumentsIdx, monumentsIdx + 300);
+    expect(tableSnippet).toContain('width:45%');
+  });
+
+  it('the Group Slabs and Day-wise tables remain full width, since they genuinely have many columns of data', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const dayIdx = html.indexOf('Day-wise Itinerary');
+    const tableSnippet = html.slice(dayIdx, dayIdx + 300);
+    expect(tableSnippet).toContain('width:100%');
+  });
+});
