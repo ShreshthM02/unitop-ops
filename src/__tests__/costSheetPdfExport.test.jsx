@@ -88,7 +88,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     const html = capturedHTML();
     // Final Price Summary header row: "Transport" (a numeric column) should
     // render with text-align:right on the <th>, matching its <td> below.
-    const theadMatch = html.match(/<th style="text-align:right">Transport<\/th>/);
+    const theadMatch = html.match(/<th style="text-align:right[^"]*">Transport<\/th>/);
     expect(theadMatch).toBeTruthy();
   });
 });
@@ -208,5 +208,21 @@ describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match rea
     expect(html).toContain('width:40%');
     // New, rebalanced Transport widths (Applies To gets the most room now)
     expect(html).toContain('width:45%');
+  });
+});
+
+describe('CostSheet PDF: widths applied directly on every cell, not just inherited from colgroup', () => {
+  it('data cells (<td>) in the Monuments table carry an explicit width, not just the <th> headers', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    const nameInputs = document.querySelectorAll('input[placeholder="e.g. Taj Mahal entry"]');
+    fireEvent.change(nameInputs[nameInputs.length-1], { target: { value: 'Test Monument' } });
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    // A <td> containing "Test Monument" should itself carry a width, not
+    // rely solely on the table's colgroup (which some print engines
+    // don't reliably honor).
+    const tdMatch = html.match(/<td style="text-align:left;width:40%">Test Monument<\/td>/);
+    expect(tdMatch).toBeTruthy();
   });
 });

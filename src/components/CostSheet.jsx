@@ -4,6 +4,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff }) {
   const n = v => parseFloat(v)||0;
+  const fieldsetRef = useRef(null);
   const [version, setVersion] = useState(1);
   const [versions, setVersions] = useState([]);
   const [finalVersion, setFinalVersion] = useState(null);
@@ -66,11 +67,31 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // in the Final Price Summary below, alongside the group slabs, with its
   // own label -- not a separate reference number.
   const [tlSlabs, setTlSlabs] = useState([]);
-  const addTlSlab = () => setTlSlabs(p=>[...p, {
-    id: Date.now(), label: "10 pax + 1 T/L", vehicle: "", pax: "",
-    costs: { hotel:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" },
-    includes: { hotel:true, meals:true, transport:true, monument:true, localHandler:true, extras:true },
-  }]);
+  const scrollRestoreRef = useRef(null);
+  useLayoutEffect(() => {
+    if (scrollRestoreRef.current) {
+      const { fieldset, window: winY } = scrollRestoreRef.current;
+      if (fieldsetRef.current && fieldset != null) fieldsetRef.current.scrollTop = fieldset;
+      if (winY != null) window.scrollTo(0, winY);
+      scrollRestoreRef.current = null;
+    }
+  }, [tlSlabs.length]);
+  // Direct, guaranteed scroll preservation -- after two CSS-based
+  // theories (scroll-anchoring, then flexbox min-height) were confirmed
+  // deployed but did NOT stop the reported "jumps to top" behavior, this
+  // captures scroll position from every plausible scrolling element
+  // before the DOM changes and restores it synchronously afterward, via
+  // useLayoutEffect (runs after DOM mutation, before paint -- so there's
+  // no visible flash). This works regardless of which element actually
+  // turns out to be responsible, without needing to identify it first.
+  const addTlSlab = () => {
+    scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+    setTlSlabs(p=>[...p, {
+      id: Date.now(), label: "10 pax + 1 T/L", vehicle: "", pax: "",
+      costs: { hotel:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" },
+      includes: { hotel:true, meals:true, transport:true, monument:true, localHandler:true, extras:true },
+    }]);
+  };
   const updateTlSlab = (i, patch) => setTlSlabs(p=>p.map((t,idx)=>idx===i?{...t,...patch}:t));
   const removeTlSlab = (i) => setTlSlabs(p=>p.filter((_,idx)=>idx!==i));
   const fetchTlSlabCosts = (i) => {
@@ -243,11 +264,17 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       return `
       <table class="content-table" style="table-layout:fixed">
         ${colgroup}
-        <thead><tr>${headers.map((h,i)=>`<th style="text-align:${alignRight.includes(i)?"right":"left"}">${h}</th>`).join("")}</tr></thead>
+        <thead><tr>${headers.map((h,i)=>`<th style="text-align:${alignRight.includes(i)?"right":"left"};width:${w[i]}%">${h}</th>`).join("")}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${headers.length}" style="text-align:center;color:#999">${emptyLabel}</td></tr>`}</tbody>
       </table>`;
     };
-    const rowHTML = (cells, alignRight) => `<tr>${cells.map((c,i)=>`<td style="text-align:${alignRight.includes(i)?"right":"left"}">${c}</td>`).join("")}</tr>`;
+    // widths is now required alongside alignRight -- applied directly on
+    // every <td>, not just inherited from the table's own colgroup. Some
+    // browsers' print-rendering path does not reliably honor colgroup/
+    // table-layout:fixed the same way normal screen rendering does, so
+    // this repeats the width explicitly on each cell as a more robust
+    // belt-and-suspenders measure, rather than depending on inheritance.
+    const rowHTML = (cells, alignRight, widths) => `<tr>${cells.map((c,i)=>`<td style="text-align:${alignRight.includes(i)?"right":"left"}${widths?`;width:${widths[i]}%`:""}">${c}</td>`).join("")}</tr>`;
 
     const headerBlock = `
       <div style="text-align:center;margin-bottom:4pt">
@@ -276,7 +303,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       d.hotel||"", d.hotelAlt||"—", d.hotelPlan||"",
       n(d.hotelNetPP)?"₹"+n(d.hotelNetPP).toLocaleString():"—",
       n(d.singleSupp)?"₹"+n(d.singleSupp).toLocaleString():"—",
-    ], [4,8,9])).join("");
+    ], [4,8,9], [5,8,16,8,9,14,12,7,10,11])).join("");
     const totalsRow = `<tr style="font-weight:700;background:#f3f4f6"><td colspan="4">TOTALS</td><td style="text-align:right">₹${Math.round(totMeal).toLocaleString()}</td><td colspan="3"></td><td style="text-align:right">₹${Math.round(totHotel).toLocaleString()}</td><td style="text-align:right">₹${Math.round(daySS).toLocaleString()}</td></tr>`;
     const dayTableBlock = `
       <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
@@ -287,26 +314,26 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const monBlock = monuments.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
-        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1])).join(""), "",
+        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], [40,35,25])).join(""), "",
         [40,35,25])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2])).join(""), "",
+        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], [20,20,15,45])).join(""), "",
         [20,20,15,45])}` : "";
 
     const lhBlock = localHandlers.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
-        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3])).join(""), "",
+        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], [25,25,20,30])).join(""), "",
         [25,25,20,30])}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
-        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1])).join(""), "",
+        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], [60,20,20])).join(""), "",
         [60,20,20])}` : "";
 
     const slabRows = slabs.map(s => {
@@ -317,7 +344,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12]);
+      ], [1,2,3,4,5,6,7,8,9,10,11,12], [15,7,7,6,6,7,6,8,6,8,7,9,8]);
     }).join("");
     const tlSlabRows = tlSlabs.map(tl => {
       const c = calcTlSlab(tl);
@@ -328,7 +355,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15], [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6]);
     }).join("");
 
     const summaryBlock = `
@@ -694,7 +721,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
         )}
 
-        <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0,minHeight:0,overflowAnchor:"none"}}>
+        <fieldset ref={fieldsetRef} disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"14px 18px",border:"none",margin:0,minWidth:0,minHeight:0,overflowAnchor:"none"}}>
 
           {/* 10.1 Settings */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>

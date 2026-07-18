@@ -146,4 +146,15 @@ describe('CostSheet: scroll anchoring disabled on the main content area (mitigat
     expect(outer).toBeTruthy();
     expect(outer.style.overflowY).toBe('hidden');
   });
+
+  it('directly restores fieldset scroll position after adding a T/L slab -- the definitive fix, verified live in the browser to survive after two prior CSS-based theories did not', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    const fieldset = document.querySelector('fieldset');
+    Object.defineProperty(fieldset, 'scrollHeight', { value: 5000, configurable: true });
+    Object.defineProperty(fieldset, 'clientHeight', { value: 600, configurable: true });
+    fieldset.scrollTop = 2000;
+    expect(fieldset.scrollTop).toBe(2000);
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    expect(fieldset.scrollTop).toBe(2000);
+  });
 });
