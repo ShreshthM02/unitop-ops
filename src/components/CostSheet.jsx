@@ -323,26 +323,26 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
         monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], [40,35,25])).join(""), "",
-        [40,35,25], 45)}
+        [40,35,25], 60)}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], [20,20,15,45])).join(""), "",
-        [20,20,15,45])}` : "";
+        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], [18,18,14,50])).join(""), "",
+        [18,18,14,50], 60)}` : "";
 
     const lhBlock = localHandlers.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
         localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], [25,25,20,30])).join(""), "",
-        [25,25,20,30], 65)}` : "";
+        [25,25,20,30], 60)}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
         extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], [60,20,20])).join(""), "",
-        [60,20,20], 55)}` : "";
+        [60,20,20], 60)}` : "";
 
     const slabRows = slabs.map(s => {
       const c = calcSlab(s);

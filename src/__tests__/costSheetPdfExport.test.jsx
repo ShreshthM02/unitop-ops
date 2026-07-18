@@ -207,7 +207,7 @@ describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match rea
     // New, rebalanced Monuments widths
     expect(html).toContain('width:40%');
     // New, rebalanced Transport widths (Applies To gets the most room now)
-    expect(html).toContain('width:45%');
+    expect(html).toContain('width:50%');
   });
 });
 
@@ -227,15 +227,15 @@ describe('CostSheet PDF: widths applied directly on every cell, not just inherit
   });
 });
 
-describe('CostSheet PDF: narrow-content tables (Monuments, Local Handler, Extra Services) are genuinely narrower tables, not just narrow columns inside a full-width one', () => {
-  it('Monuments table itself is set to less than 100% width, confirmed via live DevTools measurement that column percentages were already rendering exactly as specified', async () => {
+describe('CostSheet PDF: narrow-content tables (Monuments, Transport, Local Handler, Extra Services) all share one consistent width, not four separately-guessed ones', () => {
+  it('Monuments table itself is set to a consistent, less-than-100% width shared with the other detail tables -- avoids the "staircase" look of each table stopping at a different point down the page', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
     const monumentsIdx = html.indexOf('Monuments</div>');
     const tableSnippet = html.slice(monumentsIdx, monumentsIdx + 300);
-    expect(tableSnippet).toContain('width:45%');
+    expect(tableSnippet).toContain('width:60%');
   });
 
   it('the Group Slabs and Day-wise tables remain full width, since they genuinely have many columns of data', async () => {
@@ -245,5 +245,20 @@ describe('CostSheet PDF: narrow-content tables (Monuments, Local Handler, Extra 
     const dayIdx = html.indexOf('Day-wise Itinerary');
     const tableSnippet = html.slice(dayIdx, dayIdx + 300);
     expect(tableSnippet).toContain('width:100%');
+  });
+
+  it('Monuments, Transport, Local Handler, and Extra Services all share the exact same overall table width, not four independently-guessed ones', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    ['Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>'].forEach(marker => {
+      const idx = html.indexOf(marker);
+      expect(idx).toBeGreaterThan(-1);
+      const snippet = html.slice(idx, idx + 300);
+      expect(snippet).toContain('width:60%');
+    });
   });
 });
