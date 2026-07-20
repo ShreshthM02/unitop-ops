@@ -196,7 +196,7 @@ describe('CostSheet PDF: every table\'s column widths actually sum to 100% (the 
 });
 
 describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match real observed data (not the old assumption that names are always long)', () => {
-  it('Monuments, Transport, and Local Handler widths are rebalanced away from the old over-wide first column', async () => {
+  it('Monuments, Transport, and Local Handler widths are evenly balanced (near-equal per column), not skewed toward one column, and tables stay full width', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
@@ -204,10 +204,18 @@ describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match rea
     const html = capturedHTML();
     // Old, too-wide-first-column arrays should no longer appear.
     expect(html).not.toContain('width:70%');
-    // New, rebalanced Monuments widths
+    // Monuments: near-equal 34/33/33 split
+    expect(html).toContain('width:34%');
+    // Transport: Applies To still gets the most room (variable-length,
+    // possibly comma-separated slab list), others roughly even
     expect(html).toContain('width:40%');
-    // New, rebalanced Transport widths (Applies To gets the most room now)
-    expect(html).toContain('width:50%');
+    // Local Handler: perfectly even 25/25/25/25 across its 4 columns
+    expect(html).toContain('width:25%');
+    // Every detail table stays at full page width -- never narrowed
+    expect(html).not.toContain('width:60%');
+    expect(html).not.toContain('width:45%');
+    expect(html).not.toContain('width:65%');
+    expect(html).not.toContain('width:55%');
   });
 });
 
@@ -222,43 +230,57 @@ describe('CostSheet PDF: widths applied directly on every cell, not just inherit
     // A <td> containing "Test Monument" should itself carry a width, not
     // rely solely on the table's colgroup (which some print engines
     // don't reliably honor).
-    const tdMatch = html.match(/<td style="text-align:left;width:40%">Test Monument<\/td>/);
+    const tdMatch = html.match(/<td style="text-align:left;width:34%">Test Monument<\/td>/);
     expect(tdMatch).toBeTruthy();
   });
 });
 
-describe('CostSheet PDF: narrow-content tables (Monuments, Transport, Local Handler, Extra Services) all share one consistent width, not four separately-guessed ones', () => {
-  it('Monuments table itself is set to a consistent, less-than-100% width shared with the other detail tables -- avoids the "staircase" look of each table stopping at a different point down the page', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    const monumentsIdx = html.indexOf('Monuments</div>');
-    const tableSnippet = html.slice(monumentsIdx, monumentsIdx + 300);
-    expect(tableSnippet).toContain('width:60%');
-  });
-
-  it('the Group Slabs and Day-wise tables remain full width, since they genuinely have many columns of data', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    const dayIdx = html.indexOf('Day-wise Itinerary');
-    const tableSnippet = html.slice(dayIdx, dayIdx + 300);
-    expect(tableSnippet).toContain('width:100%');
-  });
-
-  it('Monuments, Transport, Local Handler, and Extra Services all share the exact same overall table width, not four independently-guessed ones', async () => {
+describe('CostSheet PDF: every table stays full page width -- column balance comes from proportions within that width, never from narrowing the table itself', () => {
+  it('Monuments, Transport, Local Handler, and Extra Services are all full width (100%), same as Day-wise and the slab summary tables', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    ['Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>'].forEach(marker => {
+    ['Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>', 'Day-wise Itinerary'].forEach(marker => {
       const idx = html.indexOf(marker);
       expect(idx).toBeGreaterThan(-1);
       const snippet = html.slice(idx, idx + 300);
-      expect(snippet).toContain('width:60%');
+      expect(snippet).toContain('width:100%');
     });
+  });
+
+  it('the Group Slabs table also remains full width', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const idx = html.indexOf('Final Price Summary');
+    const snippet = html.slice(idx, idx + 600);
+    expect(snippet).toContain('width:100%');
+  });
+});
+
+describe('CostSheet PDF: every <td> width matches its column\'s <th> width (catches header/data width drift)', () => {
+  it('Monuments header and data cell widths agree exactly', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const monumentsIdx = html.indexOf('Monuments</div>');
+    const nextSectionIdx = html.indexOf('<div class="inv-title"', monumentsIdx + 10);
+    const tableSnippet = html.slice(monumentsIdx, nextSectionIdx);
+    const thWidths = [...tableSnippet.matchAll(/<th style="text-align:[a-z]+;width:([\d.]+)%">/g)].map(m => m[1]);
+    const tdWidths = [...tableSnippet.matchAll(/<td style="text-align:[a-z]+;width:([\d.]+)%">/g)].map(m => m[1]);
+    expect(thWidths.length).toBe(3);
+    // Every column's <td> widths (across all data rows) must match that
+    // column's <th> width -- this is exactly the class of bug where an
+    // earlier edit updated tableBlock's header widths but missed the
+    // matching rowHTML call, leaving data cells misaligned under their
+    // own headers.
+    for (let col = 0; col < 3; col++) {
+      const colTds = tdWidths.filter((_, i) => i % 3 === col);
+      colTds.forEach(w => expect(w).toBe(thWidths[col]));
+    }
   });
 });
