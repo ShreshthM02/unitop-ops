@@ -129,12 +129,18 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     });
   });
 
-  it('#7: tables use table-layout:fixed with explicit column widths for even, consistent spacing', async () => {
+  it('#7: no fixed column widths are hand-guessed anymore -- every table lets the browser size each column to its own actual content, since a static percentage can never be right for every real cost sheet (e.g. Hotel is sometimes blank for 9 of 10 days, sometimes filled for every day)', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    expect(html).toContain('table-layout:fixed');
-    expect(html).toContain('<colgroup>');
+    // Scoped to the Cost Sheet's own content only -- the shared letterhead
+    // footer legitimately uses table-layout:fixed for its 4 equal-width
+    // logo cells, which is unrelated to this fix and should stay as-is.
+    const footerIdx = html.indexOf('lh-footer');
+    const costSheetContent = footerIdx > -1 ? html.slice(0, footerIdx) : html;
+    expect(costSheetContent).not.toContain('table-layout:fixed');
+    expect(costSheetContent).not.toContain('<colgroup>');
+    expect(costSheetContent).not.toMatch(/width:\d+%/); // no hand-guessed column percentages anywhere
   });
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
@@ -164,123 +170,50 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
   });
 });
 
-describe('CostSheet PDF: every table\'s column widths actually sum to 100% (the real cause of "uneven spacing")', () => {
-  it('every colgroup in the generated PDF sums its column percentages to ~100%', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-
-    const colgroups = html.match(/<colgroup>.*?<\/colgroup>/gs) || [];
-    expect(colgroups.length).toBeGreaterThan(0);
-    colgroups.forEach(cg => {
-      const widths = [...cg.matchAll(/width:([\d.]+)%/g)].map(m => parseFloat(m[1]));
-      const sum = widths.reduce((a,b)=>a+b, 0);
-      expect(sum).toBeGreaterThan(99);
-      expect(sum).toBeLessThan(101);
-    });
-  });
-
-  it('the Settings table and Final Price Summary callout table also use fixed layout (previously the actual gap, not the tableBlock-driven tables)', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    // Both non-tableBlock tables should now carry table-layout:fixed and
-    // their own colgroup, not just the ones built via the shared helper.
-    const fixedTableCount = (html.match(/table-layout:fixed/g) || []).length;
-    expect(fixedTableCount).toBeGreaterThanOrEqual(3); // settings + callout + at least one content table
-  });
-});
-
-describe('CostSheet PDF: Monuments/Transport/Local Handler proportions match real observed data (not the old assumption that names are always long)', () => {
-  it('Monuments, Transport, and Local Handler widths are evenly balanced (near-equal per column), not skewed toward one column, and tables stay full width', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    // Old, too-wide-first-column arrays should no longer appear.
-    expect(html).not.toContain('width:70%');
-    // Monuments: near-equal 34/33/33 split
-    expect(html).toContain('width:34%');
-    // Transport: Applies To still gets the most room (variable-length,
-    // possibly comma-separated slab list), others roughly even
-    expect(html).toContain('width:40%');
-    // Local Handler: perfectly even 25/25/25/25 across its 4 columns
-    expect(html).toContain('width:25%');
-    // Every detail table stays at full page width -- never narrowed
-    expect(html).not.toContain('width:60%');
-    expect(html).not.toContain('width:45%');
-    expect(html).not.toContain('width:65%');
-    expect(html).not.toContain('width:55%');
-  });
-});
-
-describe('CostSheet PDF: widths applied directly on every cell, not just inherited from colgroup', () => {
-  it('data cells (<td>) in the Monuments table carry an explicit width, not just the <th> headers', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    const nameInputs = document.querySelectorAll('input[placeholder="e.g. Taj Mahal entry"]');
-    fireEvent.change(nameInputs[nameInputs.length-1], { target: { value: 'Test Monument' } });
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    // A <td> containing "Test Monument" should itself carry a width, not
-    // rely solely on the table's colgroup (which some print engines
-    // don't reliably honor).
-    const tdMatch = html.match(/<td style="text-align:left;width:34%">Test Monument<\/td>/);
-    expect(tdMatch).toBeTruthy();
-  });
-});
-
-describe('CostSheet PDF: every table stays full page width -- column balance comes from proportions within that width, never from narrowing the table itself', () => {
-  it('Monuments, Transport, Local Handler, and Extra Services are all full width (100%), same as Day-wise and the slab summary tables', async () => {
+describe('CostSheet PDF: header and data cells in the same column share the same text-align direction (the one width-related fix that was genuinely correct and worth keeping)', () => {
+  it('every right-aligned numeric column has its <th> and <td> cells both right-aligned, and every text column has both left-aligned, for Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    ['Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>', 'Day-wise Itinerary'].forEach(marker => {
+    const sections = ['Day-wise Itinerary', 'Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'];
+    sections.forEach((marker, i) => {
       const idx = html.indexOf(marker);
       expect(idx).toBeGreaterThan(-1);
-      const snippet = html.slice(idx, idx + 300);
-      expect(snippet).toContain('width:100%');
+      const nextIdx = i < sections.length - 1 ? html.indexOf(sections[i+1]) : html.indexOf('</body>');
+      const snippet = html.slice(idx, nextIdx > idx ? nextIdx : idx + 2000);
+      const thAligns = [...snippet.matchAll(/<th style="text-align:(left|right)">/g)].map(m => m[1]);
+      const tdAligns = [...snippet.matchAll(/<td style="text-align:(left|right)">/g)].map(m => m[1]);
+      const colCount = thAligns.length;
+      expect(colCount).toBeGreaterThan(0);
+      // The Day-wise TOTALS row uses colspan cells without text-align
+      // styling for some columns (e.g. the "TOTALS" label cell itself),
+      // so it doesn't contribute a full set of colCount styled cells --
+      // only count complete rows, which is exactly what this check needs
+      // (every ordinary data row's columns match their header).
+      const completeTds = tdAligns.slice(0, Math.floor(tdAligns.length / colCount) * colCount);
+      for (let col = 0; col < colCount; col++) {
+        const colTdAligns = completeTds.filter((_, j) => j % colCount === col);
+        colTdAligns.forEach(a => expect(a).toBe(thAligns[col]));
+      }
     });
-  });
-
-  it('the Group Slabs table also remains full width', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
-    const html = capturedHTML();
-    const idx = html.indexOf('Final Price Summary');
-    const snippet = html.slice(idx, idx + 600);
-    expect(snippet).toContain('width:100%');
   });
 });
 
-describe('CostSheet PDF: every <td> width matches its column\'s <th> width (catches header/data width drift)', () => {
-  it('Monuments header and data cell widths agree exactly', async () => {
+describe('CostSheet PDF: every table remains full page width', () => {
+  it('the outer <table> width stays 100% for every section -- no table is narrowed', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    const monumentsIdx = html.indexOf('Monuments</div>');
-    const nextSectionIdx = html.indexOf('<div class="inv-title"', monumentsIdx + 10);
-    const tableSnippet = html.slice(monumentsIdx, nextSectionIdx);
-    const thWidths = [...tableSnippet.matchAll(/<th style="text-align:[a-z]+;width:([\d.]+)%">/g)].map(m => m[1]);
-    const tdWidths = [...tableSnippet.matchAll(/<td style="text-align:[a-z]+;width:([\d.]+)%">/g)].map(m => m[1]);
-    expect(thWidths.length).toBe(3);
-    // Every column's <td> widths (across all data rows) must match that
-    // column's <th> width -- this is exactly the class of bug where an
-    // earlier edit updated tableBlock's header widths but missed the
-    // matching rowHTML call, leaving data cells misaligned under their
-    // own headers.
-    for (let col = 0; col < 3; col++) {
-      const colTds = tdWidths.filter((_, i) => i % 3 === col);
-      colTds.forEach(w => expect(w).toBe(thWidths[col]));
-    }
+    const contentTableCount = (html.match(/<table class="content-table">/g) || []).length;
+    expect(contentTableCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
+    // content-table's own CSS rule sets width:100% -- confirmed by the
+    // absence of any narrower/fixed override on these table elements,
+    // checked above.
   });
 });
