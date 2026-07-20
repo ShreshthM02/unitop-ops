@@ -87,8 +87,9 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
     // Final Price Summary header row: "Transport" (a numeric column) should
-    // render with text-align:right on the <th>, matching its <td> below.
-    const theadMatch = html.match(/<th style="text-align:right[^"]*">Transport<\/th>/);
+    // render with text-align:right on its grid-header, matching its
+    // grid-cell below.
+    const theadMatch = html.match(/<div class="grid-header" style="text-align:right">Transport<\/div>/);
     expect(theadMatch).toBeTruthy();
   });
 });
@@ -129,17 +130,19 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     });
   });
 
-  it('#7: explicit column widths per table, confirmed correct by direct DevTools measurement -- table-layout:auto was tried and empirically disproven: a column with short content still received ~48% of the table width because auto-sizing dumps leftover space into whichever column has the least reason to be constrained, rather than distributing it evenly', async () => {
+  it('#7: CSS Grid replaces table-layout:fixed entirely -- the table-based approach was verified correct in the generated HTML itself (colgroup/th/td percentages captured directly from real output matched exactly), yet the actual printed PDF still showed the old unbalanced proportions, meaning the browser\'s print rendering path handles table-layout differently from normal screen rendering. Grid has no table-layout-specific behavior to diverge on', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    const footerIdx = html.indexOf('<div class="lh-footer"');
-    const costSheetContent = footerIdx > -1 ? html.slice(0, footerIdx) : html;
-    expect(costSheetContent).toContain('table-layout:fixed');
-    expect(costSheetContent).toContain('<colgroup>');
+    // Note: the shared letterhead footer's logo row legitimately uses
+    // table-layout:fixed for its own, unrelated 4-equal-width image
+    // cells -- checking only for the Cost Sheet's own grid-based markup
+    // here, not asserting table-layout:fixed is absent everywhere.
+    expect(html).toContain('class="content-grid"');
+    expect(html).toContain('grid-template-columns:');
     // Day-wise table always renders; its first column width confirms the
-    // explicit-percentage approach is genuinely active.
-    expect(costSheetContent).toContain('width:5%');
+    // explicit-percentage approach is genuinely active on the grid.
+    expect(html).toContain('5%');
   });
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
@@ -170,7 +173,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
 });
 
 describe('CostSheet PDF: header and data cells in the same column share the same text-align direction (the one width-related fix that was genuinely correct and worth keeping)', () => {
-  it('every right-aligned numeric column has its <th> and <td> cells both right-aligned, and every text column has both left-aligned, for Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary', async () => {
+  it('every right-aligned numeric column has its grid-header and grid-cell both right-aligned, and every text column has both left-aligned, for Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
@@ -183,14 +186,14 @@ describe('CostSheet PDF: header and data cells in the same column share the same
       expect(idx).toBeGreaterThan(-1);
       const nextIdx = i < sections.length - 1 ? html.indexOf(sections[i+1]) : html.indexOf('</body>');
       const snippet = html.slice(idx, nextIdx > idx ? nextIdx : idx + 2000);
-      const thAligns = [...snippet.matchAll(/<th style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
-      const tdAligns = [...snippet.matchAll(/<td style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
+      const thAligns = [...snippet.matchAll(/<div class="grid-header" style="text-align:(left|right)">/g)].map(m => m[1]);
+      const tdAligns = [...snippet.matchAll(/<div class="grid-cell[^"]*" style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
       const colCount = thAligns.length;
       expect(colCount).toBeGreaterThan(0);
-      // The Day-wise TOTALS row uses colspan cells without text-align
-      // styling for some columns (e.g. the "TOTALS" label cell itself),
-      // so it doesn't contribute a full set of colCount styled cells --
-      // only count complete rows, which is exactly what this check needs
+      // The Day-wise TOTALS row has some cells without text-align styling
+      // (e.g. the "TOTALS" label cell itself spans multiple columns), so
+      // it doesn't contribute a full set of colCount styled cells -- only
+      // count complete rows, which is exactly what this check needs
       // (every ordinary data row's columns match their header).
       const completeTds = tdAligns.slice(0, Math.floor(tdAligns.length / colCount) * colCount);
       for (let col = 0; col < colCount; col++) {
@@ -202,17 +205,17 @@ describe('CostSheet PDF: header and data cells in the same column share the same
 });
 
 describe('CostSheet PDF: every table remains full page width', () => {
-  it('the outer <table> width stays 100% for every section -- no table is narrowed', async () => {
+  it('every content-grid stays full page width for every section -- no table is narrowed', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    const contentTableCount = (html.match(/<table class="content-table"/g) || []).length;
-    expect(contentTableCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
-    // content-table's own CSS rule sets width:100% -- confirmed by the
-    // absence of any narrower/fixed override on these table elements,
-    // checked above.
+    const contentGridCount = (html.match(/class="content-grid"/g) || []).length;
+    expect(contentGridCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
+    // .content-grid's own CSS rule sets width:100% -- confirmed present
+    // in the shared stylesheet.
+    expect(html).toContain('.content-grid { display: grid; width: 100%');
   });
 });

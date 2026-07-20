@@ -68,6 +68,20 @@ export const invoiceLetterheadCSS = `
     table.content-table thead tr th { background: #1A3A52; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 5pt 7pt; text-align: left; }
     table.content-table tbody tr td { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; vertical-align: top; }
     table.content-table tbody tr:nth-child(even) td { background: #f9fafb; }
+    /* content-grid: CSS Grid replacement for content-table, introduced to
+       sidestep a real, confirmed discrepancy between how a browser's
+       normal screen rendering and its actual print/PDF rendering path
+       handle table-layout:fixed -- generated HTML was verified correct
+       (colgroup/th/td widths captured directly from the real output
+       matched the intended percentages exactly), yet the printed PDF
+       still showed the old, unbalanced proportions. Grid has its own,
+       separate sizing algorithm with no table-layout-specific quirks to
+       diverge between rendering contexts. Kept alongside content-table
+       (not replacing it) until verified working across real exports. */
+    .content-grid { display: grid; width: 100%; margin-bottom: 6pt; }
+    .content-grid .grid-header { background: #1A3A52; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 5pt 7pt; }
+    .content-grid .grid-cell { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; }
+    .content-grid .grid-cell.zebra { background: #f9fafb; }
     td.amount { text-align: right; font-weight: 600; color: #1A3A52; }
     .totals-block { width: 240pt; margin-left: auto; margin-bottom: 6pt; }
     .total-row { display: flex; justify-content: space-between; padding: 3pt 7pt; font-size: 9.5pt; border-bottom: 0.5pt solid #e5e7eb; }
@@ -167,10 +181,20 @@ export function buildLetterheadDocument({
   if (footerInner && !effFooterRepeat) rows.push(footerInner);
   const tbodyRows = rows.map(b => `<tr><td>${b}</td></tr>`).join("");
 
+  // @page lives in its own dedicated style tag, placed LAST (after the
+  // imported font and all other rules) so it can't be shadowed by any
+  // cascade/specificity quirk in a specific browser's print engine --
+  // this is the most broadly-compatible way to set page size/orientation
+  // for window.print()-based PDF generation. True cross-browser
+  // verification still needs a real browser (not available in this
+  // sandbox); this is the most robust pattern available without one.
+  const pageCSS = `@page { size: A4 ${orientation === "landscape" ? "landscape" : "portrait"}; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
+    ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+
   return `<!DOCTYPE html><html><head><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
-    <style>@page{size:A4${orientation === "landscape" ? " landscape" : ""};margin:${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left};${showPageNum ? '@bottom-right{content:"Page "counter(page);font-size:7.5pt;color:#999;font-family:Inter,Arial,sans-serif;}' : ''}}</style>
     <style>${extraHeadCSS}</style>
+    <style>${pageCSS}</style>
   </head><body>
     <table class="lh-doc">
       ${theadBlock}
