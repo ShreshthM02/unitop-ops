@@ -129,18 +129,17 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     });
   });
 
-  it('#7: no fixed column widths are hand-guessed anymore -- every table lets the browser size each column to its own actual content, since a static percentage can never be right for every real cost sheet (e.g. Hotel is sometimes blank for 9 of 10 days, sometimes filled for every day)', async () => {
+  it('#7: explicit column widths per table, confirmed correct by direct DevTools measurement -- table-layout:auto was tried and empirically disproven: a column with short content still received ~48% of the table width because auto-sizing dumps leftover space into whichever column has the least reason to be constrained, rather than distributing it evenly', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    // Scoped to the Cost Sheet's own content only -- the shared letterhead
-    // footer legitimately uses table-layout:fixed for its 4 equal-width
-    // logo cells, which is unrelated to this fix and should stay as-is.
-    const footerIdx = html.indexOf('lh-footer');
+    const footerIdx = html.indexOf('<div class="lh-footer"');
     const costSheetContent = footerIdx > -1 ? html.slice(0, footerIdx) : html;
-    expect(costSheetContent).not.toContain('table-layout:fixed');
-    expect(costSheetContent).not.toContain('<colgroup>');
-    expect(costSheetContent).not.toMatch(/width:\d+%/); // no hand-guessed column percentages anywhere
+    expect(costSheetContent).toContain('table-layout:fixed');
+    expect(costSheetContent).toContain('<colgroup>');
+    // Day-wise table always renders; its first column width confirms the
+    // explicit-percentage approach is genuinely active.
+    expect(costSheetContent).toContain('width:5%');
   });
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
@@ -184,8 +183,8 @@ describe('CostSheet PDF: header and data cells in the same column share the same
       expect(idx).toBeGreaterThan(-1);
       const nextIdx = i < sections.length - 1 ? html.indexOf(sections[i+1]) : html.indexOf('</body>');
       const snippet = html.slice(idx, nextIdx > idx ? nextIdx : idx + 2000);
-      const thAligns = [...snippet.matchAll(/<th style="text-align:(left|right)">/g)].map(m => m[1]);
-      const tdAligns = [...snippet.matchAll(/<td style="text-align:(left|right)">/g)].map(m => m[1]);
+      const thAligns = [...snippet.matchAll(/<th style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
+      const tdAligns = [...snippet.matchAll(/<td style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
       const colCount = thAligns.length;
       expect(colCount).toBeGreaterThan(0);
       // The Day-wise TOTALS row uses colspan cells without text-align
@@ -210,7 +209,7 @@ describe('CostSheet PDF: every table remains full page width', () => {
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    const contentTableCount = (html.match(/<table class="content-table">/g) || []).length;
+    const contentTableCount = (html.match(/<table class="content-table"/g) || []).length;
     expect(contentTableCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
     // content-table's own CSS rule sets width:100% -- confirmed by the
     // absence of any narrower/fixed override on these table elements,

@@ -244,25 +244,28 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const savedTimestamp = versions.find(v=>v.version===currentVersionLabel)?.date || "Not yet saved";
 
   const buildCostSheetPDFHTML = () => {
-    // No explicit widths, no colgroup, no table-layout:fixed. Every
-    // attempt to hand-guess fixed percentages per table broke down for
-    // some real cost sheet -- a column that's usually short (Hotel) is
-    // sometimes long, a column that's usually long (Movement) is
-    // sometimes short, and a static number can never be right for both.
-    // table-layout's own default ("auto") already solves this correctly:
-    // each column sizes itself to its own actual content, automatically,
-    // per table, per render -- narrow for what's short or empty, wide for
-    // what's genuinely long, with no guessing required.
-    // The one fix worth keeping: header and data cells in the same
-    // column now always share the same text-align direction. A header
-    // defaulting to left-align while its numeric column right-aligns
-    // underneath was the original, real "columns don't line up" bug.
-    const tableBlock = (headers, alignRight, rows, emptyLabel) => `
-      <table class="content-table">
-        <thead><tr>${headers.map((h,i)=>`<th style="text-align:${alignRight.includes(i)?"right":"left"}">${h}</th>`).join("")}</tr></thead>
+    // Explicit widths per column, restored after direct DevTools
+    // measurement disproved the "let table-layout:auto handle it" theory:
+    // on a real cost sheet, a column's computed width came out to ~48% of
+    // the table for content that didn't need it, because auto-sizing
+    // dumps leftover space into whichever column has the least reason to
+    // be constrained -- it does not distribute space evenly just because
+    // the other columns are short. Explicit percentages, verified by the
+    // same measurement method to render exactly as specified, are the
+    // reliable way to get genuinely even columns.
+    const tableBlock = (headers, alignRight, rows, emptyLabel, widths) => {
+      const w = widths || headers.map(() => (100 / headers.length).toFixed(2));
+      const colgroup = `<colgroup>${w.map(pct=>`<col style="width:${pct}%"/>`).join("")}</colgroup>`;
+      return `
+      <table class="content-table" style="table-layout:fixed">
+        ${colgroup}
+        <thead><tr>${headers.map((h,i)=>`<th style="text-align:${alignRight.includes(i)?"right":"left"};width:${w[i]}%">${h}</th>`).join("")}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${headers.length}" style="text-align:center;color:#999">${emptyLabel}</td></tr>`}</tbody>
       </table>`;
-    const rowHTML = (cells, alignRight) => `<tr>${cells.map((c,i)=>`<td style="text-align:${alignRight.includes(i)?"right":"left"}">${c}</td>`).join("")}</tr>`;
+    };
+    // widths applied directly on every <td>, not just inherited from the
+    // table's own colgroup, as a belt-and-suspenders measure.
+    const rowHTML = (cells, alignRight, widths) => `<tr>${cells.map((c,i)=>`<td style="text-align:${alignRight.includes(i)?"right":"left"}${widths?`;width:${widths[i]}%`:""}">${c}</td>`).join("")}</tr>`;
 
     const headerBlock = `
       <div style="text-align:center;margin-bottom:4pt">
@@ -275,7 +278,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       </div>`;
 
     const settingsBlock = `
-      <table style="width:100%;margin-bottom:10pt;font-size:9pt">
+      <table style="width:100%;table-layout:fixed;margin-bottom:10pt;font-size:9pt">
+        <colgroup><col style="width:25%"/><col style="width:25%"/><col style="width:25%"/><col style="width:25%"/></colgroup>
         <tr>
         <td><b>GST:</b> ${gst}%</td><td><b>Markup:</b> ${markup}%</td><td><b>ROE:</b> ${roe}</td><td><b>Currency:</b> ${currency}</td>
       </tr><tr>
@@ -290,37 +294,38 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       d.hotel||"", d.hotelAlt||"—", d.hotelPlan||"",
       n(d.hotelNetPP)?"₹"+n(d.hotelNetPP).toLocaleString():"—",
       n(d.singleSupp)?"₹"+n(d.singleSupp).toLocaleString():"—",
-    ], [4,8,9])).join("");
+    ], [4,8,9], [5,8,16,8,9,14,12,7,10,11])).join("");
     const totalsRow = `<tr style="font-weight:700;background:#f3f4f6"><td colspan="4">TOTALS</td><td style="text-align:right">₹${Math.round(totMeal).toLocaleString()}</td><td colspan="3"></td><td style="text-align:right">₹${Math.round(totHotel).toLocaleString()}</td><td style="text-align:right">₹${Math.round(daySS).toLocaleString()}</td></tr>`;
     const dayTableBlock = `
       <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
       ${tableBlock(["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp"], [4,8,9],
-        days.length ? dayRows + totalsRow : "", "No days added")}`;
+        days.length ? dayRows + totalsRow : "", "No days added",
+        [5,8,16,8,9,14,12,7,10,11])}`;
 
     const monBlock = monuments.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
-        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1])).join(""), "",
-        )}
+        monuments.map(m=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], [34,33,33])).join(""), "",
+        [34,33,33])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2])).join(""), "",
-        )}` : "";
+        transports.map(t=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], [22,22,16,40])).join(""), "",
+        [22,22,16,40])}` : "";
 
     const lhBlock = localHandlers.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
-        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3])).join(""), "",
-        )}` : "";
+        localHandlers.map(h=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], [25,25,25,25])).join(""), "",
+        [25,25,25,25])}` : "";
 
     const exBlock = extras.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
-        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1])).join(""), "",
-        )}` : "";
+        extras.map(e=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], [40,30,30])).join(""), "",
+        [40,30,30])}` : "";
 
     const slabRows = slabs.map(s => {
       const c = calcSlab(s);
@@ -330,7 +335,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12]);
+      ], [1,2,3,4,5,6,7,8,9,10,11,12], [15,7,7,6,6,7,6,8,6,8,7,9,8]);
     }).join("");
     const tlSlabRows = tlSlabs.map(tl => {
       const c = calcTlSlab(tl);
@@ -341,19 +346,21 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15], [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6]);
     }).join("");
 
     const summaryBlock = `
       <div class="inv-title" style="margin:14pt 0 8pt">Final Price Summary</div>
-      <table style="width:100%;margin-bottom:8pt;font-size:9pt">
+      <table style="width:100%;table-layout:fixed;margin-bottom:8pt;font-size:9pt">
+        <colgroup><col style="width:33.33%"/><col style="width:33.33%"/><col style="width:33.34%"/></colgroup>
         <tr>
         <td><b>Accommodation (PP):</b> ₹${Math.round(totHotel).toLocaleString()}</td>
         <td><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</td>
         <td><b>Single Supplement (total):</b> ₹${Math.round(totSS).toLocaleString()}</td>
       </tr></table>
       ${tableBlock(["Slab","Transport","Tour Facil.","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added")}`;
+        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added",
+        [15,7,7,6,6,7,6,8,6,8,7,9,8])}`;
 
     // Tour Leader Slabs are deliberately their own table -- never a column
     // (not even blank) inside the group slabs table, since T/L Surcharge
@@ -361,7 +368,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const tlSummaryBlock = tlSlabs.length ? `
       <div class="inv-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
       ${tableBlock(["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil.","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "")}` : "";
+        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "",
+        [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6])}` : "";
 
     return buildLetterheadDocument({
       title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
