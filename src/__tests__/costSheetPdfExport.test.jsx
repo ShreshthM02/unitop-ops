@@ -142,7 +142,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     expect(html).toContain('grid-template-columns:');
     // Day-wise table always renders; its first column width confirms the
     // explicit-percentage approach is genuinely active on the grid.
-    expect(html).toContain('5%');
+    expect(html).toContain('7%');
   });
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {

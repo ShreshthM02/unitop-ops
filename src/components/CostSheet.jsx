@@ -299,7 +299,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
       ${tableBlock(["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp"], [4,8,9],
         days.length ? dayRows + totalsRow : "", "No days added",
-        [5,8,16,8,9,14,12,7,10,11])}`;
+        [7,8,14,8,9,14,12,7,10,11])}`;
 
     const monBlock = monuments.length ? `
       <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
