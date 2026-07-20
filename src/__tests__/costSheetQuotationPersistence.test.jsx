@@ -23,11 +23,34 @@ describe('mapDbCostSheetRow', () => {
     expect(mapped.extras).toEqual([{ id: 6 }]);
   });
 
+  it('maps the real database id -- required for a Quotation to look up the exact Cost Sheet version it was linked to via costSheetId. Missing before: loadCostSheetVersions returned every version with no way to tell which one matched a given saved id', () => {
+    const mapped = mapDbCostSheetRow({ id: 'cost-sheet-real-uuid', version: 1 });
+    expect(mapped.id).toBe('cost-sheet-real-uuid');
+  });
+
+  it('maps tlSlabs, clientAgentName, assignedStaffName -- added tonight but never wired into the save/load round trip until now, so they silently never survived a page reload or loading an older version', () => {
+    const row = {
+      version: 1, tl_slabs: [{ id: 1, label: '10 pax + 1 T/L' }],
+      client_agent_name: 'UNI TRAVEL', assigned_staff_name: 'Priya Sharma',
+    };
+    const mapped = mapDbCostSheetRow(row);
+    expect(mapped.tlSlabs).toEqual([{ id: 1, label: '10 pax + 1 T/L' }]);
+    expect(mapped.clientAgentName).toBe('UNI TRAVEL');
+    expect(mapped.assignedStaffName).toBe('Priya Sharma');
+  });
+
   it('defaults jsonb arrays to [] when null', () => {
     const mapped = mapDbCostSheetRow({ version: 1, days: null, transports: null, slabs: null, monuments: null, local_handlers: null, extras: null });
     expect(mapped.days).toEqual([]);
     expect(mapped.localHandlers).toEqual([]);
     expect(mapped.extras).toEqual([]);
+  });
+
+  it('defaults tlSlabs to [] and the name fields to "" when null, matching the other jsonb/text field defaults', () => {
+    const mapped = mapDbCostSheetRow({ version: 1, tl_slabs: null, client_agent_name: null, assigned_staff_name: null });
+    expect(mapped.tlSlabs).toEqual([]);
+    expect(mapped.clientAgentName).toBe('');
+    expect(mapped.assignedStaffName).toBe('');
   });
 });
 
@@ -69,6 +92,17 @@ describe('saveCostSheetVersion (INSERT only -- Save Version must never overwrite
     const db = { from: () => ({ insert }) };
     await saveCostSheetVersion(db, 'UTQ-1', { version: 1 }, 'demo-user-not-a-uuid');
     expect(insert.mock.calls[0][0].created_by).toBeNull();
+  });
+
+  it('sends tlSlabs, clientAgentName, assignedStaffName in the save payload -- previously silently dropped, meaning they never survived a reload despite appearing to work within a single session', async () => {
+    const insert = vi.fn(async () => ({ data: [{ id: 'x' }], error: null }));
+    const db = { from: () => ({ insert }) };
+    const snap = { version: 1, tlSlabs: [{ id: 1, label: '10 pax + 1 T/L' }], clientAgentName: 'UNI TRAVEL', assignedStaffName: 'Priya Sharma' };
+    await saveCostSheetVersion(db, 'UTQ-1', snap, null);
+    const row = insert.mock.calls[0][0];
+    expect(row.tl_slabs).toEqual([{ id: 1, label: '10 pax + 1 T/L' }]);
+    expect(row.client_agent_name).toBe('UNI TRAVEL');
+    expect(row.assigned_staff_name).toBe('Priya Sharma');
   });
 
   it('does not throw when the db call fails, and returns null', async () => {

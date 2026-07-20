@@ -522,6 +522,7 @@ export async function saveDocRegistry(db, queryId, docs, tourFileId) {
 // Maps a cost_sheets DB row to the shape CostSheet.jsx's local state uses.
 export function mapDbCostSheetRow(row) {
   return {
+    id: row.id,
     version: row.version,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by,
@@ -533,6 +534,7 @@ export function mapDbCostSheetRow(row) {
     monMode: row.mon_mode || "pp", monExtra: row.mon_extra ?? 0,
     days: row.days || [], transports: row.transports || [], slabs: row.slabs || [],
     monuments: row.monuments || [], localHandlers: row.local_handlers || [], extras: row.extras || [],
+    tlSlabs: row.tl_slabs || [], clientAgentName: row.client_agent_name || "", assignedStaffName: row.assigned_staff_name || "",
   };
 }
 
@@ -564,6 +566,7 @@ export async function saveCostSheetVersion(db, queryId, snap, createdBy) {
       mon_mode: snap.monMode, mon_extra: parseFloat(snap.monExtra) || 0,
       days: snap.days || [], transports: snap.transports || [], slabs: snap.slabs || [],
       monuments: snap.monuments || [], local_handlers: snap.localHandlers || [], extras: snap.extras || [],
+      tl_slabs: snap.tlSlabs || [], client_agent_name: snap.clientAgentName || null, assigned_staff_name: snap.assignedStaffName || null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;

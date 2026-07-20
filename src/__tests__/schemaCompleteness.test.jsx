@@ -80,7 +80,7 @@ describe('Schema completeness: cost_sheets (saveCostSheetVersion)', () => {
   const EXPECTED_COLUMNS = [
     'query_id','version','is_final','gst_pct','markup_pct','roe','currency','tl_mode','tl_cost','misc_mode',
     'misc_cost','mon_mode','days','transports','slabs','monuments','created_by','local_handlers','extras',
-    'mon_extra','note',
+    'mon_extra','note','tl_slabs','client_agent_name','assigned_staff_name',
   ];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
