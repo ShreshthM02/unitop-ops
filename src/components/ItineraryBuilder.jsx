@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_ITINERARY_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_ITINERARY_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, logAudit, db } = Lib;
 
-export default function ItineraryBuilder({ query, briefTemplate, detailTemplate, onClose, currentUser }) {
+export default function ItineraryBuilder({ query, briefTemplate, detailTemplate, onClose, currentUser, readOnly }) {
   const [tourTitle, setTourTitle] = useState(query.destination || "");
   const [tagline, setTagline] = useState("");
   const [route, setRoute] = useState("");
@@ -17,6 +17,48 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
   const [editingDay, setEditingDay] = useState(null);
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerAllPages, footerAllPages, printOnLetterhead } = toggles;
+
+  // Real version history, same pattern as Cost Sheet/Quotation/Meal Plan
+  // (Phase 0 of the Document Chain plan -- see docs/DATA_OWNERSHIP.md).
+  // One table (itineraries) covers both Brief and Detailed styles, since
+  // they're the same underlying day data with a different print
+  // treatment, not two separate documents.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+  const [versionNote, setVersionNote] = useState("");
+
+  const loadVersionIntoDraft = (v) => {
+    setTourTitle(v.tourTitle || query.destination || "");
+    setTagline(v.tagline || "");
+    setRoute(v.route || "");
+    setDuration(v.duration || duration);
+    setActiveTab(v.activeTab || "outlined");
+    setItinDays(v.days && v.days.length ? v.days : itinDays);
+    setViewingVersion(v.version);
+  };
+
+  useEffect(() => {
+    loadItineraryVersions(db, query.id).then(loaded => {
+      if (loaded.length === 0) return;
+      setVersions(loaded);
+      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+      const finalV = loaded.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      loadVersionIntoDraft(loaded[loaded.length - 1]);
+    });
+  }, [query.id]);
+
+  const saveVersion = () => {
+    const snap = { version, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote };
+    setVersions(p => [...p.filter(v => v.version !== version), { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    saveItineraryVersion(db, query.id, snap, currentUser?.id);
+    logAudit(db, query.id, currentUser?.name, `Itinerary v${version} saved${versionNote?" — "+versionNote:""}`);
+    setViewingVersion(version);
+    setVersionNote("");
+    setVersion(v => v+1);
+  };
 
   const updateDay = (i, field, val) => setItinDays(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val} : d));
   const toggleMeal = (i, m) => setItinDays(prev => prev.map((d,idx) => {
@@ -89,12 +131,29 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
         <div style={{ background:G.navy, padding:"14px 20px", flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY BUILDER</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY BUILDER · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
               <div style={{ fontSize:17, fontWeight:700, color:G.white, fontFamily:"'Playfair Display',serif" }}>
                 {query.groupName||query.clientName||query.agentName}
               </div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.id} · {query.destination}</div>
             </div>
+            {versions.length > 0 && (
+              <div style={{display:"flex",gap:4}}>
+                {versions.map(v=>(
+                  <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                    <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
+                      style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                      v{v.version}
+                    </div>
+                    <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markItineraryVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Itinerary v${v.version} marked final`);}} title="Mark as final"
+                      style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                      {finalVersion===v.version?"★":"☆"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
             <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
@@ -234,7 +293,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{ flex:1 }}/>
           <button onClick={handlePrint} className="btn btn-primary">🖨 Print</button>
-          <button className="btn btn-primary">💾 Save Itinerary</button>
+          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
         </div>
       </div>
     </div>

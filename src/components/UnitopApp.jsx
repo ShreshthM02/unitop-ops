@@ -718,7 +718,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
         {/* PANELS */}
         {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled} staff={staff}/>}
-        {showItinerary  && <ItineraryBuilder query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser}/>}
+        {showItinerary  && <ItineraryBuilder query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser} readOnly={showItinerary.cancelled}/>}
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled}/>}
         {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} onClose={()=>setShowProforma(null)}/>}
         {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} onClose={()=>setShowTaxInv(null)}/>}

@@ -3,7 +3,7 @@ import {
   buildQuerySavePayload,
   saveCostSheetVersion, saveQuotationVersion, saveTourExecutionToDB,
   savePaymentsToDB, saveVendorToDB, saveAgentToDB, saveQueryServices, saveDocRegistry,
-  saveMealPlanVersion,
+  saveMealPlanVersion, saveItineraryVersion,
 } from '../lib/utils.js';
 
 // ─── THE ACTUAL BUG CLASS THIS FILE EXISTS TO PREVENT ────────────────────
@@ -103,6 +103,20 @@ describe('Schema completeness: meal_plans (saveMealPlanVersion) -- NEW table, re
     await saveMealPlanVersion(db, 'UTQ-1', { version: 1 }, null);
     const call = calls.find(c => c.table === 'meal_plans');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'meal_plans');
+  });
+});
+
+// itineraries is a NEW table, Phase 0 of the Document Chain plan -- one
+// table covers both Brief and Detailed Itinerary, since ItineraryBuilder
+// is a single component with an outlined/detailed style toggle over the
+// same underlying day data.
+describe('Schema completeness: itineraries (saveItineraryVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveItineraryVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'itineraries');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'itineraries');
   });
 });
 
