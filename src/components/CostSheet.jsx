@@ -255,9 +255,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // between screen and print. grid-template-columns on the parent
     // alone determines every child's width, so no per-cell width
     // repetition is needed the way table required.
-    const tableBlock = (headers, alignRight, rows, emptyLabel, widths) => {
+    const tableBlock = (headers, alignRight, rows, emptyLabel, widths, alignCenter) => {
       const w = widths || headers.map(() => (100 / headers.length).toFixed(2));
-      const headerCells = headers.map((h,i)=>`<div class="grid-header" style="text-align:${alignRight.includes(i)?"right":"left"}">${h}</div>`).join("");
+      const alignOf = i => alignCenter && alignCenter.includes(i) ? "center" : alignRight.includes(i) ? "right" : "left";
+      const headerCells = headers.map((h,i)=>`<div class="grid-header" style="text-align:${alignOf(i)}">${h}</div>`).join("");
       const bodyContent = rows || `<div class="grid-cell" style="grid-column:1/-1;text-align:center;color:#999">${emptyLabel}</div>`;
       return `
       <div class="content-grid" style="grid-template-columns:${w.map(p=>`${p}%`).join(" ")}">
@@ -266,8 +267,20 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       </div>`;
     };
     // rowIndex (0-based) drives zebra striping directly, since grid items
-    // have no <tr> wrapper to hang :nth-child(even) off of.
-    const rowHTML = (cells, alignRight, rowIndex) => cells.map((c,i)=>`<div class="grid-cell${rowIndex!=null && rowIndex%2===1?" zebra":""}" style="text-align:${alignRight.includes(i)?"right":"left"}">${c}</div>`).join("");
+    // have no <tr> wrapper to hang :nth-child(even) off of. noWrap marks
+    // columns that are always short, fixed-format values (Day N, dates,
+    // currency amounts, short plan codes) -- these should never wrap
+    // regardless of exact width, since wrapping a short value looks
+    // broken and inflates row height, which is what pushed the Day
+    // column's wrapping into a 3rd page in an earlier round. Movement
+    // and Hotel/Alt Hotel are deliberately left wrappable, since they can
+    // genuinely be long. alignCenter marks short categorical columns
+    // (Included, Mode) that sit directly next to a right-aligned
+    // neighbor -- left-aligning them put their text right up against the
+    // preceding column's right-aligned text with nothing but cell
+    // padding between, which read as the two headers visually colliding.
+    // Centering gives them breathing room on both sides.
+    const rowHTML = (cells, alignRight, rowIndex, noWrap, alignCenter) => cells.map((c,i)=>`<div class="grid-cell${rowIndex!=null && rowIndex%2===1?" zebra":""}" style="text-align:${alignCenter&&alignCenter.includes(i)?"center":alignRight.includes(i)?"right":"left"}${noWrap&&noWrap.includes(i)?";white-space:nowrap":""}">${c}</div>`).join("");
 
     const headerBlock = `
       <div style="text-align:center;margin-bottom:4pt">
@@ -293,38 +306,38 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       d.hotel||"", d.hotelAlt||"—", d.hotelPlan||"",
       n(d.hotelNetPP)?"₹"+n(d.hotelNetPP).toLocaleString():"—",
       n(d.singleSupp)?"₹"+n(d.singleSupp).toLocaleString():"—",
-    ], [4,8,9], i)).join("");
-    const totalsRow = `<div class="grid-cell" style="grid-column:1/5;font-weight:700;background:#f3f4f6">TOTALS</div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6">₹${Math.round(totMeal).toLocaleString()}</div><div class="grid-cell" style="grid-column:6/9;font-weight:700;background:#f3f4f6"></div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6">₹${Math.round(totHotel).toLocaleString()}</div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6">₹${Math.round(daySS).toLocaleString()}</div>`;
+    ], [4,8,9], i, [0,1,3,4,7,8,9])).join("");
+    const totalsRow = `<div class="grid-cell" style="grid-column:1/5;font-weight:700;background:#f3f4f6">TOTALS</div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6;white-space:nowrap">₹${Math.round(totMeal).toLocaleString()}</div><div class="grid-cell" style="grid-column:6/9;font-weight:700;background:#f3f4f6"></div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6;white-space:nowrap">₹${Math.round(totHotel).toLocaleString()}</div><div class="grid-cell" style="text-align:right;font-weight:700;background:#f3f4f6;white-space:nowrap">₹${Math.round(daySS).toLocaleString()}</div>`;
     const dayTableBlock = `
-      <div class="inv-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
+      <div class="section-title" style="margin-bottom:8pt">Day-wise Itinerary &amp; Accommodation</div>
       ${tableBlock(["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp"], [4,8,9],
         days.length ? dayRows + totalsRow : "", "No days added",
-        [7,8,14,8,9,14,12,7,10,11])}`;
+        [6,8,19,9,8,13,11,6,9,11])}`;
 
     const monBlock = monuments.length ? `
-      <div class="inv-title" style="margin-bottom:8pt">Monuments</div>
+      <div class="section-title" style="margin-bottom:8pt">Monuments</div>
       ${tableBlock(["Monument","Fee","Included"], [1],
-        monuments.map((m,i)=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], i)).join(""), "",
-        [34,33,33])}
+        monuments.map((m,i)=>rowHTML([m.name||"—", n(m.fee)?"₹"+n(m.fee).toLocaleString():"—", m.include?"Yes":"No"], [1], i, [1,2], [2])).join(""), "",
+        [34,33,33], [2])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
     const tptBlock = transports.length ? `
-      <div class="inv-title" style="margin-bottom:8pt">Transport</div>
+      <div class="section-title" style="margin-bottom:8pt">Transport</div>
       ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map((t,i)=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], i)).join(""), "",
+        transports.map((t,i)=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], i, [1,2])).join(""), "",
         [22,22,16,40])}` : "";
 
     const lhBlock = localHandlers.length ? `
-      <div class="inv-title" style="margin-bottom:8pt">Local Handler</div>
+      <div class="section-title" style="margin-bottom:8pt">Local Handler</div>
       ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
-        localHandlers.map((h,i)=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], i)).join(""), "",
-        [25,25,25,25])}` : "";
+        localHandlers.map((h,i)=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], i, [1,2,3], [2])).join(""), "",
+        [25,25,25,25], [2])}` : "";
 
     const exBlock = extras.length ? `
-      <div class="inv-title" style="margin-bottom:8pt">Extra Services</div>
+      <div class="section-title" style="margin-bottom:8pt">Extra Services</div>
       ${tableBlock(["Description","Cost","Mode"], [1],
-        extras.map((e,i)=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], i)).join(""), "",
-        [40,30,30])}` : "";
+        extras.map((e,i)=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], i, [1,2], [2])).join(""), "",
+        [40,30,30], [2])}` : "";
 
     const slabRows = slabs.map((s,si) => {
       const c = calcSlab(s);
@@ -334,7 +347,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12], si);
+      ], [1,2,3,4,5,6,7,8,9,10,11,12], si, [1,2,3,4,5,6,7,8,9,10,11,12]);
     }).join("");
     const tlSlabRows = tlSlabs.map((tl,ti) => {
       const c = calcTlSlab(tl);
@@ -345,11 +358,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
         "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
         `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15], ti);
+      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15], ti, [2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
     }).join("");
 
     const summaryBlock = `
-      <div class="inv-title" style="margin:14pt 0 8pt">Final Price Summary</div>
+      <div class="section-title" style="margin:14pt 0 8pt">Final Price Summary</div>
       <div style="display:grid;grid-template-columns:33.33% 33.33% 33.34%;width:100%;margin-bottom:8pt;font-size:9pt">
         <div><b>Accommodation (PP):</b> ₹${Math.round(totHotel).toLocaleString()}</div>
         <div><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</div>
@@ -363,7 +376,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // (not even blank) inside the group slabs table, since T/L Surcharge
     // simply does not apply to a group slab at all.
     const tlSummaryBlock = tlSlabs.length ? `
-      <div class="inv-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
+      <div class="section-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
       ${tableBlock(["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil.","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
         [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "",
         [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6])}` : "";

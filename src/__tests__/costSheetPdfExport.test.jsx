@@ -219,3 +219,78 @@ describe('CostSheet PDF: every table remains full page width', () => {
     expect(html).toContain('.content-grid { display: grid; width: 100%');
   });
 });
+
+describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells avoid splitting across a page boundary', () => {
+  it('Day-wise short columns (Day, Date, Meal Plan, Meal Cost, Plan, Net PP, Sngl Supp) carry white-space:nowrap; Movement and Hotel/Alt Hotel do not, since they can genuinely be long', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const dayIdx = html.indexOf('Day 1');
+    const rowSnippet = html.slice(dayIdx - 50, dayIdx + 400);
+    const nowrapCount = (rowSnippet.match(/white-space:nowrap/g) || []).length;
+    expect(nowrapCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('grid cells carry break-inside:avoid in the shared stylesheet, reducing the risk of content splitting across a page boundary', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('break-inside: avoid');
+  });
+
+  it('Movement retains more room (19%) than the earlier percentage-shuffling attempts gave it, rather than stealing space from it again to fix another column', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('6% 8% 19% 9% 8% 13% 11% 6% 9% 11%');
+  });
+});
+
+describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display; every section header uses Inter', () => {
+  it('the main title stays on inv-title (Playfair Display), section headers move to the new section-title class (Inter)', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('<div class="inv-title">COST SHEET</div>');
+    expect(html).toContain('class="section-title"');
+    // inv-title itself (the CSS rule) is untouched -- still Playfair,
+    // since it's shared with GanttView and ItineraryBuilder.
+    expect(html).toMatch(/\.inv-title\s*\{[^}]*Playfair Display/);
+    // section-title is genuinely a different rule, using Inter.
+    expect(html).toMatch(/\.section-title\s*\{[^}]*Inter/);
+  });
+
+  it('every Cost Sheet section header (Day-wise, Transport, Local Handler, Extra Services, Final Price Summary) uses section-title, not inv-title', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    ['Day-wise Itinerary', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'].forEach(marker => {
+      const idx = html.indexOf(marker);
+      expect(idx).toBeGreaterThan(-1);
+      const before = html.slice(Math.max(0, idx - 60), idx);
+      expect(before).toContain('section-title');
+    });
+  });
+});
+
+describe('CostSheet PDF: column headers no longer visually collide (missing gap between grid columns, and adjacent right/left alignment with no breathing room)', () => {
+  it('.content-grid carries a column-gap, guaranteeing separation between every column regardless of alignment or content length', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toMatch(/\.content-grid\s*\{[^}]*column-gap/);
+  });
+
+  it('Monuments\' Included, Local Handler\'s Mode, and Extra Services\' Mode are center-aligned, not left-aligned directly against a right-aligned neighbor', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    expect(html).toContain('<div class="grid-header" style="text-align:center">Included</div>');
+    expect(html).toContain('<div class="grid-header" style="text-align:center">Mode</div>');
+  });
+});

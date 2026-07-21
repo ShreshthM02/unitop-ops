@@ -58,6 +58,15 @@ export const invoiceLetterheadCSS = `
 
     /* ── Shared document content styles (unchanged from before) ──────────── */
     .inv-title { font-family: 'Playfair Display', Georgia, serif; font-size: 18pt; font-weight: 700; color: #1A3A52; text-align: center; margin-bottom: 10pt; letter-spacing: 1pt; text-transform: uppercase; }
+    /* section-title: used for in-document section headers (each Cost
+       Sheet section like Transport, Local Handler, etc) -- deliberately
+       separate from inv-title, which stays Playfair Display for the main
+       document title only, and is also shared by other documents
+       (GanttView, ItineraryBuilder) that should not be affected by this
+       change. Inter, lighter weight, smaller -- reduces the heavy,
+       decorative feel every section transition had when every header
+       used the same bold serif treatment as the main title. */
+    .section-title { font-family: 'Inter', Arial, sans-serif; font-size: 12pt; font-weight: 600; color: #1A3A52; text-align: center; margin-bottom: 8pt; letter-spacing: 0.3pt; text-transform: uppercase; }
     .inv-number { font-size: 11pt; font-weight: 700; color: #8B1A1A; }
     .parties { display: flex; justify-content: space-between; margin-bottom: 10pt; gap: 14pt; }
     .party-block { flex: 1; background: #f8f9fa; border: 1pt solid #e5e7eb; border-radius: 4pt; padding: 8pt 10pt; }
@@ -78,9 +87,9 @@ export const invoiceLetterheadCSS = `
        separate sizing algorithm with no table-layout-specific quirks to
        diverge between rendering contexts. Kept alongside content-table
        (not replacing it) until verified working across real exports. */
-    .content-grid { display: grid; width: 100%; margin-bottom: 6pt; }
+    .content-grid { display: grid; width: 100%; margin-bottom: 6pt; column-gap: 10pt; }
     .content-grid .grid-header { background: #1A3A52; color: #fff; font-size: 8.5pt; font-weight: 700; padding: 5pt 7pt; }
-    .content-grid .grid-cell { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; }
+    .content-grid .grid-cell { padding: 4pt 7pt; border-bottom: 0.5pt solid #e5e7eb; font-size: 9.5pt; break-inside: avoid; }
     .content-grid .grid-cell.zebra { background: #f9fafb; }
     td.amount { text-align: right; font-weight: 600; color: #1A3A52; }
     .totals-block { width: 240pt; margin-left: auto; margin-bottom: 6pt; }
