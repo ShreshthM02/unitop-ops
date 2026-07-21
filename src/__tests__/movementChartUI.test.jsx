@@ -34,7 +34,7 @@ describe('GanttView: Movement Chart tab', () => {
 
   it('"Download PDF" generates a landscape document containing the same data as the on-screen table', () => {
     const writeSpy = vi.fn();
-    const mockWin = { document: { write: writeSpy, close: vi.fn() }, print: vi.fn() };
+    const mockWin = { document: { write: writeSpy, close: vi.fn(), readyState: 'complete' }, print: vi.fn() };
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
 
     render(<GanttView queries={queries} tours={[]}/>);
@@ -44,7 +44,7 @@ describe('GanttView: Movement Chart tab', () => {
     expect(openSpy).toHaveBeenCalled();
     expect(writeSpy).toHaveBeenCalledTimes(1);
     const html = writeSpy.mock.calls[0][0];
-    expect(html).toContain('size:A4 landscape');
+    expect(html).toContain('size: A4 landscape');
     expect(html).toContain('TF-2026-100');
     expect(html).toContain('Uni Travel');
     expect(mockWin.print).toHaveBeenCalled();
@@ -58,5 +58,29 @@ describe('GanttView: Movement Chart tab', () => {
       render(<GanttView queries={sparse} tours={[]}/>);
       fireEvent.click(screen.getByText('📋 Movement Chart'));
     }).not.toThrow();
+  });
+});
+
+describe('printHTML: waits for the window to load before printing', () => {
+  it('does not call print() immediately if the document is not yet readyState complete', async () => {
+    const { printHTML } = await import('../lib/LetterheadControls.jsx');
+    const printSpy = vi.fn();
+    const mockWin = { document: { write: vi.fn(), close: vi.fn(), readyState: 'loading' }, print: printSpy, addEventListener: vi.fn() };
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
+    printHTML('<html></html>');
+    // Not called synchronously -- waiting on load or the fallback timeout
+    expect(printSpy).not.toHaveBeenCalled();
+    expect(mockWin.addEventListener).toHaveBeenCalledWith('load', expect.any(Function));
+    openSpy.mockRestore();
+  });
+
+  it('calls print() immediately if the document is already readyState complete', async () => {
+    const { printHTML } = await import('../lib/LetterheadControls.jsx');
+    const printSpy = vi.fn();
+    const mockWin = { document: { write: vi.fn(), close: vi.fn(), readyState: 'complete' }, print: printSpy };
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
+    printHTML('<html></html>');
+    expect(printSpy).toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 });
