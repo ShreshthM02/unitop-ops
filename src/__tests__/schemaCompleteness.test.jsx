@@ -3,6 +3,7 @@ import {
   buildQuerySavePayload,
   saveCostSheetVersion, saveQuotationVersion, saveTourExecutionToDB,
   savePaymentsToDB, saveVendorToDB, saveAgentToDB, saveQueryServices, saveDocRegistry,
+  saveMealPlanVersion,
 } from '../lib/utils.js';
 
 // ─── THE ACTUAL BUG CLASS THIS FILE EXISTS TO PREVENT ────────────────────
@@ -87,6 +88,21 @@ describe('Schema completeness: cost_sheets (saveCostSheetVersion)', () => {
     await saveCostSheetVersion(db, 'UTQ-1', { version: 1 }, null);
     const call = calls.find(c => c.table === 'cost_sheets');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'cost_sheets');
+  });
+});
+
+// meal_plans is a NEW table, Phase 0 of the Document Chain plan (see
+// docs/DATA_OWNERSHIP.md) -- this test defines the columns the migration
+// must create, rather than checking against an already-live schema the
+// way the other tests here do. Once the migration runs, this becomes a
+// normal completeness check like the rest of this file.
+describe('Schema completeness: meal_plans (saveMealPlanVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'heading', 'rows', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveMealPlanVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'meal_plans');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'meal_plans');
   });
 });
 

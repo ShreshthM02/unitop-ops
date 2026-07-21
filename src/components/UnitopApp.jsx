@@ -717,7 +717,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         )}
 
         {/* PANELS */}
-        {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled}/>}
+        {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled} staff={staff}/>}
         {showItinerary  && <ItineraryBuilder query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser}/>}
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled}/>}
         {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} onClose={()=>setShowProforma(null)}/>}
@@ -725,7 +725,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser}/>}
-        {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)}/>}
+        {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)} currentUser={currentUser} readOnly={showMealPlan.cancelled}/>}
         {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} vendors={vendors} onClose={()=>setShowTourBrief(null)}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>

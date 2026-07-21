@@ -520,6 +520,39 @@ export async function saveDocRegistry(db, queryId, docs, tourFileId) {
 
 // ─── COST SHEET (real versioned persistence) ───────────────────────────────
 // Maps a cost_sheets DB row to the shape CostSheet.jsx's local state uses.
+
+// Computes a group slab's final price from a saved Cost Sheet snapshot
+// (the shape mapDbCostSheetRow returns). This is a deliberate, standalone
+// copy of CostSheet.jsx's own internal calcSlab -- not an import from it --
+// so that QuotationGenerator's "Pull from Cost Sheet" feature can compute
+// the same final price without adding a dependency on CostSheet.jsx's
+// internals, which stays self-contained and untouched by this. If the
+// pricing formula changes, both copies need updating together.
+export function calcCostSheetSlabFinalPrice(snap, slab) {
+  const n = v => parseFloat(v)||0;
+  const days = snap.days || [], transports = snap.transports || [], monuments = snap.monuments || [];
+  const localHandlers = snap.localHandlers || [], extras = snap.extras || [];
+  const totMeal = days.reduce((s,d)=>s+n(d.mealCost),0);
+  const totHotel = days.reduce((s,d)=>s+n(d.hotelNetPP),0);
+  const monTotal = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(snap.monExtra);
+
+  const tptTotal = transports.filter(t=>t.slabs.includes(slab.id)).reduce((s,t)=>s+n(t.cost),0);
+  const tptPP = slab.foc > 0 ? tptTotal / slab.foc : 0;
+  const tlPP = snap.tlMode==="pp" ? n(snap.tlCost) : (slab.foc>0 ? n(snap.tlCost)/slab.foc : 0);
+  const miscPP = snap.miscMode==="pp" ? n(snap.miscCost) : (slab.foc>0 ? n(snap.miscCost)/slab.foc : 0);
+  const monPP = snap.monMode==="pp" ? monTotal : (slab.foc>0 ? monTotal/slab.foc : 0);
+  const localPP = localHandlers.reduce((s,h) => s + (h.mode==="pp" ? n(h.cost) : (slab.foc>0 ? n(h.cost)/slab.foc : 0)), 0);
+  const extrasPP = extras.reduce((s,e) => s + (e.mode==="PP" ? n(e.cost) : (slab.foc>0 ? n(e.cost)/slab.foc : 0)), 0);
+
+  const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
+  const tax = Math.round(sub * (snap.gst||0)/100);
+  const afterTax = sub + tax;
+  const markupAmt = Math.round(afterTax * (snap.markup||0)/100);
+  const sellingINR = afterTax + markupAmt;
+  const finalFX = Math.ceil(sellingINR / (snap.roe||1));
+  return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt };
+}
+
 export function mapDbCostSheetRow(row) {
   return {
     id: row.id,
@@ -584,6 +617,50 @@ export async function markCostSheetVersionFinal(db, queryId, version) {
     await db.from("cost_sheets").eq("query_id", queryId).eq("version", version).update({ is_final: true });
   } catch (e) {
     console.warn("Mark cost sheet version final failed:", e);
+  }
+}
+
+// ─── MEAL PLAN (real versioned history, mirrors Cost Sheet -- Phase 0 of
+// the Document Chain plan, see docs/DATA_OWNERSHIP.md) ─────────────────────
+export function mapDbMealPlanRow(row) {
+  return {
+    id: row.id, version: row.version, isFinal: row.is_final || false,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
+    heading: row.heading || "", rows: row.rows || [],
+  };
+}
+
+export async function loadMealPlanVersions(db, queryId) {
+  try {
+    const { data } = await db.from("meal_plans").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbMealPlanRow);
+  } catch (e) {
+    console.warn("Load meal plan versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveMealPlanVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("meal_plans").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      heading: snap.heading || null, rows: snap.rows || [],
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save meal plan version failed:", e);
+    return null;
+  }
+}
+
+export async function markMealPlanVersionFinal(db, queryId, version) {
+  try {
+    await db.from("meal_plans").eq("query_id", queryId).update({ is_final: false });
+    await db.from("meal_plans").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark meal plan version final failed:", e);
   }
 }
 

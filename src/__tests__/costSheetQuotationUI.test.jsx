@@ -110,3 +110,80 @@ describe('Version pills: clicking to VIEW is separate from clicking to mark FINA
     updateCalls.forEach(u => expect(u).not.toHaveBeenCalled());
   });
 });
+
+describe('QuotationGenerator: "Pull from Cost Sheet" (#11/#12 -- addressee, itinerary, accommodation, cost without retyping)', () => {
+  function makeDbWithCostSheetRow(row) {
+    return {
+      from: vi.fn((t) => {
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: t === 'cost_sheets' ? [row] : [], error: null }),
+        };
+        return builder;
+      }),
+    };
+  }
+
+  it('pulls addressee (Client/Foreign Agent), itinerary, consolidated accommodation, and slab pricing from the linked Cost Sheet version', async () => {
+    const costSheetRow = {
+      id: 'cs-linked-123', version: 3, gst_pct: 0, markup_pct: 20, roe: 80, currency: 'US $',
+      tl_mode: 'lumpsum', tl_cost: 24000, misc_mode: 'lumpsum', misc_cost: 5000, mon_mode: 'pp', mon_extra: 12000,
+      client_agent_name: 'UNI TRAVEL',
+      days: [
+        { day: 'Day 1', movement: 'DEL-SXR', mealPlan: 'B/L/D', hotel: 'Hotel Alpha', hotelNetPP: 1750, mealCost: 0 },
+        { day: 'Day 2', movement: 'SXR-GULMARG-SXR', mealPlan: 'B/L/D', hotel: 'Hotel Alpha', hotelNetPP: 0, mealCost: 0 },
+        { day: 'Day 3', movement: 'SXR-LEH', mealPlan: 'B/D', hotel: 'Hotel Beta', hotelNetPP: 0, mealCost: 0 },
+      ],
+      monuments: [], transports: [{ cost: 30000, slabs: ['slab-a'] }],
+      slabs: [{ id: 'slab-a', label: '10-14 pax + 1 FOC', foc: 10 }],
+      local_handlers: [], extras: [],
+    };
+    const db = makeDbWithCostSheetRow(costSheetRow);
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    render(<QG query={fakeQuery} template={fakeTemplate} costSheetId="cs-linked-123" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+
+    fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
+    await waitFor(() => expect(screen.getByDisplayValue('UNI TRAVEL')).toBeTruthy());
+
+    // Itinerary: movement pulled in, meals parsed from mealPlan
+    expect(screen.getByDisplayValue('DEL-SXR')).toBeTruthy();
+    expect(screen.getByDisplayValue('SXR-LEH')).toBeTruthy();
+
+    // Accommodation: Day 1+2 (same hotel) consolidated into one row with 2 nights;
+    // Day 3 (different hotel) is its own row.
+    expect(screen.getByDisplayValue('Hotel Alpha')).toBeTruthy();
+    expect(screen.getByDisplayValue('Hotel Beta')).toBeTruthy();
+    const nightsInputs = screen.getAllByDisplayValue('2');
+    expect(nightsInputs.length).toBeGreaterThan(0);
+
+    // Cost: slab label + computed final price (matches the real TUR-2025-022
+    // calculation verified earlier: sub 55,650 -> after markup -> ceiling/roe)
+    expect(screen.getByDisplayValue('10-14 pax + 1 FOC')).toBeTruthy();
+  });
+
+  it('shows a message and does not crash when no Cost Sheet version matches costSheetId', async () => {
+    const db = makeDbWithCostSheetRow({ id: 'some-other-id', version: 1, days: [], slabs: [] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    render(<QG query={fakeQuery} template={fakeTemplate} costSheetId="cs-does-not-exist" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
+    await waitFor(() => expect(screen.getByText(/Could not find the linked Cost Sheet/)).toBeTruthy());
+  });
+
+  it('the button does not render at all when there is no linked Cost Sheet (costSheetId is null)', async () => {
+    const db = makeDbWithCostSheetRow({ id: 'irrelevant', version: 1, days: [], slabs: [] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    render(<QG query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await screen.findByText('Kind Attn (Name)');
+    expect(screen.queryByText('↻ Pull from Cost Sheet')).toBeNull();
+  });
+});

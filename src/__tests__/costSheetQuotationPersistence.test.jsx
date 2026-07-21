@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   mapDbCostSheetRow, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal,
   mapDbQuotationRow, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal,
+  calcCostSheetSlabFinalPrice,
 } from '../lib/utils.js';
 
 describe('mapDbCostSheetRow', () => {
@@ -255,5 +256,37 @@ describe('markQuotationVersionFinal', () => {
     expect(calls[0].row).toEqual({ is_final: false });
     expect(calls[1].filters).toEqual({ query_id: 'UTQ-1', version: 2 });
     expect(calls[1].row).toEqual({ is_final: true });
+  });
+});
+
+describe('calcCostSheetSlabFinalPrice', () => {
+  it('matches the exact intermediate values already confirmed correct in the real Cost Sheet PDF for TUR-2025-022 (Sub-total ₹55,650, Markup ₹11,130)', () => {
+    const snap = {
+      gst: 0, markup: 20, roe: 80,
+      tlMode: 'lumpsum', tlCost: 24000,
+      miscMode: 'lumpsum', miscCost: 5000,
+      monMode: 'pp', monExtra: 12000,
+      days: [
+        { hotelNetPP: 1750, mealCost: 0 },
+        { hotelNetPP: 0, mealCost: 0 }, { hotelNetPP: 0, mealCost: 0 },
+        { hotelNetPP: 0, mealCost: 0 }, { hotelNetPP: 0, mealCost: 0 },
+        { hotelNetPP: 0, mealCost: 0 }, { hotelNetPP: 0, mealCost: 0 },
+        { hotelNetPP: 0, mealCost: 0 }, { hotelNetPP: 0, mealCost: 0 },
+        { hotelNetPP: 0, mealCost: 1600 },
+      ],
+      monuments: [
+        { include: true, fee: 2000 }, { include: true, fee: 1000 }, { include: true, fee: 400 },
+      ],
+      transports: [{ cost: 30000, slabs: ['slab-1'] }],
+      localHandlers: [{ mode: 'pp', cost: 15000 }, { mode: 'pp', cost: 15000 }],
+      extras: [{ mode: 'PP', cost: 1000 }],
+    };
+    const slab = { id: 'slab-1', foc: 10 };
+    const result = calcCostSheetSlabFinalPrice(snap, slab);
+    expect(result.sub).toBe(55650);
+    expect(result.tax).toBe(0);
+    expect(result.afterTax).toBe(55650);
+    expect(result.markupAmt).toBe(11130);
+    expect(result.finalFX).toBe(835);
   });
 });

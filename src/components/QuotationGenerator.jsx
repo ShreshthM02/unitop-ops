@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -55,6 +55,74 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const loadVersionIntoDraft = (v) => {
     setQ(p => ({ ...p, ...v }));
     setViewingVersion(v.version);
+  };
+
+  // "Pull from Cost Sheet" -- explicit, not automatic, so it never
+  // silently overwrites something mid-edit. Maps the linked Cost Sheet
+  // version's addressee, itinerary, accommodation, and slab pricing into
+  // the Quotation's own editable fields, which the user can then adjust
+  // freely -- this is a starting point, not a locked sync.
+  const [pulling, setPulling] = useState(false);
+  const [pullMessage, setPullMessage] = useState("");
+  const pullFromCostSheet = async () => {
+    if (!costSheetId) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
+    setPulling(true);
+    setPullMessage("");
+    try {
+      const versions = await loadCostSheetVersions(db, query.id);
+      const match = versions.find(v => v.id === costSheetId);
+      if (!match) { setPullMessage("Could not find the linked Cost Sheet version."); setPulling(false); return; }
+
+      // Addressee: Cost Sheet's own Client / Foreign Agent field, if set
+      const attnCompany = match.clientAgentName || q.attnCompany;
+
+      // Itinerary: each day's movement, plus mealPlan ("B/L/D", "B/L-800/D-800")
+      // parsed for which meals are included.
+      const itinerary = (match.days||[]).map(d => {
+        const mp = (d.mealPlan||"").toUpperCase();
+        return {
+          day: d.day || "",
+          movement: d.movement || "",
+          bf: mp.includes("B") ? "Included" : "",
+          lunch: mp.includes("L") ? "Included" : "",
+          dinner: mp.includes("D") ? "Included" : "",
+        };
+      });
+
+      // Accommodation: consolidate consecutive days at the same hotel
+      // into one row with a nights count, rather than one row per day.
+      const hotels = [];
+      (match.days||[]).forEach(d => {
+        if (!d.hotel) return;
+        const last = hotels[hotels.length-1];
+        if (last && last.hotel === d.hotel) {
+          last.nights = (parseInt(last.nights)||0) + 1;
+        } else {
+          const place = (d.movement||"").split("-").pop().trim() || d.hotel;
+          hotels.push({ place, nights: 1, hotel: d.hotel });
+        }
+      });
+
+      // Cost: each group slab's computed final price, using the same
+      // calculation Cost Sheet itself uses.
+      const slabs = (match.slabs||[]).map(s => {
+        const c = calcCostSheetSlabFinalPrice(match, s);
+        return { label: s.label, price: c.finalFX ? String(c.finalFX) : "" };
+      });
+
+      setQ(p => ({
+        ...p,
+        attnCompany,
+        itinerary: itinerary.length ? itinerary : p.itinerary,
+        hotels: hotels.length ? hotels : p.hotels,
+        slabs: slabs.length ? slabs : p.slabs,
+        currency: match.currency || p.currency,
+      }));
+      setPullMessage(`Pulled from Cost Sheet v${match.version}.`);
+    } catch (e) {
+      setPullMessage("Failed to pull from Cost Sheet.");
+    }
+    setPulling(false);
   };
 
   // Load previously saved versions for this tour file, if any -- continues
@@ -268,12 +336,24 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               ))}
             </div>
           )}
+          {costSheetId && !readOnly && (
+            <button onClick={pullFromCostSheet} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
+              title="Pull addressee, itinerary, accommodation, and pricing from the linked Cost Sheet">
+              {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
+            </button>
+          )}
           <button onClick={printQuotation} className="btn btn-success" style={{ fontSize:11 }}>
             🖨 Print / PDF
           </button>
           <button onClick={onClose} className="btn btn-ghost"
             style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
         </div>
+
+        {pullMessage && (
+          <div style={{background:"#EFF6FF",borderBottom:"1px solid #BFDBFE",padding:"6px 18px",fontSize:11,color:"#1E40AF",flexShrink:0}}>
+            {pullMessage}
+          </div>
+        )}
 
         {readOnly && (
           <div style={{background:"#FEF3C7",borderBottom:"1px solid #FCD34D",padding:"8px 18px",fontSize:12,color:"#92400E",flexShrink:0}}>

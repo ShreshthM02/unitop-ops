@@ -42,17 +42,83 @@ Each fact has:
 
 ---
 
-## Route / Itinerary / Hotels (the least unified area — read this one carefully)
+## Route / Itinerary / Hotels (decided plan in progress — see "Document Chain Architecture" below for full execution phases)
 
 | Holder | Column(s) | Type | Notes |
 |---|---|---|---|
 | **`tour_execution`** | `days[].route`, `days[].hotelName`, `days[].rooms` | **Canonical operational record** | Populated only via the Tour File drawer's Info tab (Day-wise Itinerary / Hotels). This is what Movement Chart reads, and what the Tour Facilitator/Local Handler/Transporter columns resolve against. |
-| `cost_sheets.days` | — | SNAPSHOT, deliberately separate | A **pricing draft** — day-by-day cost breakdown for quoting, not an operational record. Can legitimately show different granularity or wording than `tour_execution.days`. |
-| `quotations.itinerary`, `quotations.hotels` | — | SNAPSHOT, deliberately separate | Client-facing copy for the quotation document — often summarized or reworded for presentation. Not synced from `tour_execution`. |
+| `cost_sheets.days` | — | SNAPSHOT, pre-filled from the owner above | A **pricing draft** — day-by-day cost breakdown for quoting. **Decided (2026-07-21): auto-fills `movement`/`hotel` from `tour_execution.days[].route`/`hotelName` at Cost Sheet creation time only** (one-way pre-fill, never a live sync), then independently editable — pricing fields (`mealCost`, `hotelNetPP`, `singleSupp`) have no equivalent in `tour_execution` at all and are pure Cost Sheet content. Not yet built — tracked as Phase 1 of the Document Chain plan. |
+| `quotations.itinerary`, `quotations.hotels` | — | SNAPSHOT, pre-filled from Cost Sheet | Client-facing copy for the quotation document. **Decided: auto-pulls from the linked Cost Sheet at Quotation creation time only** (via `costSheetId`), consolidating consecutive same-hotel days into one row with a nights count, and parsing `mealPlan` into per-meal inclusion. Built 2026-07-20 as an explicit "↻ Pull from Cost Sheet" button; auto-fire-on-creation is Phase 3 of the Document Chain plan (not yet built — currently requires the manual button click). |
 
-**This is the one area without a real unification plan yet.** Three places can describe "the itinerary" with no enforced relationship between them. It works today because each is used for a different purpose (pricing draft / client document / operational record), but it's the most likely place for a future "which one do I trust" question. If this ever needs tightening, the fix is a one-way pre-fill (tour_execution → quotation draft, editable after) — never a live sync.
+**The warning banner shown in the Tour File drawer's Itinerary/Hotels tabs** ("Cost Sheet's own day fields are a separate pricing draft and may not automatically match this") describes the *current* unconnected state, not the intended end state — once Phase 1 lands, Cost Sheet starts *from* `tour_execution`'s data rather than from nothing, closing most of the gap this banner exists to warn about. The banner can be reworded or removed once Phase 1 ships; not done yet.
 
 ---
+
+## Document Persistence Status (audited 2026-07-21)
+
+Before any auto-pull/sync-awareness mechanism can mean anything, a document needs somewhere real to record what it was pulled from. This was checked directly against each component's actual code, not assumed:
+
+| Document | Persistence | Notes |
+|---|---|---|
+| Cost Sheet | ✅ Real, versioned | `saveCostSheetVersion`/`loadCostSheetVersions` — full snapshot per version, `is_final` marking, real history. |
+| Quotation | ✅ Real, versioned | `saveQuotationVersion`/`loadQuotationVersions` — mirrors Cost Sheet's pattern exactly. |
+| Tour Details (`tour_execution.days`) | ⚠️ Single mutable record | `updateTourExecution` overwrites in place. `query_audit` logs an action label (`"Updated day-wise itinerary"`) on each save, but not a data snapshot — no way to see or restore what it looked like before. Not full version history. |
+| Brief + Detailed Itinerary (`ItineraryBuilder.jsx`) | ❌ None | Plain `useState`, zero `db.from` calls. Closing the panel loses everything typed. |
+| Meal Plan (`MealPlanDocument.jsx`) | ❌ None | Same. |
+| Exchange Orders (`ExchangeOrderGenerator.jsx`) | ❌ None | Same. |
+| Tour Briefing Sheet (`TourBriefingSheet.jsx`) | ❌ None | Same. |
+| Pro-forma Invoice (`ProformaInvoice.jsx`) | ❌ None | Same, and also still reads some display settings directly from `localStorage` — a separate, smaller leftover from before the settings migration to Supabase. |
+| Tax Invoice (`TaxInvoice.jsx`) | ❌ None | Same. |
+
+**Six of nine documents in the intended chain (Query → Cost Sheet → everything downstream) have no persistence of any kind.** This is Phase 0 of the Document Chain plan below — giving all six the same versioned `saveXVersion`/`loadXVersions` pattern Cost Sheet and Quotation already use — and it comes before any pull/sync work, since sync-awareness has nothing to attach to otherwise.
+
+---
+
+## Document Chain Architecture (in progress, started 2026-07-21)
+
+The intended data flow for a tour file, end to end:
+
+```
+New Query → Tour Details (LIVE identity: group name, destination, tour file ID, pax, nights, dates — read directly from `queries` everywhere, never copied)
+        │
+        ├─→ Day-wise Itinerary + Day-wise Hotels (`tour_execution.days` — the operational record)
+        │         │
+        │         ▼
+        │   Cost Sheet (SNAPSHOT, pre-filled from tour_execution at creation, then independently priced)
+        │         │
+        │         ├──→ Quotation, Brief Itinerary, Detailed Itinerary, Meal Plan, Exchange Orders, Tour Briefing Sheet
+        │         │      (all SNAPSHOT, pre-filled from Cost Sheet at creation, then independently editable)
+        │         │
+        │         └──→ (final agreed price, once Quotation is marked final)
+        │                    │
+        │                    ├──→ Pro-forma Invoice
+        │                    └──→ Tax Invoice
+```
+
+**Two categories of data, and the rule for each:**
+- **LIVE** (identity data — group name, destination, tour file ID, pax, nights, dates, client/agent name): never copied into any downstream document's own state. Always read directly from `queries` on every render. There is nothing to sync because there is only ever one copy.
+- **SNAPSHOT** (pricing, wording, day-by-day content, presented amounts): copied from its upstream source **once, automatically, at document creation** — never on a recurring basis, never silently overwriting an existing version. After that first pull, fully independently editable, with its own real version history (Phase 0).
+
+**The pull mechanism (applies uniformly wherever a SNAPSHOT relationship exists):**
+1. Auto-fires exactly once, only when the downstream document is being created fresh (zero saved versions exist yet) — safe by construction, since there's nothing yet to overwrite.
+2. Every version records which upstream version it was pulled from (e.g. a Quotation version stores `cost_sheet_id` + the Cost Sheet version number at pull time).
+3. If the upstream document gets a newer saved version afterward, downstream shows a visible "Cost Sheet updated to vN — pull latest?" banner. Re-pulling after that point is always an explicit, manual action — never automatic — so a salesperson's negotiated pricing or a briefing sheet someone's already annotated can never be silently destroyed by an upstream edit.
+4. Missing upstream fields are left blank downstream, not filled with placeholder/generic content — a pull is a starting point, not a requirement to fabricate data that doesn't exist yet.
+
+**Shared extraction library (avoids the "fixed once, still broken elsewhere" bug class):** the day-wise itinerary/hotel/meal-plan extraction logic is written once and reused by every document that needs that shape of data (Quotation, Brief/Detailed Itinerary, Meal Plan), rather than reimplemented per document. `calcCostSheetSlabFinalPrice` in `utils.js` (built 2026-07-20) is the first instance of this pattern — a deliberate standalone copy of Cost Sheet's own internal pricing logic, not an import, specifically so Quotation's pull feature doesn't create a dependency on Cost Sheet's internals. If the pricing formula ever changes, both copies need updating together — a documented tradeoff, not an oversight.
+
+**Execution phases:**
+- **Phase 0 — Persistence.** Give all six unpersisted documents real, versioned save/load, matching Cost Sheet/Quotation's pattern. Foundational; nothing else in this plan is meaningful without it.
+- **Phase 1 — `tour_execution` → Cost Sheet.** Cost Sheet's `days[]` auto-fills `movement`/`hotel` from `tour_execution.days[].route`/`hotelName` at creation.
+- **Phase 2 — Query → Cost Sheet auto-init.** Day row count matches actual `nights`; starting slab centered on actual `pax`, replacing the current hardcoded generic placeholders (4 fixed day rows, 5 fixed pax-range slabs unrelated to the query).
+- **Phase 3 — Cost Sheet → Quotation, upgraded.** The existing manual "↻ Pull from Cost Sheet" button (built 2026-07-20) becomes auto-fire-on-creation, plus the staleness banner from the pull mechanism above.
+- **Phase 4 — Replicate to Brief/Detailed Itinerary, Meal Plan.** Reuses the shared extraction library; no new extraction logic needed, only new formatting per document.
+- **Phase 5 — Exchange Orders + Tour Briefing Sheet.** Needs one new extraction shape (vendor/logistics grouping by sector) not required by the Phase 4 documents.
+- **Phase 6 — Pro-forma + Tax Invoice.** Deliberately last. Pulls a *suggested* starting amount from the final agreed price once a Quotation is marked final, but the actual billed line items never silently recompute — a human confirming what goes on an invoice is intentional, not a gap.
+
+---
+
+
 
 ## Vendor Assignments (Transporter / Facilitator / Local Handler)
 
