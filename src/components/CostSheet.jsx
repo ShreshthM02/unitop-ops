@@ -257,11 +257,19 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // repetition is needed the way table required.
     const tableBlock = (headers, alignRight, rows, emptyLabel, widths, alignCenter) => {
       const w = widths || headers.map(() => (100 / headers.length).toFixed(2));
-      const alignOf = i => alignCenter && alignCenter.includes(i) ? "center" : alignRight.includes(i) ? "right" : "left";
-      const headerCells = headers.map((h,i)=>`<div class="grid-header" style="text-align:${alignOf(i)}">${h}</div>`).join("");
+      // fr units instead of %: percentages don't account for column-gap
+      // at all, so on a wide table (16 columns) the gaps added real
+      // width on top of the 100% the columns already claimed, pushing
+      // the last columns off the printable page. fr units divide the
+      // space remaining *after* gaps are subtracted, so this can never
+      // overflow regardless of column count or gap size.
+      // Headers always center now, regardless of how their data cells
+      // align (numbers still right-align, text still left-aligns) --
+      // requested directly, applies to every table uniformly.
+      const headerCells = headers.map((h)=>`<div class="grid-header" style="text-align:center">${h}</div>`).join("");
       const bodyContent = rows || `<div class="grid-cell" style="grid-column:1/-1;text-align:center;color:#999">${emptyLabel}</div>`;
       return `
-      <div class="content-grid" style="grid-template-columns:${w.map(p=>`${p}%`).join(" ")}">
+      <div class="content-grid" style="grid-template-columns:${w.map(p=>`${p}fr`).join(" ")}">
         ${headerCells}
         ${bodyContent}
       </div>`;

@@ -91,5 +91,21 @@ export function printHTML(html) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.print();
+  // Wait for the window to fully load (including the async Google Fonts
+  // @import) before printing, rather than calling print() immediately.
+  // Printing before fonts/layout settle can leave the print dialog
+  // working from an incomplete render, which is a plausible cause of a
+  // save that silently fails or produces unexpected output.
+  let printed = false;
+  const doPrint = () => { if (!printed) { printed = true; win.print(); } };
+  if (win.document.readyState === 'complete') {
+    doPrint();
+  } else {
+    if (typeof win.addEventListener === 'function') {
+      win.addEventListener('load', doPrint);
+    }
+    // Fallback in case 'load' never fires (or addEventListener isn't
+    // available on this window implementation)
+    setTimeout(() => { try { doPrint(); } catch(e) {} }, 800);
+  }
 }

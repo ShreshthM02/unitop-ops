@@ -82,14 +82,14 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     expect(html).toContain('Extra Services');
   });
 
-  it('#7: numeric column headers and their data cells use matching alignment', async () => {
+  it('#7: all column headers are center-aligned, regardless of their data cells\' own alignment (requested directly) -- Transport (a right-aligned numeric column) has a centered header', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    // Final Price Summary header row: "Transport" (a numeric column) should
-    // render with text-align:right on its grid-header, matching its
-    // grid-cell below.
-    const theadMatch = html.match(/<div class="grid-header" style="text-align:right">Transport<\/div>/);
+    // Final Price Summary header row: "Transport" is a numeric column
+    // (its data cells right-align), but per explicit request every
+    // header centers regardless of its column's own data alignment.
+    const theadMatch = html.match(/<div class="grid-header" style="text-align:center">Transport<\/div>/);
     expect(theadMatch).toBeTruthy();
   });
 });
@@ -140,9 +140,9 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     // here, not asserting table-layout:fixed is absent everywhere.
     expect(html).toContain('class="content-grid"');
     expect(html).toContain('grid-template-columns:');
-    // Day-wise table always renders; its first column width confirms the
-    // explicit-percentage approach is genuinely active on the grid.
-    expect(html).toContain('7%');
+    // Day-wise table always renders; Movement's width confirms the
+    // explicit-proportion approach is genuinely active on the grid.
+    expect(html).toContain('19fr');
   });
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
@@ -173,7 +173,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
 });
 
 describe('CostSheet PDF: header and data cells in the same column share the same text-align direction (the one width-related fix that was genuinely correct and worth keeping)', () => {
-  it('every right-aligned numeric column has its grid-header and grid-cell both right-aligned, and every text column has both left-aligned, for Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary', async () => {
+  it('every grid-header is center-aligned (Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary), and every data column\'s cells are internally consistent with each other', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
@@ -186,19 +186,22 @@ describe('CostSheet PDF: header and data cells in the same column share the same
       expect(idx).toBeGreaterThan(-1);
       const nextIdx = i < sections.length - 1 ? html.indexOf(sections[i+1]) : html.indexOf('</body>');
       const snippet = html.slice(idx, nextIdx > idx ? nextIdx : idx + 2000);
-      const thAligns = [...snippet.matchAll(/<div class="grid-header" style="text-align:(left|right)">/g)].map(m => m[1]);
-      const tdAligns = [...snippet.matchAll(/<div class="grid-cell[^"]*" style="text-align:(left|right)[^"]*">/g)].map(m => m[1]);
+      const thAligns = [...snippet.matchAll(/<div class="grid-header" style="text-align:(left|right|center)">/g)].map(m => m[1]);
+      const tdAligns = [...snippet.matchAll(/<div class="grid-cell[^"]*" style="text-align:(left|right|center)[^"]*">/g)].map(m => m[1]);
       const colCount = thAligns.length;
       expect(colCount).toBeGreaterThan(0);
+      // Every header centers now, regardless of its column's data alignment.
+      thAligns.forEach(a => expect(a).toBe('center'));
       // The Day-wise TOTALS row has some cells without text-align styling
       // (e.g. the "TOTALS" label cell itself spans multiple columns), so
       // it doesn't contribute a full set of colCount styled cells -- only
-      // count complete rows, which is exactly what this check needs
-      // (every ordinary data row's columns match their header).
+      // count complete rows for the internal-consistency check below.
       const completeTds = tdAligns.slice(0, Math.floor(tdAligns.length / colCount) * colCount);
       for (let col = 0; col < colCount; col++) {
         const colTdAligns = completeTds.filter((_, j) => j % colCount === col);
-        colTdAligns.forEach(a => expect(a).toBe(thAligns[col]));
+        if (colTdAligns.length > 1) {
+          colTdAligns.slice(1).forEach(a => expect(a).toBe(colTdAligns[0]));
+        }
       }
     });
   });
@@ -238,11 +241,14 @@ describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells a
     expect(html).toContain('break-inside: avoid');
   });
 
-  it('Movement retains more room (19%) than the earlier percentage-shuffling attempts gave it, rather than stealing space from it again to fix another column', async () => {
+  it('Movement retains more room (19) than the earlier percentage-shuffling attempts gave it, rather than stealing space from it again to fix another column', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText(/🖨 Export PDF/));
     const html = capturedHTML();
-    expect(html).toContain('6% 8% 19% 9% 8% 13% 11% 6% 9% 11%');
+    // fr units now, not %, since percentages don't account for
+    // column-gap and caused wide tables (16 columns) to overflow the
+    // printable page. The relative proportions are unchanged.
+    expect(html).toContain('6fr 8fr 19fr 9fr 8fr 13fr 11fr 6fr 9fr 11fr');
   });
 });
 
@@ -292,5 +298,20 @@ describe('CostSheet PDF: column headers no longer visually collide (missing gap 
     const html = capturedHTML();
     expect(html).toContain('<div class="grid-header" style="text-align:center">Included</div>');
     expect(html).toContain('<div class="grid-header" style="text-align:center">Mode</div>');
+  });
+});
+
+describe('CostSheet PDF: fr units instead of % prevent wide tables (T/L Slabs, 16 columns) from overflowing the printable page once column-gap is added', () => {
+  it('every content-grid uses fr units, never %, in grid-template-columns', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    const html = capturedHTML();
+    const gridDeclarations = [...html.matchAll(/class="content-grid" style="grid-template-columns:([^"]+)"/g)].map(m => m[1]);
+    expect(gridDeclarations.length).toBeGreaterThan(0);
+    gridDeclarations.forEach(decl => {
+      expect(decl).not.toContain('%');
+      expect(decl).toContain('fr');
+    });
   });
 });
