@@ -54,21 +54,21 @@ Each fact has:
 
 ---
 
-## Document Persistence Status (audited 2026-07-21)
+## Document Persistence Status (audited 2026-07-21, Phase 0 completed same day)
 
-Before any auto-pull/sync-awareness mechanism can mean anything, a document needs somewhere real to record what it was pulled from. This was checked directly against each component's actual code, not assumed:
+Before any auto-pull/sync-awareness mechanism can mean anything, a document needs somewhere real to record what it was pulled from. This was checked directly against each component's actual code, not assumed. **Phase 0 is now complete: all six previously-unpersisted documents have real, versioned save/load, matching Cost Sheet/Quotation's pattern.**
 
 | Document | Persistence | Notes |
 |---|---|---|
 | Cost Sheet | ✅ Real, versioned | `saveCostSheetVersion`/`loadCostSheetVersions` — full snapshot per version, `is_final` marking, real history. |
 | Quotation | ✅ Real, versioned | `saveQuotationVersion`/`loadQuotationVersions` — mirrors Cost Sheet's pattern exactly. |
-| Tour Details (`tour_execution.days`) | ⚠️ Single mutable record | `updateTourExecution` overwrites in place. `query_audit` logs an action label (`"Updated day-wise itinerary"`) on each save, but not a data snapshot — no way to see or restore what it looked like before. Not full version history. |
-| Brief + Detailed Itinerary (`ItineraryBuilder.jsx`) | ❌ None | Plain `useState`, zero `db.from` calls. Closing the panel loses everything typed. |
-| Meal Plan (`MealPlanDocument.jsx`) | ❌ None | Same. |
-| Exchange Orders (`ExchangeOrderGenerator.jsx`) | ❌ None | Same. |
-| Tour Briefing Sheet (`TourBriefingSheet.jsx`) | ❌ None | Same. |
-| Pro-forma Invoice (`ProformaInvoice.jsx`) | ❌ None | Same, and also still reads some display settings directly from `localStorage` — a separate, smaller leftover from before the settings migration to Supabase. |
-| Tax Invoice (`TaxInvoice.jsx`) | ❌ None | Same. |
+| Tour Details (`tour_execution.days`) | ⚠️ Single mutable record | `updateTourExecution` overwrites in place. `query_audit` logs an action label (`"Updated day-wise itinerary"`) on each save, but not a data snapshot — no way to see or restore what it looked like before. Still not full version history; not part of Phase 0 (it's the canonical operational record, not one of the nine chained documents) but worth revisiting later. |
+| Brief + Detailed Itinerary (`ItineraryBuilder.jsx`) | ✅ Real, versioned (built 2026-07-21) | `itineraries` table. Brief and Detailed share one table but have **independent version sequences** — saving one never bumps the other's counter, and `markItineraryVersionFinal` is scoped by style for the same reason. Fixed a dead "💾 Save Itinerary" button (no `onClick` at all) in the same pass. |
+| Meal Plan (`MealPlanDocument.jsx`) | ✅ Real, versioned (built 2026-07-21) | `meal_plans` table. |
+| Exchange Orders (`ExchangeOrderGenerator.jsx`) | ✅ Real, versioned (built 2026-07-21) | `exchange_orders` table. `orders[]` (a list of independent vendor instructions, each with its own `confirmed` flag) versioned as one snapshot per save for consistency with the rest of the chain. |
+| Tour Briefing Sheet (`TourBriefingSheet.jsx`) | ✅ Real, versioned (built 2026-07-21) | `tour_briefings` table. Also fixed a real, separate bug found along the way: the component was being passed `vendors={vendors}` (the full, unfiltered vendor list) when it expects a prop called `facilitators` — the Tour Facilitators section had been silently empty. |
+| Pro-forma Invoice (`ProformaInvoice.jsx`) | ✅ Real, versioned (built 2026-07-21) | `proforma_invoices` table. Also fixed a real bug: `invoiceNo` defaulted from a `localStorage` counter that never synced across staff/devices — the exact "duplicate invoice numbers across staff" risk the settings migration existed to prevent, which had never actually been wired into this file. Now computed via `nextInvoiceNo()` (already existed in `utils.js`, never used) against every invoice number ever saved, queried globally via `loadExistingInvoiceNumbers` (not scoped to one `query_id`, since invoice numbers must be unique business-wide). Save is guarded against the race condition where a user clicks Save before that async computation resolves. |
+| Tax Invoice (`TaxInvoice.jsx`) | ✅ Real, versioned (built 2026-07-21) | `tax_invoices` table. Same invoice-numbering fix as Pro-forma — was defaulting to `` `TAX-2026-${Math.random()...}` ``, a random 3-digit suffix with **zero uniqueness guarantee**, on a document with GST/legal sequential-numbering implications. Also fixed a dead "💾 Save Tax Invoice" footer button (no `onClick` at all). |
 
 **Six of nine documents in the intended chain (Query → Cost Sheet → everything downstream) have no persistence of any kind.** This is Phase 0 of the Document Chain plan below — giving all six the same versioned `saveXVersion`/`loadXVersions` pattern Cost Sheet and Quotation already use — and it comes before any pull/sync work, since sync-awareness has nothing to attach to otherwise.
 
@@ -108,7 +108,7 @@ New Query → Tour Details (LIVE identity: group name, destination, tour file ID
 **Shared extraction library (avoids the "fixed once, still broken elsewhere" bug class):** the day-wise itinerary/hotel/meal-plan extraction logic is written once and reused by every document that needs that shape of data (Quotation, Brief/Detailed Itinerary, Meal Plan), rather than reimplemented per document. `calcCostSheetSlabFinalPrice` in `utils.js` (built 2026-07-20) is the first instance of this pattern — a deliberate standalone copy of Cost Sheet's own internal pricing logic, not an import, specifically so Quotation's pull feature doesn't create a dependency on Cost Sheet's internals. If the pricing formula ever changes, both copies need updating together — a documented tradeoff, not an oversight.
 
 **Execution phases:**
-- **Phase 0 — Persistence.** Give all six unpersisted documents real, versioned save/load, matching Cost Sheet/Quotation's pattern. Foundational; nothing else in this plan is meaningful without it.
+- **Phase 0 — Persistence. ✅ Complete (2026-07-21).** All six unpersisted documents now have real, versioned save/load, matching Cost Sheet/Quotation's pattern. Found and fixed three real bugs along the way (not scope creep -- each was directly relevant to giving these documents correct persistence): Itinerary needed independently-scoped version sequences per style (Brief/Detailed), Tour Briefing Sheet's facilitators prop was silently wired to the wrong data, and both invoice documents had genuinely unsafe number generation (a localStorage counter and a random number, respectively) that the persistence work replaced with a real, globally-queried safe sequence.
 - **Phase 1 — `tour_execution` → Cost Sheet.** Cost Sheet's `days[]` auto-fills `movement`/`hotel` from `tour_execution.days[].route`/`hotelName` at creation.
 - **Phase 2 — Query → Cost Sheet auto-init.** Day row count matches actual `nights`; starting slab centered on actual `pax`, replacing the current hardcoded generic placeholders (4 fixed day rows, 5 fixed pax-range slabs unrelated to the query).
 - **Phase 3 — Cost Sheet → Quotation, upgraded.** The existing manual "↻ Pull from Cost Sheet" button (built 2026-07-20) becomes auto-fire-on-creation, plus the staleness banner from the pull mechanism above.

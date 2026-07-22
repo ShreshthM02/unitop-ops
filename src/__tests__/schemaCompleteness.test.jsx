@@ -4,6 +4,7 @@ import {
   saveCostSheetVersion, saveQuotationVersion, saveTourExecutionToDB,
   savePaymentsToDB, saveVendorToDB, saveAgentToDB, saveQueryServices, saveDocRegistry,
   saveMealPlanVersion, saveItineraryVersion, saveExchangeOrderVersion, saveTourBriefingVersion,
+  saveProformaInvoiceVersion, saveTaxInvoiceVersion,
 } from '../lib/utils.js';
 
 // ─── THE ACTUAL BUG CLASS THIS FILE EXISTS TO PREVENT ────────────────────
@@ -137,6 +138,31 @@ describe('Schema completeness: tour_briefings (saveTourBriefingVersion) -- NEW t
     await saveTourBriefingVersion(db, 'UTQ-1', { version: 1 }, null);
     const call = calls.find(c => c.table === 'tour_briefings');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'tour_briefings');
+  });
+});
+
+// The final two tables in Phase 0 of the Document Chain plan. Both carry
+// a real invoice_no column (used for global uniqueness checking via
+// loadExistingInvoiceNumbers), not bundled into content like the other
+// scalar fields, since it's specifically the thing that needs to be
+// queried across every saved invoice, not just this one document.
+describe('Schema completeness: proforma_invoices (saveProformaInvoiceVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'invoice_no', 'content', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveProformaInvoiceVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'proforma_invoices');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'proforma_invoices');
+  });
+});
+
+describe('Schema completeness: tax_invoices (saveTaxInvoiceVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'invoice_no', 'content', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveTaxInvoiceVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'tax_invoices');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'tax_invoices');
   });
 });
 

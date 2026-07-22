@@ -1,13 +1,15 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadProformaInvoiceVersions, saveProformaInvoiceVersion, markProformaInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
-export default function ProformaInvoice({ query, template, onClose }) {
+export default function ProformaInvoice({ query, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(template||{}) };
-  const settings = (() => { try { return JSON.parse(localStorage.getItem('unitop_doc_settings')||'{}'); } catch(e) { return {}; } })();
-  const nextSerial = settings.proforma?.serial || 1;
-  const prefix     = settings.proforma?.prefix  || 'PI';
+  // Prefix comes from docSettings (Supabase-backed, shared across staff)
+  // if provided, rather than reading localStorage directly -- the actual
+  // serial number is no longer a local counter at all (see below), which
+  // was the real duplicate-numbering risk.
+  const prefix = docSettings?.proforma?.prefix || 'PI';
   const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
 
   const [activeTab,   setActiveTab]   = React.useState('content');
@@ -23,7 +25,7 @@ export default function ProformaInvoice({ query, template, onClose }) {
   });
 
   const [inv, setInv] = React.useState({
-    invoiceNo:   `${prefix}-${new Date().getFullYear()}-${String(nextSerial).padStart(3,'0')}`,
+    invoiceNo:   '', // resolved once existing invoice numbers load (see useEffect below) -- never a placeholder that gets used for real
     date:        today,
     validUntil:  '',
     attnName:    query.agentName || query.correspondent || '',
@@ -61,6 +63,58 @@ export default function ProformaInvoice({ query, template, onClose }) {
 
   const subTotal   = inv.items.reduce((s,it)=>s+(parseFloat(it.amount)||0),0);
   const grandTotal = subTotal;
+
+  // Real version history, same pattern as the rest of the Document Chain
+  // plan (Phase 0, final document -- see docs/DATA_OWNERSHIP.md). The
+  // invoice number itself is computed from every proforma invoice number
+  // ever saved (globally, not scoped to this query), not a local counter
+  // -- two staff opening this at the same moment will still see the same
+  // "next" number, and it only becomes real once actually saved.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+
+  const loadVersionIntoDraft = (v) => {
+    setInv(p => ({ ...p, ...(v.content||{}), invoiceNo: v.invoiceNo || p.invoiceNo }));
+    setViewingVersion(v.version);
+  };
+
+  useEffect(() => {
+    Promise.all([
+      loadProformaInvoiceVersions(db, query.id),
+      loadExistingInvoiceNumbers(db, "proforma_invoices"),
+    ]).then(([loaded, existingNumbers]) => {
+      if (loaded.length > 0) {
+        setVersions(loaded);
+        setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+        const finalV = loaded.find(v => v.isFinal);
+        if (finalV) setFinalVersion(finalV.version);
+        loadVersionIntoDraft(loaded[loaded.length - 1]);
+      } else {
+        // No saved version yet for this query -- compute a fresh, safe
+        // invoice number from every proforma invoice ever saved.
+        setF("invoiceNo", nextInvoiceNo(prefix, existingNumbers));
+      }
+    });
+  }, [query.id]);
+
+  const saveVersion = () => {
+    if (!inv.invoiceNo) {
+      // Still computing a safe invoice number from existing saved
+      // invoices -- refuse to save with a blank one rather than risk an
+      // invoice with no number at all.
+      alert("Still preparing a safe invoice number, please wait a moment and try again.");
+      return;
+    }
+    const { invoiceNo, ...content } = inv;
+    const snap = { version, invoiceNo, content };
+    setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    saveProformaInvoiceVersion(db, query.id, snap, currentUser?.id);
+    logAudit(db, query.id, currentUser?.name, `Proforma Invoice v${version} saved (${invoiceNo})`);
+    setViewingVersion(version);
+    setVersion(v => v+1);
+  };
 
   const buildPrintHTML = () => {
     const words     = numToWords(grandTotal);
@@ -196,10 +250,27 @@ export default function ProformaInvoice({ query, template, onClose }) {
         {/* Header */}
         <div style={{background:G.navy,padding:'12px 18px',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>DOCUMENT</div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>DOCUMENT · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
             <div style={{fontSize:16,fontWeight:700,color:'#fff',fontFamily:"'Playfair Display',serif"}}>Proforma Invoice</div>
             <div style={{fontSize:11,color:'rgba(255,255,255,0.5)'}}>{query.id} · {query.destination||query.sector}</div>
           </div>
+          {versions.length > 0 && (
+            <div style={{display:"flex",gap:4}}>
+              {versions.map(v=>(
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>loadVersionIntoDraft(v)} title={`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markProformaInvoiceVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Proforma Invoice v${v.version} marked final`);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
           <button onClick={handlePrint} className="btn btn-primary" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:'rgba(255,255,255,0.1)',color:'#fff',border:'none'}}>✕</button>
         </div>
@@ -310,6 +381,7 @@ export default function ProformaInvoice({ query, template, onClose }) {
         <div style={{padding:'10px 18px',borderTop:`1px solid ${G.gray200}`,display:'flex',gap:10,flexShrink:0,background:G.gray50}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1}}/>
+          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
           <button onClick={handlePrint} className="btn btn-primary">🖨 Print / PDF</button>
         </div>
       </div>

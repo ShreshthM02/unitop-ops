@@ -813,6 +813,115 @@ export async function markTourBriefingVersionFinal(db, queryId, version) {
   }
 }
 
+// ─── PRO-FORMA + TAX INVOICE (real versioned history -- Phase 0 of the
+// Document Chain plan, and the FINAL two documents in it, deliberately
+// last given their compliance weight). Found and fixed along the way:
+// ProformaInvoice's invoice number defaulted from a localStorage counter
+// that never synced across staff/devices (the exact "duplicate invoice
+// numbers across staff" risk the settings migration existed to prevent,
+// which never got wired into this specific file), and TaxInvoice's
+// defaulted to a random 3-digit suffix with zero uniqueness guarantee at
+// all -- a real risk for a document with GST/legal numbering
+// requirements. loadExistingInvoiceNumbers scans ALL saved invoices of a
+// type globally (not scoped to one query_id, since invoice numbers must
+// be unique across the whole business, not just one tour), feeding
+// nextInvoiceNo (already existed in utils.js, but was never actually
+// used by either component) to compute a genuinely safe next number. ──
+
+export async function loadExistingInvoiceNumbers(db, table) {
+  try {
+    const { data } = await db.from(table).select("invoice_no");
+    return (data || []).map(r => r.invoice_no).filter(Boolean);
+  } catch (e) {
+    console.warn(`Load existing invoice numbers from ${table} failed:`, e);
+    return [];
+  }
+}
+
+export function mapDbProformaInvoiceRow(row) {
+  return {
+    id: row.id, version: row.version, isFinal: row.is_final || false,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
+    invoiceNo: row.invoice_no || "", content: row.content || {},
+  };
+}
+
+export async function loadProformaInvoiceVersions(db, queryId) {
+  try {
+    const { data } = await db.from("proforma_invoices").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbProformaInvoiceRow);
+  } catch (e) {
+    console.warn("Load proforma invoice versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveProformaInvoiceVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("proforma_invoices").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      invoice_no: snap.invoiceNo || null, content: snap.content || {},
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save proforma invoice version failed:", e);
+    return null;
+  }
+}
+
+export async function markProformaInvoiceVersionFinal(db, queryId, version) {
+  try {
+    await db.from("proforma_invoices").eq("query_id", queryId).update({ is_final: false });
+    await db.from("proforma_invoices").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark proforma invoice version final failed:", e);
+  }
+}
+
+export function mapDbTaxInvoiceRow(row) {
+  return {
+    id: row.id, version: row.version, isFinal: row.is_final || false,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
+    invoiceNo: row.invoice_no || "", content: row.content || {},
+  };
+}
+
+export async function loadTaxInvoiceVersions(db, queryId) {
+  try {
+    const { data } = await db.from("tax_invoices").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbTaxInvoiceRow);
+  } catch (e) {
+    console.warn("Load tax invoice versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveTaxInvoiceVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("tax_invoices").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      invoice_no: snap.invoiceNo || null, content: snap.content || {},
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save tax invoice version failed:", e);
+    return null;
+  }
+}
+
+export async function markTaxInvoiceVersionFinal(db, queryId, version) {
+  try {
+    await db.from("tax_invoices").eq("query_id", queryId).update({ is_final: false });
+    await db.from("tax_invoices").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark tax invoice version final failed:", e);
+  }
+}
+
 // ─── QUOTATION (real versioned history, mirrors Cost Sheet exactly) ────────
 export function mapDbQuotationRow(row) {
   return {

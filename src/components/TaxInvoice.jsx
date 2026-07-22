@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTaxInvoiceVersions, saveTaxInvoiceVersion, markTaxInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
-export default function TaxInvoice({ query, payments, template, onClose }) {
+export default function TaxInvoice({ query, payments, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(template||{}) };
   const pt = payments[query.id];
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});
   const tourValueINR = pt ? (parseFloat(pt.tourValue)||0)*(parseFloat(pt.roeUsed)||1) : 0;
   const gstBase = Math.round(tourValueINR / 1.05);
+  const prefix = docSettings?.taxInvoice?.prefix || 'TAX';
 
   const [inv, setInv] = useState({
-    invoiceNo: `TAX-2026-${String(Math.floor(Math.random()*900)+100)}`,
+    invoiceNo: '', // resolved once existing invoice numbers load (see useEffect below) -- was a random 3-digit suffix before, with zero uniqueness guarantee at all
     date: today,
     placeOfSupply: tmpl.placeOfSupply,
     items:[{ desc:`Tour Package — ${query.destination||""} (${query.nights||"??"} Days)`, hsn:"998552", qty:query.paxDisplay||1, rate:Math.round(gstBase), amount:Math.round(gstBase) }],
@@ -29,6 +30,51 @@ export default function TaxInvoice({ query, payments, template, onClose }) {
   const grandTotal = subtotal + gstCalc;
 
   const inp={padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
+
+  // Real version history, same pattern as the rest of the Document Chain
+  // plan (Phase 0, the final document in it -- see docs/DATA_OWNERSHIP.md).
+  // Invoice number computed from every tax invoice number ever saved
+  // globally, same safety reasoning as Proforma Invoice.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+
+  const loadVersionIntoDraft = (v) => {
+    setInv(p => ({ ...p, ...(v.content||{}), invoiceNo: v.invoiceNo || p.invoiceNo }));
+    setViewingVersion(v.version);
+  };
+
+  useEffect(() => {
+    Promise.all([
+      loadTaxInvoiceVersions(db, query.id),
+      loadExistingInvoiceNumbers(db, "tax_invoices"),
+    ]).then(([loaded, existingNumbers]) => {
+      if (loaded.length > 0) {
+        setVersions(loaded);
+        setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+        const finalV = loaded.find(v => v.isFinal);
+        if (finalV) setFinalVersion(finalV.version);
+        loadVersionIntoDraft(loaded[loaded.length - 1]);
+      } else {
+        setF("invoiceNo", nextInvoiceNo(prefix, existingNumbers));
+      }
+    });
+  }, [query.id]);
+
+  const saveVersion = () => {
+    if (!inv.invoiceNo) {
+      alert("Still preparing a safe invoice number, please wait a moment and try again.");
+      return;
+    }
+    const { invoiceNo, ...content } = inv;
+    const snap = { version, invoiceNo, content };
+    setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    saveTaxInvoiceVersion(db, query.id, snap, currentUser?.id);
+    logAudit(db, query.id, currentUser?.name, `Tax Invoice v${version} saved (${invoiceNo})`);
+    setViewingVersion(version);
+    setVersion(v => v+1);
+  };
 
   const buildPrintHTML = () => {
     const itemRows=inv.items.map(it=>`<tr><td>${it.desc}</td><td style="text-align:center">${it.hsn}</td><td style="text-align:center">${it.qty}</td><td class="amount">₹ ${parseFloat(it.rate).toLocaleString()}</td><td class="amount">₹ ${parseFloat(it.amount).toLocaleString()}</td></tr>`).join("");
@@ -116,10 +162,27 @@ export default function TaxInvoice({ query, payments, template, onClose }) {
       <div style={{background:G.white,width:660,height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>GST TAX INVOICE</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>GST TAX INVOICE · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
             <div style={{fontSize:17,fontWeight:700,color:G.white,fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id} · GSTIN: {COMPANY_INFO.gstin}</div>
           </div>
+          {versions.length > 0 && (
+            <div style={{display:"flex",gap:4}}>
+              {versions.map(v=>(
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>loadVersionIntoDraft(v)} title={`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTaxInvoiceVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tax Invoice v${v.version} marked final`);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
           <button onClick={handlePrint} className="btn btn-success" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
@@ -203,7 +266,7 @@ export default function TaxInvoice({ query, payments, template, onClose }) {
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1}}/>
           <button onClick={handlePrint} className="btn btn-success">🖨 Print / PDF</button>
-          <button className="btn btn-primary">💾 Save Tax Invoice</button>
+          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
         </div>
       </div>
     </div>
