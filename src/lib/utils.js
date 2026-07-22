@@ -343,6 +343,22 @@ export function mergeTourExecutionRows(rows) {
   return map;
 }
 
+// Targeted single-query loader, separate from the bulk load path above
+// (used by UnitopApp's main data load + mergeTourExecutionRows). Needed
+// by Cost Sheet's Phase 1 pre-fill (see docs/DATA_OWNERSHIP.md,
+// "Document Chain Architecture") -- fetching all tour_execution rows
+// just to find one would be wasteful and would require passing the
+// whole app's data down into Cost Sheet, which doesn't otherwise need it.
+export async function loadTourExecutionForQuery(db, queryId) {
+  try {
+    const { data } = await db.from("tour_execution").select("*").eq("query_id", queryId);
+    return data && data[0] ? mapDbTourExecutionRow(data[0]) : null;
+  } catch (e) {
+    console.warn("Load tour execution for query failed:", e);
+    return null;
+  }
+}
+
 // NOTE ON NOT UNIFYING WITH COST SHEET / QUOTATION / ITINERARY BUILDER YET:
 // Those three documents each have their own independent day-wise hotel/route
 // fields, entered separately, with no connection to this table or to each

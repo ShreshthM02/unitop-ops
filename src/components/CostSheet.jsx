@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, logAudit, buildLetterheadDocument, printHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, db } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff }) {
   const n = v => parseFloat(v)||0;
@@ -140,7 +140,30 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   useEffect(() => {
     loadCostSheetVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) return;
+      if (loaded.length === 0) {
+        // Phase 1 of the Document Chain plan (docs/DATA_OWNERSHIP.md):
+        // pre-fill movement/hotel from tour_execution's Day-wise
+        // Itinerary/Hotels tabs -- the actual confirmed operational
+        // record -- rather than starting from generic hardcoded
+        // placeholder rows with no relationship to this tour. One-way
+        // pre-fill only, at creation time only: once any version of this
+        // Cost Sheet is saved, this never runs again and never touches
+        // the draft. Pricing-only fields (mealCost, hotelNetPP,
+        // singleSupp) have no equivalent in tour_execution and stay
+        // blank -- there's nothing to pre-fill them from.
+        loadTourExecutionForQuery(db, query.id).then(te => {
+          if (te && te.days && te.days.length > 0) {
+            setDays(te.days.map(d => ({
+              id: d.id || Date.now() + Math.random(),
+              day: d.dayLabel || "", date: d.date || "", movement: d.route || "",
+              mealPlan: "B/L/D", mealCost: "",
+              hotel: d.hotelName || "", hotelAlt: "", hotelPlan: "CP",
+              hotelNetPP: "", singleSupp: "", notes: d.notes || "",
+            })));
+          }
+        });
+        return;
+      }
       setVersions(loaded);
       setVersion(Math.max(...loaded.map(v => v.version)) + 1);
       const finalV = loaded.find(v => v.isFinal);
