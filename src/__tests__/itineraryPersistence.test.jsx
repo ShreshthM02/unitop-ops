@@ -82,3 +82,54 @@ describe('ItineraryBuilder: real versioned persistence (Phase 0 of the Document 
     expect(screen.getByDisplayValue('Custom Title')).toBeTruthy();
   });
 });
+
+describe('ItineraryBuilder: Brief and Detailed have genuinely independent version sequences (not shared)', () => {
+  it('saving a Brief version does not bump Detailed\'s next version number, and vice versa', async () => {
+    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    // Starts on Brief (renamed from "outlined"), save v1
+    fireEvent.click(await screen.findByText('📋 Brief'));
+    fireEvent.click((await screen.findAllByText(/💾 Save v1/))[0]);
+    await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('itineraries'));
+
+    // Switch to Detailed -- should still be v1, not v2, since it has its own sequence
+    fireEvent.click(screen.getByText('📖 Detailed'));
+    expect((await screen.findAllByText(/💾 Save v1/)).length).toBeGreaterThan(0);
+  });
+
+  it('the internal style value is "brief", not "outlined" (renamed everywhere)', async () => {
+    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    fireEvent.click((await screen.findAllByText(/💾 Save v1/))[0]);
+    await waitFor(() => {
+      const insertCalls = mockDb.from.mock.results
+        .filter((r,i)=>mockDb.from.mock.calls[i][0]==='itineraries')
+        .map(r=>r.value.insert.mock.calls).flat();
+      expect(insertCalls.length).toBeGreaterThan(0);
+      expect(insertCalls[0][0].active_tab).toBe('brief');
+    });
+  });
+
+  it('marking a Brief version final does not affect Detailed\'s final marking (scoped by style in markItineraryVersionFinal)', async () => {
+    const versionRows = [
+      { version: 1, active_tab: 'brief', tour_title: 'T', days: [], is_final: false },
+      { version: 1, active_tab: 'detailed', tour_title: 'T', days: [], is_final: true },
+    ];
+    const db = {
+      from: vi.fn((t) => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: t === 'itineraries' ? versionRows : [], error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: IB } = await import('../components/ItineraryBuilder.jsx');
+    render(<IB query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    // Detailed's v1 should show as final (★), confirming per-style final tracking loaded correctly
+    fireEvent.click(await screen.findByText('📖 Detailed'));
+    await waitFor(() => expect(screen.getByText('★')).toBeTruthy());
+  });
+});

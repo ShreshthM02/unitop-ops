@@ -667,7 +667,7 @@ export async function markMealPlanVersionFinal(db, queryId, version) {
 // ─── ITINERARY (real versioned history, mirrors Meal Plan/Cost Sheet --
 // Phase 0 of the Document Chain plan, see docs/DATA_OWNERSHIP.md). One
 // table covers both Brief and Detailed Itinerary, since ItineraryBuilder
-// is a single component with an "outlined"/"detailed" style toggle over
+// is a single component with a "brief"/"detailed" style toggle over
 // the same underlying day data, not two separate documents. ────────────
 export function mapDbItineraryRow(row) {
   return {
@@ -675,7 +675,7 @@ export function mapDbItineraryRow(row) {
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     tourTitle: row.tour_title || "", tagline: row.tagline || "", route: row.route || "",
-    duration: row.duration || "", activeTab: row.active_tab || "outlined", days: row.days || [],
+    duration: row.duration || "", activeTab: row.active_tab || "brief", days: row.days || [],
   };
 }
 
@@ -694,7 +694,7 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
     const { data } = await db.from("itineraries").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       tour_title: snap.tourTitle || null, tagline: snap.tagline || null, route: snap.route || null,
-      duration: snap.duration || null, active_tab: snap.activeTab || "outlined", days: snap.days || [],
+      duration: snap.duration || null, active_tab: snap.activeTab || "brief", days: snap.days || [],
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;
@@ -704,10 +704,10 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
   }
 }
 
-export async function markItineraryVersionFinal(db, queryId, version) {
+export async function markItineraryVersionFinal(db, queryId, version, style) {
   try {
-    await db.from("itineraries").eq("query_id", queryId).update({ is_final: false });
-    await db.from("itineraries").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+    await db.from("itineraries").eq("query_id", queryId).eq("active_tab", style).update({ is_final: false });
+    await db.from("itineraries").eq("query_id", queryId).eq("version", version).eq("active_tab", style).update({ is_final: true });
   } catch (e) {
     console.warn("Mark itinerary version final failed:", e);
   }

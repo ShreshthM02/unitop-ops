@@ -12,7 +12,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
     { id:2, dayLabel:"DAY-2", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
     { id:3, dayLabel:"DAY-3", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
   ]);
-  const [activeTab, setActiveTab] = useState("outlined"); // itinerary style: outlined | detailed
+  const [activeTab, setActiveTab] = useState("brief"); // itinerary style: brief | detailed
   const [viewMode, setViewMode] = useState("content");    // content | preview
   const [editingDay, setEditingDay] = useState(null);
   const toggles = useLetterheadToggles();
@@ -20,21 +20,25 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
 
   // Real version history, same pattern as Cost Sheet/Quotation/Meal Plan
   // (Phase 0 of the Document Chain plan -- see docs/DATA_OWNERSHIP.md).
-  // One table (itineraries) covers both Brief and Detailed styles, since
-  // they're the same underlying day data with a different print
-  // treatment, not two separate documents.
-  const [version, setVersion] = useState(1);
+  // Brief and Detailed share one table (itineraries) but have genuinely
+  // independent version sequences -- saving a Brief tweak must not bump
+  // Detailed's version number, and vice versa. Every version-numbering,
+  // pill-display, and final-marking operation below is scoped by
+  // activeTab (the current style), not global to the query.
   const [versions, setVersions] = useState([]);
-  const [finalVersion, setFinalVersion] = useState(null);
+  const [finalVersionByStyle, setFinalVersionByStyle] = useState({});
   const [viewingVersion, setViewingVersion] = useState(null);
   const [versionNote, setVersionNote] = useState("");
+
+  const versionsForStyle = versions.filter(v => v.activeTab === activeTab);
+  const nextVersion = versionsForStyle.length ? Math.max(...versionsForStyle.map(v => v.version)) + 1 : 1;
 
   const loadVersionIntoDraft = (v) => {
     setTourTitle(v.tourTitle || query.destination || "");
     setTagline(v.tagline || "");
     setRoute(v.route || "");
     setDuration(v.duration || duration);
-    setActiveTab(v.activeTab || "outlined");
+    setActiveTab(v.activeTab || "brief");
     setItinDays(v.days && v.days.length ? v.days : itinDays);
     setViewingVersion(v.version);
   };
@@ -43,21 +47,25 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
     loadItineraryVersions(db, query.id).then(loaded => {
       if (loaded.length === 0) return;
       setVersions(loaded);
-      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
-      const finalV = loaded.find(v => v.isFinal);
-      if (finalV) setFinalVersion(finalV.version);
+      const finalByStyle = {};
+      ["brief", "detailed"].forEach(style => {
+        const finalV = loaded.filter(v => v.activeTab === style).find(v => v.isFinal);
+        if (finalV) finalByStyle[style] = finalV.version;
+      });
+      setFinalVersionByStyle(finalByStyle);
+      // Load the most recently saved version overall into the draft, in
+      // whichever style it was -- the tab switches to match it.
       loadVersionIntoDraft(loaded[loaded.length - 1]);
     });
   }, [query.id]);
 
   const saveVersion = () => {
-    const snap = { version, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote };
-    setVersions(p => [...p.filter(v => v.version !== version), { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote };
+    setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
     saveItineraryVersion(db, query.id, snap, currentUser?.id);
-    logAudit(db, query.id, currentUser?.name, `Itinerary v${version} saved${versionNote?" — "+versionNote:""}`);
-    setViewingVersion(version);
+    logAudit(db, query.id, currentUser?.name, `${activeTab==="brief"?"Brief":"Detailed"} Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
+    setViewingVersion(nextVersion);
     setVersionNote("");
-    setVersion(v => v+1);
   };
 
   const updateDay = (i, field, val) => setItinDays(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val} : d));
@@ -91,7 +99,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
 
     const dayBlocks = itinDays.map(d => {
       const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-      if (activeTab === "outlined") {
+      if (activeTab === "brief") {
         return `<div style="padding:9pt 0;border-bottom:0.5pt solid #eee">
           <div style="font-size:11pt;font-weight:bold;color:#1A3A52">${d.dayLabel}${d.title?" | "+d.title:""}</div>
           ${d.route||d.distance||d.time?`<div style="font-size:9pt;color:#888;margin:2pt 0">${[d.route,d.distance&&d.time?`(${d.distance} / ${d.time})`:d.distance||d.time].filter(Boolean).join(" — ")}</div>`:""}
@@ -131,35 +139,35 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
         <div style={{ background:G.navy, padding:"14px 20px", flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY BUILDER · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY BUILDER · {activeTab==="brief"?"BRIEF":"DETAILED"} · {versionsForStyle.length>0?`v${nextVersion-1} saved`:"unsaved"}</div>
               <div style={{ fontSize:17, fontWeight:700, color:G.white, fontFamily:"'Playfair Display',serif" }}>
                 {query.groupName||query.clientName||query.agentName}
               </div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.id} · {query.destination}</div>
             </div>
-            {versions.length > 0 && (
+            {versionsForStyle.length > 0 && (
               <div style={{display:"flex",gap:4}}>
-                {versions.map(v=>(
+                {versionsForStyle.map(v=>(
                   <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
                     <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
                       style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
                       v{v.version}
                     </div>
-                    <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markItineraryVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Itinerary v${v.version} marked final`);}} title="Mark as final"
-                      style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                      {finalVersion===v.version?"★":"☆"}
+                    <div onClick={()=>{if(readOnly)return;setFinalVersionByStyle(p=>({...p,[activeTab]:v.version}));markItineraryVersionFinal(db,query.id,v.version,activeTab);logAudit(db,query.id,currentUser?.name,`${activeTab==="brief"?"Brief":"Detailed"} Itinerary v${v.version} marked final`);}} title="Mark as final"
+                      style={{padding:"3px 6px",background:finalVersionByStyle[activeTab]===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                      {finalVersionByStyle[activeTab]===v.version?"★":"☆"}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
+            {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{nextVersion}</button>}
             <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
           {/* Itinerary style switcher */}
           <div style={{ display:"flex", gap:4 }}>
-            {[["outlined","📋 Outlined"],["detailed","📖 Detailed"]].map(([id,label])=>(
+            {[["brief","📋 Brief"],["detailed","📖 Detailed"]].map(([id,label])=>(
               <button key={id} onClick={()=>setActiveTab(id)}
                 style={{ padding:"5px 14px", borderRadius:5, border:"none", cursor:"pointer",
                   background:activeTab===id?"rgba(255,255,255,0.15)":"transparent",
@@ -293,7 +301,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{ flex:1 }}/>
           <button onClick={handlePrint} className="btn btn-primary">🖨 Print</button>
-          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
+          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{nextVersion}</button>}
         </div>
       </div>
     </div>
