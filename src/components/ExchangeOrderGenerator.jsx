@@ -1,13 +1,44 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_EXCHANGE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_EXCHANGE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadExchangeOrderVersions, saveExchangeOrderVersion, markExchangeOrderVersionFinal, logAudit, db } = Lib;
 
-export default function ExchangeOrderGenerator({ query, template, onClose, currentUser }) {
+export default function ExchangeOrderGenerator({ query, template, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_EXCHANGE_TEMPLATE, ...(template||{}) };
   const [orderType, setOrderType] = useState("restaurant");
   const [orders, setOrders] = useState([]);
   const [editing, setEditing] = useState(null); // null = new order form
   const [showForm, setShowForm] = useState(true);
+
+  // Real version history, same pattern as the rest of the Document Chain
+  // plan (Phase 0 -- see docs/DATA_OWNERSHIP.md). orders[] as a whole is
+  // versioned as one snapshot per save, even though each order also
+  // carries its own confirmed flag independently.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+
+  useEffect(() => {
+    loadExchangeOrderVersions(db, query.id).then(loaded => {
+      if (loaded.length === 0) return;
+      setVersions(loaded);
+      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+      const finalV = loaded.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      const latest = loaded[loaded.length - 1];
+      setOrders(latest.orders && latest.orders.length ? latest.orders : orders);
+      setViewingVersion(latest.version);
+    });
+  }, [query.id]);
+
+  const saveVersion = () => {
+    const snap = { version, orders: [...orders] };
+    setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    saveExchangeOrderVersion(db, query.id, snap, currentUser?.id);
+    logAudit(db, query.id, currentUser?.name, `Exchange Orders v${version} saved (${orders.length} order${orders.length===1?"":"s"})`);
+    setViewingVersion(version);
+    setVersion(v => v+1);
+  };
 
   // Auto-increment order number (in real app this comes from DB)
   const nextOrderNo = () => 41283 + orders.length + 1;
@@ -266,10 +297,27 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
         {/* Header */}
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>EXCHANGE ORDERS / SERVICE VOUCHERS</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>EXCHANGE ORDERS / SERVICE VOUCHERS · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
             <div style={{fontSize:17,fontWeight:700,color:G.white,fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.tourFileId||query.id} · {query.destination}</div>
           </div>
+          {versions.length > 0 && (
+            <div style={{display:"flex",gap:4}}>
+              {versions.map(v=>(
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>{setOrders(v.orders||[]);setViewingVersion(v.version);}} title={`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markExchangeOrderVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Exchange Orders v${v.version} marked final`);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}} title="Persist the current set of orders as a new version">💾 Save v{version}</button>}
           {orders.length > 0 && <button onClick={printAll} className="btn btn-success" style={{fontSize:11}}>🖨 Print All ({orders.length})</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>

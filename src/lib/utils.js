@@ -713,6 +713,106 @@ export async function markItineraryVersionFinal(db, queryId, version, style) {
   }
 }
 
+// ─── EXCHANGE ORDERS (real versioned history -- Phase 0 of the Document
+// Chain plan). orders[] is a list of independent vendor instructions
+// (each already has its own confirmed flag), not sections of one draft --
+// but versioned the same way as every other document here for a
+// consistent, holistic history system rather than a bespoke model just
+// for this one. Bundled into a single jsonb `content` column rather than
+// enumerating every field as its own column, given the scale of fields
+// involved (each order alone has 25+ fields). ─────────────────────────────
+export function mapDbExchangeOrderRow(row) {
+  return {
+    id: row.id, version: row.version, isFinal: row.is_final || false,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
+    orders: (row.content && row.content.orders) || [],
+  };
+}
+
+export async function loadExchangeOrderVersions(db, queryId) {
+  try {
+    const { data } = await db.from("exchange_orders").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbExchangeOrderRow);
+  } catch (e) {
+    console.warn("Load exchange order versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveExchangeOrderVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("exchange_orders").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      content: { orders: snap.orders || [] },
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save exchange order version failed:", e);
+    return null;
+  }
+}
+
+export async function markExchangeOrderVersionFinal(db, queryId, version) {
+  try {
+    await db.from("exchange_orders").eq("query_id", queryId).update({ is_final: false });
+    await db.from("exchange_orders").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark exchange order version final failed:", e);
+  }
+}
+
+// ─── TOUR BRIEFING SHEET (real versioned history -- Phase 0 of the
+// Document Chain plan). Same single-jsonb-column approach as Exchange
+// Orders: this document has 12+ scalar fields plus 8 separate array
+// sections (hotels, flights, trains, guides, other services, programme,
+// contacts) plus per-section notes and print ordering/visibility --
+// enumerating each as its own column would be a lot of schema for
+// limited benefit, given nothing here needs to be queried individually
+// outside this one document. ────────────────────────────────────────────
+export function mapDbTourBriefingRow(row) {
+  return {
+    id: row.id, version: row.version, isFinal: row.is_final || false,
+    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
+    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
+    content: row.content || {},
+  };
+}
+
+export async function loadTourBriefingVersions(db, queryId) {
+  try {
+    const { data } = await db.from("tour_briefings").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbTourBriefingRow);
+  } catch (e) {
+    console.warn("Load tour briefing versions failed:", e);
+    return [];
+  }
+}
+
+export async function saveTourBriefingVersion(db, queryId, snap, createdBy) {
+  try {
+    const { data } = await db.from("tour_briefings").insert({
+      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      content: snap.content || {},
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    return data && data[0] ? data[0].id : null;
+  } catch (e) {
+    console.warn("Save tour briefing version failed:", e);
+    return null;
+  }
+}
+
+export async function markTourBriefingVersionFinal(db, queryId, version) {
+  try {
+    await db.from("tour_briefings").eq("query_id", queryId).update({ is_final: false });
+    await db.from("tour_briefings").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark tour briefing version final failed:", e);
+  }
+}
+
 // ─── QUOTATION (real versioned history, mirrors Cost Sheet exactly) ────────
 export function mapDbQuotationRow(row) {
   return {

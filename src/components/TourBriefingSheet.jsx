@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, logAudit, db } = Lib;
 
-export default function TourBriefingSheet({ query, template, facilitators, onClose }) {
+export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
   const activeFacilitators = (facilitators || []).filter(f => f.active !== false);
   const ALL_SECTIONS = [
@@ -66,6 +66,74 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const updC=(i,f,v)=>setContacts(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [contactNotes,setContactNotes]=useState("");
 
+  // Real version history, same pattern as the rest of the Document Chain
+  // plan (Phase 0 -- see docs/DATA_OWNERSHIP.md). Every field in this
+  // document (12+ scalars, 8 array sections, per-section notes, print
+  // order/visibility) is bundled into one content object per version,
+  // rather than tracked as 20+ separate pieces of state to save/restore.
+  const [version, setVersion] = useState(1);
+  const [versions, setVersions] = useState([]);
+  const [finalVersion, setFinalVersion] = useState(null);
+  const [viewingVersion, setViewingVersion] = useState(null);
+
+  const currentContent = () => ({
+    docDate, recipient, agentCo, agentCity, subject, intro, footer, metaNotes,
+    hotels, hotelNotes, flights, flightNotes, trains, trainNotes, transport, transportNotes,
+    guides, guideNotes, otherSvcs, otherNotes, programme, progNotes, contacts, contactNotes,
+    printOrder, printEnabled,
+  });
+
+  const loadVersionIntoDraft = (v) => {
+    const c = v.content || {};
+    if (c.docDate!==undefined) setDocDate(c.docDate);
+    if (c.recipient!==undefined) setRecipient(c.recipient);
+    if (c.agentCo!==undefined) setAgentCo(c.agentCo);
+    if (c.agentCity!==undefined) setAgentCity(c.agentCity);
+    if (c.subject!==undefined) setSubject(c.subject);
+    if (c.intro!==undefined) setIntro(c.intro);
+    if (c.footer!==undefined) setFooter(c.footer);
+    if (c.metaNotes!==undefined) setMetaNotes(c.metaNotes);
+    if (c.hotels) setHotels(c.hotels);
+    if (c.hotelNotes!==undefined) setHotelNotes(c.hotelNotes);
+    if (c.flights) setFlights(c.flights);
+    if (c.flightNotes!==undefined) setFlightNotes(c.flightNotes);
+    if (c.trains) setTrains(c.trains);
+    if (c.trainNotes!==undefined) setTrainNotes(c.trainNotes);
+    if (c.transport!==undefined) setTransport(c.transport);
+    if (c.transportNotes!==undefined) setTransportNotes(c.transportNotes);
+    if (c.guides) setGuides(c.guides);
+    if (c.guideNotes!==undefined) setGuideNotes(c.guideNotes);
+    if (c.otherSvcs) setOtherSvcs(c.otherSvcs);
+    if (c.otherNotes!==undefined) setOtherNotes(c.otherNotes);
+    if (c.programme) setProgramme(c.programme);
+    if (c.progNotes!==undefined) setProgNotes(c.progNotes);
+    if (c.contacts) setContacts(c.contacts);
+    if (c.contactNotes!==undefined) setContactNotes(c.contactNotes);
+    if (c.printOrder) setPrintOrder(c.printOrder);
+    if (c.printEnabled) setPrintEnabled(c.printEnabled);
+    setViewingVersion(v.version);
+  };
+
+  useEffect(() => {
+    loadTourBriefingVersions(db, query.id).then(loaded => {
+      if (loaded.length === 0) return;
+      setVersions(loaded);
+      setVersion(Math.max(...loaded.map(v => v.version)) + 1);
+      const finalV = loaded.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      loadVersionIntoDraft(loaded[loaded.length - 1]);
+    });
+  }, [query.id]);
+
+  const saveVersion = () => {
+    const snap = { version, content: currentContent() };
+    setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
+    saveTourBriefingVersion(db, query.id, snap, currentUser?.id);
+    logAudit(db, query.id, currentUser?.name, `Tour Briefing Sheet v${version} saved`);
+    setViewingVersion(version);
+    setVersion(v => v+1);
+  };
+
   const inp={padding:"5px 7px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const NoteField=({val,set})=>(
     <div style={{marginTop:12,borderTop:`1px dashed ${G.gray200}`,paddingTop:10}}>
@@ -112,10 +180,27 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
       <div style={{background:G.white,width:880,height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>TOUR BRIEFING SHEET</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>TOUR BRIEFING SHEET · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>
             <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id}{query.tourFileId?" · 📁 "+query.tourFileId:""}</div>
           </div>
+          {versions.length > 0 && (
+            <div style={{display:"flex",gap:4}}>
+              {versions.map(v=>(
+                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                  <div onClick={()=>loadVersionIntoDraft(v)} title={`View v${v.version}`}
+                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                    v{v.version}
+                  </div>
+                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);}} title="Mark as final"
+                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                    {finalVersion===v.version?"★":"☆"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
           <button onClick={handlePrint} className="btn btn-primary" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
@@ -175,6 +260,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
         <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1,fontSize:11,color:G.gray400,alignSelf:"center"}}>{viewMode==="content" ? "Drag section tiles to reorder in print output" : ""}</div>
+          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
           <button onClick={handlePrint} className="btn btn-primary">🖨 Print / Export PDF</button>
         </div>
       </div>

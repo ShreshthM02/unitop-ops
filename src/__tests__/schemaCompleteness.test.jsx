@@ -3,7 +3,7 @@ import {
   buildQuerySavePayload,
   saveCostSheetVersion, saveQuotationVersion, saveTourExecutionToDB,
   savePaymentsToDB, saveVendorToDB, saveAgentToDB, saveQueryServices, saveDocRegistry,
-  saveMealPlanVersion, saveItineraryVersion,
+  saveMealPlanVersion, saveItineraryVersion, saveExchangeOrderVersion, saveTourBriefingVersion,
 } from '../lib/utils.js';
 
 // ─── THE ACTUAL BUG CLASS THIS FILE EXISTS TO PREVENT ────────────────────
@@ -117,6 +117,26 @@ describe('Schema completeness: itineraries (saveItineraryVersion) -- NEW table, 
     await saveItineraryVersion(db, 'UTQ-1', { version: 1 }, null);
     const call = calls.find(c => c.table === 'itineraries');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'itineraries');
+  });
+});
+
+describe('Schema completeness: exchange_orders (saveExchangeOrderVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'content', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveExchangeOrderVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'exchange_orders');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'exchange_orders');
+  });
+});
+
+describe('Schema completeness: tour_briefings (saveTourBriefingVersion) -- NEW table, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'content', 'created_by'];
+  it('every intended column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveTourBriefingVersion(db, 'UTQ-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'tour_briefings');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'tour_briefings');
   });
 });
 
