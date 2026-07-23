@@ -55,3 +55,27 @@ describe('CostSheet Phase 2: day count and starting slab derive from the query (
     expect(screen.getByDisplayValue('45 pax + 1 FOC')).toBeTruthy();
   });
 });
+
+describe('CostSheet Phase 2: per-day dates auto-fill from a confirmed travel date', () => {
+  it('computes each day\'s date as travelDate + its offset, kept as raw ISO (YYYY-MM-DD) since the field is a native input type="date"', () => {
+    const query = { id: 'UTQ-2026-1500', groupName: 'Confirmed Date Test', nights: 3, travelDate: '2026-07-24' };
+    render(<CostSheet query={query} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
+    expect(screen.getByDisplayValue('2026-07-24')).toBeTruthy();
+    expect(screen.getByDisplayValue('2026-07-25')).toBeTruthy();
+    expect(screen.getByDisplayValue('2026-07-26')).toBeTruthy();
+  });
+
+  it('leaves dates blank when travelDate is still TBC (a month/season string, not a confirmed date)', () => {
+    const query = { id: 'UTQ-2026-1501', groupName: 'TBC Date Test', nights: 2, travelDate: 'August 2026' };
+    render(<CostSheet query={query} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
+    expect(screen.getByDisplayValue('Day 1')).toBeTruthy();
+    // No day should have an ISO date filled in
+    expect(screen.queryByDisplayValue(/^\d{4}-\d{2}-\d{2}$/)).toBeNull();
+  });
+
+  it('leaves dates blank when travelDate is not set at all', () => {
+    const query = { id: 'UTQ-2026-1502', groupName: 'No Date Test', nights: 2 };
+    render(<CostSheet query={query} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
+    expect(screen.queryByDisplayValue(/^\d{4}-\d{2}-\d{2}$/)).toBeNull();
+  });
+});

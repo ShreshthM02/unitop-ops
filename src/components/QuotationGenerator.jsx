@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -104,10 +104,29 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       });
 
       // Cost: each group slab's computed final price, using the same
-      // calculation Cost Sheet itself uses.
-      const slabs = (match.slabs||[]).map(s => {
+      // calculation Cost Sheet itself uses. T/L slabs are appended to
+      // the same list -- from the client's perspective they're just
+      // another pricing tier, even though Cost Sheet tracks them
+      // separately internally. T/L Surcharge is a genuinely different
+      // formula from group slabs (calcCostSheetTlSlabFinalPrice), not
+      // just a different label -- reusing the group formula for T/L
+      // slabs would have silently produced the wrong number.
+      const groupSlabs = (match.slabs||[]).map(s => {
         const c = calcCostSheetSlabFinalPrice(match, s);
         return { label: s.label, price: c.finalFX ? String(c.finalFX) : "" };
+      });
+      const tlSlabs = (match.tlSlabs||[]).map(tl => {
+        const c = calcCostSheetTlSlabFinalPrice(match, tl);
+        return { label: tl.label, price: c.finalFX ? String(c.finalFX) : "" };
+      });
+      const slabs = [...groupSlabs, ...tlSlabs];
+
+      // Monuments: only the ones actually included in the price (an
+      // excluded monument was priced as an optional extra, not something
+      // that belongs on the client-facing inclusions list).
+      const monuments = (match.monuments||[]).filter(m => m.include).map(m => {
+        const fee = parseFloat(m.fee) || 0;
+        return { name: m.name || "", fee: fee ? String(fee) : "" };
       });
 
       setQ(p => ({
@@ -116,6 +135,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         itinerary: itinerary.length ? itinerary : p.itinerary,
         hotels: hotels.length ? hotels : p.hotels,
         slabs: slabs.length ? slabs : p.slabs,
+        monuments: monuments.length ? monuments : p.monuments,
         currency: match.currency || p.currency,
       }));
       setPullMessage(`Pulled from Cost Sheet v${match.version}.`);

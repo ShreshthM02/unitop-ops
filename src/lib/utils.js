@@ -604,6 +604,29 @@ export function calcCostSheetSlabFinalPrice(snap, slab) {
   return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt };
 }
 
+// Standalone copy of Cost Sheet's own calcTlSlab -- T/L slabs have a
+// genuinely different formula from group slabs (a surcharge on top,
+// divided by the slab's own paying-pax count rather than foc), not just
+// a different label. Reuses calcCostSheetSlabFinalPrice as its base
+// (tl.pax standing in for foc), then layers the surcharge exactly the
+// way Cost Sheet itself does, so Quotation's pull can't silently compute
+// a different number for T/L slabs than the Cost Sheet the client
+// actually saw.
+export function calcCostSheetTlSlabFinalPrice(snap, tlSlab) {
+  const n = v => parseFloat(v)||0;
+  const base = calcCostSheetSlabFinalPrice(snap, { id: tlSlab.id, foc: n(tlSlab.pax) });
+  const surchargeTotal = Object.entries(tlSlab.costs||{}).reduce((s,[k,v])=>s+(tlSlab.includes && tlSlab.includes[k] ? n(v) : 0),0);
+  const surchargePP = n(tlSlab.pax)>0 ? surchargeTotal/n(tlSlab.pax) : 0;
+  const sub = base.sub + surchargePP;
+  const tax = Math.round(sub * (snap.gst||0)/100);
+  const afterTax = sub + tax;
+  const markupAmt = Math.round(afterTax * (snap.markup||0)/100);
+  const sellingINR = afterTax + markupAmt;
+  const finalFX = Math.ceil(sellingINR / (snap.roe||1));
+  return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt, surchargePP: Math.round(surchargePP) };
+}
+
+
 export function mapDbCostSheetRow(row) {
   return {
     id: row.id,

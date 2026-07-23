@@ -40,18 +40,41 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // nights isn't set yet. tour_execution's own pre-fill (Phase 1, in the
   // useEffect below) still takes priority once it loads, for whichever
   // fields it actually has data for.
+  //
+  // Dates: query.travelDate is an ISO date string ("2026-07-24") only
+  // when the person confirmed a specific date (dateKnown); otherwise
+  // it's free text ("TBC", a month, a season) with nothing to compute
+  // from -- same "confirmed vs TBC" distinction already used for pax.
+  // When confirmed, each day's date is travelDate + its offset, kept as
+  // a raw ISO string ("YYYY-MM-DD") since the actual field is a native
+  // <input type="date">, which requires that exact format and silently
+  // shows blank for anything else -- formatDateDMY's DD-MM-YYYY display
+  // format (used elsewhere in the app for read-only text) would have
+  // been rejected here.
+  const isConfirmedISODate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s);
+  const dayDateFromTravelDate = (offset) => {
+    if (!isConfirmedISODate(query.travelDate)) return "";
+    // Parse the y/m/d components manually and use the local-time Date
+    // constructor -- new Date("2026-07-24") parses as UTC midnight, but
+    // .setDate()/.getDate() operate in local time, so in any timezone
+    // behind UTC that string silently rolls back to the previous day.
+    const [y, m, d] = query.travelDate.slice(0,10).split("-").map(Number);
+    const date = new Date(y, m-1, d);
+    date.setDate(date.getDate() + offset);
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+  };
   const buildDefaultDays = () => {
     const n = parseInt(query.nights) || 0;
     if (n <= 0) {
       return [
-        { id:1, day:"Day 1", date:"", movement:"", mealPlan:"D",    mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-        { id:2, day:"Day 2", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-        { id:3, day:"Day 3", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-        { id:4, day:"Day 4", date:"", movement:"", mealPlan:"B/L",  mealCost:"", hotel:"Departure",    hotelPlan:"",   hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:1, day:"Day 1", date:dayDateFromTravelDate(0), movement:"", mealPlan:"D",    mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:2, day:"Day 2", date:dayDateFromTravelDate(1), movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:3, day:"Day 3", date:dayDateFromTravelDate(2), movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:4, day:"Day 4", date:dayDateFromTravelDate(3), movement:"", mealPlan:"B/L",  mealCost:"", hotel:"Departure",    hotelPlan:"",   hotelNetPP:"", singleSupp:"", notes:"" },
       ];
     }
     return Array.from({ length: n }, (_, i) => ({
-      id: i+1, day: `Day ${i+1}`, date: "", movement: "",
+      id: i+1, day: `Day ${i+1}`, date: dayDateFromTravelDate(i), movement: "",
       mealPlan: i===0 ? "D" : (i===n-1 ? "B/L" : "B/L/D"), mealCost: "",
       hotel: i===n-1 ? "Departure" : "", hotelAlt: "", hotelPlan: i===n-1 ? "" : "CP",
       hotelNetPP: "", singleSupp: "", notes: "",
