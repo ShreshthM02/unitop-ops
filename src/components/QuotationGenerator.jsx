@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -83,32 +83,13 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       // Addressee: Cost Sheet's own Client / Foreign Agent field, if set
       const attnCompany = match.clientAgentName || q.attnCompany;
 
-      // Itinerary: each day's movement, plus mealPlan ("B/L/D", "B/L-800/D-800")
-      // parsed for which meals are included.
-      const itinerary = (match.days||[]).map(d => {
-        const mp = (d.mealPlan||"").toUpperCase();
-        return {
-          day: d.day || "",
-          movement: d.movement || "",
-          bf: mp.includes("B") ? "Included" : "",
-          lunch: mp.includes("L") ? "Included" : "",
-          dinner: mp.includes("D") ? "Included" : "",
-        };
-      });
-
-      // Accommodation: consolidate consecutive days at the same hotel
-      // into one row with a nights count, rather than one row per day.
-      const hotels = [];
-      (match.days||[]).forEach(d => {
-        if (!d.hotel) return;
-        const last = hotels[hotels.length-1];
-        if (last && last.hotel === d.hotel) {
-          last.nights = (parseInt(last.nights)||0) + 1;
-        } else {
-          const place = (d.movement||"").split("-").pop().trim() || d.hotel;
-          hotels.push({ place, nights: 1, hotel: d.hotel });
-        }
-      });
+      // Itinerary and accommodation: both now come from the shared
+      // extraction library (utils.js), not duplicated inline logic --
+      // Meal Plan and Itinerary Builder use the same functions (Phase 4
+      // of the Document Chain plan).
+      const extracted = extractItineraryFromCostSheetDays(match.days);
+      const itinerary = extracted.map(d => ({ day: d.day, movement: d.movement, bf: d.breakfast, lunch: d.lunch, dinner: d.dinner }));
+      const hotels = extractHotelsFromCostSheetDays(match.days);
 
       // Cost: each group slab's computed final price, using the same
       // calculation Cost Sheet itself uses. T/L slabs are appended to

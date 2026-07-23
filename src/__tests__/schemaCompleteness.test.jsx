@@ -97,8 +97,8 @@ describe('Schema completeness: cost_sheets (saveCostSheetVersion)', () => {
 // must create, rather than checking against an already-live schema the
 // way the other tests here do. Once the migration runs, this becomes a
 // normal completeness check like the rest of this file.
-describe('Schema completeness: meal_plans (saveMealPlanVersion) -- NEW table, requires migration', () => {
-  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'heading', 'rows', 'created_by'];
+describe('Schema completeness: meal_plans (saveMealPlanVersion) -- pulled_from_cost_sheet_version is a NEW column, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'heading', 'rows', 'created_by', 'pulled_from_cost_sheet_version'];
   it('every intended column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveMealPlanVersion(db, 'UTQ-1', { version: 1 }, null);
@@ -111,8 +111,8 @@ describe('Schema completeness: meal_plans (saveMealPlanVersion) -- NEW table, re
 // table covers both Brief and Detailed Itinerary, since ItineraryBuilder
 // is a single component with an outlined/detailed style toggle over the
 // same underlying day data.
-describe('Schema completeness: itineraries (saveItineraryVersion) -- NEW table, requires migration', () => {
-  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by'];
+describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from_cost_sheet_version is a NEW column, requires migration', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version'];
   it('every intended column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveItineraryVersion(db, 'UTQ-1', { version: 1 }, null);

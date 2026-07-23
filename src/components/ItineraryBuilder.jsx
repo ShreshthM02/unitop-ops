@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_ITINERARY_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_ITINERARY_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
 
 export default function ItineraryBuilder({ query, briefTemplate, detailTemplate, onClose, currentUser, readOnly }) {
   const [tourTitle, setTourTitle] = useState(query.destination || "");
@@ -43,9 +43,43 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
     setViewingVersion(v.version);
   };
 
+  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  const [pulledFromCostSheetVersion, setPulledFromCostSheetVersion] = useState(null);
+  const [pullMessage, setPullMessage] = useState("");
+  const [pulling, setPulling] = useState(false);
+
+  // Phase 4 of the Document Chain plan (docs/DATA_OWNERSHIP.md): pulls
+  // from the star-marked Cost Sheet directly, same reasoning as Meal
+  // Plan -- Itinerary Builder is opened independently from the toolbar,
+  // not linked to a specific costSheetId. Both Brief and Detailed share
+  // one itinDays state (just different print formatting), so this only
+  // needs to pull once, not per-style. Uses the shared extraction
+  // library (extractItineraryBuilderDaysFromCostSheet), not a
+  // reimplementation.
+  const pullFromCostSheet = async (targetVersion) => {
+    setPulling(true);
+    setPullMessage("");
+    try {
+      const source = targetVersion || finalCostSheetVersion;
+      if (!source) { setPullMessage("No final Cost Sheet found for this tour yet."); setPulling(false); return; }
+      const extracted = extractItineraryBuilderDaysFromCostSheet(source.days);
+      if (extracted.length > 0) setItinDays(extracted);
+      setPulledFromCostSheetVersion(source.version);
+      setPullMessage(`Pulled from Cost Sheet v${source.version}.`);
+    } catch (e) {
+      setPullMessage("Failed to pull from Cost Sheet.");
+    }
+    setPulling(false);
+  };
+
   useEffect(() => {
     loadItineraryVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) return;
+      if (loaded.length === 0) {
+        loadFinalCostSheetVersion(db, query.id).then(finalV => {
+          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
+        });
+        return;
+      }
       setVersions(loaded);
       const finalByStyle = {};
       ["brief", "detailed"].forEach(style => {
@@ -56,11 +90,14 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
       // Load the most recently saved version overall into the draft, in
       // whichever style it was -- the tab switches to match it.
       loadVersionIntoDraft(loaded[loaded.length - 1]);
+      setPulledFromCostSheetVersion(loaded[loaded.length - 1].pulledFromCostSheetVersion ?? null);
+      loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
   }, [query.id]);
+  const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
   const saveVersion = () => {
-    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote };
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
     saveItineraryVersion(db, query.id, snap, currentUser?.id);
     logAudit(db, query.id, currentUser?.name, `${activeTab==="brief"?"Brief":"Detailed"} Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
@@ -165,6 +202,22 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
             <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
+          {isStaleVsCostSheet && !readOnly && (
+            <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:10.5,color:"#7D6608",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{flex:1}}>
+                Cost Sheet v{finalCostSheetVersion.version} (final) has route/hotel data
+                {pulledFromCostSheetVersion ? ` newer than what this was last pulled from (v${pulledFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+              </span>
+              <button onClick={()=>pullFromCostSheet(finalCostSheetVersion)} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
+                {pulling ? "Pulling…" : "↻ Pull latest"}
+              </button>
+            </div>
+          )}
+          {pullMessage && (
+            <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:6,padding:"6px 10px",fontSize:10.5,color:"#1E40AF",marginBottom:8}}>
+              {pullMessage}
+            </div>
+          )}
           {/* Itinerary style switcher */}
           <div style={{ display:"flex", gap:4 }}>
             {[["brief","📋 Brief"],["detailed","📖 Detailed"]].map(([id,label])=>(

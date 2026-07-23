@@ -572,6 +572,78 @@ export async function saveDocRegistry(db, queryId, docs, tourFileId) {
 // ─── COST SHEET (real versioned persistence) ───────────────────────────────
 // Maps a cost_sheets DB row to the shape CostSheet.jsx's local state uses.
 
+// ─── SHARED COST SHEET DAY-WISE EXTRACTION LIBRARY (Phase 4 of the
+// Document Chain plan, docs/DATA_OWNERSHIP.md) ─────────────────────────
+// Written once, reused by every document that needs Cost Sheet's
+// day-wise data in some shape -- Quotation, Meal Plan, and Itinerary
+// Builder all pull from the same Cost Sheet days[], and previously each
+// would have reimplemented its own version of this parsing. A bug fixed
+// in one copy but not the others is exactly the failure mode this
+// avoids: fix it here once, every document gets the fix.
+
+// Parses a Cost Sheet mealPlan string ("B/L/D", "B/L-800/D-800") into
+// which meals are included -- the one true source of "does this day
+// include breakfast" that everything else builds on.
+export function parseMealPlanFlags(mealPlanStr) {
+  const mp = (mealPlanStr || "").toUpperCase();
+  return { breakfast: mp.includes("B"), lunch: mp.includes("L"), dinner: mp.includes("D") };
+}
+
+// Cost Sheet days[] -> {day, movement, breakfast, lunch, dinner} with
+// "Included"/"" string flags -- the shape Quotation and Meal Plan both
+// use (their own field is separately renamed at the call site where
+// Quotation needs "bf" instead of "breakfast", but the extraction logic
+// itself is identical).
+export function extractItineraryFromCostSheetDays(csDays) {
+  return (csDays || []).map(d => {
+    const flags = parseMealPlanFlags(d.mealPlan);
+    return {
+      day: d.day || "", movement: d.movement || "",
+      breakfast: flags.breakfast ? "Included" : "",
+      lunch: flags.lunch ? "Included" : "",
+      dinner: flags.dinner ? "Included" : "",
+    };
+  });
+}
+
+// Cost Sheet days[] -> [{place, nights, hotel}], consolidating
+// consecutive days at the same hotel into one row with a nights count,
+// rather than one row per day.
+export function extractHotelsFromCostSheetDays(csDays) {
+  const hotels = [];
+  (csDays || []).forEach(d => {
+    if (!d.hotel) return;
+    const last = hotels[hotels.length - 1];
+    if (last && last.hotel === d.hotel) {
+      last.nights = (parseInt(last.nights) || 0) + 1;
+    } else {
+      const place = (d.movement || "").split("-").pop().trim() || d.hotel;
+      hotels.push({ place, nights: 1, hotel: d.hotel });
+    }
+  });
+  return hotels;
+}
+
+// Cost Sheet days[] -> Itinerary Builder's per-day shape, one row per
+// day (not consolidated by hotel, since Itinerary Builder shows every
+// day individually) with meals as an array of included letters
+// (["B","L","D"]) rather than the Included/"" string flags the other
+// two extractors use -- Itinerary Builder's own day shape has always
+// used that format.
+export function extractItineraryBuilderDaysFromCostSheet(csDays) {
+  return (csDays || []).map((d, i) => {
+    const flags = parseMealPlanFlags(d.mealPlan);
+    return {
+      id: d.id || Date.now() + i,
+      dayLabel: d.day || `DAY-${i+1}`,
+      title: "", route: d.movement || "", distance: "", time: "",
+      meals: ["B","L","D"].filter(letter =>
+        (letter==="B"&&flags.breakfast) || (letter==="L"&&flags.lunch) || (letter==="D"&&flags.dinner)),
+      description: "", hotel: d.hotel || "",
+    };
+  });
+}
+
 // Computes a group slab's final price from a saved Cost Sheet snapshot
 // (the shape mapDbCostSheetRow returns). This is a deliberate, standalone
 // copy of CostSheet.jsx's own internal calcSlab -- not an import from it --
@@ -702,6 +774,7 @@ export function mapDbMealPlanRow(row) {
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     heading: row.heading || "", rows: row.rows || [],
+    pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
   };
 }
 
@@ -720,6 +793,7 @@ export async function saveMealPlanVersion(db, queryId, snap, createdBy) {
     const { data } = await db.from("meal_plans").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       heading: snap.heading || null, rows: snap.rows || [],
+      pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;
@@ -750,6 +824,7 @@ export function mapDbItineraryRow(row) {
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     tourTitle: row.tour_title || "", tagline: row.tagline || "", route: row.route || "",
     duration: row.duration || "", activeTab: row.active_tab || "brief", days: row.days || [],
+    pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
   };
 }
 
@@ -769,6 +844,7 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       tour_title: snap.tourTitle || null, tagline: snap.tagline || null, route: snap.route || null,
       duration: snap.duration || null, active_tab: snap.activeTab || "brief", days: snap.days || [],
+      pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;
