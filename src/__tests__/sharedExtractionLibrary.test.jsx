@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   parseMealPlanFlags, extractItineraryFromCostSheetDays,
   extractHotelsFromCostSheetDays, extractItineraryBuilderDaysFromCostSheet,
+  extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays,
+  extractTourBriefingTransportSummary, extractExchangeOrderDraftsFromCostSheet,
 } from '../lib/utils.js';
 
 describe('parseMealPlanFlags: the one true source every other extractor builds on', () => {
@@ -62,5 +64,63 @@ describe('extractItineraryBuilderDaysFromCostSheet: Itinerary Builder shape (mea
       { day: 'Day 2', movement: 'B', hotel: 'Same Hotel', mealPlan: '' },
     ]);
     expect(result).toHaveLength(2);
+  });
+});
+
+describe('extractTourBriefingHotelsFromCostSheetDays: consolidates by hotel with real checkIn/checkOut dates', () => {
+  it('computes checkIn from the first day and checkOut from the last day of a consecutive same-hotel stay', () => {
+    const result = extractTourBriefingHotelsFromCostSheetDays([
+      { date: '2026-08-01', movement: 'DEL-SXR', hotel: 'Hotel A' },
+      { date: '2026-08-02', movement: 'SXR-GULMARG-SXR', hotel: 'Hotel A' },
+      { date: '2026-08-03', movement: 'SXR-LEH', hotel: 'Hotel B' },
+    ]);
+    expect(result).toEqual([
+      { checkIn: '2026-08-01', checkOut: '2026-08-02', city: 'SXR', hotelName: 'Hotel A', rooms: '', bookingStatus: 'Requested' },
+      { checkIn: '2026-08-03', checkOut: '2026-08-03', city: 'LEH', hotelName: 'Hotel B', rooms: '', bookingStatus: 'Requested' },
+    ]);
+  });
+  it('skips days with no hotel set', () => {
+    expect(extractTourBriefingHotelsFromCostSheetDays([{ date:'', movement:'A', hotel:'' }])).toEqual([]);
+  });
+});
+
+describe('extractTourBriefingProgrammeFromCostSheetDays: day/date/movement plus meal Included flags', () => {
+  it('maps date, day, movement (as itinerary), and meal flags, leaving the narrative programme field blank', () => {
+    const result = extractTourBriefingProgrammeFromCostSheetDays([
+      { date: '2026-08-01', day: 'Day 1', movement: 'DEL-SXR', mealPlan: 'B/D' },
+    ]);
+    expect(result[0]).toMatchObject({ date: '2026-08-01', day: 'Day 1', itinerary: 'DEL-SXR', programme: '', breakfast: 'Included', lunch: '', dinner: 'Included' });
+  });
+});
+
+describe('extractTourBriefingTransportSummary: a free-text summary line, not a table', () => {
+  it('joins vehicle+sector pairs into one readable line', () => {
+    const result = extractTourBriefingTransportSummary([
+      { vehicleType: 'Mini Bus', sector: 'DELHI' },
+      { vehicleType: 'Large Coach', sector: 'SXR' },
+    ]);
+    expect(result).toBe('Mini Bus for DELHI; Large Coach for SXR');
+  });
+  it('returns an empty string for no transports', () => {
+    expect(extractTourBriefingTransportSummary([])).toBe('');
+    expect(extractTourBriefingTransportSummary(undefined)).toBe('');
+  });
+});
+
+describe('extractExchangeOrderDraftsFromCostSheet: partial drafts only -- route/vehicle/serviceType, never fabricated vendor contact info', () => {
+  it('creates one transport draft per transport row and one handler draft per local handler row', () => {
+    const result = extractExchangeOrderDraftsFromCostSheet(
+      [{ sector: 'DELHI', vehicleType: 'Large Coach' }],
+      [{ sector: 'KASHMIR' }],
+    );
+    expect(result).toEqual([
+      { serviceType: 'transport', route: 'DELHI', vehicleType: 'Large Coach' },
+      { serviceType: 'handler', route: 'KASHMIR', vehicleType: '' },
+    ]);
+  });
+  it('never includes vendor name, contact, or escort fields -- those have no Cost Sheet source', () => {
+    const result = extractExchangeOrderDraftsFromCostSheet([{ sector: 'X', vehicleType: 'Y' }], []);
+    expect(result[0]).not.toHaveProperty('drawnOn');
+    expect(result[0]).not.toHaveProperty('escort');
   });
 });

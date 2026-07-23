@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_EXCHANGE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadExchangeOrderVersions, saveExchangeOrderVersion, markExchangeOrderVersionFinal, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_EXCHANGE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadExchangeOrderVersions, saveExchangeOrderVersion, markExchangeOrderVersionFinal, loadFinalCostSheetVersion, extractExchangeOrderDraftsFromCostSheet, logAudit, db } = Lib;
 
 export default function ExchangeOrderGenerator({ query, template, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_EXCHANGE_TEMPLATE, ...(template||{}) };
@@ -18,21 +18,61 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
   const [finalVersion, setFinalVersion] = useState(null);
   const [viewingVersion, setViewingVersion] = useState(null);
 
+  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  const [pulledFromCostSheetVersion, setPulledFromCostSheetVersion] = useState(null);
+  const [pullMessage, setPullMessage] = useState("");
+  const [pulling, setPulling] = useState(false);
+
+  // Phase 5 of the Document Chain plan (docs/DATA_OWNERSHIP.md): pulls
+  // partial draft orders (route, vehicle, serviceType only) from the
+  // star-marked Cost Sheet's transports[]/localHandlers[], merged with
+  // this component's own emptyOrder() defaults (orderNo, date, pax,
+  // nationality, tourNo -- all already correctly sourced from query
+  // elsewhere). Vendor name, contact, escort, and dates are left blank
+  // for the user to fill in -- Cost Sheet genuinely has no source data
+  // for any of them.
+  const pullFromCostSheet = async (targetVersion) => {
+    setPulling(true);
+    setPullMessage("");
+    try {
+      const source = targetVersion || finalCostSheetVersion;
+      if (!source) { setPullMessage("No final Cost Sheet found for this tour yet."); setPulling(false); return; }
+      const drafts = extractExchangeOrderDraftsFromCostSheet(source.transports, source.localHandlers);
+      if (drafts.length > 0) {
+        const newOrders = drafts.map((d, i) => ({ ...emptyOrder(), id: Date.now() + i, orderNo: 41283 + orders.length + i + 1, ...d }));
+        setOrders(p => [...p, ...newOrders]);
+      }
+      setPulledFromCostSheetVersion(source.version);
+      setPullMessage(`Pulled ${drafts.length} draft order${drafts.length===1?"":"s"} from Cost Sheet v${source.version}.`);
+    } catch (e) {
+      setPullMessage("Failed to pull from Cost Sheet.");
+    }
+    setPulling(false);
+  };
+
   useEffect(() => {
     loadExchangeOrderVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) return;
+      if (loaded.length === 0) {
+        loadFinalCostSheetVersion(db, query.id).then(finalV => {
+          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
+        });
+        return;
+      }
       setVersions(loaded);
       setVersion(Math.max(...loaded.map(v => v.version)) + 1);
       const finalV = loaded.find(v => v.isFinal);
       if (finalV) setFinalVersion(finalV.version);
       const latest = loaded[loaded.length - 1];
       setOrders(latest.orders && latest.orders.length ? latest.orders : orders);
+      setPulledFromCostSheetVersion(latest.pulledFromCostSheetVersion ?? null);
       setViewingVersion(latest.version);
+      loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
   }, [query.id]);
+  const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
   const saveVersion = () => {
-    const snap = { version, orders: [...orders] };
+    const snap = { version, orders: [...orders], pulledFromCostSheetVersion };
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
     saveExchangeOrderVersion(db, query.id, snap, currentUser?.id);
     logAudit(db, query.id, currentUser?.name, `Exchange Orders v${version} saved (${orders.length} order${orders.length===1?"":"s"})`);
@@ -321,6 +361,22 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
           {orders.length > 0 && <button onClick={printAll} className="btn btn-success" style={{fontSize:11}}>🖨 Print All ({orders.length})</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
+        {isStaleVsCostSheet && !readOnly && (
+          <div style={{background:"#FEF9E7",borderBottom:"1px solid #F7DC6F",padding:"6px 18px",fontSize:11,color:"#7D6608",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{flex:1}}>
+              Cost Sheet v{finalCostSheetVersion.version} (final) has transport/handler data
+              {pulledFromCostSheetVersion ? ` newer than what this was last pulled from (v${pulledFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+            </span>
+            <button onClick={()=>pullFromCostSheet(finalCostSheetVersion)} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
+              {pulling ? "Pulling…" : "↻ Pull latest"}
+            </button>
+          </div>
+        )}
+        {pullMessage && (
+          <div style={{background:"#EFF6FF",borderBottom:"1px solid #BFDBFE",padding:"6px 18px",fontSize:11,color:"#1E40AF",flexShrink:0}}>
+            {pullMessage}
+          </div>
+        )}
 
         <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
 

@@ -646,11 +646,78 @@ export function extractItineraryBuilderDaysFromCostSheet(csDays) {
 
 // Computes a group slab's final price from a saved Cost Sheet snapshot
 // (the shape mapDbCostSheetRow returns). This is a deliberate, standalone
-// copy of CostSheet.jsx's own internal calcSlab -- not an import from it --
-// so that QuotationGenerator's "Pull from Cost Sheet" feature can compute
-// the same final price without adding a dependency on CostSheet.jsx's
-// internals, which stays self-contained and untouched by this. If the
-// pricing formula changes, both copies need updating together.
+// ─── PHASE 5 EXTRACTION FUNCTIONS (Tour Briefing Sheet + Exchange
+// Orders) -- a genuinely different shape from Phase 4's day-wise pulls,
+// since these two documents need vendor/logistics grouping, not just
+// per-day content. Deliberately does NOT attempt to auto-fill guides,
+// flights, trains, or vendor contacts (name/phone/facilitatorId) -- Cost
+// Sheet has no source data for any of that at all (it's vendor-master
+// and staff-assignment data, handled elsewhere), and fabricating
+// placeholder values for fields with nothing real behind them would
+// violate the "leave blank rather than fabricate" principle every other
+// pull in this app follows.
+
+// Cost Sheet days[] -> Tour Briefing Sheet's hotels[] shape, with real
+// checkIn/checkOut dates computed from consecutive same-hotel day spans
+// (requires days[].date to already be populated -- Phase 2's
+// dayDateFromTravelDate is what makes this possible at all).
+export function extractTourBriefingHotelsFromCostSheetDays(csDays) {
+  const stays = [];
+  (csDays || []).forEach(d => {
+    if (!d.hotel) return;
+    const last = stays[stays.length - 1];
+    if (last && last.hotelName === d.hotel) {
+      if (d.date) last.checkOut = d.date;
+    } else {
+      const city = (d.movement || "").split("-").pop().trim() || d.hotel;
+      stays.push({ checkIn: d.date || "", checkOut: d.date || "", city, hotelName: d.hotel, rooms: "", bookingStatus: "Requested" });
+    }
+  });
+  return stays;
+}
+
+// Cost Sheet days[] -> Tour Briefing Sheet's programme[] shape --
+// reuses the same meal-flag extraction as extractItineraryFromCostSheetDays,
+// adding date/day and movement as a starting "itinerary" line (the
+// narrative "programme" text field has no Cost Sheet equivalent and
+// stays blank for the user to write).
+export function extractTourBriefingProgrammeFromCostSheetDays(csDays) {
+  return (csDays || []).map((d, i) => {
+    const flags = parseMealPlanFlags(d.mealPlan);
+    return {
+      id: i + 1, date: d.date || "", day: d.day || "",
+      itinerary: d.movement || "", programme: "",
+      breakfast: flags.breakfast ? "Included" : "", lunch: flags.lunch ? "Included" : "", dinner: flags.dinner ? "Included" : "",
+    };
+  });
+}
+
+// Cost Sheet transports[] -> a free-text transport summary line, the
+// shape Tour Briefing Sheet's own transport field expects (a single
+// description, not a table) -- e.g. "Mini Bus for DELHI; Large Coach
+// for SXR". Only summarizes what's actually there; an empty
+// transports[] returns "".
+export function extractTourBriefingTransportSummary(transports) {
+  return (transports || [])
+    .filter(t => t.vehicleType || t.sector)
+    .map(t => `${t.vehicleType || "Vehicle"} for ${t.sector || "sector TBC"}`)
+    .join("; ");
+}
+
+// Cost Sheet transports[] + localHandlers[] -> partial Exchange Order
+// drafts (serviceType, route, vehicleType only) -- vendor name,
+// contact, escort, and dates are left for the user to fill in, since
+// Cost Sheet has no source data for any of them.
+export function extractExchangeOrderDraftsFromCostSheet(transports, localHandlers) {
+  const fromTransports = (transports || []).map(t => ({
+    serviceType: "transport", route: t.sector || "", vehicleType: t.vehicleType || "",
+  }));
+  const fromHandlers = (localHandlers || []).map(h => ({
+    serviceType: "handler", route: h.sector || "", vehicleType: "",
+  }));
+  return [...fromTransports, ...fromHandlers];
+}
+
 export function calcCostSheetSlabFinalPrice(snap, slab) {
   const n = v => parseFloat(v)||0;
   const days = snap.days || [], transports = snap.transports || [], monuments = snap.monuments || [];
@@ -877,6 +944,7 @@ export function mapDbExchangeOrderRow(row) {
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     orders: (row.content && row.content.orders) || [],
+    pulledFromCostSheetVersion: (row.content && row.content.pulledFromCostSheetVersion) ?? null,
   };
 }
 
@@ -894,7 +962,7 @@ export async function saveExchangeOrderVersion(db, queryId, snap, createdBy) {
   try {
     const { data } = await db.from("exchange_orders").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
-      content: { orders: snap.orders || [] },
+      content: { orders: snap.orders || [], pulledFromCostSheetVersion: snap.pulledFromCostSheetVersion ?? null },
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;

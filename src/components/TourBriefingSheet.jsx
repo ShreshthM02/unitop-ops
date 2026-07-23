@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -80,7 +80,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     docDate, recipient, agentCo, agentCity, subject, intro, footer, metaNotes,
     hotels, hotelNotes, flights, flightNotes, trains, trainNotes, transport, transportNotes,
     guides, guideNotes, otherSvcs, otherNotes, programme, progNotes, contacts, contactNotes,
-    printOrder, printEnabled,
+    printOrder, printEnabled, pulledFromCostSheetVersion,
   });
 
   const loadVersionIntoDraft = (v) => {
@@ -111,19 +111,60 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     if (c.contactNotes!==undefined) setContactNotes(c.contactNotes);
     if (c.printOrder) setPrintOrder(c.printOrder);
     if (c.printEnabled) setPrintEnabled(c.printEnabled);
+    if (c.pulledFromCostSheetVersion !== undefined) setPulledFromCostSheetVersion(c.pulledFromCostSheetVersion);
     setViewingVersion(v.version);
+  };
+
+  // Phase 5 of the Document Chain plan (docs/DATA_OWNERSHIP.md): pulls
+  // from the star-marked Cost Sheet directly, same reasoning as Meal
+  // Plan/Itinerary Builder -- Tour Briefing Sheet is opened
+  // independently from the toolbar. Uses the shared extraction library
+  // (extractTourBriefingHotelsFromCostSheetDays,
+  // extractTourBriefingProgrammeFromCostSheetDays,
+  // extractTourBriefingTransportSummary) -- guides/flights/trains/contacts
+  // are deliberately left untouched, since Cost Sheet has no source data
+  // for vendor names, contacts, or travel logistics at all.
+  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  const [pulledFromCostSheetVersion, setPulledFromCostSheetVersion] = useState(null);
+  const [pullMessage, setPullMessage] = useState("");
+  const [pulling, setPulling] = useState(false);
+  const pullFromCostSheet = async (targetVersion) => {
+    setPulling(true);
+    setPullMessage("");
+    try {
+      const source = targetVersion || finalCostSheetVersion;
+      if (!source) { setPullMessage("No final Cost Sheet found for this tour yet."); setPulling(false); return; }
+      const pulledHotels = extractTourBriefingHotelsFromCostSheetDays(source.days);
+      const pulledProgramme = extractTourBriefingProgrammeFromCostSheetDays(source.days);
+      const pulledTransport = extractTourBriefingTransportSummary(source.transports);
+      if (pulledHotels.length > 0) setHotels(pulledHotels);
+      if (pulledProgramme.length > 0) setProgramme(pulledProgramme);
+      if (pulledTransport) setTransport(pulledTransport);
+      setPulledFromCostSheetVersion(source.version);
+      setPullMessage(`Pulled from Cost Sheet v${source.version}.`);
+    } catch (e) {
+      setPullMessage("Failed to pull from Cost Sheet.");
+    }
+    setPulling(false);
   };
 
   useEffect(() => {
     loadTourBriefingVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) return;
+      if (loaded.length === 0) {
+        loadFinalCostSheetVersion(db, query.id).then(finalV => {
+          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
+        });
+        return;
+      }
       setVersions(loaded);
       setVersion(Math.max(...loaded.map(v => v.version)) + 1);
       const finalV = loaded.find(v => v.isFinal);
       if (finalV) setFinalVersion(finalV.version);
       loadVersionIntoDraft(loaded[loaded.length - 1]);
+      loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
   }, [query.id]);
+  const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
   const saveVersion = () => {
     const snap = { version, content: currentContent() };
@@ -204,6 +245,22 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           <button onClick={handlePrint} className="btn btn-primary" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
+        {isStaleVsCostSheet && !readOnly && (
+          <div style={{background:"#FEF9E7",borderBottom:"1px solid #F7DC6F",padding:"6px 18px",fontSize:11,color:"#7D6608",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{flex:1}}>
+              Cost Sheet v{finalCostSheetVersion.version} (final) has hotel/programme data
+              {pulledFromCostSheetVersion ? ` newer than what this was last pulled from (v${pulledFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+            </span>
+            <button onClick={()=>pullFromCostSheet(finalCostSheetVersion)} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
+              {pulling ? "Pulling…" : "↻ Pull latest"}
+            </button>
+          </div>
+        )}
+        {pullMessage && (
+          <div style={{background:"#EFF6FF",borderBottom:"1px solid #BFDBFE",padding:"6px 18px",fontSize:11,color:"#1E40AF",flexShrink:0}}>
+            {pullMessage}
+          </div>
+        )}
         <DocTabBar activeTab={viewMode} setActiveTab={setViewMode} G={G}/>
         <LetterheadToggleBar toggles={toggles} G={G}/>
         {viewMode === "content" ? (
