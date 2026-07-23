@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -61,16 +61,23 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // silently overwrites something mid-edit. Maps the linked Cost Sheet
   // version's addressee, itinerary, accommodation, and slab pricing into
   // the Quotation's own editable fields, which the user can then adjust
-  // freely -- this is a starting point, not a locked sync.
+  // freely -- this is a starting point, not a locked sync. Accepts an
+  // optional explicit target (a specific Cost Sheet version row) so the
+  // same function serves both the original pull (from the linked
+  // costSheetId) and a later re-pull from a newer star-marked version
+  // once one exists (Phase 3 of the Document Chain plan).
   const [pulling, setPulling] = useState(false);
   const [pullMessage, setPullMessage] = useState("");
-  const pullFromCostSheet = async () => {
-    if (!costSheetId) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
+  const pullFromCostSheet = async (targetMatch) => {
+    if (!targetMatch && !costSheetId) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
     setPulling(true);
     setPullMessage("");
     try {
-      const versions = await loadCostSheetVersions(db, query.id);
-      const match = versions.find(v => v.id === costSheetId);
+      let match = targetMatch;
+      if (!match) {
+        const versions = await loadCostSheetVersions(db, query.id);
+        match = versions.find(v => v.id === costSheetId);
+      }
       if (!match) { setPullMessage("Could not find the linked Cost Sheet version."); setPulling(false); return; }
 
       // Addressee: Cost Sheet's own Client / Foreign Agent field, if set
@@ -137,8 +144,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         slabs: slabs.length ? slabs : p.slabs,
         monuments: monuments.length ? monuments : p.monuments,
         currency: match.currency || p.currency,
+        pulledFromCostSheetVersion: match.version,
       }));
       setPullMessage(`Pulled from Cost Sheet v${match.version}.`);
+      return match;
     } catch (e) {
       setPullMessage("Failed to pull from Cost Sheet.");
     }
@@ -150,7 +159,16 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // template defaults every time the Quotation is reopened.
   useEffect(() => {
     loadQuotationVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) return;
+      if (loaded.length === 0) {
+        // Phase 3 of the Document Chain plan (docs/DATA_OWNERSHIP.md):
+        // auto-fire the pull once, only for a genuinely new Quotation
+        // (zero saved versions) that's linked to a Cost Sheet -- safe by
+        // construction, since there's nothing yet to overwrite. Once any
+        // version exists, this never fires again; only the explicit
+        // button (or the staleness banner's re-pull) does.
+        if (costSheetId) pullFromCostSheet();
+        return;
+      }
       setVersions(loaded);
       setVersion(Math.max(...loaded.map(v => v.version)) + 1);
       const finalV = loaded.find(v => v.isFinal);
@@ -158,6 +176,23 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       loadVersionIntoDraft(loaded[loaded.length - 1]);
     });
   }, [query.id]);
+
+  // Mutual staleness check against the star-marked Cost Sheet (Phase 3 of
+  // the Document Chain plan, docs/DATA_OWNERSHIP.md) -- same principle as
+  // Tour Info's check against Cost Sheet: never automatic, never silent,
+  // just a visible banner + an explicit one-click re-pull. Only checks
+  // against a Cost Sheet version that's been deliberately marked final --
+  // an in-progress pricing draft is never a reason to flag this
+  // Quotation as "out of sync," since the salesperson may be
+  // deliberately working from an earlier, already-agreed number.
+  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  useEffect(() => {
+    if (!costSheetId) return;
+    loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
+  }, [query.id, costSheetId]);
+  const isStaleVsCostSheet = costSheetId && finalCostSheetVersion &&
+    q.pulledFromCostSheetVersion !== finalCostSheetVersion.version;
+  const pullLatestFinal = () => { if (finalCostSheetVersion) pullFromCostSheet(finalCostSheetVersion); };
 
   const saveVersion = () => {
     const snap = { ...q, version, note: versionNote };
@@ -357,7 +392,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
           )}
           {costSheetId && !readOnly && (
-            <button onClick={pullFromCostSheet} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
+            <button onClick={()=>pullFromCostSheet()} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
               title="Pull addressee, itinerary, accommodation, and pricing from the linked Cost Sheet">
               {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
             </button>
@@ -368,6 +403,18 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <button onClick={onClose} className="btn btn-ghost"
             style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
         </div>
+
+        {isStaleVsCostSheet && !readOnly && (
+          <div style={{background:"#FEF9E7",borderBottom:"1px solid #F7DC6F",padding:"6px 18px",fontSize:11,color:"#7D6608",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{flex:1}}>
+              Cost Sheet v{finalCostSheetVersion.version} (final) has pricing
+              {q.pulledFromCostSheetVersion ? ` newer than what this Quotation was last pulled from (v${q.pulledFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+            </span>
+            <button onClick={pullLatestFinal} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
+              {pulling ? "Pulling…" : "↻ Pull latest"}
+            </button>
+          </div>
+        )}
 
         {pullMessage && (
           <div style={{background:"#EFF6FF",borderBottom:"1px solid #BFDBFE",padding:"6px 18px",fontSize:11,color:"#1E40AF",flexShrink:0}}>

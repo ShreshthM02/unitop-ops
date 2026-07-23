@@ -1011,6 +1011,12 @@ export function mapDbQuotationRow(row) {
     includes: row.includes || [], excludes: row.excludes || [],
     greeting: row.greeting || "", openingLine: row.opening_line || "", closingLine: row.closing_line || "",
     signoff: row.signoff || "", monumentNote: row.monument_note || "", costSheetId: row.cost_sheet_id || null,
+    // Tracks which Cost Sheet version this Quotation was last pulled
+    // from -- the anchor for the mutual staleness check against a newer
+    // star-marked Cost Sheet (Document Chain plan, docs/DATA_OWNERSHIP.md
+    // Phase 3), same pattern as tour_execution's
+    // synced_from_cost_sheet_version.
+    pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
   };
 }
 
@@ -1047,6 +1053,7 @@ export async function saveQuotationVersion(db, queryId, snap, createdBy) {
       includes: snap.includes || [], excludes: snap.excludes || [],
       greeting: snap.greeting, opening_line: snap.openingLine, closing_line: snap.closingLine,
       signoff: snap.signoff, monument_note: snap.monumentNote,
+      pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     return data && data[0] ? data[0].id : null;

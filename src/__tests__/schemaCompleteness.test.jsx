@@ -166,12 +166,12 @@ describe('Schema completeness: tax_invoices (saveTaxInvoiceVersion) -- NEW table
   });
 });
 
-describe('Schema completeness: quotations (saveQuotationVersion)', () => {
+describe('Schema completeness: quotations (saveQuotationVersion) -- pulled_from_cost_sheet_version is a NEW column, requires migration', () => {
   const EXPECTED_COLUMNS = [
     'query_id','cost_sheet_id','version','is_final','attn_name','attn_company','attn_city','date','currency',
     'roe','ref_line','period','pax_line','itinerary','hotels','slabs','monuments','show_monuments','includes',
     'excludes','closing_line','signoff','created_by','greeting','opening_line','monument_note','note',
-    'confirmed_pax','tour_value','final_price_entries',
+    'confirmed_pax','tour_value','final_price_entries','pulled_from_cost_sheet_version',
   ];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
