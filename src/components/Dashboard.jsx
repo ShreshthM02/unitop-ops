@@ -80,7 +80,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div>
-                <div style={{ fontSize: 11, color: G.gray400 }}>{q.id} · {q.destination||q.sector}</div>
+                <div style={{ fontSize: 11, color: G.gray400 }}>{q.tourFileId||q.id} · {q.destination||q.sector}</div>
               </div>
               <StatusBadge status={q.status} />
             </div>

@@ -146,7 +146,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                     <tr key={tour.query.id} style={{background:ti%2===0?G.white:G.gray50}}>
                       <td onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{padding:"6px 12px",borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle",position:"sticky",left:0,background:ti%2===0?G.white:G.gray50,zIndex:1,cursor:onOpenQuery?"pointer":"default"}}>
                         <div style={{fontSize:12,fontWeight:500}}>{tour.query.groupName||tour.query.clientName}</div>
-                        <div style={{fontSize:10,color:G.gray400}}>{tour.query.id} · {tour.query.destination||tour.query.sector||""}</div>
+                        <div style={{fontSize:10,color:G.gray400}}>{tour.query.tourFileId||tour.query.id} · {tour.query.destination||tour.query.sector||""}</div>
                       </td>
                       {monthDays.map(d=>{
                         const bar = barForDay(tour, d);

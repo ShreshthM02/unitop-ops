@@ -585,7 +585,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   <div key={q.id} onClick={()=>setActiveQuery(q)} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85,cursor:"pointer"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                       <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>CANCELLED</span>
-                      <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}</span><FileTypeBadge fileType={q.fileType}/><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.id} · {q.destination||q.sector}</span></div>
+                      <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}</span><FileTypeBadge fileType={q.fileType}/><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.tourFileId||q.id} · {q.destination||q.sector}</span></div>
                     </div>
                     {q.cancellationReason&&<div style={{fontSize:12,color:"#991B1B",background:"#FFF5F5",borderRadius:6,padding:"6px 10px",marginBottom:6}}>Reason: {q.cancellationReason}</div>}
                     <div style={{fontSize:11,color:G.gray400}}>{q.audit[q.audit.length-1]?.at} · by {q.audit[q.audit.length-1]?.by}</div>
@@ -611,7 +611,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{flex:1}}>
                         {q.tourFileId&&<div style={{fontSize:11,fontWeight:700,color:G.navy,marginBottom:1}}>{q.tourFileId}</div>}
                         <div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div>
-                        <div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector} · {q.travelDate||q.travelMonth||""}</div>
+                        <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector} · {q.travelDate||q.travelMonth||""}</div>
                       </div>
                       <StatusBadge status={q.status}/>
                     </div>
@@ -677,7 +677,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               <div>
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector}</div></div>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
                     <StatusBadge status={q.status}/>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowProforma(q)}>🧾 Proforma</button>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowTaxInv(q)}>🧾 Tax Inv.</button>
@@ -696,7 +696,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   return (
                     <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.id}</div></div>
+                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
                         <StatusBadge status={q.status}/>
                         <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowPayments(q)}>₹ Open Tracker</button>
                       </div>
@@ -794,7 +794,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}</div>
-                      <div style={{fontSize:11,color:G.gray400}}>{q.id} · {q.destination||q.sector||""} · {q.travelDate||q.travelMonth||""}</div>
+                      <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector||""} · {q.travelDate||q.travelMonth||""}</div>
                       {q.tourFileId&&<div style={{fontSize:10,color:G.navy,fontWeight:600,marginTop:2}}>📁 {q.tourFileId}</div>}
                     </div>
                     <StatusBadge status={q.status}/>

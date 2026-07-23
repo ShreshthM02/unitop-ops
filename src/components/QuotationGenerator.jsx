@@ -36,7 +36,16 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     greeting:  template.greeting,
     openingLine: template.openingLine,
     closingLine: template.closingLine,
-    signoff:   template.signoff,
+    // #2 of the general backlog: signoff defaults to the actual person
+    // handling this client (query.internalCorrespondent, set once at
+    // query creation) rather than a generic department-level signature,
+    // when that's been set -- falls back to the template's own default
+    // otherwise. Still a free-text field, fully editable per-document
+    // afterward, same as every other pre-filled-then-independent field
+    // in this app.
+    signoff: query.internalCorrespondent
+      ? `Thanks & Regards\n\n${query.internalCorrespondent}\nTour Deptt.\nUnitop Tours & Travel Pvt. Ltd.`
+      : template.signoff,
     monumentNote: template.monumentNote,
     costSheetId: costSheetId || null,
     confirmedPax: "", tourValue: "",

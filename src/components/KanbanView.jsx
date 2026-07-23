@@ -80,7 +80,7 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     }}>
                     {/* Query ID + source */}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                      <span style={{fontSize:10,fontWeight:700,color:stage.color,fontFamily:"monospace"}}>{q.id}</span>
+                      <span style={{fontSize:10,fontWeight:700,color:stage.color,fontFamily:"monospace"}}>{q.tourFileId||q.id}</span>
                       {q.source && <span style={{fontSize:9,padding:"1px 6px",borderRadius:8,
                         background:SOURCE_COLORS[q.source]||"#888",color:"#fff",fontWeight:600}}>
                         {q.source}
