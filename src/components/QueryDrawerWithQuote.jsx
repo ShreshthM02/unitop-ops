@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
@@ -38,6 +38,29 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
   const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", notes: "" }] }));
   const rmDay = (i) => setTe(p => ({ ...p, days: p.days.filter((_, xi) => xi !== i) }));
+
+  // Mutual staleness check against the star-marked Cost Sheet (Document
+  // Chain plan, docs/DATA_OWNERSHIP.md). Never automatic, never silent --
+  // just a visible banner + an explicit one-click sync, since Tour Info
+  // is meant to be freely, independently amended once operations begins.
+  // Only checks against a Cost Sheet version that's been deliberately
+  // marked final -- an in-progress pricing draft is never a reason to
+  // flag Tour Info as "out of sync."
+  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  useEffect(() => {
+    if (!isCaseFile) return;
+    loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
+  }, [query.id, isCaseFile]);
+  const isStaleVsCostSheet = isCaseFile && finalCostSheetVersion &&
+    te.syncedFromCostSheetVersion !== finalCostSheetVersion.version;
+  const syncFromCostSheet = () => {
+    if (!finalCostSheetVersion) return;
+    const teDays = mapCostSheetDaysToTourExecutionDays(finalCostSheetVersion.days);
+    setTe(p => ({ ...p, days: teDays, syncedFromCostSheetVersion: finalCostSheetVersion.version }));
+    onUpdateTourExecution && onUpdateTourExecution(query.id,
+      { ...te, days: teDays, syncedFromCostSheetVersion: finalCostSheetVersion.version },
+      `Day-wise Itinerary/Hotels synced from Cost Sheet v${finalCostSheetVersion.version} (final)`);
+  };
   const updList = (listKey, i, f, v) => setTe(p => ({ ...p, [listKey]: p[listKey].map((x, xi) => xi === i ? { ...x, [f]: v } : x) }));
   const addToList = (listKey, blank) => setTe(p => ({ ...p, [listKey]: [...p[listKey], { id: Date.now(), ...blank }] }));
   const rmFromList = (listKey, i) => setTe(p => ({ ...p, [listKey]: p[listKey].filter((_, xi) => xi !== i) }));
@@ -343,9 +366,23 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {isCaseFile && infoSubTab==="itinerary" && (
                 <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Day-wise Itinerary")}
-                  <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
-                    This is the confirmed operational record for this tour. Cost Sheet's own day fields are a separate pricing draft and may not automatically match this — check both if something looks off.
-                  </div>
+                  {isStaleVsCostSheet ? (
+                    <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#7D6608",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{flex:1}}>
+                        Cost Sheet v{finalCostSheetVersion.version} (final) has route/hotel data
+                        {te.syncedFromCostSheetVersion ? ` newer than what this was last synced from (v${te.syncedFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+                      </span>
+                      {!query.cancelled && <button className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}} onClick={syncFromCostSheet}>↻ Sync from Cost Sheet</button>}
+                    </div>
+                  ) : finalCostSheetVersion ? (
+                    <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#196F3D",marginBottom:10}}>
+                      ✓ In sync with Cost Sheet v{finalCostSheetVersion.version} (final)
+                    </div>
+                  ) : (
+                    <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
+                      This is the confirmed operational record for this tour. No Cost Sheet has been marked final yet to sync against.
+                    </div>
+                  )}
                   {te.days.map((d,i)=>(
                     <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
                       <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
@@ -362,9 +399,23 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {isCaseFile && infoSubTab==="hotels" && (
                 <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Day-wise Hotels")}
-                  <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
-                    Same operational record as the Itinerary tab. Cost Sheet's own hotel fields are a separate pricing draft and may not automatically match this.
-                  </div>
+                  {isStaleVsCostSheet ? (
+                    <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#7D6608",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{flex:1}}>
+                        Cost Sheet v{finalCostSheetVersion.version} (final) has route/hotel data
+                        {te.syncedFromCostSheetVersion ? ` newer than what this was last synced from (v${te.syncedFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+                      </span>
+                      {!query.cancelled && <button className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}} onClick={syncFromCostSheet}>↻ Sync from Cost Sheet</button>}
+                    </div>
+                  ) : finalCostSheetVersion ? (
+                    <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#196F3D",marginBottom:10}}>
+                      ✓ In sync with Cost Sheet v{finalCostSheetVersion.version} (final)
+                    </div>
+                  ) : (
+                    <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
+                      Same operational record as the Itinerary tab. No Cost Sheet has been marked final yet to sync against.
+                    </div>
+                  )}
                   {te.days.length===0 ? (
                     <div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>No days yet — add them from the Day-wise Itinerary tab first.</div>
                   ) : te.days.map((d,i)=>(

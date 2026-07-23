@@ -181,9 +181,9 @@ describe('Schema completeness: quotations (saveQuotationVersion)', () => {
   });
 });
 
-describe('Schema completeness: tour_execution (saveTourExecutionToDB)', () => {
+describe('Schema completeness: tour_execution (saveTourExecutionToDB) -- synced_from_cost_sheet_version is a NEW column, requires migration', () => {
   const EXPECTED_COLUMNS = [
-    'query_id','days','facilitators','local_handlers','transporters','flights','arr_flight_details','dep_flight_details',
+    'query_id','days','facilitators','local_handlers','transporters','flights','arr_flight_details','dep_flight_details','synced_from_cost_sheet_version',
   ];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();

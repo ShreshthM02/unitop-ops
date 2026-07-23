@@ -29,12 +29,35 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const [miscCost, setMiscCost] = useState("");
 
   // 10.2 Day rows
-  const [days, setDays] = useState([
-    { id:1, day:"Day 1", date:"", movement:"", mealPlan:"D",    mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-    { id:2, day:"Day 2", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-    { id:3, day:"Day 3", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
-    { id:4, day:"Day 4", date:"", movement:"", mealPlan:"B/L",  mealCost:"", hotel:"Departure",    hotelPlan:"",   hotelNetPP:"", singleSupp:"", notes:"" },
-  ]);
+  // Phase 2 of the Document Chain plan (docs/DATA_OWNERSHIP.md): a
+  // brand-new Cost Sheet's day count matches the query's own nights
+  // figure, rather than a fixed 4-row placeholder unrelated to the tour.
+  // Matches this app's own observed convention directly (nights count =
+  // day-row count, confirmed against a real 10-night tour that had
+  // exactly 10 day rows, not 11) -- not the generic travel-industry
+  // "nights+1 days" rule, which doesn't match how this app already
+  // labels things elsewhere. Falls back to the old 4-row default when
+  // nights isn't set yet. tour_execution's own pre-fill (Phase 1, in the
+  // useEffect below) still takes priority once it loads, for whichever
+  // fields it actually has data for.
+  const buildDefaultDays = () => {
+    const n = parseInt(query.nights) || 0;
+    if (n <= 0) {
+      return [
+        { id:1, day:"Day 1", date:"", movement:"", mealPlan:"D",    mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:2, day:"Day 2", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:3, day:"Day 3", date:"", movement:"", mealPlan:"B/L/D",mealCost:"", hotel:"", hotelAlt:"", hotelPlan:"CP", hotelNetPP:"", singleSupp:"", notes:"" },
+        { id:4, day:"Day 4", date:"", movement:"", mealPlan:"B/L",  mealCost:"", hotel:"Departure",    hotelPlan:"",   hotelNetPP:"", singleSupp:"", notes:"" },
+      ];
+    }
+    return Array.from({ length: n }, (_, i) => ({
+      id: i+1, day: `Day ${i+1}`, date: "", movement: "",
+      mealPlan: i===0 ? "D" : (i===n-1 ? "B/L" : "B/L/D"), mealCost: "",
+      hotel: i===n-1 ? "Departure" : "", hotelAlt: "", hotelPlan: i===n-1 ? "" : "CP",
+      hotelNetPP: "", singleSupp: "", notes: "",
+    }));
+  };
+  const [days, setDays] = useState(buildDefaultDays());
 
   // 10.3 Transport rows
   const [transports, setTransports] = useState([
@@ -54,13 +77,30 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const removeLocalHandler = i => setLocalHandlers(p=>p.filter((_,idx)=>idx!==i));
 
   // 10.4 Slabs
-  const [slabs, setSlabs] = useState([
-    { id:1, label:"15-19 pax + 1 FOC", foc:15, vehicle:"Mini Bus" },
-    { id:2, label:"20-24 pax + 1 FOC", foc:20, vehicle:"Large Coach" },
-    { id:3, label:"25-29 pax + 1 FOC", foc:25, vehicle:"Large Coach" },
-    { id:4, label:"30-34 pax + 2 FOC", foc:30, vehicle:"Large Coach" },
-    { id:5, label:"35-39 pax + 2 FOC", foc:35, vehicle:"Large Coach" },
-  ]);
+  // Phase 2 of the Document Chain plan (docs/DATA_OWNERSHIP.md): if the
+  // query has a confirmed, single pax number (not a TBC range like
+  // "15–20"), start with one slab centered on that real number instead
+  // of five generic pax-range guesses unrelated to this tour. If pax is
+  // still a range or unset, the old multi-range defaults stay -- a
+  // single guessed number would likely be wrong while the group size is
+  // still unconfirmed, and having several options to pick from is more
+  // useful than one possibly-wrong one.
+  const buildDefaultSlabs = () => {
+    const paxStr = String(query.pax ?? "");
+    const paxNum = Number(query.pax);
+    const isConfirmedNumber = !isNaN(paxNum) && paxNum > 0 && !/[–\-]/.test(paxStr);
+    if (isConfirmedNumber) {
+      return [{ id:1, label: `${paxNum} pax + 1 FOC`, foc: paxNum, vehicle: paxNum < 20 ? "Mini Bus" : "Large Coach" }];
+    }
+    return [
+      { id:1, label:"15-19 pax + 1 FOC", foc:15, vehicle:"Mini Bus" },
+      { id:2, label:"20-24 pax + 1 FOC", foc:20, vehicle:"Large Coach" },
+      { id:3, label:"25-29 pax + 1 FOC", foc:25, vehicle:"Large Coach" },
+      { id:4, label:"30-34 pax + 2 FOC", foc:30, vehicle:"Large Coach" },
+      { id:5, label:"35-39 pax + 2 FOC", foc:35, vehicle:"Large Coach" },
+    ];
+  };
+  const [slabs, setSlabs] = useState(buildDefaultSlabs());
 
   // Tour Leader Slab — optional, MULTIPLE allowed (e.g. a 10-pax T/L slab
   // and a 12-pax T/L slab side by side). Each one appears as a real row

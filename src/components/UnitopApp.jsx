@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadAppSetting, saveAppSetting, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -305,6 +305,40 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     setActiveQuery(q=>q?{...q,tourFileId:tourNum}:null);
     saveQueryToDB(updQ, auditMsg);
     showToast(`Tour File opened — ${tourNum}`);
+
+    // Document Chain plan (docs/DATA_OWNERSHIP.md): one-time reverse
+    // pre-fill at conversion. Tour Info's Day-wise tabs have never been
+    // editable before this moment (gated behind tourFileId), so
+    // tour_execution almost always has no days yet -- while Cost Sheet,
+    // typically opened earlier during "costing", usually already has
+    // real, priced day-wise data. Safe by construction: only fires when
+    // tour_execution genuinely has no days of its own yet, so it can
+    // never overwrite anything ops may have already entered. Async and
+    // non-blocking -- doesn't hold up the conversion itself.
+    const existingTE = tourExecutions[query.id];
+    if (!existingTE || !existingTE.days || existingTE.days.length === 0) {
+      (async () => {
+        const finalVersion = await loadFinalCostSheetVersion(db, query.id);
+        let source = finalVersion;
+        if (!source) {
+          const allVersions = await loadCostSheetVersions(db, query.id);
+          source = allVersions.length ? allVersions[allVersions.length - 1] : null;
+        }
+        if (!source) return;
+        const teDays = mapCostSheetDaysToTourExecutionDays(source.days);
+        if (teDays.length === 0) return;
+        const teData = {
+          queryId: query.id, days: teDays,
+          facilitators: existingTE?.facilitators||[], localHandlers: existingTE?.localHandlers||[],
+          transporters: existingTE?.transporters||[], flights: existingTE?.flights||[],
+          arrFlightDetails: existingTE?.arrFlightDetails||"", depFlightDetails: existingTE?.depFlightDetails||"",
+          syncedFromCostSheetVersion: source.version,
+        };
+        setTourExecutions(p => ({ ...p, [query.id]: teData }));
+        saveTourExecutionToDB(db, teData);
+        logAudit(db, query.id, currentUser.name, `Tour Info Day-wise Itinerary/Hotels pre-filled from Cost Sheet v${source.version} at conversion`);
+      })();
+    }
   };
 
   const handleAdvance = (query, newStatus) => {

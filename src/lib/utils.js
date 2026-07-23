@@ -332,6 +332,12 @@ export function mapDbTourExecutionRow(row) {
     flights: row.flights || [],
     arrFlightDetails: row.arr_flight_details || "",
     depFlightDetails: row.dep_flight_details || "",
+    // Tracks which Cost Sheet version's day-wise data tour_execution was
+    // last populated/synced from -- the anchor for the mutual staleness
+    // check between Tour Info and the star-marked Cost Sheet (Document
+    // Chain plan, docs/DATA_OWNERSHIP.md). Never used to auto-overwrite
+    // anything; only to decide whether to show a "sync available" banner.
+    syncedFromCostSheetVersion: row.synced_from_cost_sheet_version ?? null,
   };
 }
 
@@ -378,9 +384,38 @@ export async function saveTourExecutionToDB(db, data) {
       flights: data.flights || [],
       arr_flight_details: data.arrFlightDetails || null,
       dep_flight_details: data.depFlightDetails || null,
+      synced_from_cost_sheet_version: data.syncedFromCostSheetVersion ?? null,
     });
   } catch (e) { console.warn("Save tour execution to DB failed:", e); }
 }
+
+// Reverse of Phase 1's Cost Sheet pre-fill (movement/hotel FROM
+// tour_execution) -- this direction maps Cost Sheet's day-wise data INTO
+// tour_execution's shape, used at tour-file conversion (Document Chain
+// plan, docs/DATA_OWNERSHIP.md) and by the manual Tour Info sync button.
+// Pure function, no DB access, easy to test in isolation.
+export function mapCostSheetDaysToTourExecutionDays(csDays) {
+  return (csDays || []).map(d => ({
+    id: d.id || Date.now() + Math.random(),
+    dayLabel: d.day || "",
+    date: d.date || "",
+    route: d.movement || "",
+    hotelName: d.hotel || "",
+    rooms: "",
+    notes: d.notes || "",
+  }));
+}
+
+// Finds the star-marked (is_final) Cost Sheet version for a query, or
+// null if none has been marked final yet. The anchor for the mutual
+// staleness check -- Tour Info is only flagged as "out of sync" relative
+// to a deliberately finalized Cost Sheet, never against an in-progress
+// draft version.
+export async function loadFinalCostSheetVersion(db, queryId) {
+  const versions = await loadCostSheetVersions(db, queryId);
+  return versions.find(v => v.isFinal) || null;
+}
+
 
 // Persists an agent record to Supabase. Unlike Vendors (text ids, chosen
 // client-side), agents.id is a real database-generated uuid

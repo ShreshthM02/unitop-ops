@@ -68,6 +68,7 @@ describe('saveTourExecutionToDB', () => {
       days: data.days, facilitators: data.facilitators, local_handlers: data.localHandlers,
       transporters: data.transporters, flights: data.flights,
       arr_flight_details: 'AI-101 10:00', dep_flight_details: 'AI-102 18:00',
+      synced_from_cost_sheet_version: null,
     });
     // Confirm the flight leg actually carries both timing fields through untouched
     const savedFlight = upsert.mock.calls[0][0].flights[0];
