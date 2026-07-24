@@ -183,31 +183,68 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     </div>
   );
 
-  const sectionHTML=(id)=>{
-    if(!printEnabled[id]) return "";
+  // Returns an array of blocks for this section (plain HTML strings and/or
+  // splittable {type:'table'} blocks), not one opaque combined string --
+  // this is what lets a long section (Programme especially, which can run
+  // the full length of a tour) split across pages with its column header
+  // repeating, instead of being one atomic block that either fits or
+  // overflows. Sections with no table (meta, transport, guides) stay as a
+  // single string block; empty sections (no data yet) return [].
+  const sectionBlocks=(id)=>{
+    if(!printEnabled[id]) return [];
     switch(id){
-      case "meta": return `<div style="display:flex;justify-content:space-between;margin-bottom:10pt"><div><b>Kind Attn:</b> ${recipient}${agentCo?"<br/>"+agentCo:""}${agentCity?"<br/>"+agentCity:""}</div><div><b>Date:</b> ${docDate}</div></div><div style="font-weight:bold;text-decoration:underline;margin-bottom:8pt">${subject}</div>${intro?`<div style="text-decoration:underline;margin-bottom:10pt">${intro}</div>`:""}${metaNotes?`<div style="font-style:italic;color:#555">${metaNotes}</div>`:""}`;
-      case "hotels": return hotels.some(h=>h.hotelName)?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Hotel Status:</div><table class="content-table"><thead><tr><th>Check In</th><th>Check Out</th><th>City</th><th>Hotel Name</th><th>Rooms</th><th>Status</th></tr></thead><tbody>${hotels.filter(h=>h.hotelName||h.city).map(h=>`<tr><td>${h.checkIn||""}</td><td>${h.checkOut||""}</td><td>${h.city||""}</td><td>${h.hotelName||""}</td><td>${h.rooms||""}</td><td>${h.bookingStatus||"Requested"}</td></tr>`).join("")}</tbody></table>${hotelNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${hotelNotes}</div>`:""}`:""
-      case "flights": return flights.some(f=>f.sector)?`<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Flight Sector Details:</div><table class="content-table"><thead><tr><th>Date</th><th>Sector</th><th>Flight No.</th><th>Time</th></tr></thead><tbody>${flights.filter(f=>f.sector).map(f=>`<tr><td>${f.date}</td><td>${f.sector}</td><td>${f.flightNo}</td><td>${f.time}</td></tr>`).join("")}</tbody></table>${flightNotes?`<div style="font-style:italic;color:#555">${flightNotes}</div>`:""}`:""
-      case "trains": return trains.some(t=>t.sector)?`<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Train Details:</div><table class="content-table"><thead><tr><th>Date</th><th>Sector</th><th>Train No.</th><th>Name</th><th>Time</th><th>Coach</th></tr></thead><tbody>${trains.filter(t=>t.sector).map(t=>`<tr><td>${t.date}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td><td>${t.coach}</td></tr>`).join("")}</tbody></table>${trainNotes?`<div style="font-style:italic;color:#555">${trainNotes}</div>`:""}`:""
-      case "transport": return transport?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 4pt">Transport:</div><p style="margin-bottom:10pt">${transport}</p>${transportNotes?`<div style="font-style:italic;color:#555">${transportNotes}</div>`:""}`:""
-      case "guides": return guides.some(g=>g.name)?`<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Tour Facilitator Details:</div><div>${guides.filter(g=>g.name).map(g=>`<p style="margin-bottom:3pt">${g.name}${g.phone?" ("+g.phone+")":""}${g.area?" for "+g.area:""}</p>`).join("")}</div>${guideNotes?`<div style="font-style:italic;color:#555">${guideNotes}</div>`:""}`:""
-      case "others": return otherSvcs.some(s=>s.description)?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Other Services:</div><table class="content-table"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Status</th></tr></thead><tbody>${otherSvcs.filter(s=>s.description).map(s=>`<tr><td>${s.date||""}</td><td>${s.serviceType}</td><td>${s.description}</td><td>${s.status}</td></tr>`).join("")}</tbody></table>${otherNotes?`<div style="font-style:italic;color:#555">${otherNotes}</div>`:""}`:""
-      case "programme": return programme.some(p=>p.itinerary||p.programme)?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Programme:</div><table class="content-table"><thead><tr><th>DATE & DAY</th><th>PROGRAMME</th><th>BREAKFAST</th><th>LUNCH</th><th>DINNER</th></tr></thead><tbody>${programme.map(p=>`<tr><td><b>${p.date||""}</b>${p.day?"<br/>("+p.day+")":""}</td><td><b style="color:#1A3A52">${p.itinerary||""}</b>${p.programme?"<br/><div style='white-space:pre-line'>"+p.programme+"</div>":""}</td><td>${p.breakfast||"X"}</td><td>${p.lunch||"X"}</td><td>${p.dinner||"X"}</td></tr>`).join("")}</tbody></table>${progNotes?`<div style="font-style:italic;color:#555">${progNotes}</div>`:""}`:""
-      case "contacts": return contacts.some(c=>c.contactNo||c.city)?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Contact List:</div><table class="content-table"><thead><tr><th>Date</th><th>City</th><th>Type</th><th>Contact No.</th><th>Address</th></tr></thead><tbody>${contacts.filter(c=>c.contactNo||c.city).map(c=>`<tr><td>${c.date||""}</td><td>${c.city||""}</td><td>${c.vendorType==="Other"?c.vendorTypeOther||"Other":c.vendorType}</td><td>${c.contactNo||""}</td><td>${c.address||""}</td></tr>`).join("")}</tbody></table>${contactNotes?`<div style="font-style:italic;color:#555">${contactNotes}</div>`:""}`:""
-      default: return "";
+      case "meta": return [`<div style="display:flex;justify-content:space-between;margin-bottom:10pt"><div><b>Kind Attn:</b> ${recipient}${agentCo?"<br/>"+agentCo:""}${agentCity?"<br/>"+agentCity:""}</div><div><b>Date:</b> ${docDate}</div></div><div style="font-weight:bold;text-decoration:underline;margin-bottom:8pt">${subject}</div>${intro?`<div style="text-decoration:underline;margin-bottom:10pt">${intro}</div>`:""}${metaNotes?`<div style="font-style:italic;color:#555">${metaNotes}</div>`:""}`];
+      case "hotels": return hotels.some(h=>h.hotelName) ? [
+        `<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Hotel Status:</div>`,
+        { type:"table", headerHTML:`<tr><th>Check In</th><th>Check Out</th><th>City</th><th>Hotel Name</th><th>Rooms</th><th>Status</th></tr>`,
+          rowsHTML: hotels.filter(h=>h.hotelName||h.city).map(h=>`<tr><td>${h.checkIn||""}</td><td>${h.checkOut||""}</td><td>${h.city||""}</td><td>${h.hotelName||""}</td><td>${h.rooms||""}</td><td>${h.bookingStatus||"Requested"}</td></tr>`) },
+        hotelNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${hotelNotes}</div>`:"",
+      ] : [];
+      case "flights": return flights.some(f=>f.sector) ? [
+        `<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Flight Sector Details:</div>`,
+        { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Flight No.</th><th>Time</th></tr>`,
+          rowsHTML: flights.filter(f=>f.sector).map(f=>`<tr><td>${f.date}</td><td>${f.sector}</td><td>${f.flightNo}</td><td>${f.time}</td></tr>`) },
+        flightNotes?`<div style="font-style:italic;color:#555">${flightNotes}</div>`:"",
+      ] : [];
+      case "trains": return trains.some(t=>t.sector) ? [
+        `<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Train Details:</div>`,
+        { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Train No.</th><th>Name</th><th>Time</th><th>Coach</th></tr>`,
+          rowsHTML: trains.filter(t=>t.sector).map(t=>`<tr><td>${t.date}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td><td>${t.coach}</td></tr>`) },
+        trainNotes?`<div style="font-style:italic;color:#555">${trainNotes}</div>`:"",
+      ] : [];
+      case "transport": return transport ? [`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 4pt">Transport:</div><p style="margin-bottom:10pt">${transport}</p>${transportNotes?`<div style="font-style:italic;color:#555">${transportNotes}</div>`:""}`] : [];
+      case "guides": return guides.some(g=>g.name) ? [`<div style="background:#FFE135;display:inline-block;padding:0 3px;font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Tour Facilitator Details:</div><div>${guides.filter(g=>g.name).map(g=>`<p style="margin-bottom:3pt">${g.name}${g.phone?" ("+g.phone+")":""}${g.area?" for "+g.area:""}</p>`).join("")}</div>${guideNotes?`<div style="font-style:italic;color:#555">${guideNotes}</div>`:""}`] : [];
+      case "others": return otherSvcs.some(s=>s.description) ? [
+        `<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Other Services:</div>`,
+        { type:"table", headerHTML:`<tr><th>Date</th><th>Type</th><th>Description</th><th>Status</th></tr>`,
+          rowsHTML: otherSvcs.filter(s=>s.description).map(s=>`<tr><td>${s.date||""}</td><td>${s.serviceType}</td><td>${s.description}</td><td>${s.status}</td></tr>`) },
+        otherNotes?`<div style="font-style:italic;color:#555">${otherNotes}</div>`:"",
+      ] : [];
+      case "programme": return programme.some(p=>p.itinerary||p.programme) ? [
+        `<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Programme:</div>`,
+        { type:"table", headerHTML:`<tr><th>DATE & DAY</th><th>PROGRAMME</th><th>BREAKFAST</th><th>LUNCH</th><th>DINNER</th></tr>`,
+          rowsHTML: programme.map(p=>`<tr><td><b>${p.date||""}</b>${p.day?"<br/>("+p.day+")":""}</td><td><b style="color:#1A3A52">${p.itinerary||""}</b>${p.programme?"<br/><div style='white-space:pre-line'>"+p.programme+"</div>":""}</td><td>${p.breakfast||"X"}</td><td>${p.lunch||"X"}</td><td>${p.dinner||"X"}</td></tr>`) },
+        progNotes?`<div style="font-style:italic;color:#555">${progNotes}</div>`:"",
+      ] : [];
+      case "contacts": return contacts.some(c=>c.contactNo||c.city) ? [
+        `<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Contact List:</div>`,
+        { type:"table", headerHTML:`<tr><th>Date</th><th>City</th><th>Type</th><th>Contact No.</th><th>Address</th></tr>`,
+          rowsHTML: contacts.filter(c=>c.contactNo||c.city).map(c=>`<tr><td>${c.date||""}</td><td>${c.city||""}</td><td>${c.vendorType==="Other"?c.vendorTypeOther||"Other":c.vendorType}</td><td>${c.contactNo||""}</td><td>${c.address||""}</td></tr>`) },
+        contactNotes?`<div style="font-style:italic;color:#555">${contactNotes}</div>`:"",
+      ] : [];
+      default: return [];
     }
   };
 
   const buildPrintHTML = () => {
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin-top:10pt" alt="Stamp"/>` : '';
-    const sectionsBlock = printOrder.map(id=>sectionHTML(id)).join("");
+    const sectionsBlocks = printOrder.flatMap(id=>sectionBlocks(id)).filter(b => b !== "");
     const footerNoteBlock = footer ? `<div style="margin-top:20pt;white-space:pre-line;font-size:10pt">${footer}</div>` : '';
 
     return buildPaginatedLetterheadDocument({
       title: `Tour Briefing Sheet — ${query.groupName||query.clientName}`,
       extraHeadCSS: `body{font-family:'Times New Roman',serif;}`,
-      bodyBlocks: [sectionsBlock, footerNoteBlock, stampHTML],
+      bodyBlocks: [...sectionsBlocks, footerNoteBlock, stampHTML],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };

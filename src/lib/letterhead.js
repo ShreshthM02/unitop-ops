@@ -367,12 +367,12 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
   const flushPage = () => {
     if (currentPage.length > 0) { pages.push(currentPage); currentPage = []; currentHeight = 0; }
   };
-  const wrapTableChunk = (headerHTML, rowsChunk) =>
-    `<table class="content-table" style="width:100%;border-collapse:collapse"><thead>${headerHTML}</thead><tbody>${rowsChunk.join("")}</tbody></table>`;
+  const wrapTableChunk = (headerHTML, rowsChunk, extraClassName) =>
+    `<table class="content-table${extraClassName ? " " + extraClassName : ""}" style="width:100%;border-collapse:collapse"><thead>${headerHTML}</thead><tbody>${rowsChunk.join("")}</tbody></table>`;
 
   bodyBlocks.forEach((block) => {
     if (block && typeof block === "object" && block.type === "table") {
-      const { headerHTML, rowsHTML } = block;
+      const { headerHTML, rowsHTML, className } = block;
       if (rowsHTML.length === 0) return; // nothing to place
       const { headerHeightPx, rowHeightsPx } = tableMeasureFn(headerHTML, rowsHTML, containerWidthPx);
 
@@ -396,7 +396,7 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
           chunkHeight += rowHeightsPx[rowIdx];
           rowIdx++;
         }
-        currentPage.push(wrapTableChunk(headerHTML, chunkRows));
+        currentPage.push(wrapTableChunk(headerHTML, chunkRows, className));
         currentHeight += chunkHeight;
         if (rowIdx < rowsHTML.length) flushPage(); // more rows remain -- next chunk starts a fresh page
       }

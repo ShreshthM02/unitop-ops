@@ -77,7 +77,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
   };
 
   const buildPrintHTML = () => {
-    const itemRows=inv.items.map(it=>`<tr><td>${it.desc}</td><td style="text-align:center">${it.hsn}</td><td style="text-align:center">${it.qty}</td><td class="amount">₹ ${parseFloat(it.rate).toLocaleString()}</td><td class="amount">₹ ${parseFloat(it.amount).toLocaleString()}</td></tr>`).join("");
+    const itemRows=inv.items.map(it=>`<tr><td>${it.desc}</td><td style="text-align:center">${it.hsn}</td><td style="text-align:center">${it.qty}</td><td class="amount">₹ ${parseFloat(it.rate).toLocaleString()}</td><td class="amount">₹ ${parseFloat(it.amount).toLocaleString()}</td></tr>`);
     const gstRow = inv.igst
       ? `<tr><td colspan="4" style="text-align:right">IGST @ ${inv.gstRate}%</td><td class="amount">₹ ${gstCalc.toLocaleString()}</td></tr>`
       : `<tr><td colspan="4" style="text-align:right">CGST @ ${inv.gstRate/2}%</td><td class="amount">₹ ${Math.round(gstCalc/2).toLocaleString()}</td></tr>
@@ -119,10 +119,20 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
           </div>
         </div>`;
 
-    const itemsBlock = `
-        <table class="content-table">
-          <thead><tr><th style="width:40%">Description of Service</th><th style="text-align:center">HSN/SAC</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
-          <tbody>${itemRows}
+    const itemsBlock = {
+      type: "table",
+      headerHTML: `<tr><th style="width:40%">Description of Service</th><th style="text-align:center">HSN/SAC</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr>`,
+      rowsHTML: itemRows,
+    };
+    // Taxable Value / GST / Grand Total must never be split across a page
+    // break from each other -- kept as their own separate, atomic (never
+    // split) block, always immediately following wherever the item rows
+    // end, rather than baked into the same splittable rowsHTML as the
+    // item rows themselves.
+    const totalsBlock = `
+        <table class="content-table" style="margin-top:-1pt">
+          <colgroup><col style="width:40%"/><col/><col/><col/><col/></colgroup>
+          <tbody>
           <tr><td colspan="4" style="text-align:right;color:#555">Taxable Value</td><td class="amount">₹ ${subtotal.toLocaleString()}</td></tr>
           ${gstRow}
           <tr style="background:#1A3A52"><td colspan="4" style="text-align:right;color:#fff;font-weight:700;font-size:10.5pt;padding:8pt">GRAND TOTAL</td><td style="text-align:right;color:#fff;font-weight:700;font-size:10.5pt;padding:8pt">₹ ${grandTotal.toLocaleString()}</td></tr>
@@ -150,7 +160,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
 
     return buildPaginatedLetterheadDocument({
       title: `Tax Invoice ${inv.invoiceNo}`,
-      bodyBlocks: [metaBlock, partiesBlock, itemsBlock, closingBlock],
+      bodyBlocks: [metaBlock, partiesBlock, itemsBlock, totalsBlock, closingBlock],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };

@@ -264,21 +264,38 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
     <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>`;
 
-    const itineraryBlock = `
-    <h2>Day-wise Itinerary</h2>
-    <table class="content-table"><thead><tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr></thead>
-    <tbody>${q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>').join('')}</tbody></table>`;
+    const itineraryBlock = {
+      type: "table",
+      headerHTML: `<tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr>`,
+      rowsHTML: q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>'),
+    };
+    const itineraryHeading = `<h2>Day-wise Itinerary</h2>`;
 
-    const accommodationBlock = `
-    <h2>Accommodation</h2>
-    <table class="content-table"><thead><tr><th>Place</th><th>Nights</th><th>Hotel</th></tr></thead>
-    <tbody>${q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>').join('')}</tbody></table>`;
+    const accommodationBlock = {
+      type: "table",
+      headerHTML: `<tr><th>Place</th><th>Nights</th><th>Hotel</th></tr>`,
+      rowsHTML: q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>'),
+    };
+    const accommodationHeading = `<h2>Accommodation</h2>`;
 
-    const priceBlock = `
-    <h2>Cost Per Person (${q.currency})</h2>
-    <table class="content-table price-table"><thead><tr><th>Group Size</th><th>Rate</th></tr></thead>
-    <tbody>${q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>').join('')}</tbody></table>
-    ${q.showMonuments ? '<h2>'+q.monumentNote+'</h2><table class="content-table"><thead><tr><th>Monument</th><th>Fee</th></tr></thead><tbody>'+q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>').join('')+'</tbody></table>' : ''}`;
+    const priceHeadingBlock = `<h2>Cost Per Person (${q.currency})</h2>`;
+    const priceBlock = {
+      type: "table",
+      className: "price-table",
+      headerHTML: `<tr><th>Group Size</th><th>Rate</th></tr>`,
+      rowsHTML: q.slabs.map(s=>'<tr><td>'+s.label+'</td><td><strong>'+q.currency+' '+s.price+'</strong> Per Pax</td></tr>'),
+    };
+    // Monuments is a genuinely separate, independently-splittable table --
+    // was previously baked into priceBlock as a single opaque string,
+    // which meant a long monuments list for a big tour couldn't split
+    // across pages on its own.
+    const monumentsHeadingBlock = q.showMonuments ? `<h2>${q.monumentNote}</h2>` : "";
+    const monumentsBlock = q.showMonuments ? {
+      type: "table",
+      headerHTML: `<tr><th>Monument</th><th>Fee</th></tr>`,
+      rowsHTML: q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>'),
+    } : null;
+
 
     const inclusionsBlock = `
     <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
@@ -303,7 +320,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         ol,ul{margin:3pt 0 0 14pt;padding:0;}
         li{margin-bottom:2pt;font-size:9pt;}
       `,
-      bodyBlocks: [addresseeBlock, itineraryBlock, accommodationBlock, priceBlock, inclusionsBlock, closingBlock],
+      bodyBlocks: [
+        addresseeBlock,
+        itineraryHeading, itineraryBlock,
+        accommodationHeading, accommodationBlock,
+        priceHeadingBlock, priceBlock,
+        ...(monumentsBlock ? [monumentsHeadingBlock, monumentsBlock] : []),
+        inclusionsBlock,
+        closingBlock,
+      ],
       headerFooterAllPages,
       printOnLetterhead,
       showPageNum,

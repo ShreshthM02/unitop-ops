@@ -96,3 +96,22 @@ describe('ProformaInvoice: migrated to the shared toggle hook and async paginate
     window.open = originalOpen;
   });
 });
+
+describe('QuotationGenerator: table-splitting wiring across all 4 tables (itinerary, accommodation, price, monuments)', () => {
+  it('the printed output contains real table content for all sections, not stringified [object Object]', async () => {
+    const db = makeDb();
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const templateWithMonuments = { ...fakeTemplate, showMonuments: true, monuments: [{ name: 'Taj Mahal', fee: '50' }] };
+    render(<QuotationGenerator query={fakeQuery} template={templateWithMonuments} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const iframe = document.querySelector('iframe[title="Print Preview"]');
+      expect(iframe.srcdoc).toContain('Day-wise Itinerary');
+      expect(iframe.srcdoc).toContain('Accommodation');
+      expect(iframe.srcdoc).toContain('Cost Per Person');
+      expect(iframe.srcdoc).not.toContain('[object Object]');
+    });
+  });
+});

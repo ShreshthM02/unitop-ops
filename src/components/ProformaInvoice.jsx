@@ -115,7 +115,7 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
       <tr><td>${it.desc}</td><td style="text-align:center">${it.qty}</td>
       <td style="text-align:center">${it.unit}</td>
       <td class="amount">${inv.currency} ${parseFloat(it.rate||0).toLocaleString()}</td>
-      <td class="amount">${inv.currency} ${parseFloat(it.amount||0).toLocaleString()}</td></tr>`).join('');
+      <td class="amount">${inv.currency} ${parseFloat(it.amount||0).toLocaleString()}</td></tr>`);
 
     const addresseeBlock = `
         <!-- Addressee -->
@@ -163,16 +163,15 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
           </div>
         </div>`;
 
-    const itemsBlock = `
-        <!-- Items -->
-        <table class="content-table">
-          <thead><tr>
-            <th style="width:45%">Description</th><th style="width:8%;text-align:center">Qty</th>
-            <th style="width:12%;text-align:center">Unit</th><th style="width:15%;text-align:right">Rate</th>
-            <th style="width:20%;text-align:right">Amount</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
+    const itemsBlock = {
+      type: "table",
+      headerHTML: `<tr>
+        <th style="width:45%">Description</th><th style="width:8%;text-align:center">Qty</th>
+        <th style="width:12%;text-align:center">Unit</th><th style="width:15%;text-align:right">Rate</th>
+        <th style="width:20%;text-align:right">Amount</th>
+      </tr>`,
+      rowsHTML: rows,
+    };
 
     const totalsBlock = `
         <!-- Totals -->
