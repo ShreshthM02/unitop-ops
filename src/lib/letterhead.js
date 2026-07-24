@@ -56,6 +56,39 @@ export const invoiceLetterheadCSS = `
     .lh-rule-footer { height: 1.5pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .lh-footer--blank { height: 40pt; }
 
+    /* ── Paginated print pages (Phase: Letterhead Standardization,
+       2026-07-24) ──────────────────────────────────────────────────────
+       Confirmed working through 8 rounds of real Chrome print-to-PDF
+       testing (see docs/DATA_OWNERSHIP.md or project memory for the full
+       diagnostic history). Each printed page is its own div with an
+       explicit height matching the real A4 portrait content area (297mm
+       minus this file's own PRINT_MARGIN top+bottom), NOT a
+       table/thead/tfoot -- that approach could repeat header/footer but
+       never got the footer to the true bottom of a page whose content
+       didn't fill it. Two things matter and were each independently
+       proven necessary:
+       (1) .print-page-content uses flex:1 1 auto, NOT
+           justify-content:space-between on the container -- space-between
+           with 3 flex children (header/content/footer) puts equal gaps
+           BOTH above and below short content, creating an ugly gap
+           between the header and the first line. flex:1 on the content
+           block lets IT absorb all leftover space, so the header stays
+           flush at top and only the footer gets pushed down.
+       (2) page-break-after lives directly on .print-page itself, never
+           split onto a separate outer wrapper div -- that split silently
+           broke the height entirely (the div collapsed to fit only its
+           content, and the footer got clipped or floated with no
+           explanation from computed styles alone).
+       This does NOT include the pagination (chunking content into pages)
+       -- see paginateBodyBlocks() below, which must run in-browser
+       against real rendered heights. */
+    .print-page { height: 281mm; display: flex; flex-direction: column; }
+    .print-page.print-page-notlast { page-break-after: always; }
+    .print-page-header { flex: 0 0 auto; }
+    .print-page-footer { flex: 0 0 auto; }
+    .print-page-content { flex: 1 1 auto; overflow: hidden; }
+    .print-page-content > * + * { margin-top: 0; }
+
     /* ── Shared document content styles (unchanged from before) ──────────── */
     .inv-title { font-family: 'Playfair Display', Georgia, serif; font-size: 18pt; font-weight: 700; color: #1A3A52; text-align: center; margin-bottom: 10pt; letter-spacing: 1pt; text-transform: uppercase; }
     /* section-title: used for in-document section headers (each Cost
@@ -210,5 +243,181 @@ export function buildLetterheadDocument({
       <tbody>${tbodyRows}</tbody>
       ${tfootBlock}
     </table>
+  </body></html>`;
+}
+
+// ─── PAGINATED PRINTING (Letterhead Standardization, 2026-07-24) ───────────
+// Everything below is additive -- buildLetterheadDocument above is
+// untouched and still used as-is by Cost Sheet and GanttView, which are
+// explicitly out of scope for this initiative. The documents that DO use
+// this (Quotation, Meal Plan, Pro Forma Invoice, Tax Invoice, Tour
+// Briefing Sheet, and the future Brief Itinerary) switch to
+// buildPaginatedLetterheadDocument instead.
+//
+// This exists because true "header/footer repeat AND the footer sits at
+// the real bottom of a partially-filled last page" cannot be done with
+// pure CSS against variable-length content -- it requires knowing how
+// tall each page's content actually is, which requires real DOM
+// measurement. See the .print-page CSS comment above for the two
+// specific things that had to be true for the per-page box itself to
+// work; this is the piece that decides what content goes on which page.
+
+// A4 portrait content area, in mm, after PRINT_MARGIN's top+bottom.
+// Recomputed from PRINT_MARGIN rather than hardcoded, so if that value
+// ever changes this stays correct automatically.
+const A4_HEIGHT_MM = 297;
+function mmToNumber(s) { return parseFloat(s); }
+export const PAGE_CONTENT_HEIGHT_MM = A4_HEIGHT_MM - mmToNumber(PRINT_MARGIN.top) - mmToNumber(PRINT_MARGIN.bottom);
+
+// A4 portrait content area width, in mm, after PRINT_MARGIN's left+right.
+const A4_WIDTH_MM = 210;
+export const PAGE_CONTENT_WIDTH_MM = A4_WIDTH_MM - mmToNumber(PRINT_MARGIN.left) - mmToNumber(PRINT_MARGIN.right);
+
+// Renders an HTML string into a hidden, correctly-widthed off-screen div
+// and returns its real rendered height in px -- the only way to know how
+// tall a block of arbitrary document content (tables, paragraphs, mixed)
+// will actually be once laid out with real fonts. Requires a real
+// browser DOM; throws with a clear message if called anywhere else
+// (tests must inject their own measureFn instead of using this default).
+function domMeasureHeightPx(html, containerWidthPx) {
+  if (typeof document === "undefined") {
+    throw new Error("domMeasureHeightPx requires a real browser DOM. Pass an explicit measureFn to paginateBodyBlocks when calling outside a browser (e.g. in tests).");
+  }
+  const el = document.createElement("div");
+  el.style.position = "absolute";
+  el.style.visibility = "hidden";
+  el.style.left = "-99999px";
+  el.style.top = "0";
+  el.style.width = containerWidthPx + "px";
+  document.body.appendChild(el);
+  el.innerHTML = html;
+  const h = el.offsetHeight;
+  document.body.removeChild(el);
+  return h;
+}
+
+// Greedily packs bodyBlocks (in order -- content is never reordered) into
+// pages, each no taller than pageContentHeightPx. A single block taller
+// than a whole page still gets its own page rather than looping forever;
+// this is best-effort pagination, not a hard guarantee against overflow
+// for pathological single blocks (e.g. one enormous table row).
+//
+// measureFn defaults to real DOM measurement (domMeasureHeightPx) but can
+// be overridden -- this is what makes the packing algorithm itself
+// testable under jsdom, which doesn't do real layout and would otherwise
+// report 0 for every height.
+export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerWidthPx, measureFn = domMeasureHeightPx } = {}) {
+  const heights = bodyBlocks.map(html => measureFn(html, containerWidthPx));
+  const pages = [];
+  let currentPage = [];
+  let currentHeight = 0;
+
+  bodyBlocks.forEach((html, i) => {
+    const h = heights[i];
+    if (currentHeight + h > pageContentHeightPx && currentPage.length > 0) {
+      pages.push(currentPage);
+      currentPage = [];
+      currentHeight = 0;
+    }
+    currentPage.push(html);
+    currentHeight += h;
+  });
+  if (currentPage.length > 0) pages.push(currentPage);
+  if (pages.length === 0) pages.push([]);
+  return pages;
+}
+
+// mmToPx: converts a real physical mm measurement into the px value the
+// current browser/DPI context would render it as, by measuring an actual
+// element rather than assuming a fixed 96dpi (which print contexts don't
+// reliably use). Falls back to the 96dpi approximation outside a browser.
+function mmToPx(mm) {
+  if (typeof document === "undefined") return mm * 96 / 25.4;
+  const el = document.createElement("div");
+  el.style.position = "absolute";
+  el.style.visibility = "hidden";
+  el.style.height = mm + "mm";
+  document.body.appendChild(el);
+  const px = el.offsetHeight;
+  document.body.removeChild(el);
+  return px;
+}
+
+// The full paginated document builder. Unlike buildLetterheadDocument,
+// this is async and requires a real browser DOM -- it measures the
+// header, footer, and every content block, then decides page breaks
+// itself rather than leaving that to the browser's own table
+// fragmentation (which is what buildLetterheadDocument still relies on,
+// and which is exactly what can't get a footer to the true bottom of a
+// short last page).
+//
+// Handles all three toggle states from the Letterhead Standardization
+// spec:
+//   (a) headerFooterAllPages=false, printOnLetterhead=false -> no
+//       pagination needed at all; header once at the top, footer once
+//       at the end of content, single flowing document (same as the
+//       old default behavior).
+//   (b) headerFooterAllPages=true -> real header/footer content repeats
+//       on every paginated page, footer pinned to the true bottom of
+//       even a short last page.
+//   (c) printOnLetterhead=true -> headerFooterAllPages is ignored (the
+//       caller should already have deselected it per the toggle
+//       interaction rule); every page reserves a blank 6cm top / 4cm
+//       bottom gap instead of real header/footer content, still
+//       repeating on every page since physical letterhead paper is used
+//       for every sheet printed.
+export async function buildPaginatedLetterheadDocument({
+  title,
+  extraHeadCSS = "",
+  bodyBlocks,
+  headerFooterAllPages = false,
+  showHeader = true,
+  showFooter = true,
+  printOnLetterhead = false,
+  showPageNum = false,
+}) {
+  const repeating = printOnLetterhead || headerFooterAllPages;
+
+  const headerInner = showHeader ? invoiceLetterheadHTML(printOnLetterhead) : "";
+  const footerInner = showFooter ? invoiceFooterHTML(printOnLetterhead) : "";
+
+  const pageCSS = `@page { size: A4 portrait; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
+    ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+  const headBlock = `<style>${invoiceLetterheadCSS}</style><style>${extraHeadCSS}</style><style>${pageCSS}</style>`;
+
+  // Rule (a): no repetition needed -- single flowing document, exactly
+  // the old non-repeating behavior. No measurement, no pagination.
+  if (!repeating) {
+    const rows = [...bodyBlocks];
+    if (headerInner) rows.unshift(headerInner);
+    if (footerInner) rows.push(footerInner);
+    return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
+      ${rows.join("\n")}
+    </body></html>`;
+  }
+
+  // Rules (b) and (c): real pagination. Measure header/footer height
+  // (or use the fixed printOnLetterhead blank-space sizes, which are
+  // already known constants -- 6cm/4cm -- rather than re-measuring an
+  // empty div), then pack content into pages.
+  const containerWidthPx = mmToPx(PAGE_CONTENT_WIDTH_MM);
+  const pageContentHeightPx = mmToPx(PAGE_CONTENT_HEIGHT_MM);
+  const headerHeightPx = printOnLetterhead ? mmToPx(60) : (headerInner ? domMeasureHeightPx(headerInner, containerWidthPx) : 0);
+  const footerHeightPx = printOnLetterhead ? mmToPx(40) : (footerInner ? domMeasureHeightPx(footerInner, containerWidthPx) : 0);
+  const availableContentHeightPx = pageContentHeightPx - headerHeightPx - footerHeightPx;
+
+  const pages = paginateBodyBlocks(bodyBlocks, { pageContentHeightPx: availableContentHeightPx, containerWidthPx });
+
+  const pageDivs = pages.map((pageBlocks, i) => {
+    const isLast = i === pages.length - 1;
+    return `<div class="print-page${isLast ? "" : " print-page-notlast"}">
+      <div class="print-page-header">${headerInner}</div>
+      <div class="print-page-content">${pageBlocks.join("\n")}</div>
+      <div class="print-page-footer">${footerInner}</div>
+    </div>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
+    ${pageDivs}
   </body></html>`;
 }

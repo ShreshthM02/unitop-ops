@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
 
 const fakeQuery = { id: 'UTQ-2026-090', groupName: 'Facilitator Test Group', tourFileId: 'TF-2026-090' };
@@ -9,8 +9,17 @@ const facilitators = [
   { id: 'FAC-003', name: 'Retired Guide', phone: '', email: '', languages: '', areas: '', notes: '', active: false },
 ];
 
-function getPreviewHTML(container) {
+// The preview HTML is now built asynchronously (buildPaginatedLetterheadDocument
+// requires real DOM measurement), so this must wait for the iframe's srcdoc
+// to actually contain the expected content rather than reading it synchronously
+// right after the click.
+async function getPreviewHTML(container, expectedSubstring) {
   fireEvent.click(screen.getByText('👁 Preview'));
+  await waitFor(() => {
+    const iframe = container.querySelector('iframe');
+    const html = iframe.getAttribute('srcdoc') || iframe.srcdoc;
+    expect(html).toContain(expectedSubstring);
+  });
   const iframe = container.querySelector('iframe');
   return iframe.getAttribute('srcdoc') || iframe.srcdoc;
 }
@@ -42,12 +51,12 @@ describe('TourBriefingSheet: facilitator selection (replaces free-text name)', (
     expect(screen.getByDisplayValue('Bodhgaya, Rajgir')).toBeTruthy();
   });
 
-  it('the selected facilitator\'s name reaches the print output (via the linked id, not free text)', () => {
+  it('the selected facilitator\'s name reaches the print output (via the linked id, not free text)', async () => {
     const { container } = render(<TourBriefingSheet query={fakeQuery} facilitators={facilitators} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Tour Facilitators'));
     const select = document.querySelector('select');
     fireEvent.change(select, { target: { value: 'FAC-002' } });
-    const html = getPreviewHTML(container);
+    const html = await getPreviewHTML(container, 'Ashutosh');
     expect(html).toContain('Ashutosh');
   });
 

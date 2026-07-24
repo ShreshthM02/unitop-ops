@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadProformaInvoiceVersions, saveProformaInvoiceVersion, markProformaInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, loadProformaInvoiceVersions, saveProformaInvoiceVersion, markProformaInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
 export default function ProformaInvoice({ query, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(template||{}) };
@@ -13,16 +13,8 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
   const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
 
   const [activeTab,   setActiveTab]   = React.useState('content');
-  const [headerAllPages, setHeaderAllPages] = React.useState(false);
-  const [footerAllPages, setFooterAllPages] = React.useState(false);
-  const [showPageNums,   setShowPageNums]   = React.useState(false);
-  const [digitalSign,    setDigitalSign]    = React.useState(false);
-  const [printOnLetterhead, setPrintOnLetterhead] = React.useState(false);
-  const togglePrintOnLetterhead = () => setPrintOnLetterhead(p => {
-    const next = !p;
-    if (next) { setHeaderAllPages(false); setFooterAllPages(false); }
-    return next;
-  });
+  const toggles = useLetterheadToggles();
+  const { headerFooterAllPages, showPageNum: showPageNums, showStamp: digitalSign, printOnLetterhead, togglePrintOnLetterhead } = toggles;
 
   const [inv, setInv] = React.useState({
     invoiceNo:   '', // resolved once existing invoice numbers load (see useEffect below) -- never a placeholder that gets used for real
@@ -215,23 +207,38 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
           <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
         </div>`;
 
-    return buildLetterheadDocument({
+    return buildPaginatedLetterheadDocument({
       title: `Proforma Invoice ${inv.invoiceNo}`,
       bodyBlocks: [addresseeBlock, partiesBlock, itemsBlock, totalsBlock, bankBlock, closingBlock],
-      headerAllPages,
-      footerAllPages,
+      headerFooterAllPages,
       printOnLetterhead,
       showPageNum: showPageNums,
     });
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const win = window.open('', '_blank');
     if (!win) { alert('Please allow pop-ups for this site to print/export PDF.'); return; }
-    win.document.write(buildPrintHTML());
+    win.document.write(await buildPrintHTML());
     win.document.close();
     setTimeout(()=>win.print(), 500);
   };
+
+  const [previewHTML, setPreviewHTML] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  useEffect(() => {
+    if (activeTab !== "preview") return;
+    let cancelled = false;
+    buildPrintHTML().then(html => {
+      if (cancelled) return;
+      setPreviewHTML(html);
+      setPreviewError("");
+    }).catch(e => {
+      if (cancelled) return;
+      setPreviewError(e.message);
+    });
+    return () => { cancelled = true; };
+  }, [activeTab, inv, headerFooterAllPages, printOnLetterhead, showPageNums, digitalSign]);
 
   const inp = {padding:'6px 8px',border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:'100%',outline:'none',color:G.gray800,background:G.white};
   const lbl = {fontSize:10,color:G.gray600,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:3,display:'block'};
@@ -275,14 +282,7 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
           <button onClick={onClose} className="btn btn-ghost" style={{background:'rgba(255,255,255,0.1)',color:'#fff',border:'none'}}>✕</button>
         </div>
         {/* Toggles */}
-        <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,flexWrap:'wrap',alignItems:'center'}}>
-          <Toggle label="Header on all pages" val={headerAllPages} onToggle={()=>setHeaderAllPages(p=>!p)} disabled={printOnLetterhead}/>
-          <Toggle label="Footer on all pages" val={footerAllPages} onToggle={()=>setFooterAllPages(p=>!p)} disabled={printOnLetterhead}/>
-          <Toggle label="Page numbers"        val={showPageNums}   onToggle={()=>setShowPageNums(p=>!p)}/>
-          <Toggle label="Digital stamp"       val={digitalSign}    onToggle={()=>setDigitalSign(p=>!p)}/>
-          <span style={{width:1,alignSelf:'stretch',background:G.gray200}}/>
-          <Toggle label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/>
-        </div>
+        <LetterheadToggleBar toggles={toggles} G={G}/>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
           {[['content','✏ Content'],['preview','👁 Preview']].map(([id,label])=>(
@@ -372,7 +372,7 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
           <div style={{flex:1,overflowY:'auto',background:'#525659',display:'flex',justifyContent:'center',padding:'20px 0'}}>
             <iframe
               title="Print Preview"
-              srcDoc={(()=>{try{return buildPrintHTML();}catch(e){return '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+e.message+'</body></html>';}})()}
+              srcDoc={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
               style={{width:'210mm',minHeight:'297mm',border:'none',boxShadow:'0 4px 24px rgba(0,0,0,0.35)',background:'#fff'}}
             />
           </div>

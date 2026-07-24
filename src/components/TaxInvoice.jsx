@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTaxInvoiceVersions, saveTaxInvoiceVersion, markTaxInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTaxInvoiceVersions, saveTaxInvoiceVersion, markTaxInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
 export default function TaxInvoice({ query, payments, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(template||{}) };
@@ -21,7 +21,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
   });
   const [activeTab, setActiveTab] = useState("content");
   const toggles = useLetterheadToggles();
-  const { showStamp, showPageNum, headerAllPages, footerAllPages, printOnLetterhead } = toggles;
+  const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const setF=(k,v)=>setInv(p=>({...p,[k]:v}));
   const updateItem=(i,f,v)=>setInv(p=>({...p,items:p.items.map((x,idx)=>idx===i?{...x,[f]:v}:x)}));
 
@@ -148,14 +148,22 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
           </div>
         </div>`;
 
-    return buildLetterheadDocument({
+    return buildPaginatedLetterheadDocument({
       title: `Tax Invoice ${inv.invoiceNo}`,
       bodyBlocks: [metaBlock, partiesBlock, itemsBlock, closingBlock],
-      headerAllPages, footerAllPages, printOnLetterhead, showPageNum,
+      headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };
 
-  const handlePrint = () => printHTML(buildPrintHTML());
+  const handlePrint = async () => printHTML(await buildPrintHTML());
+
+  const [previewHTML, setPreviewHTML] = useState("");
+  useEffect(() => {
+    if (activeTab !== "preview") return;
+    let cancelled = false;
+    buildPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
+    return () => { cancelled = true; };
+  }, [activeTab, inv, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -259,7 +267,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
           </div>
         ) : (
           <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={buildPrintHTML()}/>
+            <DocPreviewFrame html={previewHTML}/>
           </div>
         )}
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

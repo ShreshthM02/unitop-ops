@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TemplatesHub from '../components/TemplatesHub.jsx';
 import ProformaInvoice from '../components/ProformaInvoice.jsx';
 import TaxInvoice from '../components/TaxInvoice.jsx';
@@ -80,22 +80,28 @@ describe('TemplatesHub save wiring (the actual bug)', () => {
 });
 
 describe('Documents actually apply their template prop', () => {
-  it('ProformaInvoice uses a custom bank name from its template prop', () => {
+  it('ProformaInvoice uses a custom bank name from its template prop', async () => {
     const customTemplate = { ...DEFAULT_DOC_TEMPLATES.proforma, bankName: 'HDFC Bank' };
     const { container } = render(<ProformaInvoice query={fakeQuery} template={customTemplate} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      expect(html).toContain('HDFC Bank');
+    });
     const html = container.querySelector('iframe').getAttribute('srcdoc');
     expect(html).toContain('HDFC Bank');
     expect(html).not.toContain('Punjab National Bank');
   });
 
-  it('TaxInvoice uses a custom footer note and place of supply from its template prop', () => {
+  it('TaxInvoice uses a custom footer note and place of supply from its template prop', async () => {
     const customTemplate = { footerNote: 'Custom jurisdiction note.', placeOfSupply: 'Mumbai (27)' };
     const { container } = render(<TaxInvoice query={fakeQuery} payments={{}} template={customTemplate} onClose={()=>{}}/>);
     expect(screen.getByDisplayValue('Mumbai (27)')).toBeTruthy();
     fireEvent.click(screen.getByText('👁 Preview'));
-    const html = container.querySelector('iframe').getAttribute('srcdoc');
-    expect(html).toContain('Custom jurisdiction note.');
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      expect(html).toContain('Custom jurisdiction note.');
+    });
   });
 
   it('MealPlanDocument uses a custom default heading from its template prop', () => {
@@ -103,12 +109,15 @@ describe('Documents actually apply their template prop', () => {
     expect(screen.getByDisplayValue('Custom Meal Heading')).toBeTruthy();
   });
 
-  it('TourBriefingSheet uses custom opening line and footer text from its template prop', () => {
+  it('TourBriefingSheet uses custom opening line and footer text from its template prop', async () => {
     const customTemplate = { openingLine: 'Custom opening line.', footerText: 'Custom footer block.' };
     const { container } = render(<TourBriefingSheet query={fakeQuery} template={customTemplate} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      expect(html).toContain('Custom opening line.');
+    });
     const html = container.querySelector('iframe').getAttribute('srcdoc');
-    expect(html).toContain('Custom opening line.');
     expect(html).toContain('Custom footer block.');
   });
 

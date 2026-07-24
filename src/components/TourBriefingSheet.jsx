@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -17,7 +17,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [activeTab,setActiveTab]=useState("meta");
   const [viewMode, setViewMode] = useState("content");
   const toggles = useLetterheadToggles();
-  const { showStamp, showPageNum, headerAllPages, footerAllPages, printOnLetterhead } = toggles;
+  const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const toggleSection=k=>setPrintEnabled(p=>({...p,[k]:!p[k]}));
   const onDragStart=id=>setDragItem(id);
   const onDragEnterItem=id=>setDragOver(id);
@@ -204,15 +204,23 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     const sectionsBlock = printOrder.map(id=>sectionHTML(id)).join("");
     const footerNoteBlock = footer ? `<div style="margin-top:20pt;white-space:pre-line;font-size:10pt">${footer}</div>` : '';
 
-    return buildLetterheadDocument({
+    return buildPaginatedLetterheadDocument({
       title: `Tour Briefing Sheet — ${query.groupName||query.clientName}`,
       extraHeadCSS: `body{font-family:'Times New Roman',serif;}`,
       bodyBlocks: [sectionsBlock, footerNoteBlock, stampHTML],
-      headerAllPages, footerAllPages, printOnLetterhead, showPageNum,
+      headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };
 
-  const handlePrint = () => printHTML(buildPrintHTML());
+  const handlePrint = async () => printHTML(await buildPrintHTML());
+
+  const [previewHTML, setPreviewHTML] = useState("");
+  useEffect(() => {
+    if (viewMode !== "preview") return;
+    let cancelled = false;
+    buildPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
+    return () => { cancelled = true; };
+  }, [viewMode, printOrder, footer, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
 
   const tabBtn=(id,label)=>(<button key={id} onClick={()=>setActiveTab(id)} style={{padding:"7px 12px",border:"none",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:11,background:activeTab===id?G.navy:"transparent",color:activeTab===id?"#fff":G.gray600,borderBottom:`2px solid ${activeTab===id?G.accent:"transparent"}`,fontWeight:activeTab===id?600:400,whiteSpace:"nowrap"}}>{label}</button>);
 
@@ -311,7 +319,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           </>
         ) : (
           <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={buildPrintHTML()}/>
+            <DocPreviewFrame html={previewHTML}/>
           </div>
         )}
         <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

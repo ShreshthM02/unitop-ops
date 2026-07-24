@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_MEALPLAN_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadMealPlanVersions, saveMealPlanVersion, markMealPlanVersionFinal, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_MEALPLAN_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadMealPlanVersions, saveMealPlanVersion, markMealPlanVersionFinal, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, logAudit, db } = Lib;
 
 export default function MealPlanDocument({ query, template, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_MEALPLAN_TEMPLATE, ...(template||{}) };
@@ -8,7 +8,7 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
   const [heading,setHeading]=useState(tmpl.defaultHeading);
   const [activeTab, setActiveTab] = useState("content");
   const toggles = useLetterheadToggles();
-  const { showStamp, showPageNum, headerAllPages, footerAllPages, printOnLetterhead } = toggles;
+  const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const updateRow=(i,f,v)=>setRows(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const addRow=()=>setRows(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",movement:"",breakfast:"",lunch:"",dinner:"",notes:""}]);
   const inp={padding:"5px 7px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
@@ -101,15 +101,28 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
       <tbody>${rows.map(r=>`<tr><td>${r.day}</td><td>${r.date||"—"}</td><td>${r.movement||"—"}</td><td>${r.breakfast||"—"}</td><td>${r.lunch||"—"}</td><td>${r.dinner||"—"}</td><td>${r.notes||""}</td></tr>`).join("")}</tbody></table>
       ${stampHTML}`;
 
-    return buildLetterheadDocument({
+    return buildPaginatedLetterheadDocument({
       title: `Meal Plan — ${query.groupName||query.clientName}`,
       extraHeadCSS: `h2{color:#1A3A52;font-family:Georgia,serif;margin-bottom:4pt;font-size:14pt}`,
       bodyBlocks: [bodyBlock],
-      headerAllPages, footerAllPages, printOnLetterhead, showPageNum,
+      headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };
 
-  const handlePrint = () => printHTML(buildPrintHTML());
+  const handlePrint = async () => printHTML(await buildPrintHTML());
+
+  // Preview now needs to reflect the same paginated output that will
+  // actually print, since buildPaginatedLetterheadDocument is async
+  // (requires real DOM measurement) -- can no longer call buildPrintHTML()
+  // synchronously inline in the render like the old buildLetterheadDocument
+  // allowed.
+  const [previewHTML, setPreviewHTML] = useState("");
+  useEffect(() => {
+    if (activeTab !== "preview") return;
+    let cancelled = false;
+    buildPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
+    return () => { cancelled = true; };
+  }, [activeTab, heading, rows, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -177,7 +190,7 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
           </div>
         ) : (
           <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={buildPrintHTML()}/>
+            <DocPreviewFrame html={previewHTML}/>
           </div>
         )}
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

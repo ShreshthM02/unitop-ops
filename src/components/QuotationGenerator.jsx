@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -200,19 +200,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   };
 
   const [activeTab,    setActiveTab]    = useState('content');
-  const [showHeader,   setShowHeader]   = useState(true);
-  const [showFooter,   setShowFooter]   = useState(false);
-  const [showPageNum,  setShowPageNum]  = useState(false);
-  const [showStamp,    setShowStamp]    = useState(false);
-  const [printOnLetterhead, setPrintOnLetterhead] = useState(false);
-  // Turning this on supersedes the header/footer toggles (physical letterhead
-  // paper already carries the artwork on every sheet), so switch them off
-  // rather than leaving conflicting controls active.
-  const togglePrintOnLetterhead = () => setPrintOnLetterhead(p => {
-    const next = !p;
-    if (next) { setShowHeader(false); setShowFooter(false); }
-    return next;
-  });
+  const toggles = useLetterheadToggles();
+  const { headerFooterAllPages, showPageNum, showStamp, printOnLetterhead, togglePrintOnLetterhead } = toggles;
   const setF = (k, v) => setQ(prev => ({ ...prev, [k]: v }));
   const updateSlab = (i, field, val) => setQ(prev => ({
     ...prev, slabs: prev.slabs.map((s, idx) => idx === i ? { ...s, [field]: val } : s)
@@ -306,7 +295,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
       </div>`;
 
-    return buildLetterheadDocument({
+    return buildPaginatedLetterheadDocument({
       title: `Quotation — ${q.attnCompany}`,
       extraHeadCSS: `
         h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:10pt 0 4pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
@@ -315,22 +304,40 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         li{margin-bottom:2pt;font-size:9pt;}
       `,
       bodyBlocks: [addresseeBlock, itineraryBlock, accommodationBlock, priceBlock, inclusionsBlock, closingBlock],
-      headerAllPages: showHeader,
-      footerAllPages: showFooter,
-      showHeader: true,
-      showFooter: showFooter,
+      headerFooterAllPages,
       printOnLetterhead,
       showPageNum,
     });
   };
 
-  const printQuotation = () => {
+  const printQuotation = async () => {
     const win = window.open("", "_blank");
     if (!win) { alert('Please allow pop-ups for this site to print/export PDF.'); return; }
-    win.document.write(buildPrintHTML());
+    win.document.write(await buildPrintHTML());
     win.document.close();
     setTimeout(()=>win.print(), 500);
   };
+
+  // Preview now needs to reflect the same paginated output that will
+  // actually print, since buildPaginatedLetterheadDocument is async
+  // (requires real DOM measurement) -- can no longer call buildPrintHTML()
+  // synchronously inline in the render like the old buildLetterheadDocument
+  // allowed.
+  const [previewHTML, setPreviewHTML] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  useEffect(() => {
+    if (activeTab !== "preview") return;
+    let cancelled = false;
+    buildPrintHTML().then(html => {
+      if (cancelled) return;
+      setPreviewHTML(html);
+      setPreviewError("");
+    }).catch(e => {
+      if (cancelled) return;
+      setPreviewError(e.message);
+    });
+    return () => { cancelled = true; };
+  }, [activeTab, q, headerFooterAllPages, printOnLetterhead, showPageNum, showStamp]);
 
   const inputStyle = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5,
     fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800,
@@ -419,9 +426,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         )}
 
         {/* Toggles */}
-        <div style={{padding:'7px 18px',background:G.gray50,borderBottom:`1px solid ${G.gray200}`,display:'flex',gap:16,flexShrink:0,alignItems:'center',flexWrap:'wrap'}}>
-          {(()=>{const Tog=({label,val,onToggle,disabled})=>(<label style={{display:'flex',alignItems:'center',gap:6,cursor:disabled?'not-allowed':'pointer',fontSize:11,color:disabled?G.gray400:G.gray600,opacity:disabled?0.55:1}}><div onClick={disabled?undefined:onToggle} style={{width:30,height:16,borderRadius:8,background:val?G.navy:G.gray200,position:'relative',flexShrink:0,transition:'background .2s'}}><div style={{position:'absolute',top:2,left:val?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/></div>{label}</label>);return(<><Tog label="Header on all pages" val={showHeader}  onToggle={()=>setShowHeader(p=>!p)} disabled={printOnLetterhead}/><Tog label="Footer on all pages" val={showFooter}  onToggle={()=>setShowFooter(p=>!p)} disabled={printOnLetterhead}/><Tog label="Page number"         val={showPageNum} onToggle={()=>setShowPageNum(p=>!p)}/><Tog label="Digital stamp"       val={showStamp}   onToggle={()=>setShowStamp(p=>!p)}/><span style={{width:1,alignSelf:'stretch',background:G.gray200}}/><Tog label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={togglePrintOnLetterhead}/></>);})()}
-        </div>
+        <LetterheadToggleBar toggles={toggles} G={G}/>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
           {[['content','✏ Content'],['preview','👁 Preview'],['final','💰 Final Price']].map(([id,label])=>(
@@ -724,7 +729,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{flex:1,overflowY:'auto',background:'#525659',display:'flex',justifyContent:'center',padding:'20px 0'}}>
             <iframe
               title="Print Preview"
-              srcDoc={(()=>{try{return buildPrintHTML();}catch(e){return '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+e.message+'</body></html>';}})()}
+              srcDoc={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
               style={{width:'210mm',minHeight:'297mm',border:'none',boxShadow:'0 4px 24px rgba(0,0,0,0.35)',background:'#fff'}}
             />
           </div>
