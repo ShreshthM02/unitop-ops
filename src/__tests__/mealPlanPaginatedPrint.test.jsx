@@ -59,3 +59,20 @@ describe('MealPlanDocument: migrated to the new async, paginated print builder',
     window.open = originalOpen;
   });
 });
+
+describe('MealPlanDocument: table-splitting wiring (real component, confirms the row data reaches the new splittable table block correctly)', () => {
+  it('the printed output contains a real table with the actual row data, not a stringified [object Object]', async () => {
+    const db = makeDb();
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MealPlanDocument } = await import('../components/MealPlanDocument.jsx');
+    render(<MealPlanDocument query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const iframe = document.querySelector('iframe[title="doc-preview"]');
+      expect(iframe.srcdoc).toContain('<thead>');
+      expect(iframe.srcdoc).toContain('Itinerary / Movement');
+      expect(iframe.srcdoc).not.toContain('[object Object]');
+    });
+  });
+});

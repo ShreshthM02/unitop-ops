@@ -94,17 +94,25 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
     const today = new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin-top:10pt" alt="Stamp"/>` : '';
 
-    const bodyBlock = `
+    const introBlock = `
       <h2>${heading}</h2>
-      <p style="margin-bottom:10pt;font-size:10pt"><b>Group:</b> ${query.groupName||query.clientName} &nbsp;|&nbsp; <b>Tour File:</b> ${query.tourFileId||query.id} &nbsp;|&nbsp; <b>Date:</b> ${today}</p>
-      <table class="content-table"><thead><tr><th>Day</th><th>Date</th><th>Itinerary / Movement</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th><th>Notes</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr><td>${r.day}</td><td>${r.date||"—"}</td><td>${r.movement||"—"}</td><td>${r.breakfast||"—"}</td><td>${r.lunch||"—"}</td><td>${r.dinner||"—"}</td><td>${r.notes||""}</td></tr>`).join("")}</tbody></table>
-      ${stampHTML}`;
+      <p style="margin-bottom:10pt;font-size:10pt"><b>Group:</b> ${query.groupName||query.clientName} &nbsp;|&nbsp; <b>Tour File:</b> ${query.tourFileId||query.id} &nbsp;|&nbsp; <b>Date:</b> ${today}</p>`;
+
+    // Splittable table block (Letterhead Standardization -- table row
+    // pagination): a long day-list now splits gracefully across pages
+    // instead of being one atomic block that either fits or overflows,
+    // with the column header row repeating at the top of every page the
+    // table continues onto.
+    const tableBlock = {
+      type: "table",
+      headerHTML: `<tr><th>Day</th><th>Date</th><th>Itinerary / Movement</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th><th>Notes</th></tr>`,
+      rowsHTML: rows.map(r=>`<tr><td>${r.day}</td><td>${r.date||"—"}</td><td>${r.movement||"—"}</td><td>${r.breakfast||"—"}</td><td>${r.lunch||"—"}</td><td>${r.dinner||"—"}</td><td>${r.notes||""}</td></tr>`),
+    };
 
     return buildPaginatedLetterheadDocument({
       title: `Meal Plan — ${query.groupName||query.clientName}`,
       extraHeadCSS: `h2{color:#1A3A52;font-family:Georgia,serif;margin-bottom:4pt;font-size:14pt}`,
-      bodyBlocks: [bodyBlock],
+      bodyBlocks: [introBlock, tableBlock, stampHTML],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };

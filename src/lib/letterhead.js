@@ -306,23 +306,111 @@ function domMeasureHeightPx(html, containerWidthPx) {
 // be overridden -- this is what makes the packing algorithm itself
 // testable under jsdom, which doesn't do real layout and would otherwise
 // report 0 for every height.
-export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerWidthPx, measureFn = domMeasureHeightPx } = {}) {
-  const heights = bodyBlocks.map(html => measureFn(html, containerWidthPx));
+// Measures a table header's height and each row's individual height,
+// all within ONE real <table> layout context (not in isolation) --
+// row height depends on column widths set by the table as a whole, so
+// measuring rows outside that context would give wrong wrapping/height.
+// Returns { headerHeightPx, rowHeightsPx: [...] }.
+function domMeasureTableRowHeightsPx(headerHTML, rowsHTML, containerWidthPx) {
+  if (typeof document === "undefined") {
+    throw new Error("domMeasureTableRowHeightsPx requires a real browser DOM. Pass an explicit measureFn to paginateBodyBlocks when calling outside a browser (e.g. in tests).");
+  }
+  const el = document.createElement("div");
+  el.style.position = "absolute";
+  el.style.visibility = "hidden";
+  el.style.left = "-99999px";
+  el.style.top = "0";
+  el.style.width = containerWidthPx + "px";
+  document.body.appendChild(el);
+  el.innerHTML = `<table class="content-table" style="width:100%;border-collapse:collapse">
+    <thead>${headerHTML}</thead>
+    <tbody>${rowsHTML.join("")}</tbody>
+  </table>`;
+
+  const thead = el.querySelector("thead");
+  const headerHeightPx = thead ? thead.getBoundingClientRect().height : 0;
+  const trEls = el.querySelectorAll("tbody > tr");
+  const rowHeightsPx = Array.from(trEls).map(tr => tr.getBoundingClientRect().height);
+
+  document.body.removeChild(el);
+  return { headerHeightPx, rowHeightsPx };
+}
+
+// Greedily packs bodyBlocks (in order -- content is never reordered) into
+// pages, each no taller than pageContentHeightPx. A single block taller
+// than a whole page still gets its own page rather than looping forever;
+// this is best-effort pagination, not a hard guarantee against overflow
+// for pathological single blocks (e.g. one enormous table row).
+//
+// Blocks are normally plain HTML strings (atomic -- packed whole, never
+// split). A block can instead be a splittable table:
+//   { type: 'table', headerHTML, rowsHTML: [...] }
+// -- headerHTML is the <thead> row markup, rowsHTML an array of <tr>
+// strings (one per row). When a table block doesn't fit as a whole, its
+// rows are split across pages, with headerHTML repeated at the top of
+// every page the table continues onto -- the first chunk fills
+// whatever space remains on the current page, and every subsequent
+// chunk starts fresh at the top of a new page. Each chunk is emitted as
+// a complete, valid HTML string (own <table><thead>...<tbody>...), so
+// downstream code never needs to know pagination happened.
+//
+// measureFn defaults to real DOM measurement (domMeasureHeightPx) but can
+// be overridden -- this is what makes the packing algorithm itself
+// testable under jsdom, which doesn't do real layout and would otherwise
+// report 0 for every height. tableMeasureFn is the equivalent override
+// for table row measurement (domMeasureTableRowHeightsPx by default).
+export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerWidthPx, measureFn = domMeasureHeightPx, tableMeasureFn = domMeasureTableRowHeightsPx } = {}) {
   const pages = [];
   let currentPage = [];
   let currentHeight = 0;
 
-  bodyBlocks.forEach((html, i) => {
-    const h = heights[i];
-    if (currentHeight + h > pageContentHeightPx && currentPage.length > 0) {
-      pages.push(currentPage);
-      currentPage = [];
-      currentHeight = 0;
+  const flushPage = () => {
+    if (currentPage.length > 0) { pages.push(currentPage); currentPage = []; currentHeight = 0; }
+  };
+  const wrapTableChunk = (headerHTML, rowsChunk) =>
+    `<table class="content-table" style="width:100%;border-collapse:collapse"><thead>${headerHTML}</thead><tbody>${rowsChunk.join("")}</tbody></table>`;
+
+  bodyBlocks.forEach((block) => {
+    if (block && typeof block === "object" && block.type === "table") {
+      const { headerHTML, rowsHTML } = block;
+      if (rowsHTML.length === 0) return; // nothing to place
+      const { headerHeightPx, rowHeightsPx } = tableMeasureFn(headerHTML, rowsHTML, containerWidthPx);
+
+      let rowIdx = 0;
+      while (rowIdx < rowsHTML.length) {
+        // If there isn't even room for the header + one row in whatever
+        // space remains on the current page, and the page already has
+        // other content on it, start the table fresh on a new page
+        // instead. (After any inter-chunk flush below, currentPage is
+        // already empty, so this check is a no-op then -- it only
+        // matters for the table's very first chunk, which may be
+        // sharing a page with earlier content like a title block.)
+        const available = pageContentHeightPx - currentHeight;
+        if (currentPage.length > 0 && available < headerHeightPx + rowHeightsPx[rowIdx]) flushPage();
+
+        const budget = pageContentHeightPx - currentHeight;
+        const chunkRows = [];
+        let chunkHeight = headerHeightPx;
+        while (rowIdx < rowsHTML.length && (chunkHeight + rowHeightsPx[rowIdx] <= budget || chunkRows.length === 0)) {
+          chunkRows.push(rowsHTML[rowIdx]);
+          chunkHeight += rowHeightsPx[rowIdx];
+          rowIdx++;
+        }
+        currentPage.push(wrapTableChunk(headerHTML, chunkRows));
+        currentHeight += chunkHeight;
+        if (rowIdx < rowsHTML.length) flushPage(); // more rows remain -- next chunk starts a fresh page
+      }
+      return;
     }
+
+    const html = block;
+    const h = measureFn(html, containerWidthPx);
+    if (currentHeight + h > pageContentHeightPx && currentPage.length > 0) flushPage();
     currentPage.push(html);
     currentHeight += h;
   });
-  if (currentPage.length > 0) pages.push(currentPage);
+
+  flushPage();
   if (pages.length === 0) pages.push([]);
   return pages;
 }
