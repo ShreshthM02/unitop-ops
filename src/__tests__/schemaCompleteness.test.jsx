@@ -108,9 +108,10 @@ describe('Schema completeness: meal_plans (saveMealPlanVersion) -- pulled_from_c
 });
 
 // itineraries is a NEW table, Phase 0 of the Document Chain plan -- one
-// table covers both Brief and Detailed Itinerary, since ItineraryBuilder
-// is a single component with an outlined/detailed style toggle over the
-// same underlying day data.
+// table covers both Brief and Detailed Itinerary, distinguished by
+// active_tab. Split 2026-07-24 into two separate components
+// (BriefItinerary.jsx, DetailedItinerary.jsx) that each save into this
+// same shared table, filtering to their own style's rows.
 describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from_cost_sheet_version is a NEW column, requires migration', () => {
   const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version'];
   it('every intended column has a corresponding key in the save payload', async () => {

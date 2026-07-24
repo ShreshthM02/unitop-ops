@@ -17,20 +17,29 @@ const mockDb = {
 
 vi.mock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
 
-const { default: ItineraryBuilder } = await import('../components/ItineraryBuilder.jsx');
+const { default: BriefItinerary } = await import('../components/BriefItinerary.jsx');
+const { default: DetailedItinerary } = await import('../components/DetailedItinerary.jsx');
 
 const fakeQuery = { id: 'UTQ-2026-700', groupName: 'Itinerary Persistence Test', destination: 'Ladakh', nights: 6 };
 
 beforeEach(() => { mockDb.from.mockClear(); });
 
-describe('ItineraryBuilder: real versioned persistence (Phase 0 of the Document Chain plan)', () => {
+// Split 2026-07-24 (Letterhead Standardization): Brief and Detailed
+// Itinerary are now genuinely separate documents/components, not one
+// shared ItineraryBuilder with an internal style switcher. Both still
+// save into the same `itineraries` table with active_tab hardcoded
+// ("brief" / "detailed" respectively) -- these tests confirm each
+// component correctly filters to only its own style's saved versions
+// when loading from that shared table.
+
+describe('BriefItinerary: real versioned persistence (Phase 0 of the Document Chain plan)', () => {
   it('calls loadItineraryVersions (via db.from("itineraries")) on mount', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
     await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('itineraries'));
   });
 
-  it('clicking Save Version calls the itineraries insert with the current draft (tourTitle, route, days)', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+  it('clicking Save Version calls the itineraries insert with the current draft, active_tab hardcoded to "brief"', async () => {
+    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
     const saveButtons = await screen.findAllByText(/💾 Save v1/);
     fireEvent.click(saveButtons[0]);
     await waitFor(() => {
@@ -40,12 +49,12 @@ describe('ItineraryBuilder: real versioned persistence (Phase 0 of the Document 
       expect(insertCalls.length).toBeGreaterThan(0);
       expect(insertCalls[0][0]).toHaveProperty('days');
       expect(insertCalls[0][0]).toHaveProperty('tour_title');
-      expect(insertCalls[0][0]).toHaveProperty('active_tab');
+      expect(insertCalls[0][0].active_tab).toBe('brief');
     });
   });
 
-  it('the previously dead footer Save button now actually saves (had no onClick handler at all before)', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+  it('the previously dead footer Save button now actually saves (had no onClick handler at all before the original fix)', async () => {
+    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
     const saveButtons = await screen.findAllByText(/💾 Save v1/);
     expect(saveButtons.length).toBeGreaterThanOrEqual(1); // header + footer both have one
     fireEvent.click(saveButtons[saveButtons.length - 1]); // footer's copy
@@ -53,14 +62,15 @@ describe('ItineraryBuilder: real versioned persistence (Phase 0 of the Document 
   });
 
   it('renders without crashing when currentUser is not passed (demo mode)', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}}/>);
-    expect(await screen.findByText(/ITINERARY BUILDER/)).toBeTruthy();
+    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}}/>);
+    expect(await screen.findByText(/BRIEF ITINERARY/)).toBeTruthy();
   });
 
-  it('loading a previously saved version populates tourTitle, route, and days into the draft', async () => {
+  it('only loads active_tab="brief" versions, ignoring any "detailed" rows from the shared table', async () => {
     const versionRows = [
-      { version: 1, tour_title: 'Saved Tour Title', route: 'Delhi - Leh - Alchi', active_tab: 'outlined',
+      { version: 1, tour_title: 'Brief Saved Title', route: 'Delhi - Leh - Alchi', active_tab: 'brief',
         days: [{id:1,dayLabel:'DAY-1',title:'Custom Title',route:'',distance:'',time:'',meals:['B'],description:'',hotel:''}], is_final: false },
+      { version: 5, tour_title: 'Detailed Should Not Appear', route: '', active_tab: 'detailed', days: [], is_final: false },
     ];
     const db = {
       from: vi.fn((t) => {
@@ -75,43 +85,47 @@ describe('ItineraryBuilder: real versioned persistence (Phase 0 of the Document 
     };
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: IB } = await import('../components/ItineraryBuilder.jsx');
-    render(<IB query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByDisplayValue('Saved Tour Title')).toBeTruthy());
+    const { default: BI } = await import('../components/BriefItinerary.jsx');
+    render(<BI query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByDisplayValue('Brief Saved Title')).toBeTruthy());
     expect(screen.getByDisplayValue('Delhi - Leh - Alchi')).toBeTruthy();
     expect(screen.getByDisplayValue('Custom Title')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Detailed Should Not Appear')).toBeNull();
+    // Next version should be 2 (following Brief's own v1), not 6 (which
+    // would mean it incorrectly saw Detailed's v5 as part of its own sequence)
+    expect(screen.getAllByText(/💾 Save v2/).length).toBeGreaterThan(0);
   });
 });
 
-describe('ItineraryBuilder: Brief and Detailed have genuinely independent version sequences (not shared)', () => {
-  it('saving a Brief version does not bump Detailed\'s next version number, and vice versa', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
-    // Starts on Brief (renamed from "outlined"), save v1
-    fireEvent.click(await screen.findByText('📋 Brief'));
-    fireEvent.click((await screen.findAllByText(/💾 Save v1/))[0]);
+describe('DetailedItinerary: real versioned persistence (Phase 0 of the Document Chain plan)', () => {
+  it('calls loadItineraryVersions (via db.from("itineraries")) on mount', async () => {
+    render(<DetailedItinerary query={fakeQuery} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
     await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('itineraries'));
-
-    // Switch to Detailed -- should still be v1, not v2, since it has its own sequence
-    fireEvent.click(screen.getByText('📖 Detailed'));
-    expect((await screen.findAllByText(/💾 Save v1/)).length).toBeGreaterThan(0);
   });
 
-  it('the internal style value is "brief", not "outlined" (renamed everywhere)', async () => {
-    render(<ItineraryBuilder query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
-    fireEvent.click((await screen.findAllByText(/💾 Save v1/))[0]);
+  it('clicking Save Version calls the itineraries insert with active_tab hardcoded to "detailed"', async () => {
+    render(<DetailedItinerary query={fakeQuery} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    const saveButtons = await screen.findAllByText(/💾 Save v1/);
+    fireEvent.click(saveButtons[0]);
     await waitFor(() => {
       const insertCalls = mockDb.from.mock.results
         .filter((r,i)=>mockDb.from.mock.calls[i][0]==='itineraries')
         .map(r=>r.value.insert.mock.calls).flat();
       expect(insertCalls.length).toBeGreaterThan(0);
-      expect(insertCalls[0][0].active_tab).toBe('brief');
+      expect(insertCalls[0][0].active_tab).toBe('detailed');
     });
   });
 
-  it('marking a Brief version final does not affect Detailed\'s final marking (scoped by style in markItineraryVersionFinal)', async () => {
+  it('renders without crashing when currentUser is not passed (demo mode)', async () => {
+    render(<DetailedItinerary query={fakeQuery} detailTemplate={{}} onClose={()=>{}}/>);
+    expect(await screen.findByText(/DETAILED ITINERARY/)).toBeTruthy();
+  });
+
+  it('only loads active_tab="detailed" versions, ignoring any "brief" rows from the shared table', async () => {
     const versionRows = [
-      { version: 1, active_tab: 'brief', tour_title: 'T', days: [], is_final: false },
-      { version: 1, active_tab: 'detailed', tour_title: 'T', days: [], is_final: true },
+      { version: 1, tour_title: 'Brief Should Not Appear', route: '', active_tab: 'brief', days: [], is_final: false },
+      { version: 3, tour_title: 'Detailed Saved Title', route: 'Detailed Route', active_tab: 'detailed',
+        days: [{id:1,dayLabel:'DAY-1',title:'',route:'',distance:'',time:'',meals:['B'],description:'',hotel:''}], is_final: true },
     ];
     const db = {
       from: vi.fn((t) => {
@@ -126,10 +140,13 @@ describe('ItineraryBuilder: Brief and Detailed have genuinely independent versio
     };
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: IB } = await import('../components/ItineraryBuilder.jsx');
-    render(<IB query={fakeQuery} briefTemplate={{}} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    // Detailed's v1 should show as final (★), confirming per-style final tracking loaded correctly
-    fireEvent.click(await screen.findByText('📖 Detailed'));
-    await waitFor(() => expect(screen.getByText('★')).toBeTruthy());
+    const { default: DI } = await import('../components/DetailedItinerary.jsx');
+    render(<DI query={fakeQuery} detailTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByDisplayValue('Detailed Saved Title')).toBeTruthy());
+    expect(screen.getByDisplayValue('Detailed Route')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Brief Should Not Appear')).toBeNull();
+    // Its own v3 should show as final (★), confirming per-style final
+    // tracking survived the split correctly
+    expect(screen.getByText('★')).toBeTruthy();
   });
 });

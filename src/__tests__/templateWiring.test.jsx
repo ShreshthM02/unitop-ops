@@ -5,7 +5,8 @@ import ProformaInvoice from '../components/ProformaInvoice.jsx';
 import TaxInvoice from '../components/TaxInvoice.jsx';
 import MealPlanDocument from '../components/MealPlanDocument.jsx';
 import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
-import ItineraryBuilder from '../components/ItineraryBuilder.jsx';
+import BriefItinerary from '../components/BriefItinerary.jsx';
+import DetailedItinerary from '../components/DetailedItinerary.jsx';
 import { DEFAULT_DOC_TEMPLATES } from '../lib/constants.js';
 
 const fakeQuery = {
@@ -121,23 +122,31 @@ describe('Documents actually apply their template prop', () => {
     expect(html).toContain('Custom footer block.');
   });
 
-  it('ItineraryBuilder uses briefTemplate in Outlined mode and detailTemplate in Detailed mode', () => {
+  it('BriefItinerary uses briefTemplate for its closing tagline', async () => {
     const { container } = render(
-      <ItineraryBuilder
+      <BriefItinerary
         query={fakeQuery}
         briefTemplate={{ closingTagline: 'BRIEF TAGLINE' }}
+        onClose={()=>{}}
+      />
+    );
+    fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      expect(html).toContain('BRIEF TAGLINE');
+    });
+  });
+
+  it('DetailedItinerary uses detailTemplate for its closing tagline', () => {
+    const { container } = render(
+      <DetailedItinerary
+        query={fakeQuery}
         detailTemplate={{ closingTagline: 'DETAIL TAGLINE' }}
         onClose={()=>{}}
       />
     );
     fireEvent.click(screen.getByText('👁 Preview'));
-    let html = container.querySelector('iframe').getAttribute('srcdoc');
-    expect(html).toContain('BRIEF TAGLINE');
-
-    fireEvent.click(screen.getByText('📝 Content'));
-    fireEvent.click(screen.getByText('📖 Detailed'));
-    fireEvent.click(screen.getByText('👁 Preview'));
-    html = container.querySelector('iframe').getAttribute('srcdoc');
+    const html = container.querySelector('iframe').getAttribute('srcdoc');
     expect(html).toContain('DETAIL TAGLINE');
   });
 
@@ -146,6 +155,7 @@ describe('Documents actually apply their template prop', () => {
     expect(() => render(<TaxInvoice query={fakeQuery} payments={{}} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<MealPlanDocument query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
-    expect(() => render(<ItineraryBuilder query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
+    expect(() => render(<BriefItinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
+    expect(() => render(<DetailedItinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
   });
 });

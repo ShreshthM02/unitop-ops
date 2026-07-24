@@ -1,8 +1,22 @@
-import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_ITINERARY_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
 
-export default function ItineraryBuilder({ query, briefTemplate, detailTemplate, onClose, currentUser, readOnly }) {
+// Detailed Itinerary -- split out 2026-07-24 from the old combined
+// ItineraryBuilder.jsx into its own standalone document (Letterhead
+// Standardization initiative; Brief Itinerary is the sibling split, now
+// on the new paginated letterhead system). This file is DELIBERATELY
+// left on the old buildLetterheadDocument and its existing layout --
+// Detailed's redesign is its own custom-layout conversation, explicitly
+// deferred by the user, not part of this split. The only change from
+// the old ItineraryBuilder is removing the now-unnecessary Brief/Detailed
+// style switcher, since this document is always "detailed" now. Still
+// saves into the same `itineraries` table Brief uses, with active_tab
+// hardcoded to "detailed" -- preserves every previously saved Detailed
+// version and keeps the two style's version sequences genuinely
+// independent, matching how they always worked even when they shared
+// one component.
+export default function DetailedItinerary({ query, detailTemplate, onClose, currentUser, readOnly }) {
   const [tourTitle, setTourTitle] = useState(query.destination || "");
   const [tagline, setTagline] = useState("");
   const [route, setRoute] = useState("");
@@ -12,33 +26,22 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
     { id:2, dayLabel:"DAY-2", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
     { id:3, dayLabel:"DAY-3", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
   ]);
-  const [activeTab, setActiveTab] = useState("brief"); // itinerary style: brief | detailed
-  const [viewMode, setViewMode] = useState("content");    // content | preview
+  const [viewMode, setViewMode] = useState("content");
   const [editingDay, setEditingDay] = useState(null);
   const toggles = useLetterheadToggles();
-  const { showStamp, showPageNum, headerAllPages, footerAllPages, printOnLetterhead } = toggles;
+  const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
 
-  // Real version history, same pattern as Cost Sheet/Quotation/Meal Plan
-  // (Phase 0 of the Document Chain plan -- see docs/DATA_OWNERSHIP.md).
-  // Brief and Detailed share one table (itineraries) but have genuinely
-  // independent version sequences -- saving a Brief tweak must not bump
-  // Detailed's version number, and vice versa. Every version-numbering,
-  // pill-display, and final-marking operation below is scoped by
-  // activeTab (the current style), not global to the query.
   const [versions, setVersions] = useState([]);
-  const [finalVersionByStyle, setFinalVersionByStyle] = useState({});
+  const [finalVersion, setFinalVersion] = useState(null);
   const [viewingVersion, setViewingVersion] = useState(null);
   const [versionNote, setVersionNote] = useState("");
-
-  const versionsForStyle = versions.filter(v => v.activeTab === activeTab);
-  const nextVersion = versionsForStyle.length ? Math.max(...versionsForStyle.map(v => v.version)) + 1 : 1;
+  const nextVersion = versions.length ? Math.max(...versions.map(v => v.version)) + 1 : 1;
 
   const loadVersionIntoDraft = (v) => {
     setTourTitle(v.tourTitle || query.destination || "");
     setTagline(v.tagline || "");
     setRoute(v.route || "");
     setDuration(v.duration || duration);
-    setActiveTab(v.activeTab || "brief");
     setItinDays(v.days && v.days.length ? v.days : itinDays);
     setViewingVersion(v.version);
   };
@@ -48,14 +51,6 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
   const [pullMessage, setPullMessage] = useState("");
   const [pulling, setPulling] = useState(false);
 
-  // Phase 4 of the Document Chain plan (docs/DATA_OWNERSHIP.md): pulls
-  // from the star-marked Cost Sheet directly, same reasoning as Meal
-  // Plan -- Itinerary Builder is opened independently from the toolbar,
-  // not linked to a specific costSheetId. Both Brief and Detailed share
-  // one itinDays state (just different print formatting), so this only
-  // needs to pull once, not per-style. Uses the shared extraction
-  // library (extractItineraryBuilderDaysFromCostSheet), not a
-  // reimplementation.
   const pullFromCostSheet = async (targetVersion) => {
     setPulling(true);
     setPullMessage("");
@@ -74,33 +69,28 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
 
   useEffect(() => {
     loadItineraryVersions(db, query.id).then(loaded => {
-      if (loaded.length === 0) {
+      const detailedVersions = loaded.filter(v => v.activeTab === "detailed");
+      if (detailedVersions.length === 0) {
         loadFinalCostSheetVersion(db, query.id).then(finalV => {
           if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
         });
         return;
       }
-      setVersions(loaded);
-      const finalByStyle = {};
-      ["brief", "detailed"].forEach(style => {
-        const finalV = loaded.filter(v => v.activeTab === style).find(v => v.isFinal);
-        if (finalV) finalByStyle[style] = finalV.version;
-      });
-      setFinalVersionByStyle(finalByStyle);
-      // Load the most recently saved version overall into the draft, in
-      // whichever style it was -- the tab switches to match it.
-      loadVersionIntoDraft(loaded[loaded.length - 1]);
-      setPulledFromCostSheetVersion(loaded[loaded.length - 1].pulledFromCostSheetVersion ?? null);
+      setVersions(detailedVersions);
+      const finalV = detailedVersions.find(v => v.isFinal);
+      if (finalV) setFinalVersion(finalV.version);
+      loadVersionIntoDraft(detailedVersions[detailedVersions.length - 1]);
+      setPulledFromCostSheetVersion(detailedVersions[detailedVersions.length - 1].pulledFromCostSheetVersion ?? null);
       loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
   }, [query.id]);
   const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
   const saveVersion = () => {
-    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab, days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
     saveItineraryVersion(db, query.id, snap, currentUser?.id);
-    logAudit(db, query.id, currentUser?.name, `${activeTab==="brief"?"Brief":"Detailed"} Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
+    logAudit(db, query.id, currentUser?.name, `Detailed Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(nextVersion);
     setVersionNote("");
   };
@@ -121,7 +111,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
   const ta = { ...inp, minHeight:80, resize:"vertical" };
 
   const buildPrintHTML = () => {
-    const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...((activeTab === "detailed" ? detailTemplate : briefTemplate) || {}) };
+    const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
 
     const titleBlock = `
@@ -136,14 +126,6 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
 
     const dayBlocks = itinDays.map(d => {
       const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-      if (activeTab === "brief") {
-        return `<div style="padding:9pt 0;border-bottom:0.5pt solid #eee">
-          <div style="font-size:11pt;font-weight:bold;color:#1A3A52">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-          ${d.route||d.distance||d.time?`<div style="font-size:9pt;color:#888;margin:2pt 0">${[d.route,d.distance&&d.time?`(${d.distance} / ${d.time})`:d.distance||d.time].filter(Boolean).join(" — ")}</div>`:""}
-          <div style="margin-top:5pt">${mealStr}</div>
-          ${d.hotel?`<div style="font-size:9pt;color:#555;margin-top:3pt">🏨 ${d.hotel}</div>`:""}
-        </div>`;
-      }
       return `<div style="margin-bottom:16pt">
         <div style="font-size:12pt;font-weight:bold;color:#1A3A52;margin-bottom:2pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
         ${d.route||d.distance||d.time?`<div style="font-size:9.5pt;color:#8B1A1A;font-weight:600;margin-bottom:5pt">${[d.route,d.distance&&d.time?`(${d.distance} / ${d.time})`:d.distance||d.time].filter(Boolean).join(" — ")}</div>`:""}
@@ -162,7 +144,7 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
     return buildLetterheadDocument({
       title: `${tourTitle} — Itinerary`,
       bodyBlocks: [titleBlock, dayBlocks, closingBlock],
-      headerAllPages, footerAllPages, printOnLetterhead, showPageNum,
+      headerAllPages: headerFooterAllPages, footerAllPages: headerFooterAllPages, printOnLetterhead, showPageNum,
     });
   };
 
@@ -176,23 +158,23 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
         <div style={{ background:G.navy, padding:"14px 20px", flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY BUILDER · {activeTab==="brief"?"BRIEF":"DETAILED"} · {versionsForStyle.length>0?`v${nextVersion-1} saved`:"unsaved"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>DETAILED ITINERARY · {versions.length>0?`v${nextVersion-1} saved`:"unsaved"}</div>
               <div style={{ fontSize:17, fontWeight:700, color:G.white, fontFamily:"'Playfair Display',serif" }}>
                 {query.groupName||query.clientName||query.agentName}
               </div>
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.id} · {query.destination}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.tourFileId||query.id} · {query.destination}</div>
             </div>
-            {versionsForStyle.length > 0 && (
+            {versions.length > 0 && (
               <div style={{display:"flex",gap:4}}>
-                {versionsForStyle.map(v=>(
+                {versions.map(v=>(
                   <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
                     <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
                       style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
                       v{v.version}
                     </div>
-                    <div onClick={()=>{if(readOnly)return;setFinalVersionByStyle(p=>({...p,[activeTab]:v.version}));markItineraryVersionFinal(db,query.id,v.version,activeTab);logAudit(db,query.id,currentUser?.name,`${activeTab==="brief"?"Brief":"Detailed"} Itinerary v${v.version} marked final`);}} title="Mark as final"
-                      style={{padding:"3px 6px",background:finalVersionByStyle[activeTab]===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                      {finalVersionByStyle[activeTab]===v.version?"★":"☆"}
+                    <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markItineraryVersionFinal(db,query.id,v.version,"detailed");logAudit(db,query.id,currentUser?.name,`Detailed Itinerary v${v.version} marked final`);}} title="Mark as final"
+                      style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
+                      {finalVersion===v.version?"★":"☆"}
                     </div>
                   </div>
                 ))}
@@ -218,18 +200,6 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
               {pullMessage}
             </div>
           )}
-          {/* Itinerary style switcher */}
-          <div style={{ display:"flex", gap:4 }}>
-            {[["brief","📋 Brief"],["detailed","📖 Detailed"]].map(([id,label])=>(
-              <button key={id} onClick={()=>setActiveTab(id)}
-                style={{ padding:"5px 14px", borderRadius:5, border:"none", cursor:"pointer",
-                  background:activeTab===id?"rgba(255,255,255,0.15)":"transparent",
-                  color:activeTab===id?"#fff":"rgba(255,255,255,0.5)",
-                  fontSize:12, fontWeight:activeTab===id?600:400, fontFamily:"'Inter',sans-serif" }}>
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <DocTabBar activeTab={viewMode} setActiveTab={setViewMode} G={G}/>
@@ -300,13 +270,11 @@ export default function ItineraryBuilder({ query, briefTemplate, detailTemplate,
                       <input style={inp} value={d.time} onChange={e=>updateDay(i,"time",e.target.value)} placeholder="1.5 hrs"/>
                     </div>
                   </div>
-                  {activeTab === "detailed" && (
-                    <div style={{ marginBottom:8 }}>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Detailed Description</div>
-                      <textarea style={ta} value={d.description} onChange={e=>updateDay(i,"description",e.target.value)}
-                        placeholder="After breakfast, drive to... Visit ... Overnight stay at hotel."/>
-                    </div>
-                  )}
+                  <div style={{ marginBottom:8 }}>
+                    <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Detailed Description</div>
+                    <textarea style={ta} value={d.description} onChange={e=>updateDay(i,"description",e.target.value)}
+                      placeholder="After breakfast, drive to... Visit ... Overnight stay at hotel."/>
+                  </div>
                   <div>
                     <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Hotel / Overnight</div>
                     <input style={inp} value={d.hotel} onChange={e=>updateDay(i,"hotel",e.target.value)} placeholder="e.g. Hotel Leh Palace / Similar"/>

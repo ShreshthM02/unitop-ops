@@ -881,9 +881,10 @@ export async function markMealPlanVersionFinal(db, queryId, version) {
 
 // ─── ITINERARY (real versioned history, mirrors Meal Plan/Cost Sheet --
 // Phase 0 of the Document Chain plan, see docs/DATA_OWNERSHIP.md). One
-// table covers both Brief and Detailed Itinerary, since ItineraryBuilder
-// is a single component with a "brief"/"detailed" style toggle over
-// the same underlying day data, not two separate documents. ────────────
+// table covers both Brief and Detailed Itinerary. Split 2026-07-24 into
+// two separate components (BriefItinerary.jsx, DetailedItinerary.jsx,
+// previously one shared ItineraryBuilder.jsx with a style toggle) that
+// each save into this same table, distinguished by active_tab. ────────
 export function mapDbItineraryRow(row) {
   return {
     id: row.id, version: row.version, isFinal: row.is_final || false,
