@@ -93,7 +93,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
               <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}>
                 <div style={{fontSize:10,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Available Placeholders</div>
                 <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 16px"}}>
-                  {PATTERN_PLACEHOLDERS.map(p=><React.Fragment key={p.key}><code style={{fontSize:11,color:G.accent,fontWeight:600}}>{p.key}</code><span style={{fontSize:11,color:G.gray600}}>{p.desc}</span></React.Fragment>)}
+                  {PATTERN_PLACEHOLDERS.map(p=><React.Fragment key={p.key}><code onClick={()=>setS(selectedDoc,"pattern",(cs.pattern||"")+p.key)} style={{fontSize:11,color:G.accent,fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}} title={`Click to insert ${p.key} into the pattern above`}>{p.key}</code><span style={{fontSize:11,color:G.gray600}}>{p.desc}</span></React.Fragment>)}
                 </div>
               </div>
             </div>}

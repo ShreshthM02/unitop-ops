@@ -52,13 +52,22 @@ describe('buildQuerySavePayload (the exact regression this round)', () => {
 
 describe('buildQuerySavePayload: assigned_to and file_type (real gaps found and fixed)', () => {
   it('includes assigned_to -- this was silently missing entirely, meaning "Assigned To" edits never actually persisted despite the UI and callback both working correctly', () => {
-    const payload = buildQuerySavePayload({ id: 'UTQ-1', assignedTo: 'staff-uuid-1' });
-    expect(payload.assigned_to).toBe('staff-uuid-1');
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', assignedTo: 'cfff444a-718e-4c14-83a3-f55f368d64dd' });
+    expect(payload.assigned_to).toBe('cfff444a-718e-4c14-83a3-f55f368d64dd');
   });
 
   it('sends null for assigned_to when unassigned, not undefined (undefined would be dropped from the JSON body silently)', () => {
     const payload = buildQuerySavePayload({ id: 'UTQ-1' });
     expect(payload.assigned_to).toBeNull();
+  });
+
+  it('sends assigned_to as null when given a non-uuid value, instead of failing the whole query save -- the actual bug: a brand-new query silently never persisted (gone on refresh) whenever the staff list hadn\'t loaded yet, since the form fell back to USERS\' plain integer ids (1, 2, 3, 4), and that integer went straight into a uuid column with no validation at all, unlike agent_id which already had this exact protection', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-2026-999', groupName: 'New Query Not Persisting Regression', assignedTo: 1 });
+    expect(payload.assigned_to).toBeNull();
+    // Critically: the REST of the payload must still be present and correct --
+    // this is what actually broke (the whole row failed to upsert, not just this field).
+    expect(payload.id).toBe('UTQ-2026-999');
+    expect(payload.group_name).toBe('New Query Not Persisting Regression');
   });
 
   it('includes file_type (FIT/GIT) when set', () => {

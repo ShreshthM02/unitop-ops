@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { paginateBodyBlocks } from '../lib/letterhead.js';
+import { paginateBodyBlocks, createMeasurementContext } from '../lib/letterhead.js';
 
 // A fake measureFn lets the packing algorithm itself be tested without a
 // real browser DOM (jsdom doesn't do real layout, so real heights aren't
@@ -169,5 +169,85 @@ describe('paginateBodyBlocks: table-splitting (a {type:"table"} block splits its
     const block = { type: 'table', headerHTML: '<tr>H</tr>', rowsHTML: [] };
     const pages = paginateBodyBlocks([block], { pageContentHeightPx: 1000, containerWidthPx: 500, tableMeasureFn: fakeTableHeights(50, {}) });
     expect(pages).toEqual([[]]);
+  });
+});
+
+describe('createMeasurementContext: the root-cause fix -- measurement must happen with the real print CSS applied, not the main app document', () => {
+  it('injects the given CSS into an isolated iframe document, not the main document', () => {
+    const cssText = '.test-marker-class { color: rgb(1, 2, 3); }';
+    const { doc, cleanup } = createMeasurementContext(cssText);
+    try {
+      expect(doc).not.toBe(document); // isolated, not the main app document
+      const styleTag = doc.querySelector('style');
+      expect(styleTag).toBeTruthy();
+      expect(styleTag.textContent).toContain('.test-marker-class');
+      // The main document must NOT have received this style -- confirms
+      // isolation, i.e. this can never leak into the running React app's
+      // own styling while a print/preview is being built.
+      expect(document.querySelector('style')?.textContent || '').not.toContain('test-marker-class');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('the isolated document has its own body that elements can be appended to and measured against', () => {
+    const { doc, cleanup } = createMeasurementContext('');
+    try {
+      expect(doc.body).toBeTruthy();
+      const el = doc.createElement('div');
+      doc.body.appendChild(el);
+      expect(doc.body.contains(el)).toBe(true);
+      doc.body.removeChild(el);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('cleanup removes the iframe from the main document, leaving nothing behind', () => {
+    const before = document.querySelectorAll('iframe').length;
+    const { cleanup } = createMeasurementContext('');
+    expect(document.querySelectorAll('iframe').length).toBe(before + 1);
+    cleanup();
+    expect(document.querySelectorAll('iframe').length).toBe(before);
+  });
+});
+
+describe('bug fix: table blocks in the non-repeating path (previously stringified to literal "[object Object]")', () => {
+  it('a {type:"table"} block renders as real table HTML, not "[object Object]", when header+footer-on-all-pages is off', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test',
+      bodyBlocks: [
+        '<p>Intro</p>',
+        { type: 'table', headerHTML: '<tr><th>Col</th></tr>', rowsHTML: ['<tr><td>Row1</td></tr>', '<tr><td>Row2</td></tr>'] },
+      ],
+      headerFooterAllPages: false,
+      printOnLetterhead: false,
+    });
+    expect(html).not.toContain('[object Object]');
+    expect(html).toContain('<thead><tr><th>Col</th></tr></thead>');
+    expect(html).toContain('Row1');
+    expect(html).toContain('Row2');
+  });
+});
+
+describe('bug fix: page number shows just the bare number, not "Page N of X"', () => {
+  it('showPageNum produces a bare counter(page), no "Page" text and no "of X" total', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<p>content</p>'],
+      headerFooterAllPages: false, printOnLetterhead: false, showPageNum: true,
+    });
+    expect(html).toContain('content: counter(page)');
+    expect(html).not.toContain('"Page "');
+    expect(html).not.toContain('counter(pages)');
+  });
+});
+
+describe('bug fix: printOnLetterhead blank-space margins now match the 6cm top / 4cm bottom spec', () => {
+  it('the header blank-space CSS is exactly 6cm, the footer exactly 4cm', async () => {
+    const { invoiceLetterheadCSS } = await import('../lib/letterhead.js');
+    expect(invoiceLetterheadCSS).toContain('.lh-header--blank { height: 6cm; }');
+    expect(invoiceLetterheadCSS).toContain('.lh-footer--blank { height: 4cm; }');
   });
 });

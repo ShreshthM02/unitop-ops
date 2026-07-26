@@ -488,7 +488,7 @@ export function buildQuerySavePayload(q) {
     source_other:        q.sourceOther,
     nationality:         q.nationality,
     date:                q.date,
-    assigned_to:         q.assignedTo || null,
+    assigned_to:         isUuid(q.assignedTo) ? q.assignedTo : null,
     file_type:           q.fileType || null,
     travel_date_to:      q.travelDateTo || null,
     internal_correspondent: q.internalCorrespondent,

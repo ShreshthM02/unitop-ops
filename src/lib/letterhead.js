@@ -45,16 +45,16 @@ export const invoiceLetterheadCSS = `
 
     /* ── Header (logo + 3 address lines + top gradient rule) ─────────────── */
     .lh-header { text-align: center; padding-bottom: 3pt; }
-    .lh-logo { height: 88pt; width: auto; display: block; margin: 0 auto; }
+    .lh-logo { height: 88pt; width: auto; display: block; margin: 0 auto -10pt; }
     .lh-addr-block { color: #2a2a2a; font-family: 'Inter', Arial, sans-serif; font-size: 9pt; letter-spacing: 0.3pt; line-height: 1.35; margin-bottom: 0; text-align: center; white-space: nowrap; }
     .lh-addr-block:first-of-type { margin-top: 1pt; }
     .lh-rule { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin: 4pt 0 8pt; border-radius: 1pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-header--blank { height: 84pt; }
+    .lh-header--blank { height: 6cm; }
 
     /* ── Footer (bottom gradient rule + 4 badges) ─────────────────────────── */
     .lh-footer { padding-top: 6pt; }
-    .lh-rule-footer { height: 1.5pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-footer--blank { height: 40pt; }
+    .lh-rule-footer { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .lh-footer--blank { height: 4cm; }
 
     /* ── Paginated print pages (Phase: Letterhead Standardization,
        2026-07-24) ──────────────────────────────────────────────────────
@@ -194,7 +194,8 @@ export const invoiceFooterHTML = (printOnLetterhead = false) => {
 //   showFooter       whether the footer appears at all (default true)
 //   printOnLetterhead  blank header/footer space for physical letterhead
 //                      paper; overrides + disables the two "all pages" flags
-//   showPageNum      adds a running "Page N" via @page bottom-right
+//   showPageNum      adds a running page number (bare number, no "Page"
+//                     prefix or "of X" total) via @page bottom-right
 export function buildLetterheadDocument({
   title,
   extraHeadCSS = "",
@@ -231,7 +232,7 @@ export function buildLetterheadDocument({
   // verification still needs a real browser (not available in this
   // sandbox); this is the most robust pattern available without one.
   const pageCSS = `@page { size: A4 ${orientation === "landscape" ? "landscape" : "portrait"}; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
-    ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+    ${showPageNum ? '@page { @bottom-right { content: counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
 
   return `<!DOCTYPE html><html><head><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
@@ -273,26 +274,55 @@ export const PAGE_CONTENT_HEIGHT_MM = A4_HEIGHT_MM - mmToNumber(PRINT_MARGIN.top
 const A4_WIDTH_MM = 210;
 export const PAGE_CONTENT_WIDTH_MM = A4_WIDTH_MM - mmToNumber(PRINT_MARGIN.left) - mmToNumber(PRINT_MARGIN.right);
 
+// Creates an isolated, hidden iframe with the given CSS injected, so
+// measurement happens against the SAME styling that will actually apply
+// in the final printed document. Measuring in the main app's own
+// document (as this used to do) has none of invoiceLetterheadCSS's
+// .content-table padding/font-size/border rules applied -- those rules
+// are what actually determine real content height, so measuring without
+// them silently produced wrong numbers. This was the root cause of real
+// overflow and missing-content bugs in production even though the
+// packing algorithm itself was correct: it was packing based on heights
+// that didn't match what would actually render.
+export function createMeasurementContext(cssText) {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "absolute";
+  iframe.style.visibility = "hidden";
+  iframe.style.left = "-99999px";
+  iframe.style.top = "0";
+  iframe.style.width = "1px";
+  iframe.style.height = "1px";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html><head><style>${cssText}</style></head><body></body></html>`);
+  doc.close();
+  return { doc, cleanup: () => document.body.removeChild(iframe) };
+}
+
 // Renders an HTML string into a hidden, correctly-widthed off-screen div
 // and returns its real rendered height in px -- the only way to know how
 // tall a block of arbitrary document content (tables, paragraphs, mixed)
 // will actually be once laid out with real fonts. Requires a real
 // browser DOM; throws with a clear message if called anywhere else
 // (tests must inject their own measureFn instead of using this default).
-function domMeasureHeightPx(html, containerWidthPx) {
+// doc defaults to the global document for backward compatibility /
+// direct test use, but callers that care about real print-accurate
+// measurement should pass the doc from createMeasurementContext.
+function domMeasureHeightPx(html, containerWidthPx, doc = document) {
   if (typeof document === "undefined") {
     throw new Error("domMeasureHeightPx requires a real browser DOM. Pass an explicit measureFn to paginateBodyBlocks when calling outside a browser (e.g. in tests).");
   }
-  const el = document.createElement("div");
+  const el = doc.createElement("div");
   el.style.position = "absolute";
   el.style.visibility = "hidden";
   el.style.left = "-99999px";
   el.style.top = "0";
   el.style.width = containerWidthPx + "px";
-  document.body.appendChild(el);
+  doc.body.appendChild(el);
   el.innerHTML = html;
   const h = el.offsetHeight;
-  document.body.removeChild(el);
+  doc.body.removeChild(el);
   return h;
 }
 
@@ -311,17 +341,17 @@ function domMeasureHeightPx(html, containerWidthPx) {
 // row height depends on column widths set by the table as a whole, so
 // measuring rows outside that context would give wrong wrapping/height.
 // Returns { headerHeightPx, rowHeightsPx: [...] }.
-function domMeasureTableRowHeightsPx(headerHTML, rowsHTML, containerWidthPx) {
+function domMeasureTableRowHeightsPx(headerHTML, rowsHTML, containerWidthPx, doc = document) {
   if (typeof document === "undefined") {
     throw new Error("domMeasureTableRowHeightsPx requires a real browser DOM. Pass an explicit measureFn to paginateBodyBlocks when calling outside a browser (e.g. in tests).");
   }
-  const el = document.createElement("div");
+  const el = doc.createElement("div");
   el.style.position = "absolute";
   el.style.visibility = "hidden";
   el.style.left = "-99999px";
   el.style.top = "0";
   el.style.width = containerWidthPx + "px";
-  document.body.appendChild(el);
+  doc.body.appendChild(el);
   el.innerHTML = `<table class="content-table" style="width:100%;border-collapse:collapse">
     <thead>${headerHTML}</thead>
     <tbody>${rowsHTML.join("")}</tbody>
@@ -332,7 +362,7 @@ function domMeasureTableRowHeightsPx(headerHTML, rowsHTML, containerWidthPx) {
   const trEls = el.querySelectorAll("tbody > tr");
   const rowHeightsPx = Array.from(trEls).map(tr => tr.getBoundingClientRect().height);
 
-  document.body.removeChild(el);
+  doc.body.removeChild(el);
   return { headerHeightPx, rowHeightsPx };
 }
 
@@ -419,15 +449,15 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
 // current browser/DPI context would render it as, by measuring an actual
 // element rather than assuming a fixed 96dpi (which print contexts don't
 // reliably use). Falls back to the 96dpi approximation outside a browser.
-function mmToPx(mm) {
+function mmToPx(mm, doc = document) {
   if (typeof document === "undefined") return mm * 96 / 25.4;
-  const el = document.createElement("div");
+  const el = doc.createElement("div");
   el.style.position = "absolute";
   el.style.visibility = "hidden";
   el.style.height = mm + "mm";
-  document.body.appendChild(el);
+  doc.body.appendChild(el);
   const px = el.offsetHeight;
-  document.body.removeChild(el);
+  doc.body.removeChild(el);
   return px;
 }
 
@@ -470,42 +500,67 @@ export async function buildPaginatedLetterheadDocument({
   const footerInner = showFooter ? invoiceFooterHTML(printOnLetterhead) : "";
 
   const pageCSS = `@page { size: A4 portrait; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
-    ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+    ${showPageNum ? '@page { @bottom-right { content: counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
   const headBlock = `<style>${invoiceLetterheadCSS}</style><style>${extraHeadCSS}</style><style>${pageCSS}</style>`;
 
   // Rule (a): no repetition needed -- single flowing document, exactly
   // the old non-repeating behavior. No measurement, no pagination.
   if (!repeating) {
-    const rows = [...bodyBlocks];
-    if (headerInner) rows.unshift(headerInner);
-    if (footerInner) rows.push(footerInner);
+    // Table blocks still need converting to real HTML here -- there's no
+    // pagination happening in this branch, so a table block just becomes
+    // one full, unsplit <table> with all its rows, same shape as any
+    // other document's plain table markup. Naively joining bodyBlocks as
+    // strings (the previous bug) would stringify a table block object to
+    // literally "[object Object]" instead of real table HTML.
+    const renderedBlocks = bodyBlocks.map(block => {
+      if (block && typeof block === "object" && block.type === "table") {
+        const cls = block.className ? " " + block.className : "";
+        return `<table class="content-table${cls}" style="width:100%;border-collapse:collapse"><thead>${block.headerHTML}</thead><tbody>${block.rowsHTML.join("")}</tbody></table>`;
+      }
+      return block;
+    });
+    if (headerInner) renderedBlocks.unshift(headerInner);
+    if (footerInner) renderedBlocks.push(footerInner);
     return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
-      ${rows.join("\n")}
+      ${renderedBlocks.join("\n")}
     </body></html>`;
   }
 
-  // Rules (b) and (c): real pagination. Measure header/footer height
-  // (or use the fixed printOnLetterhead blank-space sizes, which are
-  // already known constants -- 6cm/4cm -- rather than re-measuring an
-  // empty div), then pack content into pages.
-  const containerWidthPx = mmToPx(PAGE_CONTENT_WIDTH_MM);
-  const pageContentHeightPx = mmToPx(PAGE_CONTENT_HEIGHT_MM);
-  const headerHeightPx = printOnLetterhead ? mmToPx(60) : (headerInner ? domMeasureHeightPx(headerInner, containerWidthPx) : 0);
-  const footerHeightPx = printOnLetterhead ? mmToPx(40) : (footerInner ? domMeasureHeightPx(footerInner, containerWidthPx) : 0);
-  const availableContentHeightPx = pageContentHeightPx - headerHeightPx - footerHeightPx;
+  // Rules (b) and (c): real pagination. All measurement below happens
+  // inside an isolated iframe with invoiceLetterheadCSS + extraHeadCSS
+  // injected (see createMeasurementContext) -- measuring against the
+  // main app's own document, with none of that CSS applied, was the
+  // root cause of real overflow/missing-content bugs: content measured
+  // shorter than it would actually render, so the packer fit more onto
+  // each page than truly fit.
+  const measureCtx = createMeasurementContext(`${invoiceLetterheadCSS}\n${extraHeadCSS}`);
+  try {
+    const containerWidthPx = mmToPx(PAGE_CONTENT_WIDTH_MM, measureCtx.doc);
+    const pageContentHeightPx = mmToPx(PAGE_CONTENT_HEIGHT_MM, measureCtx.doc);
+    const headerHeightPx = printOnLetterhead ? mmToPx(60, measureCtx.doc) : (headerInner ? domMeasureHeightPx(headerInner, containerWidthPx, measureCtx.doc) : 0);
+    const footerHeightPx = printOnLetterhead ? mmToPx(40, measureCtx.doc) : (footerInner ? domMeasureHeightPx(footerInner, containerWidthPx, measureCtx.doc) : 0);
+    const availableContentHeightPx = pageContentHeightPx - headerHeightPx - footerHeightPx;
 
-  const pages = paginateBodyBlocks(bodyBlocks, { pageContentHeightPx: availableContentHeightPx, containerWidthPx });
+    const pages = paginateBodyBlocks(bodyBlocks, {
+      pageContentHeightPx: availableContentHeightPx,
+      containerWidthPx,
+      measureFn: (html, w) => domMeasureHeightPx(html, w, measureCtx.doc),
+      tableMeasureFn: (headerHTML, rowsHTML, w) => domMeasureTableRowHeightsPx(headerHTML, rowsHTML, w, measureCtx.doc),
+    });
 
-  const pageDivs = pages.map((pageBlocks, i) => {
-    const isLast = i === pages.length - 1;
-    return `<div class="print-page${isLast ? "" : " print-page-notlast"}">
-      <div class="print-page-header">${headerInner}</div>
-      <div class="print-page-content">${pageBlocks.join("\n")}</div>
-      <div class="print-page-footer">${footerInner}</div>
-    </div>`;
-  }).join("\n");
+    const pageDivs = pages.map((pageBlocks, i) => {
+      const isLast = i === pages.length - 1;
+      return `<div class="print-page${isLast ? "" : " print-page-notlast"}">
+        <div class="print-page-header">${headerInner}</div>
+        <div class="print-page-content">${pageBlocks.join("\n")}</div>
+        <div class="print-page-footer">${footerInner}</div>
+      </div>`;
+    }).join("\n");
 
-  return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
-    ${pageDivs}
-  </body></html>`;
+    return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
+      ${pageDivs}
+    </body></html>`;
+  } finally {
+    measureCtx.cleanup();
+  }
 }
