@@ -104,3 +104,37 @@ describe('buildQuerySavePayload / mapDbQueryRow: 3 more silently-lost fields fou
     expect(mapped.internalCorrespondent).toBe('Priya');
   });
 });
+
+describe('buildQuerySavePayload: travel_date_from/to must never receive a non-date text label (the ACTUAL confirmed root cause of "new query not persisting", found 2026-07-27 via the real Postgres error the error-toast fix finally surfaced: \'invalid input syntax for type date: "TBC"\')', () => {
+  it('sends null for travel_date_from when the travel date is unconfirmed ("TBC" text label), instead of the literal string that broke every such query\'s save entirely', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-2026-043', travelDate: 'TBC' });
+    expect(payload.travel_date_from).toBeNull();
+  });
+
+  it('sends null for a month-name or season-name label too, not just literal "TBC"', () => {
+    expect(buildQuerySavePayload({ id: 'UTQ-1', travelDate: 'December' }).travel_date_from).toBeNull();
+    expect(buildQuerySavePayload({ id: 'UTQ-1', travelDate: 'Monsoon' }).travel_date_from).toBeNull();
+  });
+
+  it('sends the real date through untouched when travelDate genuinely is a confirmed ISO date', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', travelDate: '2026-08-15' });
+    expect(payload.travel_date_from).toBe('2026-08-15');
+  });
+
+  it('falls back to travelDateFrom if travelDate itself is not a real date but travelDateFrom is', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', travelDate: 'TBC', travelDateFrom: '2026-09-01' });
+    expect(payload.travel_date_from).toBe('2026-09-01');
+  });
+
+  it('sends null for travel_date_to when it is not a valid date string either', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-1', travelDateTo: 'TBC' });
+    expect(payload.travel_date_to).toBeNull();
+  });
+
+  it('the rest of the payload still saves correctly even when the date is unconfirmed -- this is the actual regression: previously the WHOLE upsert failed, not just this one field', () => {
+    const payload = buildQuerySavePayload({ id: 'UTQ-2026-043', groupName: 'Real Test Group', travelDate: 'TBC' });
+    expect(payload.travel_date_from).toBeNull();
+    expect(payload.id).toBe('UTQ-2026-043');
+    expect(payload.group_name).toBe('Real Test Group');
+  });
+});

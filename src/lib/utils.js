@@ -449,6 +449,22 @@ export function isUuid(v) {
   return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+// The actual, confirmed root cause of "new query not persisting" (found
+// 2026-07-27 via the real Postgres error the fixed error-toast finally
+// surfaced: 'invalid input syntax for type date: "TBC"'). When a query's
+// travel date isn't confirmed yet, q.travelDate holds a text label
+// ("TBC", a month name, a season name) rather than an actual date --
+// this is completely normal and expected at that stage of a real sales
+// pipeline. That text was flowing straight into travel_date_from, a
+// Postgres `date`-typed column, with zero validation -- so any query
+// without a confirmed date failed to save at all, silently before the
+// error-toast fix, then loudly (but still unfixed) after it. isUuid()
+// already protected agent_id/assigned_to from an analogous mismatch;
+// this is the same category of gap for a date column.
+function isIsoDateString(v) {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v);
+}
+
 // Builds the exact payload for saving a query to Supabase. Pure and
 // exported specifically so this exact class of bug -- one bad field
 // silently failing the ENTIRE upsert -- is directly testable, rather than
@@ -474,7 +490,7 @@ export function buildQuerySavePayload(q) {
     pax_max:             parseInt(q.paxMax) || null,
     pax_display:         q.paxDisplay,
     date_known:          q.dateKnown,
-    travel_date_from:    q.travelDate || q.travelDateFrom || null,
+    travel_date_from:    isIsoDateString(q.travelDate) ? q.travelDate : (isIsoDateString(q.travelDateFrom) ? q.travelDateFrom : null),
     travel_month:        q.travelMonth,
     travel_season:       q.travelSeason,
     date_display:        q.dateDisplay,
@@ -490,7 +506,7 @@ export function buildQuerySavePayload(q) {
     date:                q.date,
     assigned_to:         isUuid(q.assignedTo) ? q.assignedTo : null,
     file_type:           q.fileType || null,
-    travel_date_to:      q.travelDateTo || null,
+    travel_date_to:      isIsoDateString(q.travelDateTo) ? q.travelDateTo : null,
     internal_correspondent: q.internalCorrespondent,
   };
 }
