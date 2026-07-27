@@ -82,7 +82,8 @@ export const invoiceLetterheadCSS = `
        This does NOT include the pagination (chunking content into pages)
        -- see paginateBodyBlocks() below, which must run in-browser
        against real rendered heights. */
-    .print-page { height: 281mm; display: flex; flex-direction: column; }
+    .print-page { height: 281mm; display: flex; flex-direction: column; position: relative; }
+    .print-page-num { position: absolute; bottom: 4mm; right: 4mm; font-size: 7.5pt; color: #999; font-family: 'Inter', Arial, sans-serif; }
     .print-page.print-page-notlast { page-break-after: always; }
     .print-page-header { flex: 0 0 auto; }
     .print-page-footer { flex: 0 0 auto; }
@@ -232,7 +233,7 @@ export function buildLetterheadDocument({
   // verification still needs a real browser (not available in this
   // sandbox); this is the most robust pattern available without one.
   const pageCSS = `@page { size: A4 ${orientation === "landscape" ? "landscape" : "portrait"}; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
-    ${showPageNum ? '@page { @bottom-right { content: counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+    ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
 
   return `<!DOCTYPE html><html><head><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
@@ -499,8 +500,20 @@ export async function buildPaginatedLetterheadDocument({
   const headerInner = showHeader ? invoiceLetterheadHTML(printOnLetterhead) : "";
   const footerInner = showFooter ? invoiceFooterHTML(printOnLetterhead) : "";
 
+  // Non-repeating (rule a): the browser decides pagination itself for a
+  // single flowing document, so the total page count isn't known until
+  // print time -- "Page N of X" here has to come from CSS counter(pages),
+  // the best available option even though Chrome's print engine doesn't
+  // universally support it. Repeating (rules b/c): pagination is computed
+  // by paginateBodyBlocks below, so both N and the real total are known
+  // exactly -- the CSS page-number rule is suppressed entirely here and
+  // "Page N of X" is injected as real text into each page instead, which
+  // is reliable regardless of counter(pages) support.
+  const pageNumCSS = (!repeating && showPageNum)
+    ? '@page { @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }'
+    : "";
   const pageCSS = `@page { size: A4 portrait; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
-    ${showPageNum ? '@page { @bottom-right { content: counter(page); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
+    ${pageNumCSS}`;
   const headBlock = `<style>${invoiceLetterheadCSS}</style><style>${extraHeadCSS}</style><style>${pageCSS}</style>`;
 
   // Rule (a): no repetition needed -- single flowing document, exactly
@@ -550,10 +563,12 @@ export async function buildPaginatedLetterheadDocument({
 
     const pageDivs = pages.map((pageBlocks, i) => {
       const isLast = i === pages.length - 1;
+      const pageNumHTML = showPageNum ? `<div class="print-page-num">Page ${i+1} of ${pages.length}</div>` : "";
       return `<div class="print-page${isLast ? "" : " print-page-notlast"}">
         <div class="print-page-header">${headerInner}</div>
         <div class="print-page-content">${pageBlocks.join("\n")}</div>
         <div class="print-page-footer">${footerInner}</div>
+        ${pageNumHTML}
       </div>`;
     }).join("\n");
 

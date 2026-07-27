@@ -177,10 +177,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // deliberately working from an earlier, already-agreed number.
   const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
   useEffect(() => {
-    if (!costSheetId) return;
     loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
-  }, [query.id, costSheetId]);
-  const isStaleVsCostSheet = costSheetId && finalCostSheetVersion &&
+  }, [query.id]);
+  const isStaleVsCostSheet = finalCostSheetVersion &&
     q.pulledFromCostSheetVersion !== finalCostSheetVersion.version;
   const pullLatestFinal = () => { if (finalCostSheetVersion) pullFromCostSheet(finalCostSheetVersion); };
 
@@ -206,7 +205,27 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const updateSlab = (i, field, val) => setQ(prev => ({
     ...prev, slabs: prev.slabs.map((s, idx) => idx === i ? { ...s, [field]: val } : s)
   }));
-  const addSlab = () => setQ(prev => ({ ...prev, slabs: [...prev.slabs, { label:"", price:"" }] }));
+  // Direct, guaranteed scroll preservation -- same fix as Cost Sheet's
+  // addTlSlab (see that file's comment for the full history: CSS-based
+  // approaches were confirmed deployed but did not stop the "jumps to
+  // top" behavior). Captures scroll position from every plausible
+  // scrolling element before the DOM changes and restores it
+  // synchronously afterward, via useLayoutEffect (runs after DOM
+  // mutation, before paint -- no visible flash).
+  const fieldsetRef = useRef(null);
+  const scrollRestoreRef = useRef(null);
+  useLayoutEffect(() => {
+    if (scrollRestoreRef.current) {
+      const { fieldset, window: winY } = scrollRestoreRef.current;
+      if (fieldsetRef.current && fieldset != null) fieldsetRef.current.scrollTop = fieldset;
+      if (winY != null) window.scrollTo(0, winY);
+      scrollRestoreRef.current = null;
+    }
+  }, [q.slabs.length, q.monuments.length]);
+  const saveScrollForRestore = () => {
+    scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+  };
+  const addSlab = () => { saveScrollForRestore(); setQ(prev => ({ ...prev, slabs: [...prev.slabs, { label:"", price:"" }] })); };
   const removeSlab = (i) => setQ(prev => ({ ...prev, slabs: prev.slabs.filter((_,idx)=>idx!==i) }));
 
   // ── Final Price Agreement: multi-entry composition (e.g. 18 pax on one
@@ -413,8 +432,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               ))}
             </div>
           )}
-          {costSheetId && !readOnly && (
-            <button onClick={()=>pullFromCostSheet()} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
+          {(costSheetId || finalCostSheetVersion) && !readOnly && (
+            <button onClick={()=>pullFromCostSheet(costSheetId ? undefined : finalCostSheetVersion)} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
               title="Pull addressee, itinerary, accommodation, and pricing from the linked Cost Sheet">
               {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
             </button>
@@ -464,7 +483,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           ))}
         </div>
 
-        {activeTab==='content' && <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
+        {activeTab==='content' && <fieldset ref={fieldsetRef} disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
 
           {/* ── ADDRESSEE ── */}
           {secTitle("📬 Addressee")}
@@ -613,7 +632,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                 </div>
               ))}
               <button className="btn btn-ghost" style={{ fontSize:11 }}
-                onClick={()=>setQ(p=>({...p,monuments:[...p.monuments,{name:"",fee:""}]}))}>+ Add</button>
+                onClick={()=>{saveScrollForRestore();setQ(p=>({...p,monuments:[...p.monuments,{name:"",fee:""}]}));}}>+ Add</button>
             </>
           )}
 

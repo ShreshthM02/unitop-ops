@@ -49,14 +49,19 @@ describe('QuotationGenerator Phase 3: auto-fires the pull on creation (no button
     expect(screen.queryByText(/Pulled from Cost Sheet/)).toBeNull();
   });
 
-  it('does NOT auto-fire when there is no linked costSheetId at all', async () => {
+  it('does NOT auto-fire when there is no linked costSheetId AND no final Cost Sheet exists at all', async () => {
     const db = makeDb({});
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QG } = await import('../components/QuotationGenerator.jsx');
     render(<QG query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     await rtlWaitFor(() => expect(db.from).toHaveBeenCalledWith('quotations'));
-    expect(db.from).not.toHaveBeenCalledWith('cost_sheets');
+    // cost_sheets IS queried now (regardless of costSheetId, this is the
+    // fix for the "button never shows when opened from the toolbar" bug)
+    // -- but with no rows returned at all, there's genuinely nothing to
+    // auto-pull, which is still correct.
+    expect(db.from).toHaveBeenCalledWith('cost_sheets');
+    expect(screen.queryByText(/Pulled from Cost Sheet/)).toBeNull();
   });
 });
 
@@ -98,14 +103,51 @@ describe('QuotationGenerator Phase 3: mutual staleness banner against the star-m
     await rtlWaitFor(() => expect(screen.getByDisplayValue('FRESH-PULL-SLAB')).toBeTruthy());
   });
 
-  it('shows no banner and does not check anything when there is no linked costSheetId', async () => {
+  it('shows no banner when there is no final Cost Sheet at all (cost_sheets is queried, but nothing comes back)', async () => {
     const db = makeDb({});
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QG } = await import('../components/QuotationGenerator.jsx');
     render(<QG query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     await rtlWaitFor(() => expect(db.from).toHaveBeenCalledWith('quotations'));
-    expect(db.from).not.toHaveBeenCalledWith('cost_sheets');
+    expect(db.from).toHaveBeenCalledWith('cost_sheets');
     expect(screen.queryByText('↻ Pull latest')).toBeNull();
+  });
+});
+
+describe('QuotationGenerator: "Pull from Cost Sheet" button visibility (bug fix -- previously only showed when opened via Cost Sheet\'s "Proceed to Quotation" flow, never when opened directly from the toolbar even if a real Cost Sheet existed)', () => {
+  it('the button shows when a final Cost Sheet exists for this query, even with no costSheetId prop passed at all (e.g. opened directly from the toolbar)', async () => {
+    const finalCS = { id: 'cs-toolbar', version: 2, is_final: true, days: [], slabs: [], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [], gst_pct:0, markup_pct:20, roe:80, currency:'US $' };
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [], is_final: false };
+    const db = makeDb({ costSheetRows: [finalCS], quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    // No costSheetId prop at all -- matches how the toolbar opens Quotation directly
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await rtlWaitFor(() => expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy());
+  });
+
+  it('clicking the button in this no-costSheetId case still pulls correctly from the final Cost Sheet version', async () => {
+    const finalCS = { id: 'cs-toolbar2', version: 5, is_final: true, days: [], slabs: [{id:'s1',label:'TOOLBAR-PULL-SLAB',foc:10}], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [], gst_pct:0, markup_pct:20, roe:80, currency:'US $' };
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [], is_final: false };
+    const db = makeDb({ costSheetRows: [finalCS], quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await rtlWaitFor(() => expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy());
+    fireEvent.click(screen.getByText('↻ Pull from Cost Sheet'));
+    await rtlWaitFor(() => expect(screen.getByDisplayValue('TOOLBAR-PULL-SLAB')).toBeTruthy());
+  });
+
+  it('still shows no button at all when neither costSheetId nor any final Cost Sheet exists', async () => {
+    const db = makeDb({});
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await rtlWaitFor(() => expect(db.from).toHaveBeenCalledWith('quotations'));
+    expect(screen.queryByText('↻ Pull from Cost Sheet')).toBeNull();
   });
 });

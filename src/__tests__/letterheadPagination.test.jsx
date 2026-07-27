@@ -231,16 +231,35 @@ describe('bug fix: table blocks in the non-repeating path (previously stringifie
   });
 });
 
-describe('bug fix: page number shows just the bare number, not "Page N of X"', () => {
-  it('showPageNum produces a bare counter(page), no "Page" text and no "of X" total', async () => {
+describe('page number restored to "Page N of X" format (reversed from a previous round\'s request to show a bare number)', () => {
+  it('non-repeating documents (rule a, browser decides pagination) use CSS counter(page)/counter(pages) -- the total page count is not known until print time, so this is the only available mechanism there', async () => {
     const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
     const html = await buildPaginatedLetterheadDocument({
       title: 'Test', bodyBlocks: ['<p>content</p>'],
       headerFooterAllPages: false, printOnLetterhead: false, showPageNum: true,
     });
-    expect(html).toContain('content: counter(page)');
-    expect(html).not.toContain('"Page "');
-    expect(html).not.toContain('counter(pages)');
+    expect(html).toContain('"Page " counter(page) " of " counter(pages)');
+  });
+
+  it('repeating documents (rules b/c, real pagination) inject the actual "Page N of X" as real text per page -- reliable regardless of counter(pages) browser support, since the exact total is already known', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: Array.from({length: 30}, (_,i) => `<p style="height:200px">Line ${i}</p>`),
+      headerFooterAllPages: true, printOnLetterhead: false, showPageNum: true,
+    });
+    expect(html).toMatch(/Page \d+ of \d+/);
+    // the CSS counter approach must NOT also be present here -- would double up
+    expect(html).not.toContain('counter(page)');
+  });
+
+  it('showPageNum off produces neither the CSS counter rule nor injected text', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<p>content</p>'],
+      headerFooterAllPages: false, printOnLetterhead: false, showPageNum: false,
+    });
+    expect(html).not.toContain('counter(page)');
+    expect(html).not.toMatch(/Page \d+ of \d+/);
   });
 });
 

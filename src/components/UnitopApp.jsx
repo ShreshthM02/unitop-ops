@@ -241,7 +241,18 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // ── Persist query to Supabase ──────────────────────────────────────────────
   const saveQueryToDB = async (q, auditAction) => {
     try {
-      await db.from("queries").upsert(buildQuerySavePayload(q));
+      // upsert() never throws on a failed save -- it resolves normally
+      // with { data: null, error: {...} } even on a 4xx/5xx response,
+      // since the underlying fetch() only rejects on network-level
+      // failures, not HTTP error statuses. This try/catch alone was
+      // never actually capable of catching a real save failure; the
+      // error field was silently ignored, so a query could appear
+      // created (optimistic UI update) while never actually persisting,
+      // with nothing in the console or UI hinting why. Checking it
+      // explicitly is what makes both the catch block and the toast
+      // below actually work.
+      const { error } = await db.from("queries").upsert(buildQuerySavePayload(q));
+      if (error) throw new Error(error.message || "Query save failed");
       if (auditAction) {
         await db.from("query_audit").insert({
           query_id: q.id,
@@ -249,7 +260,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           action:   auditAction,
         });
       }
-    } catch(e) { console.warn("Save to DB failed:", e); }
+    } catch(e) {
+      console.warn("Save to DB failed:", e);
+      showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`);
+    }
   };
 
   const nextQueryId = () => {
