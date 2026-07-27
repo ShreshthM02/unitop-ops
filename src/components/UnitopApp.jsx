@@ -260,9 +260,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           action:   auditAction,
         });
       }
+      return true;
     } catch(e) {
       console.warn("Save to DB failed:", e);
       showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`);
+      return false;
     }
   };
 
@@ -291,7 +293,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     saveQueryToDB({ ...updates, id: queryId }, "Updated query details");
   };
 
-  const handleNewQuery = (form) => {
+  const handleNewQuery = async (form) => {
     const id = nextQueryId();
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
     const paxDisplay = form.paxKnown?`${form.paxExact} pax (confirmed)`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
@@ -307,9 +309,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       audit:[{by:currentUser.name,at:now,action:`Query received via ${form.source}${form.sourceOther?" ("+form.sourceOther+")":""} from ${form.agentCompany}${form.correspondent?" ("+form.correspondent+")":""} — acknowledged`}]
     };
     setQueries(q=>[newQ,...q]);
-    saveQueryToDB(newQ, newQ.audit[0].action);
     setShowNewQuery(false);
-    showToast(`Query ${id} created and acknowledged`);
+    // Bug fix: this used to fire a "created" success toast immediately,
+    // synchronously, right after calling saveQueryToDB() without
+    // awaiting it -- so even once saveQueryToDB was fixed to surface a
+    // real error toast on failure, that error toast was racing against
+    // (and getting silently overwritten by) the success toast that had
+    // already fired, since both share the same single toast state slot.
+    // Awaiting first means only one toast ever actually shows, and it's
+    // the correct one.
+    const saved = await saveQueryToDB(newQ, newQ.audit[0].action);
+    if (saved !== false) showToast(`Query ${id} created and acknowledged`);
   };
 
   const handleConvertToCaseFile = (query) => {

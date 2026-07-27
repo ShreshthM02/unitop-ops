@@ -61,7 +61,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
       <div className="stats-row">
         <StatCard label="Active Queries" value={active.length} sub="across all stages" filterKey="active"/>
         <StatCard label="New This Week"  value={newThisWeek.length} color="#1D6FA4" sub="awaiting acknowledgement" filterKey="new_query"/>
-        <StatCard label="In Operations"  value={inOps.length} color="#1F618D" sub="confirmed + being serviced" filterKey="operations"/>
+        <StatCard label="In Operations"  value={inOps.length} color="#AD1457" sub="confirmed + being serviced" filterKey="operations"/>
         <StatCard label="Tours On Ground" value={onGround.length} color={G.accent} sub="currently running" filterKey="onground"/>
         <StatCard label="Completed" value={seasonDone.length} color="#145A32" sub={`this season (Apr ${seasonStartYear}–Mar ${seasonStartYear+1})`} filterKey="completed"/>
       </div>

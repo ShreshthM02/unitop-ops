@@ -83,11 +83,11 @@ export const invoiceLetterheadCSS = `
        -- see paginateBodyBlocks() below, which must run in-browser
        against real rendered heights. */
     .print-page { height: 281mm; display: flex; flex-direction: column; position: relative; }
-    .print-page-num { position: absolute; bottom: 4mm; right: 4mm; font-size: 7.5pt; color: #999; font-family: 'Inter', Arial, sans-serif; }
     .print-page.print-page-notlast { page-break-after: always; }
     .print-page-header { flex: 0 0 auto; }
     .print-page-footer { flex: 0 0 auto; }
     .print-page-content { flex: 1 1 auto; overflow: hidden; }
+    .print-page-num { flex: 0 0 auto; text-align: right; padding: 1mm 2mm 0; font-size: 7.5pt; color: #999; font-family: 'Inter', Arial, sans-serif; }
     .print-page-content > * + * { margin-top: 0; }
 
     /* ── Shared document content styles (unchanged from before) ──────────── */
@@ -567,8 +567,8 @@ export async function buildPaginatedLetterheadDocument({
       return `<div class="print-page${isLast ? "" : " print-page-notlast"}">
         <div class="print-page-header">${headerInner}</div>
         <div class="print-page-content">${pageBlocks.join("\n")}</div>
-        <div class="print-page-footer">${footerInner}</div>
         ${pageNumHTML}
+        <div class="print-page-footer">${footerInner}</div>
       </div>`;
     }).join("\n");
 

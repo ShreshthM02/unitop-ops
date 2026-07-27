@@ -151,3 +151,21 @@ describe('QuotationGenerator: "Pull from Cost Sheet" button visibility (bug fix 
     expect(screen.queryByText('↻ Pull from Cost Sheet')).toBeNull();
   });
 });
+
+describe('QuotationGenerator: "pulling" state bug fix (button stuck on "Pulling…" forever after a successful pull, since the success path\'s early return skipped setPulling(false) entirely)', () => {
+  it('after a successful pull, the button returns to its normal label -- not stuck on "Pulling…"', async () => {
+    const finalCS = { id: 'cs-stuck', version: 3, is_final: true, days: [], slabs: [{id:'s1',label:'STUCK-TEST-SLAB',foc:10}], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [], gst_pct:0, markup_pct:20, roe:80, currency:'US $' };
+    const db = makeDb({ costSheetRows: [finalCS] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId="cs-stuck" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    // Auto-pull fires on creation; wait for it to genuinely finish (the
+    // pull message confirms success), then confirm the button is no
+    // longer stuck on "Pulling…" and is clickable again.
+    await rtlWaitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v3/)).toBeTruthy());
+    expect(screen.queryByText('Pulling…')).toBeNull();
+    const btn = screen.getByText('↻ Pull from Cost Sheet');
+    expect(btn.disabled).toBe(false);
+  });
+});

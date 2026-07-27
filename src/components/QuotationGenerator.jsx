@@ -87,7 +87,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         const versions = await loadCostSheetVersions(db, query.id);
         match = versions.find(v => v.id === costSheetId);
       }
-      if (!match) { setPullMessage("Could not find the linked Cost Sheet version."); setPulling(false); return; }
+      if (!match) { setPullMessage("Could not find the linked Cost Sheet version."); return; }
 
       // Addressee: Cost Sheet's own Client / Foreign Agent field, if set
       const attnCompany = match.clientAgentName || q.attnCompany;
@@ -140,8 +140,16 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       return match;
     } catch (e) {
       setPullMessage("Failed to pull from Cost Sheet.");
+    } finally {
+      // Bug fix: this used to sit as a plain statement after the
+      // try/catch, which the success path's early `return match;`
+      // skipped entirely -- so a successful pull (confirmed by the
+      // banner showing the right version) still left the button stuck
+      // on "Pulling…" forever, since only the error path ever actually
+      // reached it. A finally block runs on every exit path: success,
+      // the early "no match found" return, and the catch block alike.
+      setPulling(false);
     }
-    setPulling(false);
   };
 
   // Load previously saved versions for this tour file, if any -- continues

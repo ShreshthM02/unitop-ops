@@ -34,7 +34,7 @@ export function StatusBadge({ status }) {
   const map = {
     new_query:  { label: "New Query",  bg: "#DBEAFE", color: "#1E40AF" },
     costing:    { label: "Costing",    bg: "#FEF3C7", color: "#92400E" },
-    operations: { label: "Operations", bg: "#E0F2FE", color: "#0369A1" },
+    operations: { label: "Operations", bg: "#FCE4EC", color: "#AD1457" },
     finance:    { label: "Finance",    bg: "#F3E8FF", color: "#6B21A8" },
     completed:  { label: "Completed",  bg: "#ECFDF5", color: "#065F46" },
   };

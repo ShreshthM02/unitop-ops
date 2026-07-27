@@ -113,7 +113,7 @@ export const TOUR_DATA = [
 export const KANBAN_COLS = [
   { id:"new_query",   label:"New Query",        color:"#154360", bg:"#EBF5FB" },
   { id:"costing",     label:"Costing & Quote",  color:"#784212", bg:"#FEF9E7" },
-  { id:"operations",  label:"Operations",        color:"#1F618D", bg:"#EAF2F8" },
+  { id:"operations",  label:"Operations",        color:"#AD1457", bg:"#FCE4EC" },
   { id:"finance",     label:"Finance",           color:"#4A235A", bg:"#F5EEF8" },
   { id:"completed",   label:"Completed",         color:"#145A32", bg:"#E9F7EF" },
 ];
@@ -491,7 +491,7 @@ export const STATUS_WF_MAP = {
 export const PIPELINE_STAGES = [
   { id:"new_query",  label:"New Query",       color:"#1A5276", bg:"#EBF5FB", hint:"Incoming queries awaiting qualification" },
   { id:"costing",    label:"Costing & Quote", color:"#784212", bg:"#FEF9E7", hint:"Cost sheet being prepared or quote sent" },
-  { id:"operations", label:"Operations",      color:"#1F618D", bg:"#EAF2F8", hint:"Confirmed — tour file being serviced" },
+  { id:"operations", label:"Operations",      color:"#AD1457", bg:"#FCE4EC", hint:"Confirmed — tour file being serviced" },
   { id:"finance",    label:"Finance",         color:"#4A235A", bg:"#F0E6F6", hint:"Services done — pending payment closure" },
   { id:"completed",  label:"Completed",       color:"#145A32", bg:"#E9F7EF", hint:"Tour done, payment received" },
 ];

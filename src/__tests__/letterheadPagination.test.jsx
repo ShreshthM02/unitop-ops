@@ -270,3 +270,37 @@ describe('bug fix: printOnLetterhead blank-space margins now match the 6cm top /
     expect(invoiceLetterheadCSS).toContain('.lh-footer--blank { height: 4cm; }');
   });
 });
+
+describe('bug fix: page number no longer overlaps the footer content', () => {
+  it('the page number div is a normal-flow sibling between content and footer, not absolutely positioned on top of the footer', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<p>content</p>'],
+      headerFooterAllPages: true, printOnLetterhead: false, showPageNum: true, showFooter: true,
+    });
+    // Search for the actual body elements (div class=), not the bare
+    // class name -- which also appears earlier in the document, inside
+    // the <style> block's own rule definitions, and would give a false
+    // ordering result.
+    const contentIdx = html.indexOf('<div class="print-page-content">');
+    const numIdx = html.indexOf('<div class="print-page-num">');
+    const footerIdx = html.indexOf('<div class="print-page-footer">');
+    expect(contentIdx).toBeGreaterThan(-1);
+    expect(numIdx).toBeGreaterThan(-1);
+    expect(footerIdx).toBeGreaterThan(-1);
+    expect(contentIdx).toBeLessThan(numIdx);
+    expect(numIdx).toBeLessThan(footerIdx);
+  });
+
+  it('the page number CSS uses normal document flow (flex row), not position:absolute', async () => {
+    const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<p>content</p>'],
+      headerFooterAllPages: true, printOnLetterhead: false, showPageNum: true,
+    });
+    const ruleMatch = html.match(/\.print-page-num\s*\{[^}]*\}/);
+    expect(ruleMatch).toBeTruthy();
+    expect(ruleMatch[0]).not.toContain('position: absolute');
+    expect(ruleMatch[0]).toContain('flex: 0 0 auto');
+  });
+});
