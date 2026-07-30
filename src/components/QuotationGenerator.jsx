@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildQuotationDocxBlob, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -21,11 +21,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       { label: "Single Supplement",                                        price: "" },
     ],
     itinerary: [
-      { day:"Day 01", movement:"", bf:"", lunch:"", dinner:"" },
-      { day:"Day 02", movement:"", bf:"", lunch:"", dinner:"" },
-      { day:"Day 03", movement:"", bf:"", lunch:"", dinner:"" },
-      { day:"Day 04", movement:"", bf:"", lunch:"", dinner:"" },
+      { day:"Day 01", date:"", movement:"", bf:"", lunch:"", dinner:"" },
+      { day:"Day 02", date:"", movement:"", bf:"", lunch:"", dinner:"" },
+      { day:"Day 03", date:"", movement:"", bf:"", lunch:"", dinner:"" },
+      { day:"Day 04", date:"", movement:"", bf:"", lunch:"", dinner:"" },
     ],
+    showItinDate: false,
     hotels: [
       { place:"", nights:"", hotel:"" },
     ],
@@ -33,6 +34,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     excludes:  [...template.excludes],
     monuments: [...template.monuments],
     showMonuments: template.showMonuments,
+    monumentNote: template.monumentNote,
+    // Domestic flights/trains: plain free-text, multiple entries, optional
+    // display -- quotation-only for now (only actually serviced if the
+    // client accepts our rates), same optional-toggle pattern as monuments.
+    flights: [], showFlights: false, flightsHeading: template.flightsHeading,
+    trains: [], showTrains: false, trainsHeading: template.trainsHeading,
+    // Remarks: single free-text field, optional display, same pattern.
+    remarks: "", showRemarks: false, remarksHeading: template.remarksHeading,
     greeting:  template.greeting,
     openingLine: template.openingLine,
     closingLine: template.closingLine,
@@ -46,7 +55,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     signoff: query.internalCorrespondent
       ? `Thanks & Regards\n\n${query.internalCorrespondent}\nTour Deptt.\nUnitop Tours & Travel Pvt. Ltd.`
       : template.signoff,
-    monumentNote: template.monumentNote,
     costSheetId: costSheetId || null,
     confirmedPax: "", tourValue: "",
     finalPriceEntries: [],
@@ -97,7 +105,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       // Meal Plan and Itinerary Builder use the same functions (Phase 4
       // of the Document Chain plan).
       const extracted = extractItineraryFromCostSheetDays(match.days);
-      const itinerary = extracted.map(d => ({ day: d.day, movement: d.movement, bf: d.breakfast, lunch: d.lunch, dinner: d.dinner }));
+      const itinerary = extracted.map(d => ({ day: d.day, date: "", movement: d.movement, bf: d.breakfast, lunch: d.lunch, dinner: d.dinner }));
       const hotels = extractHotelsFromCostSheetDays(match.days);
 
       // Cost: each group slab's computed final price, using the same
@@ -266,7 +274,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     ...prev, itinerary: prev.itinerary.map((r,idx) => idx===i ? {...r,[field]:val} : r)
   }));
   const addItinRow = () => setQ(prev => ({
-    ...prev, itinerary: [...prev.itinerary, { day:`Day ${String(prev.itinerary.length+1).padStart(2,"0")}`, movement:"", bf:"", lunch:"", dinner:"" }]
+    ...prev, itinerary: [...prev.itinerary, { day:`Day ${String(prev.itinerary.length+1).padStart(2,"0")}`, date:"", movement:"", bf:"", lunch:"", dinner:"" }]
   }));
   const updateHotel = (i, field, val) => setQ(prev => ({
     ...prev, hotels: prev.hotels.map((r,idx) => idx===i ? {...r,[field]:val} : r)
@@ -282,21 +290,39 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const buildPrintHTML = () => {
     const stampHTMLQ = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
 
+    // 1.1: real vertical gaps between date / addressee / subject / greeting /
+    // opening line, instead of the previous near-zero spacing (the shared
+    // print CSS resets all margins to 0 -- each line here needs its own
+    // explicit margin-top rather than relying on any default).
     const addresseeBlock = `
-    <div style="margin-bottom:10pt;font-size:9pt;">
-      ${q.attnName ? '<div><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
+    <div style="margin-bottom:14pt;font-size:9pt;">
       <div><strong>Date:</strong> ${q.date}</div>
-      ${q.refLine ? '<div style="margin-top:6pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
+      ${q.attnName ? '<div style="margin-top:8pt;"><strong>KIND ATTN:</strong> '+q.attnName+(q.attnCompany?', '+q.attnCompany:'')+(q.attnCity?', '+q.attnCity:'')+'</div>' : ''}
+      ${q.refLine ? '<div style="margin-top:8pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
     </div>
-    <div style="font-style:italic;font-weight:bold;margin:12pt 0;font-size:10pt;">${q.greeting}</div>
-    <p style="font-size:9.5pt;margin-bottom:10pt;">${q.openingLine}</p>`;
+    <div style="font-style:italic;font-weight:bold;margin:14pt 0;font-size:10pt;">${q.greeting}</div>
+    <p style="font-size:9.5pt;margin-top:10pt;margin-bottom:12pt;">${q.openingLine}</p>`;
 
+    // 1.2: date column optional (dates are often fluid at quotation stage),
+    // B/F renamed to the full word for a client-facing document.
     const itineraryBlock = {
       type: "table",
-      headerHTML: `<tr><th>Day</th><th>Itinerary</th><th>B/F</th><th>Lunch</th><th>Dinner</th></tr>`,
-      rowsHTML: q.itinerary.map(r=>'<tr><td><strong>'+r.day+'</strong></td><td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>'),
+      headerHTML: q.showItinDate
+        ? `<tr><th>Day</th><th>Date</th><th>Itinerary</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>`
+        : `<tr><th>Day</th><th>Itinerary</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>`,
+      rowsHTML: q.itinerary.map(r=>
+        '<tr><td><strong>'+r.day+'</strong></td>'+
+        (q.showItinDate ? '<td>'+(r.date||'—')+'</td>' : '')+
+        '<td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>'),
     };
     const itineraryHeading = `<h2>Day-wise Itinerary</h2>`;
+
+    // 1.3: Domestic Flights / Domestic Trains -- plain free-text, multiple
+    // entries, optional display, quotation-only for now (see project notes).
+    const flightsHeadingBlock = q.showFlights ? `<h2>${q.flightsHeading}</h2>` : "";
+    const flightsBlock = (q.showFlights && q.flights.length) ? `<ul>${q.flights.map(f=>'<li>'+f+'</li>').join('')}</ul>` : "";
+    const trainsHeadingBlock = q.showTrains ? `<h2>${q.trainsHeading}</h2>` : "";
+    const trainsBlock = (q.showTrains && q.trains.length) ? `<ul>${q.trains.map(t=>'<li>'+t+'</li>').join('')}</ul>` : "";
 
     const accommodationBlock = {
       type: "table",
@@ -323,6 +349,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       rowsHTML: q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>'),
     } : null;
 
+    // 1.5: Remarks -- single free-text field, optional display, placed
+    // directly below the (now relocated) Monument Fees section.
+    const remarksHeadingBlock = q.showRemarks ? `<h2>${q.remarksHeading}</h2>` : "";
+    const remarksBlock = (q.showRemarks && q.remarks) ? `<p style="font-size:9.5pt;white-space:pre-wrap;">${q.remarks}</p>` : "";
 
     const inclusionsBlock = `
     <h2>Cost Includes</h2><ol>${q.includes.map(i=>'<li>'+i+'</li>').join('')}</ol>
@@ -350,9 +380,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       bodyBlocks: [
         addresseeBlock,
         itineraryHeading, itineraryBlock,
+        ...(q.showFlights && flightsBlock ? [flightsHeadingBlock, flightsBlock] : []),
+        ...(q.showTrains && trainsBlock ? [trainsHeadingBlock, trainsBlock] : []),
         accommodationHeading, accommodationBlock,
-        priceHeadingBlock, priceBlock,
         ...(monumentsBlock ? [monumentsHeadingBlock, monumentsBlock] : []),
+        ...(q.showRemarks && remarksBlock ? [remarksHeadingBlock, remarksBlock] : []),
+        priceHeadingBlock, priceBlock,
         inclusionsBlock,
         closingBlock,
       ],
@@ -368,6 +401,30 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     win.document.write(await buildPrintHTML());
     win.document.close();
     setTimeout(()=>win.print(), 500);
+  };
+
+  // 1.1: real .docx export -- new feature, the app previously only had
+  // Print/Export PDF. Applies the same 4 letterhead toggles as the PDF
+  // preview (see src/lib/wordLetterhead.js for how each maps onto Word's
+  // own header/footer/margin mechanics).
+  const [exportingDocx, setExportingDocx] = useState(false);
+  const exportQuotationDocx = async () => {
+    setExportingDocx(true);
+    try {
+      const blob = await buildQuotationDocxBlob(q, { headerFooterAllPages, showPageNum, showStamp, printOnLetterhead });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Quotation - ${q.attnCompany || query.groupName || query.id}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to export Word document: ' + e.message);
+    } finally {
+      setExportingDocx(false);
+    }
   };
 
   // Preview now needs to reflect the same paginated output that will
@@ -509,10 +566,16 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
           {/* ── ITINERARY ── */}
           {secTitle("🗺 Day-wise Itinerary")}
+          <div style={{ marginBottom:8 }}>
+            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
+              <input type="checkbox" checked={q.showItinDate}
+                onChange={e=>setF("showItinDate",e.target.checked)}/> Show a Date column (dates are often fluid at quotation stage -- leave off if not yet fixed)
+            </label>
+          </div>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
             <thead>
               <tr style={{ background:G.gray100 }}>
-                {["Day","Movement / Itinerary","B'Fast","Lunch","Dinner",""].map(h=>(
+                {(q.showItinDate ? ["Day","Date","Movement / Itinerary","Breakfast","Lunch","Dinner",""] : ["Day","Movement / Itinerary","Breakfast","Lunch","Dinner",""]).map(h=>(
                   <th key={h} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
                     fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>{h}</th>
                 ))}
@@ -524,6 +587,11 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                   <td style={{ padding:"3px 4px", width:52 }}>
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.day}
                       onChange={e=>updateItinerary(i,"day",e.target.value)}/></td>
+                  {q.showItinDate && (
+                    <td style={{ padding:"3px 4px", width:70 }}>
+                      <input style={{...inputStyle,padding:"3px 5px"}} value={row.date}
+                        onChange={e=>updateItinerary(i,"date",e.target.value)} placeholder="e.g. 12 Oct"/></td>
+                  )}
                   <td style={{ padding:"3px 4px" }}>
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.movement}
                       onChange={e=>updateItinerary(i,"movement",e.target.value)}
@@ -543,6 +611,52 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </tbody>
           </table>
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addItinRow}>+ Add Day</button>
+
+          {/* ── DOMESTIC FLIGHTS ── */}
+          {secTitle("✈ Domestic Flights")}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
+              <input type="checkbox" checked={q.showFlights}
+                onChange={e=>setF("showFlights",e.target.checked)}/> Show domestic flights in quotation
+            </label>
+          </div>
+          {q.showFlights && (
+            <>
+              {q.flights.map((item,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
+                  <input style={{...inputStyle,flex:1}} value={item}
+                    onChange={e=>updateList("flights",i,e.target.value)} placeholder="e.g. Delhi / Varanasi — 6E 2134"/>
+                  <span style={{ cursor:"pointer", color:G.gray400 }}
+                    onClick={()=>removeListItem("flights",i)}>✕</span>
+                </div>
+              ))}
+              <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("flights")}>+ Add Flight</button>
+            </>
+          )}
+
+          {/* ── DOMESTIC TRAINS ── */}
+          {secTitle("🚆 Domestic Trains")}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
+              <input type="checkbox" checked={q.showTrains}
+                onChange={e=>setF("showTrains",e.target.checked)}/> Show domestic trains in quotation
+            </label>
+          </div>
+          {q.showTrains && (
+            <>
+              {q.trains.map((item,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
+                  <input style={{...inputStyle,flex:1}} value={item}
+                    onChange={e=>updateList("trains",i,e.target.value)} placeholder="e.g. Delhi / Agra — Shatabdi Express"/>
+                  <span style={{ cursor:"pointer", color:G.gray400 }}
+                    onClick={()=>removeListItem("trains",i)}>✕</span>
+                </div>
+              ))}
+              <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("trains")}>+ Add Train</button>
+            </>
+          )}
 
           {/* ── HOTELS ── */}
           {secTitle("🏨 Accommodation")}
@@ -578,31 +692,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </table>
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addHotelRow}>+ Add Hotel</button>
 
-          {/* ── PRICE SLABS ── */}
-          {secTitle("💰 Cost Per Person")}
-          <div style={{ marginBottom:8 }}>
-            <label style={labelStyle}>Currency</label>
-            <select style={{...inputStyle, width:100}}
-              value={q.currency} onChange={e=>setF("currency",e.target.value)}>
-              {["US $","EUR","GBP","AUD","SGD","NTD","THB","INR","Other"].map(c=><option key={c}>{c}</option>)}
-            </select>
-          </div>
-          {q.slabs.map((slab,i)=>(
-            <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
-              <input style={{...inputStyle, flex:3}} value={slab.label}
-                onChange={e=>updateSlab(i,"label",e.target.value)}
-                placeholder="e.g. 15–19 Pax + 01 T/L Free (Large Coach)"/>
-              <div style={{ display:"flex", alignItems:"center", gap:4, flex:1 }}>
-                <span style={{ fontSize:12, color:G.gray600, whiteSpace:"nowrap" }}>{q.currency}</span>
-                <input style={{...inputStyle}} value={slab.price}
-                  onChange={e=>updateSlab(i,"price",e.target.value)} placeholder="237"/>
-                <span style={{ fontSize:11, color:G.gray400, whiteSpace:"nowrap" }}>/ pax</span>
-              </div>
-              <span style={{ cursor:"pointer", color:G.gray400 }} onClick={()=>removeSlab(i)}>✕</span>
-            </div>
-          ))}
-          <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addSlab}>+ Add Slab</button>
-
           {/* ── MONUMENTS ── */}
           {secTitle("🏛 Monument Fees")}
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
@@ -631,6 +720,44 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                 onClick={()=>{saveScrollForRestore();setQ(p=>({...p,monuments:[...p.monuments,{name:"",fee:""}]}));}}>+ Add</button>
             </>
           )}
+
+          {/* ── REMARKS ── */}
+          {secTitle("📝 Remarks")}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
+              <input type="checkbox" checked={q.showRemarks}
+                onChange={e=>setF("showRemarks",e.target.checked)}/> Show remarks in quotation
+            </label>
+          </div>
+          {q.showRemarks && (
+            <textarea style={{...inputStyle, minHeight:52, resize:"vertical"}}
+              value={q.remarks} onChange={e=>setF("remarks",e.target.value)} placeholder="Any additional notes for this quotation..."/>
+          )}
+
+          {/* ── PRICE SLABS ── */}
+          {secTitle("💰 Cost Per Person")}
+          <div style={{ marginBottom:8 }}>
+            <label style={labelStyle}>Currency</label>
+            <select style={{...inputStyle, width:100}}
+              value={q.currency} onChange={e=>setF("currency",e.target.value)}>
+              {["US $","EUR","GBP","AUD","SGD","NTD","THB","INR","Other"].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          {q.slabs.map((slab,i)=>(
+            <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+              <input style={{...inputStyle, flex:3}} value={slab.label}
+                onChange={e=>updateSlab(i,"label",e.target.value)}
+                placeholder="e.g. 15–19 Pax + 01 T/L Free (Large Coach)"/>
+              <div style={{ display:"flex", alignItems:"center", gap:4, flex:1 }}>
+                <span style={{ fontSize:12, color:G.gray600, whiteSpace:"nowrap" }}>{q.currency}</span>
+                <input style={{...inputStyle}} value={slab.price}
+                  onChange={e=>updateSlab(i,"price",e.target.value)} placeholder="237"/>
+                <span style={{ fontSize:11, color:G.gray400, whiteSpace:"nowrap" }}>/ pax</span>
+              </div>
+              <span style={{ cursor:"pointer", color:G.gray400 }} onClick={()=>removeSlab(i)}>✕</span>
+            </div>
+          ))}
+          <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addSlab}>+ Add Slab</button>
 
           {/* ── INCLUDES / EXCLUDES ── */}
           {["includes","excludes"].map(key=>(
@@ -786,6 +913,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           <button onClick={printQuotation} className="btn btn-success">🖨 Print / Export PDF</button>
+          <button onClick={exportQuotationDocx} disabled={exportingDocx} className="btn btn-success">
+            {exportingDocx ? "Exporting…" : "📄 Export Word"}
+          </button>
           {!readOnly && (
             <button className="btn btn-primary" onClick={saveVersion}>
               💾 Save v{version}

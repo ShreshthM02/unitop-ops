@@ -5,6 +5,8 @@ export * from './images.js';
 export * from './helpers.jsx';
 export * from './utils.js';
 export * from './letterhead.js';
+export * from './wordLetterhead.js';
+export * from './wordExport.js';
 export * from './LetterheadControls.jsx';
 export * from './VersionDropdown.jsx';
 export * from './useRealtimeTable.js';
