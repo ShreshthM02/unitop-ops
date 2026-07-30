@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -16,16 +16,6 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [dragItem,setDragItem]=useState(null);
   const [activeTab,setActiveTab]=useState("meta");
   const [viewMode, setViewMode] = useState("content");
-  const [showVersionMenu, setShowVersionMenu] = useState(false);
-  const versionMenuRef = useRef(null);
-  useEffect(() => {
-    if (!showVersionMenu) return;
-    const onClickOutside = (e) => {
-      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target)) setShowVersionMenu(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [showVersionMenu]);
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const toggleSection=k=>setPrintEnabled(p=>({...p,[k]:!p[k]}));
@@ -280,30 +270,19 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
             <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id}{query.tourFileId?" · 📁 "+query.tourFileId:""}</div>
           </div>
-          {versions.length > 0 && (
-            <div style={{position:"relative"}} ref={versionMenuRef}>
-              <button onClick={()=>setShowVersionMenu(p=>!p)} className="btn btn-ghost"
-                style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
-                v{viewingVersion||version} {finalVersion===(viewingVersion||version)&&"★"} ▾
-              </button>
-              {showVersionMenu && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.navyMid,borderRadius:8,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",zIndex:10,minWidth:160,maxHeight:240,overflowY:"auto"}}>
-                  {versions.slice().reverse().map(v=>(
-                    <div key={v.version} style={{display:"flex",alignItems:"center",borderRadius:6,overflow:"hidden",marginBottom:2,border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                      <div onClick={()=>{loadVersionIntoDraft(v);setShowVersionMenu(false);}} title={`View v${v.version}`}
-                        style={{flex:1,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                        v{v.version}
-                      </div>
-                      <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);}} title="Mark as final"
-                        style={{padding:"5px 8px",color:"#fff",fontSize:11,cursor:readOnly?"default":"pointer"}}>
-                        {finalVersion===v.version?"★":"☆"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <VersionDropdown
+            versions={versions}
+            viewingVersion={viewingVersion}
+            displayVersion={version}
+            finalVersion={finalVersion}
+            onSelectVersion={loadVersionIntoDraft}
+            onMarkFinal={(v) => {
+              setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);
+              logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);
+            }}
+            readOnly={readOnly}
+            G={G}
+          />
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>

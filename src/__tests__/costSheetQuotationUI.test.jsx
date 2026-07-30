@@ -93,7 +93,7 @@ describe('Version pills: clicking to VIEW is separate from clicking to mark FINA
     };
   }
 
-  it('CostSheet: clicking a version pill loads it into the draft WITHOUT marking it final', async () => {
+  it('CostSheet: clicking a version entry loads it into the draft WITHOUT marking it final', async () => {
     const versionRows = [
       { version: 1, gst_pct: 5, markup_pct: 10, roe: 80, currency: 'US $', days: [], transports: [], slabs: [], monuments: [], local_handlers: [], extras: [], is_final: false },
       { version: 2, gst_pct: 5, markup_pct: 20, roe: 90, currency: 'US $', days: [], transports: [], slabs: [], monuments: [], local_handlers: [], extras: [], is_final: false },
@@ -102,9 +102,19 @@ describe('Version pills: clicking to VIEW is separate from clicking to mark FINA
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { CostSheet: CS } = await import('../components/CostSheet.jsx');
-    render(<CS query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
-    const v1Pills = await screen.findAllByText('v1');
-    fireEvent.click(v1Pills[0]);
+    const { container } = render(<CS query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
+    // Version display is now the shared VersionDropdown component -- the
+    // toggle button must be opened before the per-version entry (and its
+    // "mark as final" star) is reachable, unlike the old always-expanded
+    // pill row.
+    let dropdownBtn;
+    await waitFor(() => {
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      expect(dropdownBtn).toBeTruthy();
+    });
+    fireEvent.click(dropdownBtn);
+    const v1Entries = await screen.findAllByText('v1');
+    fireEvent.click(v1Entries[v1Entries.length - 1]); // the panel's entry, not the toggle button
     // Clicking the version label must NOT call markCostSheetVersionFinal (no update call to cost_sheets)
     const updateCalls = db.from.mock.results.filter((r,i)=>db.from.mock.calls[i][0]==='cost_sheets').map(r=>r.value.update);
     updateCalls.forEach(u => expect(u).not.toHaveBeenCalled());
