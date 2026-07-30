@@ -16,6 +16,16 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [dragItem,setDragItem]=useState(null);
   const [activeTab,setActiveTab]=useState("meta");
   const [viewMode, setViewMode] = useState("content");
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
+  const versionMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showVersionMenu) return;
+    const onClickOutside = (e) => {
+      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target)) setShowVersionMenu(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showVersionMenu]);
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const toggleSection=k=>setPrintEnabled(p=>({...p,[k]:!p[k]}));
@@ -271,23 +281,30 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id}{query.tourFileId?" · 📁 "+query.tourFileId:""}</div>
           </div>
           {versions.length > 0 && (
-            <div style={{display:"flex",gap:4}}>
-              {versions.map(v=>(
-                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                  <div onClick={()=>loadVersionIntoDraft(v)} title={`View v${v.version}`}
-                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                    v{v.version}
-                  </div>
-                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);}} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                    {finalVersion===v.version?"★":"☆"}
-                  </div>
+            <div style={{position:"relative"}} ref={versionMenuRef}>
+              <button onClick={()=>setShowVersionMenu(p=>!p)} className="btn btn-ghost"
+                style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+                v{viewingVersion||version} {finalVersion===(viewingVersion||version)&&"★"} ▾
+              </button>
+              {showVersionMenu && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.navyMid,borderRadius:8,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",zIndex:10,minWidth:160,maxHeight:240,overflowY:"auto"}}>
+                  {versions.slice().reverse().map(v=>(
+                    <div key={v.version} style={{display:"flex",alignItems:"center",borderRadius:6,overflow:"hidden",marginBottom:2,border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                      <div onClick={()=>{loadVersionIntoDraft(v);setShowVersionMenu(false);}} title={`View v${v.version}`}
+                        style={{flex:1,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                        v{v.version}
+                      </div>
+                      <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);}} title="Mark as final"
+                        style={{padding:"5px 8px",color:"#fff",fontSize:11,cursor:readOnly?"default":"pointer"}}>
+                        {finalVersion===v.version?"★":"☆"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
-          <button onClick={handlePrint} className="btn btn-primary" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         {isStaleVsCostSheet && !readOnly && (
@@ -307,7 +324,6 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           </div>
         )}
         <DocTabBar activeTab={viewMode} setActiveTab={setViewMode} G={G}/>
-        <LetterheadToggleBar toggles={toggles} G={G}/>
         {viewMode === "content" ? (
           <>
             <div style={{padding:"8px 16px",background:G.gray50,borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -355,8 +371,11 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
             </div>
           </>
         ) : (
-          <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={previewHTML}/>
+          <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+            <LetterheadToggleBar toggles={toggles} G={G}/>
+            <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
+              <DocPreviewFrame html={previewHTML}/>
+            </div>
           </div>
         )}
         <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

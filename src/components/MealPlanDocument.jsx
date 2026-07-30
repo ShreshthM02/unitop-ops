@@ -7,6 +7,16 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
   const [rows,setRows]=useState([{id:1,day:"Day 1",date:"",movement:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:2,day:"Day 2",date:"",movement:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:3,day:"Day 3",date:"",movement:"",breakfast:"",lunch:"",dinner:"",notes:""}]);
   const [heading,setHeading]=useState(tmpl.defaultHeading);
   const [activeTab, setActiveTab] = useState("content");
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
+  const versionMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showVersionMenu) return;
+    const onClickOutside = (e) => {
+      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target)) setShowVersionMenu(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showVersionMenu]);
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const updateRow=(i,f,v)=>setRows(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
@@ -142,23 +152,30 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.groupName||query.clientName} · {query.id}</div>
           </div>
           {versions.length > 0 && (
-            <div style={{display:"flex",gap:4}}>
-              {versions.map(v=>(
-                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                  <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
-                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                    v{v.version}
-                  </div>
-                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markMealPlanVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Meal Plan v${v.version} marked final`);}} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                    {finalVersion===v.version?"★":"☆"}
-                  </div>
+            <div style={{position:"relative"}} ref={versionMenuRef}>
+              <button onClick={()=>setShowVersionMenu(p=>!p)} className="btn btn-ghost"
+                style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+                v{viewingVersion||version} {finalVersion===(viewingVersion||version)&&"★"} ▾
+              </button>
+              {showVersionMenu && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.navyMid,borderRadius:8,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",zIndex:10,minWidth:160,maxHeight:240,overflowY:"auto"}}>
+                  {versions.slice().reverse().map(v=>(
+                    <div key={v.version} style={{display:"flex",alignItems:"center",borderRadius:6,overflow:"hidden",marginBottom:2,border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                      <div onClick={()=>{loadVersionIntoDraft(v);setShowVersionMenu(false);}} title={v.note||`View v${v.version}`}
+                        style={{flex:1,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                        v{v.version}
+                      </div>
+                      <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markMealPlanVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Meal Plan v${v.version} marked final`);}} title="Mark as final"
+                        style={{padding:"5px 8px",color:"#fff",fontSize:11,cursor:readOnly?"default":"pointer"}}>
+                        {finalVersion===v.version?"★":"☆"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
-          <button onClick={handlePrint} className="btn btn-primary" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         {isStaleVsCostSheet && !readOnly && (
@@ -178,7 +195,6 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
           </div>
         )}
         <DocTabBar activeTab={activeTab} setActiveTab={setActiveTab} G={G}/>
-        <LetterheadToggleBar toggles={toggles} G={G}/>
         {activeTab === "content" ? (
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -197,8 +213,11 @@ export default function MealPlanDocument({ query, template, onClose, currentUser
             <button className="btn btn-ghost" style={{fontSize:11,marginTop:8}} onClick={addRow}>+ Add Day</button>
           </div>
         ) : (
-          <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={previewHTML}/>
+          <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+            <LetterheadToggleBar toggles={toggles} G={G}/>
+            <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
+              <DocPreviewFrame html={previewHTML}/>
+            </div>
           </div>
         )}
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

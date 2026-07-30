@@ -61,12 +61,13 @@ describe('QuotationGenerator: migrated to the shared toggle hook and async pagin
 });
 
 describe('ProformaInvoice: migrated to the shared toggle hook and async paginated print builder', () => {
-  it('the toggle bar shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
+  it('the toggle bar (now inside the Preview tab, not always visible) shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: ProformaInvoice } = await import('../components/ProformaInvoice.jsx');
     render(<ProformaInvoice query={fakeQuery} template={{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
     expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
     expect(screen.queryByText('Header on all pages')).toBeNull();
     expect(screen.queryByText('Footer on all pages')).toBeNull();

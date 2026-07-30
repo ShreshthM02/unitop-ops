@@ -20,6 +20,16 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
     notes:"",
   });
   const [activeTab, setActiveTab] = useState("content");
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
+  const versionMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showVersionMenu) return;
+    const onClickOutside = (e) => {
+      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target)) setShowVersionMenu(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showVersionMenu]);
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
   const setF=(k,v)=>setInv(p=>({...p,[k]:v}));
@@ -185,27 +195,33 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
             <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.id} · GSTIN: {COMPANY_INFO.gstin}</div>
           </div>
           {versions.length > 0 && (
-            <div style={{display:"flex",gap:4}}>
-              {versions.map(v=>(
-                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                  <div onClick={()=>loadVersionIntoDraft(v)} title={`View v${v.version}`}
-                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                    v{v.version}
-                  </div>
-                  <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTaxInvoiceVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tax Invoice v${v.version} marked final`);}} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                    {finalVersion===v.version?"★":"☆"}
-                  </div>
+            <div style={{position:"relative"}} ref={versionMenuRef}>
+              <button onClick={()=>setShowVersionMenu(p=>!p)} className="btn btn-ghost"
+                style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+                v{viewingVersion||version} {finalVersion===(viewingVersion||version)&&"★"} ▾
+              </button>
+              {showVersionMenu && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.navyMid,borderRadius:8,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",zIndex:10,minWidth:160,maxHeight:240,overflowY:"auto"}}>
+                  {versions.slice().reverse().map(v=>(
+                    <div key={v.version} style={{display:"flex",alignItems:"center",borderRadius:6,overflow:"hidden",marginBottom:2,border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                      <div onClick={()=>{loadVersionIntoDraft(v);setShowVersionMenu(false);}} title={`View v${v.version}`}
+                        style={{flex:1,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                        v{v.version}
+                      </div>
+                      <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markTaxInvoiceVersionFinal(db,query.id,v.version);logAudit(db,query.id,currentUser?.name,`Tax Invoice v${v.version} marked final`);}} title="Mark as final"
+                        style={{padding:"5px 8px",color:"#fff",fontSize:11,cursor:readOnly?"default":"pointer"}}>
+                        {finalVersion===v.version?"★":"☆"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
-          <button onClick={handlePrint} className="btn btn-success" style={{fontSize:11}}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         <DocTabBar activeTab={activeTab} setActiveTab={setActiveTab} G={G}/>
-        <LetterheadToggleBar toggles={toggles} G={G}/>
         {activeTab === "content" ? (
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
             <div style={{background:"#EBF5FB",border:"1px solid #BEE3F8",borderRadius:6,padding:"8px 12px",fontSize:11,color:"#1A5276",marginBottom:14}}>
@@ -276,8 +292,11 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
             </div>
           </div>
         ) : (
-          <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-            <DocPreviewFrame html={previewHTML}/>
+          <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+            <LetterheadToggleBar toggles={toggles} G={G}/>
+            <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
+              <DocPreviewFrame html={previewHTML}/>
+            </div>
           </div>
         )}
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>

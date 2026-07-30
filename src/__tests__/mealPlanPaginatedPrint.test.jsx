@@ -35,12 +35,13 @@ describe('MealPlanDocument: migrated to the new async, paginated print builder',
     });
   });
 
-  it('the toggle bar now shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
+  it('the toggle bar (now inside the Preview tab, not always visible) shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: MealPlanDocument } = await import('../components/MealPlanDocument.jsx');
     render(<MealPlanDocument query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
     expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
     expect(screen.queryByText('Header on all pages')).toBeNull();
     expect(screen.queryByText('Footer on all pages')).toBeNull();
