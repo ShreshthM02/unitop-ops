@@ -268,10 +268,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     }
   };
 
-  const nextQueryId = () => {
-    const nums = queries.map(q=>parseInt(q.id.split("-")[2])).filter(Boolean);
-    return `UTQ-${new Date().getFullYear()}-${String(Math.max(...nums,0)+1).padStart(3,"0")}`;
-  };
+  const nextQueryId = () => nextInvoiceNo(docSettings.query?.prefix || "UTQ", queries.map(q=>q.id));
   const showToast = msg => setToast(msg);
   const updatePayments = (queryId, data, auditAction) => {
     setPayments(p => ({ ...p, [queryId]: data })); // optimistic local update, same as before
@@ -323,7 +320,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleConvertToCaseFile = (query) => {
-    const tourNum = "TUR-2025-0"+(queries.filter(q=>q.tourFileId).length+19);
+    const tourNum = nextInvoiceNo(docSettings.tourfile?.prefix || "TUR", queries.filter(q=>q.tourFileId).map(q=>q.tourFileId));
     const now = new Date().toLocaleString("en-IN");
     const auditMsg = `Converted to Tour File — Tour No. ${tourNum} assigned`;
     const updQ = {...query,tourFileId:tourNum,audit:[...(query.audit||[]),{by:currentUser.name,at:now,action:auditMsg}]};

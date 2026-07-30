@@ -8,7 +8,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});
   const tourValueINR = pt ? (parseFloat(pt.tourValue)||0)*(parseFloat(pt.roeUsed)||1) : 0;
   const gstBase = Math.round(tourValueINR / 1.05);
-  const prefix = docSettings?.taxInvoice?.prefix || 'TAX';
+  const prefix = docSettings?.taxinvoice?.prefix || 'TAX';
 
   const [inv, setInv] = useState({
     invoiceNo: '', // resolved once existing invoice numbers load (see useEffect below) -- was a random 3-digit suffix before, with zero uniqueness guarantee at all
