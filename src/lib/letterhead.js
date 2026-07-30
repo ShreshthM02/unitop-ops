@@ -48,13 +48,13 @@ export const invoiceLetterheadCSS = `
     .lh-logo { height: 88pt; width: auto; display: block; margin: 0 auto -10pt; }
     .lh-addr-block { color: #2a2a2a; font-family: 'Inter', Arial, sans-serif; font-size: 9pt; letter-spacing: 0.3pt; line-height: 1.35; margin-bottom: 0; text-align: center; white-space: nowrap; }
     .lh-addr-block:first-of-type { margin-top: 1pt; }
-    .lh-rule { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin: 4pt 0 8pt; border-radius: 1pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-header--blank { height: 6cm; }
+    .lh-rule { height: 1pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin: 4pt 0 8pt; border-radius: 1pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .lh-header--blank { height: 5.2cm; } /* 6cm total from the physical page edge minus PRINT_MARGIN.top (8mm), which @page already reserves outside this blank space */
 
     /* ── Footer (bottom gradient rule + 4 badges) ─────────────────────────── */
     .lh-footer { padding-top: 6pt; }
-    .lh-rule-footer { height: 2pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .lh-footer--blank { height: 4cm; }
+    .lh-rule-footer { height: 1pt; border: none; background: linear-gradient(to right, #cb0f0f, #061bb0); margin-bottom: 6pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .lh-footer--blank { height: 3.2cm; } /* 4cm total from the physical page edge minus PRINT_MARGIN.bottom (8mm), which @page already reserves outside this blank space */
 
     /* ── Paginated print pages (Phase: Letterhead Standardization,
        2026-07-24) ──────────────────────────────────────────────────────
@@ -550,8 +550,13 @@ export async function buildPaginatedLetterheadDocument({
   try {
     const containerWidthPx = mmToPx(PAGE_CONTENT_WIDTH_MM, measureCtx.doc);
     const pageContentHeightPx = mmToPx(PAGE_CONTENT_HEIGHT_MM, measureCtx.doc);
-    const headerHeightPx = printOnLetterhead ? mmToPx(60, measureCtx.doc) : (headerInner ? domMeasureHeightPx(headerInner, containerWidthPx, measureCtx.doc) : 0);
-    const footerHeightPx = printOnLetterhead ? mmToPx(40, measureCtx.doc) : (footerInner ? domMeasureHeightPx(footerInner, containerWidthPx, measureCtx.doc) : 0);
+    // 52mm/32mm here (not 60/40) matches the corrected .lh-header--blank/
+    // .lh-footer--blank CSS above -- 6cm/4cm from the physical page edge,
+    // minus PRINT_MARGIN's own 8mm which @page already reserves outside
+    // this blank space. Pagination math has to track the real rendered
+    // height or page-break decisions would be based on the wrong numbers.
+    const headerHeightPx = printOnLetterhead ? mmToPx(52, measureCtx.doc) : (headerInner ? domMeasureHeightPx(headerInner, containerWidthPx, measureCtx.doc) : 0);
+    const footerHeightPx = printOnLetterhead ? mmToPx(32, measureCtx.doc) : (footerInner ? domMeasureHeightPx(footerInner, containerWidthPx, measureCtx.doc) : 0);
     const availableContentHeightPx = pageContentHeightPx - headerHeightPx - footerHeightPx;
 
     const pages = paginateBodyBlocks(bodyBlocks, {

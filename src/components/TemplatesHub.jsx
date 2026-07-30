@@ -31,12 +31,20 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const prevFn=(d)=>{const s=settings[d];if(!s)return "";const now=new Date();const ddmmyyyy=`${String(now.getDate()).padStart(2,"0")}-${String(now.getMonth()+1).padStart(2,"0")}-${now.getFullYear()}`;return(s.pattern||"{prefix}-{seq}").replace("{prefix}",s.prefix||"DOC").replace("{seq}",String(s.serial||1).padStart(3,"0")).replace("{group}","NCH_Holidays").replace("{date}",ddmmyyyy).replace("{year}",now.getFullYear()).replace("{sector}","Golden_Triangle").replace("{tourfile}","TUR-2025-019");};
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const lbl={fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4,display:"block"};
-  const sm=DOC_TYPES.find(d=>d.id===selectedDoc);
+  const sideItems=[...DOC_TYPES,{id:"query",icon:"🔢",label:"Query ID"},{id:"tourfile",icon:"📁",label:"Tour File ID"},{id:"_typography",icon:"🎨",label:"Typography & Colours"}];
+  // Bug fix: this used to look up only DOC_TYPES, which doesn't include
+  // "query"/"tourfile" (they're separate, intentional sidebar entries
+  // for id-numbering settings, not real document types). sm being
+  // undefined for them silently suppressed the ENTIRE content pane below
+  // (gated on `{!isTypo&&sm&&(...)}`) -- including the Prefix/Serial
+  // Number/Filename Pattern settings fields that were already built and
+  // working, just unreachable. Looking up from sideItems instead
+  // resolves sm correctly for every sidebar entry.
+  const sm=sideItems.find(d=>d.id===selectedDoc);
   const cs=settings[selectedDoc]||{};
   const isSys=selectedDoc==="query"||selectedDoc==="tourfile";
   const isTypo=selectedDoc==="_typography";
   const schema=TEMPLATE_FIELD_SCHEMAS[selectedDoc]; // undefined for costsheet/monument/receipt -> placeholder shown
-  const sideItems=[...DOC_TYPES,{id:"query",icon:"🔢",label:"Query ID"},{id:"tourfile",icon:"📁",label:"Tour File ID"},{id:"_typography",icon:"🎨",label:"Typography & Colours"}];
   return(
     <div style={{display:"flex",height:"100%",minHeight:500,margin:"-16px -20px"}}>
       <div style={{width:220,borderRight:`1px solid ${G.gray200}`,display:"flex",flexDirection:"column",flexShrink:0,background:"#FAFAFA"}}>

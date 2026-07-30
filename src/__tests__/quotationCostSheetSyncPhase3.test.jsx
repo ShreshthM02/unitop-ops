@@ -169,3 +169,57 @@ describe('QuotationGenerator: "pulling" state bug fix (button stuck on "Pulling�
     expect(btn.disabled).toBe(false);
   });
 });
+
+describe('QuotationGenerator: header decluttering -- version pills collapsed into a compact dropdown (was an always-expanded row, unbounded growth as versions accumulate)', () => {
+  it('a saved version shows as a compact dropdown toggle button, not an expanded pill row', async () => {
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [], is_final: false };
+    const db = makeDb({ quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await rtlWaitFor(() => {
+      const dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      expect(dropdownBtn).toBeTruthy();
+      expect(dropdownBtn.textContent).toContain('v1');
+    });
+    // The dropdown panel itself (with per-version "mark as final" star
+    // toggle rows) is not expanded by default -- only the compact
+    // toggle button shows, unlike the old always-expanded pill row.
+    expect(container.querySelectorAll('[title="Mark as final"]').length).toBe(0);
+  });
+
+  it('clicking the dropdown toggle opens the panel with the version entry and its star toggle', async () => {
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [], is_final: false };
+    const db = makeDb({ quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    let dropdownBtn;
+    await rtlWaitFor(() => {
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      expect(dropdownBtn).toBeTruthy();
+    });
+    fireEvent.click(dropdownBtn);
+    expect(container.querySelectorAll('[title="Mark as final"]').length).toBe(1);
+  });
+
+  it('clicking outside the open dropdown panel closes it', async () => {
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [], is_final: false };
+    const db = makeDb({ quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    let dropdownBtn;
+    await rtlWaitFor(() => {
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      expect(dropdownBtn).toBeTruthy();
+    });
+    fireEvent.click(dropdownBtn);
+    expect(container.querySelectorAll('[title="Mark as final"]').length).toBe(1);
+    fireEvent.mouseDown(document.body);
+    expect(container.querySelectorAll('[title="Mark as final"]').length).toBe(0);
+  });
+});

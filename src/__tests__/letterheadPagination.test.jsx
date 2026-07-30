@@ -263,11 +263,24 @@ describe('page number restored to "Page N of X" format (reversed from a previous
   });
 });
 
-describe('bug fix: printOnLetterhead blank-space margins now match the 6cm top / 4cm bottom spec', () => {
-  it('the header blank-space CSS is exactly 6cm, the footer exactly 4cm', async () => {
-    const { invoiceLetterheadCSS } = await import('../lib/letterhead.js');
-    expect(invoiceLetterheadCSS).toContain('.lh-header--blank { height: 6cm; }');
-    expect(invoiceLetterheadCSS).toContain('.lh-footer--blank { height: 4cm; }');
+describe('printOnLetterhead blank-space margins measure exactly 6cm top / 4cm bottom from the PHYSICAL PAGE EDGE (not just the printable-area boundary)', () => {
+  it('the blank-space CSS height plus PRINT_MARGIN together equal exactly 6cm top / 4cm bottom -- found via precise 600 DPI measurement of a real printed PDF, which showed 6.879cm/4.805cm (both off by ~PRINT_MARGIN\'s own 8mm, confirming the blank space was being added on TOP of the page margin instead of accounting for it)', async () => {
+    const { invoiceLetterheadCSS, PRINT_MARGIN } = await import('../lib/letterhead.js');
+    expect(invoiceLetterheadCSS).toContain('.lh-header--blank { height: 5.2cm; }');
+    expect(invoiceLetterheadCSS).toContain('.lh-footer--blank { height: 3.2cm; }');
+    expect(PRINT_MARGIN.top).toBe('8mm');
+    expect(PRINT_MARGIN.bottom).toBe('8mm');
+    // 5.2cm blank + 0.8cm page margin = 6cm total; 3.2cm + 0.8cm = 4cm total
+  });
+
+  it('the pagination math (headerHeightPx/footerHeightPx) uses the same corrected 52mm/32mm, not the old 60mm/40mm -- page-break decisions must track the real rendered height', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/lib/letterhead.js'), 'utf-8');
+    expect(src).toContain('mmToPx(52, measureCtx.doc)');
+    expect(src).toContain('mmToPx(32, measureCtx.doc)');
+    expect(src).not.toContain('mmToPx(60, measureCtx.doc)');
+    expect(src).not.toContain('mmToPx(40, measureCtx.doc)');
   });
 });
 
@@ -302,5 +315,13 @@ describe('bug fix: page number no longer overlaps the footer content', () => {
     expect(ruleMatch).toBeTruthy();
     expect(ruleMatch[0]).not.toContain('position: absolute');
     expect(ruleMatch[0]).toContain('flex: 0 0 auto');
+  });
+});
+
+describe('gradient line thickness set to 1pt (explicit user request, both lines) -- shared invoiceLetterheadCSS, so this applies everywhere the letterhead is used', () => {
+  it('both the header and footer gradient rules are exactly 1pt', async () => {
+    const { invoiceLetterheadCSS } = await import('../lib/letterhead.js');
+    expect(invoiceLetterheadCSS).toContain('.lh-rule { height: 1pt;');
+    expect(invoiceLetterheadCSS).toContain('.lh-rule-footer { height: 1pt;');
   });
 });

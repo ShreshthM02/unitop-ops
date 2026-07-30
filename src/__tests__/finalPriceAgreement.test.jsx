@@ -32,6 +32,16 @@ function openFinalPriceTab() {
   fireEvent.click(screen.getByText('💰 Final Price'));
 }
 
+// Version pills were collapsed into a compact dropdown (Letterhead
+// Standardization header decluttering, 2026-07-27) -- the per-version
+// "Mark as final" star toggle now lives inside a collapsed panel that
+// must be opened first, rather than being always visible in an expanded
+// pill row.
+function openVersionDropdown() {
+  const dropdownBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+  fireEvent.click(dropdownBtn);
+}
+
 // Rows are laid out Pax Paying | FOC | Source | Slab/Description | Rate | remove.
 // Both FOC and Rate share placeholder="0", so tests must pick by column
 // position, not just placeholder text.
@@ -110,6 +120,7 @@ describe('Marking final is blocked without complete rate lines (Pax Paying + rat
   it('clicking the star with no rate lines shows a warning and does not mark final', () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
     expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Final Price'));
@@ -121,6 +132,7 @@ describe('Marking final is blocked without complete rate lines (Pax Paying + rat
     openFinalPriceTab();
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
     expect(window.alert).not.toHaveBeenCalled();
@@ -153,6 +165,7 @@ describe('Update Final Price in place (no new version for a pax-count refinement
 
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]); // now v1 is final and being viewed
     expect(screen.getByText(/Update Final Price/)).toBeTruthy();
@@ -163,6 +176,7 @@ describe('Update Final Price in place (no new version for a pax-count refinement
     openFinalPriceTab();
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
 

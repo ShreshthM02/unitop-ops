@@ -207,6 +207,19 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   };
 
   const [activeTab,    setActiveTab]    = useState('content');
+  // Version dropdown (replaces the old always-expanded pill row, which
+  // grew unbounded as versions accumulated -- v8 already meant 7 pills
+  // fighting for header space alongside the title and action buttons).
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
+  const versionMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showVersionMenu) return;
+    const onClickOutside = (e) => {
+      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target)) setShowVersionMenu(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showVersionMenu]);
   const toggles = useLetterheadToggles();
   const { headerFooterAllPages, showPageNum, showStamp, printOnLetterhead, togglePrintOnLetterhead } = toggles;
   const setF = (k, v) => setQ(prev => ({ ...prev, [k]: v }));
@@ -417,27 +430,35 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.id} · {query.destination}</div>
           </div>
           {versions.length > 0 && (
-            <div style={{display:"flex",gap:4}}>
-              {versions.map(v=>(
-                <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                  <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
-                    style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                    v{v.version}
-                  </div>
-                  <div onClick={()=>{
-                      if (readOnly) return;
-                      if (!isFinalPriceComplete(v.finalPriceEntries)) {
-                        alert('Before marking this version final: open it, go to the "Final Price" tab, add at least one rate line with pax and rate filled in, then save it again.');
-                        return;
-                      }
-                      setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
-                      logAudit(db,query.id,currentUser?.name,`Quotation v${v.version} marked final`);
-                    }} title="Mark as final"
-                    style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                    {finalVersion===v.version?"★":"☆"}
-                  </div>
+            <div style={{position:"relative"}} ref={versionMenuRef}>
+              <button onClick={()=>setShowVersionMenu(p=>!p)} className="btn btn-ghost"
+                style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+                v{viewingVersion||version} {finalVersion===(viewingVersion||version)&&"★"} ▾
+              </button>
+              {showVersionMenu && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,background:G.navyMid,borderRadius:8,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",zIndex:10,minWidth:160,maxHeight:240,overflowY:"auto"}}>
+                  {versions.slice().reverse().map(v=>(
+                    <div key={v.version} style={{display:"flex",alignItems:"center",borderRadius:6,overflow:"hidden",marginBottom:2,border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
+                      <div onClick={()=>{loadVersionIntoDraft(v);setShowVersionMenu(false);}} title={v.note||`View v${v.version}`}
+                        style={{flex:1,padding:"5px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
+                        v{v.version}{v.note?` — ${v.note}`:""}
+                      </div>
+                      <div onClick={()=>{
+                          if (readOnly) return;
+                          if (!isFinalPriceComplete(v.finalPriceEntries)) {
+                            alert('Before marking this version final: open it, go to the "Final Price" tab, add at least one rate line with pax and rate filled in, then save it again.');
+                            return;
+                          }
+                          setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
+                          logAudit(db,query.id,currentUser?.name,`Quotation v${v.version} marked final`);
+                        }} title="Mark as final"
+                        style={{padding:"5px 8px",color:"#fff",fontSize:11,cursor:readOnly?"default":"pointer"}}>
+                        {finalVersion===v.version?"★":"☆"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
           {(costSheetId || finalCostSheetVersion) && !readOnly && (
@@ -446,9 +467,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
             </button>
           )}
-          <button onClick={printQuotation} className="btn btn-success" style={{ fontSize:11 }}>
-            🖨 Print / PDF
-          </button>
           <button onClick={onClose} className="btn btn-ghost"
             style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
         </div>
@@ -477,8 +495,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
         )}
 
-        {/* Toggles */}
-        <LetterheadToggleBar toggles={toggles} G={G}/>
         {/* Tabs */}
         <div style={{display:'flex',borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
           {[['content','✏ Content'],['preview','👁 Preview'],['final','💰 Final Price']].map(([id,label])=>(
@@ -778,12 +794,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
         {/* PREVIEW TAB */}
         {activeTab==='preview' && (
-          <div style={{flex:1,overflowY:'auto',background:'#525659',display:'flex',justifyContent:'center',padding:'20px 0'}}>
-            <iframe
-              title="Print Preview"
-              srcDoc={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
-              style={{width:'210mm',minHeight:'297mm',border:'none',boxShadow:'0 4px 24px rgba(0,0,0,0.35)',background:'#fff'}}
-            />
+          <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
+            <LetterheadToggleBar toggles={toggles} G={G}/>
+            <div style={{flex:1,overflowY:'auto',background:'#525659',display:'flex',justifyContent:'center',padding:'20px 0'}}>
+              <iframe
+                title="Print Preview"
+                srcDoc={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
+                style={{width:'210mm',minHeight:'297mm',border:'none',boxShadow:'0 4px 24px rgba(0,0,0,0.35)',background:'#fff'}}
+              />
+            </div>
           </div>
         )}
 

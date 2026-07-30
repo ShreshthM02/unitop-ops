@@ -19,12 +19,13 @@ function makeDb() {
 }
 
 describe('QuotationGenerator: migrated to the shared toggle hook and async paginated print builder', () => {
-  it('the toggle bar shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
+  it('the toggle bar (now inside the Preview tab, not always visible) shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
     expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
     expect(screen.queryByText('Header on all pages')).toBeNull();
     expect(screen.queryByText('Footer on all pages')).toBeNull();
@@ -51,7 +52,10 @@ describe('QuotationGenerator: migrated to the shared toggle hook and async pagin
     vi.resetModules();
     const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
-    const printButtons = screen.getAllByText('🖨 Print / PDF');
+    // Header's own Print/PDF button was removed (redundant with the
+    // footer's Print/Export PDF button, which is always visible
+    // regardless of active tab) as part of decluttering the header.
+    const printButtons = screen.getAllByText('🖨 Print / Export PDF');
     expect(() => fireEvent.click(printButtons[0])).not.toThrow();
   });
 });
@@ -113,5 +117,27 @@ describe('QuotationGenerator: table-splitting wiring across all 4 tables (itiner
       expect(iframe.srcdoc).toContain('Cost Per Person');
       expect(iframe.srcdoc).not.toContain('[object Object]');
     });
+  });
+});
+
+describe('QuotationGenerator: header decluttering (version dropdown, single Print button, toggles moved into Preview)', () => {
+  it('only one Print button exists in the whole document now (was two: header + footer)', async () => {
+    const db = makeDb();
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    expect(screen.getAllByText('🖨 Print / Export PDF')).toHaveLength(1);
+  });
+
+  it('the toggle bar is not visible on the Content tab (default), only inside Preview', async () => {
+    const db = makeDb();
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    expect(screen.queryByText('Header + Footer on all pages')).toBeNull();
+    fireEvent.click(screen.getByText('👁 Preview'));
+    expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
   });
 });
