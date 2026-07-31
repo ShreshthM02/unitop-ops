@@ -820,7 +820,7 @@ export async function loadCostSheetVersions(db, queryId) {
 // otherwise silently fail the entire insert, the exact bug agent_id caused.
 export async function saveCostSheetVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("cost_sheets").insert({
+    const { data, error } = await db.from("cost_sheets").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       gst_pct: snap.gst, markup_pct: snap.markup, roe: snap.roe, currency: snap.currency,
       tl_mode: snap.tlMode, tl_cost: parseFloat(snap.tlCost) || 0,
@@ -831,10 +831,11 @@ export async function saveCostSheetVersion(db, queryId, snap, createdBy) {
       tl_slabs: snap.tlSlabs || [], client_agent_name: snap.clientAgentName || null, assigned_staff_name: snap.assignedStaffName || null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save cost sheet version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -873,16 +874,17 @@ export async function loadMealPlanVersions(db, queryId) {
 
 export async function saveMealPlanVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("meal_plans").insert({
+    const { data, error } = await db.from("meal_plans").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       heading: snap.heading || null, rows: snap.rows || [],
       pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save meal plan version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -924,17 +926,18 @@ export async function loadItineraryVersions(db, queryId) {
 
 export async function saveItineraryVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("itineraries").insert({
+    const { data, error } = await db.from("itineraries").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       tour_title: snap.tourTitle || null, tagline: snap.tagline || null, route: snap.route || null,
       duration: snap.duration || null, active_tab: snap.activeTab || "brief", days: snap.days || [],
       pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save itinerary version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -977,15 +980,16 @@ export async function loadExchangeOrderVersions(db, queryId) {
 
 export async function saveExchangeOrderVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("exchange_orders").insert({
+    const { data, error } = await db.from("exchange_orders").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       content: { orders: snap.orders || [], pulledFromCostSheetVersion: snap.pulledFromCostSheetVersion ?? null },
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save exchange order version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -1027,15 +1031,16 @@ export async function loadTourBriefingVersions(db, queryId) {
 
 export async function saveTourBriefingVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("tour_briefings").insert({
+    const { data, error } = await db.from("tour_briefings").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       content: snap.content || {},
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save tour briefing version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -1094,15 +1099,16 @@ export async function loadProformaInvoiceVersions(db, queryId) {
 
 export async function saveProformaInvoiceVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("proforma_invoices").insert({
+    const { data, error } = await db.from("proforma_invoices").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       invoice_no: snap.invoiceNo || null, content: snap.content || {},
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save proforma invoice version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -1136,15 +1142,16 @@ export async function loadTaxInvoiceVersions(db, queryId) {
 
 export async function saveTaxInvoiceVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("tax_invoices").insert({
+    const { data, error } = await db.from("tax_invoices").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       invoice_no: snap.invoiceNo || null, content: snap.content || {},
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save tax invoice version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 
@@ -1200,7 +1207,7 @@ export async function loadQuotationVersions(db, queryId) {
 // permanent record as Cost Sheet versions do.
 export async function saveQuotationVersion(db, queryId, snap, createdBy) {
   try {
-    const { data } = await db.from("quotations").insert({
+    const { data, error } = await db.from("quotations").insert({
       query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
       cost_sheet_id: snap.costSheetId || null,
       final_price_entries: snap.finalPriceEntries || [],
@@ -1217,10 +1224,11 @@ export async function saveQuotationVersion(db, queryId, snap, createdBy) {
       pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
-    return data && data[0] ? data[0].id : null;
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
     console.warn("Save quotation version failed:", e);
-    return null;
+    return { id: null, error: e.message || String(e) };
   }
 }
 

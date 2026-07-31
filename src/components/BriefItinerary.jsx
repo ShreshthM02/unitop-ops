@@ -83,10 +83,29 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
   }, [query.id]);
   const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
-  const saveVersion = () => {
+  // The version list is only updated AFTER the insert is confirmed. It used
+  // to be updated optimistically, with the save fired and forgotten and its
+  // return value ignored -- and because the db wrapper's insert() resolves
+  // with {data, error} rather than throwing, a failed write looked exactly
+  // like a successful one. The version appeared in the UI, nothing reached
+  // Supabase, and it was gone on refresh. That is the "itinerary is not
+  // saving on refresh" report.
+  const [saveError, setSaveError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const saveVersion = async () => {
     const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "brief", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await saveItineraryVersion(db, query.id, snap, currentUser?.id);
+    setSaving(false);
+    if (error) {
+      // Surfaced verbatim: the underlying Postgres message names the real
+      // problem (a missing column, an RLS refusal), and hiding it behind a
+      // generic string is what let this go unnoticed.
+      setSaveError(error);
+      return;
+    }
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
-    saveItineraryVersion(db, query.id, snap, currentUser?.id);
     logAudit(db, query.id, currentUser?.name, `Brief Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(nextVersion);
     setVersionNote("");
@@ -194,7 +213,7 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
               readOnly={readOnly}
               G={G}
             />
-            {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{nextVersion}</button>}
+            {!readOnly && <button onClick={saveVersion} disabled={saving} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>{saving ? "Saving…" : `💾 Save v${nextVersion}`}</button>}
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
           {isStaleVsCostSheet && !readOnly && (
@@ -306,7 +325,12 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
             { id:"word",  label:"Word",  icon:"📄", onSelect: exportDocx,  hint:"Downloads a .docx file" },
             { id:"print", label:"Print", icon:"🖨", onSelect: handlePrint, separatorBefore:true },
           ]}/>
-          {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{nextVersion}</button>}
+          {!readOnly && <button onClick={saveVersion} disabled={saving} className="btn btn-primary">{saving ? "Saving…" : `💾 Save v${nextVersion}`}</button>}
+          {saveError && (
+            <span style={{fontSize:11,color:"#B91C1C",maxWidth:420}} title={saveError}>
+              ⚠ Not saved — {saveError}
+            </span>
+          )}
         </div>
       </div>
     </div>

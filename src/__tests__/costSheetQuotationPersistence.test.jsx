@@ -77,7 +77,8 @@ describe('saveCostSheetVersion (INSERT only -- Save Version must never overwrite
     const insert = vi.fn(async () => ({ data: [{ id: 'real-cost-sheet-uuid' }], error: null }));
     const db = { from: () => ({ insert }) };
     const snap = { version: 3, gst: 5, markup: 20, roe: 90, currency: 'US $', tlMode: 'pp', tlCost: '500', miscMode: 'lumpsum', miscCost: '200', monMode: 'pp', monExtra: '50', days: [], transports: [], slabs: [], monuments: [], localHandlers: [], extras: [] };
-    const savedId = await saveCostSheetVersion(db, 'UTQ-1', snap, 'cfff444a-718e-4c14-83a3-f55f368d64dd');
+    const { id: savedId, error } = await saveCostSheetVersion(db, 'UTQ-1', snap, 'cfff444a-718e-4c14-83a3-f55f368d64dd');
+    expect(error).toBeNull();
     expect(insert).toHaveBeenCalledTimes(1);
     const row = insert.mock.calls[0][0];
     expect(row.query_id).toBe('UTQ-1');
@@ -106,10 +107,20 @@ describe('saveCostSheetVersion (INSERT only -- Save Version must never overwrite
     expect(row.assigned_staff_name).toBe('Priya Sharma');
   });
 
-  it('does not throw when the db call fails, and returns null', async () => {
+  it('does not throw when the db call fails, but reports the error instead of reporting success', async () => {
     const db = { from: () => ({ insert: async () => { throw new Error('fail'); } }) };
-    const result = await saveCostSheetVersion(db, 'UTQ-1', { version: 1 }, null);
-    expect(result).toBeNull();
+    const { id, error } = await saveCostSheetVersion(db, 'UTQ-1', { version: 1 }, null);
+    expect(id).toBeNull();
+    expect(error).toContain('fail');
+  });
+
+  it('reports a rejected insert (the {data,error} shape the db wrapper actually returns) rather than swallowing it', async () => {
+    // The wrapper resolves with {data:null, error} on a 4xx -- it never
+    // throws -- so this, not the throw above, is the real-world failure mode.
+    const db = { from: () => ({ insert: async () => ({ data: null, error: { message: 'column "x" does not exist' } }) }) };
+    const { id, error } = await saveCostSheetVersion(db, 'UTQ-1', { version: 1 }, null);
+    expect(id).toBeNull();
+    expect(error).toContain('does not exist');
   });
 });
 
@@ -193,7 +204,8 @@ describe('saveQuotationVersion (INSERT only, mirrors saveCostSheetVersion -- neg
     const insert = vi.fn(async () => ({ data: [{ id: 'real-quotation-uuid' }], error: null }));
     const db = { from: () => ({ insert }) };
     const snap = { version: 2, attnName: 'John', attnCompany: 'NCH', costSheetId: 'cs-1', note: 'Revised after client feedback' };
-    const savedId = await saveQuotationVersion(db, 'UTQ-1', snap, 'cfff444a-718e-4c14-83a3-f55f368d64dd');
+    const { id: savedId, error } = await saveQuotationVersion(db, 'UTQ-1', snap, 'cfff444a-718e-4c14-83a3-f55f368d64dd');
+    expect(error).toBeNull();
     expect(insert).toHaveBeenCalledTimes(1);
     const row = insert.mock.calls[0][0];
     expect(row.query_id).toBe('UTQ-1');
@@ -232,9 +244,11 @@ describe('saveQuotationVersion (INSERT only, mirrors saveCostSheetVersion -- neg
     expect(insert.mock.calls[0][0].created_by).toBeNull();
   });
 
-  it('does not throw when the db call fails, and returns null', async () => {
+  it('does not throw when the db call fails, but reports the error instead of reporting success', async () => {
     const db = { from: () => ({ insert: async () => { throw new Error('fail'); } }) };
-    expect(await saveQuotationVersion(db, 'UTQ-1', { version: 1 }, null)).toBeNull();
+    const { id, error } = await saveQuotationVersion(db, 'UTQ-1', { version: 1 }, null);
+    expect(id).toBeNull();
+    expect(error).toContain('fail');
   });
 });
 

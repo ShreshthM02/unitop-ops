@@ -9,6 +9,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const [versions, setVersions] = useState([]);
   const [finalVersion, setFinalVersion] = useState(null);
   const [lastSavedCostSheetId, setLastSavedCostSheetId] = useState(null);
+  const [saveError, setSaveError] = useState(null);
   const [viewingVersion, setViewingVersion] = useState(null); // which saved version is currently loaded into the draft, if any
   const [versionNote, setVersionNote] = useState(""); // one-line reason for this save -- "client requested discount", etc.
 
@@ -316,7 +317,14 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const saveVersion = () => {
     const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
-    saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(id => { if (id) setLastSavedCostSheetId(id); });
+    saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(({ id, error }) => {
+      // saveCostSheetVersion now reports insert failures instead of
+      // swallowing them -- previously a failed save returned null here and
+      // was indistinguishable from a version that simply had no id yet.
+      if (error) { setSaveError(error); return; }
+      setSaveError(null);
+      if (id) setLastSavedCostSheetId(id);
+    });
     logAudit(db, query.id, currentUser?.name, `Cost Sheet v${version} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(version);
     setVersionNote("");
@@ -1226,6 +1234,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost">💾 Save v{version}</button>}
+          {saveError && (
+            <span style={{fontSize:11,color:"#B91C1C",maxWidth:420}} title={saveError}>
+              ⚠ Not saved — {saveError}
+            </span>
+          )}
           <ExportMenu G={G} actions={[
             { id:"pdf",   label:"PDF",   icon:"📕", onSelect: exportPDF,  hint:"Landscape A4" },
             { id:"excel", label:"Excel", icon:"📊", onSelect: exportXLSX, hint:"Styled single-sheet workbook" },

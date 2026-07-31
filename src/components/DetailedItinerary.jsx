@@ -86,10 +86,20 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   }, [query.id]);
   const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
 
-  const saveVersion = () => {
+  // See BriefItinerary for the full note: the version list must only be
+  // updated after the insert is confirmed, because the db wrapper resolves
+  // with {data, error} rather than throwing, so a failed write used to be
+  // indistinguishable from a successful one.
+  const [saveError, setSaveError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const saveVersion = async () => {
     const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await saveItineraryVersion(db, query.id, snap, currentUser?.id);
+    setSaving(false);
+    if (error) { setSaveError(error); return; }
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
-    saveItineraryVersion(db, query.id, snap, currentUser?.id);
     logAudit(db, query.id, currentUser?.name, `Detailed Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(nextVersion);
     setVersionNote("");
