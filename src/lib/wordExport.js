@@ -62,11 +62,28 @@ function buildQuotationBody(q, showStamp) {
   const body = [];
 
   body.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: `Date: ${q.date}`, bold: true, size: 19 })] }));
-  if (q.attnName) {
+  if (q.attnName || q.attnCompany || q.attnCity) {
+    // Mirrors buildAddresseeBlock's hanging indent: label + name on the
+    // first line, company/city stacked underneath aligned to the name. Word
+    // has no table-cell trick available inline here, so the continuation
+    // lines use a hanging indent on the paragraph instead -- same visual
+    // result, expressed the way Word expresses it.
+    const HANGING = 1420; // twips ~= width of "Kind Attention: " at 9.5pt
     body.push(new Paragraph({
-      spacing: { before: 120, after: 60 },
-      children: [new TextRun({ text: "KIND ATTN: ", bold: true, size: 19 }), new TextRun({ text: `${q.attnName}${q.attnCompany ? ", " + q.attnCompany : ""}${q.attnCity ? ", " + q.attnCity : ""}`, size: 19 })],
+      spacing: { before: 120, after: 0 },
+      indent: { left: HANGING, hanging: HANGING },
+      children: [
+        new TextRun({ text: "Kind Attention: ", bold: true, size: 19 }),
+        new TextRun({ text: q.attnName || "", size: 19 }),
+      ],
     }));
+    for (const line of [q.attnCompany, q.attnCity].filter(Boolean)) {
+      body.push(new Paragraph({
+        spacing: { after: 0 },
+        indent: { left: HANGING },
+        children: [new TextRun({ text: line, size: 19 })],
+      }));
+    }
   }
   if (q.refLine) {
     body.push(new Paragraph({

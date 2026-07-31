@@ -616,3 +616,75 @@ export async function buildPaginatedLetterheadDocument({
     measureCtx.cleanup();
   }
 }
+
+// ── SHARED ADDRESSEE BLOCK ──────────────────────────────────────────────
+// "Kind Attention: {name}" on the first line, with {company} and
+// {city/country} hanging beneath, aligned under {name} rather than under the
+// label. Used by Quotation, Pro-forma Invoice and Tour Briefing Sheet
+// (2026-07-31) -- Tax Invoice deliberately keeps its "Bill To" party blocks,
+// and Brief Itinerary / Meal Plan have no addressee by design.
+//
+// The alignment is done with a real two-cell table layout, NOT a
+// padding-left offset. Pro-forma previously hardcoded `padding-left:88pt`
+// to fake the hanging indent, which only lined up while the label happened
+// to measure 88pt -- renaming "KIND ATTN:" to the longer "Kind Attention:"
+// would have silently broken it. A table cell sizes itself to the label, so
+// the indent stays correct whatever the label says.
+export const ADDRESSEE_LABEL = "Kind Attention:";
+
+export function buildAddresseeBlock({ name, company, city, fontSizePt = 9.5, marginBottomPt = 0, labelBold = true } = {}) {
+  if (!name && !company && !city) return "";
+  const line = (text) => `<div style="font-size:${fontSizePt}pt;line-height:1.45">${text}</div>`;
+  const values = [name, company, city].filter(Boolean).map(line).join("");
+  return `<div style="display:table;margin-bottom:${marginBottomPt}pt">`
+    + `<div style="display:table-cell;vertical-align:top;white-space:nowrap;padding-right:6pt;font-size:${fontSizePt}pt;line-height:1.45;${labelBold ? "font-weight:bold" : ""}">${ADDRESSEE_LABEL}</div>`
+    + `<div style="display:table-cell;vertical-align:top">${values}</div>`
+    + `</div>`;
+}
+
+// ── PREVIEW FIDELITY (screen only) ──────────────────────────────────────
+// The in-app preview renders exactly the HTML that gets printed, but on
+// screen it looked nothing like the print output: `@page { margin }` has no
+// effect outside an actual print context, so pages appeared edge-to-edge
+// with no margin, and consecutive pages ran together with no visible
+// boundary. The preview was technically "the real HTML" while being
+// misleading about the one thing a preview exists to show.
+//
+// This stylesheet is injected into the preview document only, inside an
+// @media screen block, so it can never influence real print output. It
+// reconstructs on screen what @page does at print time:
+//   - each .print-page becomes a true A4 sheet (210mm x 297mm) rather than
+//     the 281mm content box the print path uses (297mm less the 8mm top and
+//     bottom that @page reserves separately),
+//   - PRINT_MARGIN is applied as real padding, so the margin is visible and
+//     measurable instead of implied,
+//   - sheets sit on a grey backdrop with a gap and drop shadow between
+//     them, which is what makes page breaks legible at a glance.
+// Because box-sizing is already border-box document-wide, the resulting
+// content box is exactly 182mm x 281mm -- identical geometry to print.
+export const PREVIEW_SCREEN_CSS = `
+@media screen {
+  html, body { background: #525659 !important; margin: 0 !important; padding: 0 !important; }
+  body { padding: 16px 0 !important; }
+  .print-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    padding: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left} !important;
+    margin: 0 auto 16px !important;
+    background: #fff !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.45) !important;
+    overflow: hidden !important;
+  }
+  .print-page:last-child { margin-bottom: 0 !important; }
+}
+`;
+
+// Injects PREVIEW_SCREEN_CSS into a built print document. Kept here beside
+// the CSS itself so callers can't accidentally preview a document without
+// it and quietly get the old misleading rendering back.
+export function withPreviewStyles(html) {
+  if (!html) return html;
+  const styleTag = `<style>${PREVIEW_SCREEN_CSS}</style>`;
+  if (html.includes("</head>")) return html.replace("</head>", `${styleTag}</head>`);
+  return styleTag + html;
+}

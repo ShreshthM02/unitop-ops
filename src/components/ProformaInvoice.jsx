@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, loadProformaInvoiceVersions, saveProformaInvoiceVersion, markProformaInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_PROFORMA_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadProformaInvoiceVersions, saveProformaInvoiceVersion, markProformaInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
 export default function ProformaInvoice({ query, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(template||{}) };
@@ -121,9 +121,7 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
         <!-- Addressee -->
         <div style="display:table;width:100%;margin-bottom:10pt">
           <div style="display:table-cell;vertical-align:top">
-            <div style="font-size:10.5pt;font-weight:bold">KIND ATTN: &nbsp;&nbsp;${inv.attnName}</div>
-            ${inv.attnCompany?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCompany}</div>`:''}
-            ${inv.attnCity?`<div style="font-size:10.5pt;padding-left:88pt">${inv.attnCity}</div>`:''}
+            ${buildAddresseeBlock({ name:inv.attnName, company:inv.attnCompany, city:inv.attnCity, fontSizePt:10.5 })}
           </div>
           <div style="display:table-cell;vertical-align:top;text-align:right;white-space:nowrap">
             <div style="font-size:10.5pt">DATE: <strong>${inv.date}</strong></div>
@@ -364,11 +362,10 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
         {activeTab==='preview' && (
           <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
             <LetterheadToggleBar toggles={toggles} G={G}/>
-            <div style={{flex:1,overflowY:'auto',background:'#525659',display:'flex',justifyContent:'center',padding:'20px 0'}}>
-              <iframe
+            <div style={{flex:1,minHeight:0}}>
+              <DocPreviewFrame
                 title="Print Preview"
-                srcDoc={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
-                style={{width:'210mm',minHeight:'297mm',border:'none',boxShadow:'0 4px 24px rgba(0,0,0,0.35)',background:'#fff'}}
+                html={previewError ? '<html><body style="font-family:monospace;padding:20px;color:#c00">Preview error: '+previewError+'</body></html>' : previewHTML}
               />
             </div>
           </div>
