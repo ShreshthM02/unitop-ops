@@ -1,6 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+// The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
+// consolidated into the shared ExportMenu dropdown (one Export button, the
+// formats inside it). These tests still verify exactly what they did before
+// -- the generated PDF HTML and XLSX workbook -- they just have to open the
+// menu to reach the format, the same way a user now does.
+const clickExport = (label) => {
+  fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+  fireEvent.click(screen.getByText(label));
+};
+
+
 const fakeQuery = { id: 'UTQ-2026-600', tourFileId: 'TF-600', groupName: 'PDF Rewrite Test Group', destination: 'Kerala', nights: 3, agentCompany: 'Test Foreign Agent Co', assignedTo: 'staff-1' };
 const fakeStaff = [{ id: 'staff-1', name: 'Priya Sharma' }];
 
@@ -11,7 +22,19 @@ async function exportAndCaptureHTML() {
   let capturedHTML = null;
   vi.doMock('../lib/index.js', async () => {
     const actual = await vi.importActual('../lib/index.js');
-    return { ...actual, printHTML: (html) => { capturedHTML = html; } };
+    return {
+      ...actual,
+      printHTML: (html) => { capturedHTML = html; },
+      // Stub the audit write. exportPDF calls logAudit right after
+      // printHTML, and with no Supabase env configured under test that
+      // issues a real fetch to `undefined/rest/v1/query_audit`, which
+      // rejects. Nothing awaits it, so it surfaces as an unhandled
+      // rejection that vitest attributes to whichever test happens to be
+      // running when it lands -- which is exactly why this file failed
+      // intermittently on unrelated assertions under parallel load, and
+      // passed when run alone. The export path itself was never at fault.
+      logAudit: () => {},
+    };
   });
   vi.resetModules();
   const { CostSheet } = await import('../components/CostSheet.jsx');
@@ -22,7 +45,7 @@ async function exportAndCaptureHTML() {
 describe('CostSheet PDF export: all 7 requested fixes', () => {
   it('#1: heading and tour details are center-aligned', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('text-align:center');
     // The title block specifically should be inside a centered wrapper
@@ -33,7 +56,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
 
   it('#2: "TL Cost" is now labeled "Tour Facilitator"', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('Tour Facilitator');
     expect(html).not.toContain('TL Cost:');
@@ -42,14 +65,14 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
   it('#3: monuments list appears when monuments are present, and is absent when there are none', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     // Fresh instance, no monuments added -- section should not appear.
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     expect(capturedHTML()).not.toContain('Monuments');
 
     // Now add one and confirm the section appears.
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     const nameInputs = document.querySelectorAll('input[placeholder="e.g. Taj Mahal entry"]');
     fireEvent.change(nameInputs[nameInputs.length-1], { target: { value: 'Taj Mahal' } });
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('Monuments');
     expect(html).toContain('Taj Mahal');
@@ -58,14 +81,14 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
   it('#4: Tour Facilitator, Misc Cost, and Monument settings show the actual cost value, not just the mode', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '5000' } });
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toMatch(/Tour Facilitator:.*5,000/);
   });
 
   it('#5: day-wise table includes an Alt Hotel column and a TOTALS row', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('Alt Hotel');
     expect(html).toContain('TOTALS');
@@ -75,7 +98,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('>Transport<'); // default cost sheet already has 1 transport row, and no emoji per item #6
     expect(html).toContain('Local Handler');
@@ -84,7 +107,7 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
 
   it('#7: all column headers are center-aligned, regardless of their data cells\' own alignment (requested directly) -- Transport (a right-aligned numeric column) has a centered header', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     // Final Price Summary header row: "Transport" is a numeric column
     // (its data cells right-align), but per explicit request every
@@ -99,7 +122,7 @@ describe('CostSheet PDF export: Tour Leader Slabs and Client/Agent + Assigned St
     const { capturedHTML } = await exportAndCaptureHTML();
     expect(screen.getByDisplayValue('Test Foreign Agent Co')).toBeTruthy();
     expect(screen.getByDisplayValue('Priya Sharma')).toBeTruthy();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('Test Foreign Agent Co');
     expect(html).toContain('Priya Sharma');
@@ -110,7 +133,7 @@ describe('CostSheet PDF export: Tour Leader Slabs and Client/Agent + Assigned St
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
     fireEvent.change(labelInput, { target: { value: 'Small Group PDF Test' } });
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('Small Group PDF Test');
   });
@@ -122,7 +145,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     const titleMatches = html.match(/<div class="inv-title"[^>]*>([^<]*)<\/div>/g) || [];
     titleMatches.forEach(title => {
@@ -132,7 +155,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
 
   it('#7: CSS Grid replaces table-layout:fixed entirely -- the table-based approach was verified correct in the generated HTML itself (colgroup/th/td percentages captured directly from real output matched exactly), yet the actual printed PDF still showed the old unbalanced proportions, meaning the browser\'s print rendering path handles table-layout differently from normal screen rendering. Grid has no table-layout-specific behavior to diverge on', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     // Note: the shared letterhead footer's logo row legitimately uses
     // table-layout:fixed for its own, unrelated 4-equal-width image
@@ -147,13 +170,13 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
 
   it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     let html = capturedHTML();
     expect(html).toContain('Tour Facil');
     expect(html).not.toContain('T/L Surcharge'); // no T/L slabs added yet
 
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     html = capturedHTML();
     expect(html).toContain('Tour Leader Slabs'); // its own section title
     expect(html).toContain('T/L Surcharge');
@@ -164,7 +187,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '6000' } });
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
     fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '6' } });
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     // Tour Facilitator: lumpsum 6000 / 6 pax = 1000, should appear as a
     // real number in the Tour Facil column for the T/L slab row too.
@@ -178,7 +201,7 @@ describe('CostSheet PDF: header and data cells in the same column share the same
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     const sections = ['Day-wise Itinerary', 'Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'];
     sections.forEach((marker, i) => {
@@ -213,7 +236,7 @@ describe('CostSheet PDF: every table remains full page width', () => {
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     const contentGridCount = (html.match(/class="content-grid"/g) || []).length;
     expect(contentGridCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
@@ -226,7 +249,7 @@ describe('CostSheet PDF: every table remains full page width', () => {
 describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells avoid splitting across a page boundary', () => {
   it('Day-wise short columns (Day, Date, Meal Plan, Meal Cost, Plan, Net PP, Sngl Supp) carry white-space:nowrap; Movement and Hotel/Alt Hotel do not, since they can genuinely be long', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     const dayIdx = html.indexOf('Day 1');
     const rowSnippet = html.slice(dayIdx - 50, dayIdx + 400);
@@ -236,14 +259,14 @@ describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells a
 
   it('grid cells carry break-inside:avoid in the shared stylesheet, reducing the risk of content splitting across a page boundary', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('break-inside: avoid');
   });
 
   it('Movement retains more room (19) than the earlier percentage-shuffling attempts gave it, rather than stealing space from it again to fix another column', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     // fr units now, not %, since percentages don't account for
     // column-gap and caused wide tables (16 columns) to overflow the
@@ -255,7 +278,7 @@ describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells a
 describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display; every section header uses Inter', () => {
   it('the main title stays on inv-title (Playfair Display), section headers move to the new section-title class (Inter)', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('<div class="inv-title">COST SHEET</div>');
     expect(html).toContain('class="section-title"');
@@ -270,7 +293,7 @@ describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display;
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     ['Day-wise Itinerary', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'].forEach(marker => {
       const idx = html.indexOf(marker);
@@ -284,7 +307,7 @@ describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display;
 describe('CostSheet PDF: column headers no longer visually collide (missing gap between grid columns, and adjacent right/left alignment with no breathing room)', () => {
   it('.content-grid carries a column-gap, guaranteeing separation between every column regardless of alignment or content length', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toMatch(/\.content-grid\s*\{[^}]*column-gap/);
   });
@@ -294,7 +317,7 @@ describe('CostSheet PDF: column headers no longer visually collide (missing gap 
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('<div class="grid-header" style="text-align:center">Included</div>');
     expect(html).toContain('<div class="grid-header" style="text-align:center">Mode</div>');
@@ -305,7 +328,7 @@ describe('CostSheet PDF: fr units instead of % prevent wide tables (T/L Slabs, 1
   it('every content-grid uses fr units, never %, in grid-template-columns', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     const html = capturedHTML();
     const gridDeclarations = [...html.matchAll(/class="content-grid" style="grid-template-columns:([^"]+)"/g)].map(m => m[1]);
     expect(gridDeclarations.length).toBeGreaterThan(0);

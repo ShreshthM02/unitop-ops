@@ -47,9 +47,23 @@ export function ExportMenu({ actions, G, label = "Export", disabled = false }) {
 
   const run = async (action) => {
     setOpen(false);
+    // Only show a busy state if the action is actually asynchronous.
+    // A synchronous export (the PDF path just builds a string and hands it
+    // to the print window) completes before the browser could paint
+    // anything, so flipping into "Working…" and back only produces a
+    // flicker -- and leaves the toggle showing a stale label for anyone,
+    // test or user, who looks at it in the same tick.
+    let result;
+    try {
+      result = action.onSelect();
+    } catch (err) {
+      alert(`${action.label} export failed: ${err && err.message ? err.message : err}`);
+      return;
+    }
+    if (!result || typeof result.then !== "function") return;
     setBusyId(action.id);
     try {
-      await action.onSelect();
+      await result;
     } catch (err) {
       // Surfaced rather than swallowed: a silently failing export is worse
       // than a noisy one, and the document components don't otherwise get

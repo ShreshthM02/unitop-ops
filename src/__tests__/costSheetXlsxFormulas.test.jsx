@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
+// The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
+// consolidated into the shared ExportMenu dropdown (one Export button, the
+// formats inside it). These tests still verify exactly what they did before
+// -- the generated PDF HTML and XLSX workbook -- they just have to open the
+// menu to reach the format, the same way a user now does.
+const clickExport = (label) => {
+  fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+  fireEvent.click(screen.getByText(label));
+};
+
+
 const fakeQuery = { id: 'UTQ-2026-200', tourFileId: 'TF-200', groupName: 'Formula Test Group', nights: 3 };
 
 // Generates the real workbook and reads it back with exceljs, exactly the
@@ -20,7 +31,7 @@ async function exportAndReload() {
   });
 
   render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
-  fireEvent.click(screen.getByText(/📊 Export XLSX/));
+  clickExport('📊 Excel');
   for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
 
   const buffer = await capturedBlob.arrayBuffer();
@@ -144,7 +155,7 @@ describe('CostSheet XLSX: Client/Agent, Assigned Staff, and Tour Leader Slab row
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
     fireEvent.change(labelInput, { target: { value: 'XLSX T/L Row Test' } });
-    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    clickExport('📊 Excel');
     for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
 
     const buffer = await capturedBlob.arrayBuffer();
@@ -177,7 +188,7 @@ describe('CostSheet XLSX: T/L Surcharge is a genuinely separate column from Tour
 
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    clickExport('📊 Excel');
     for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
 
     const buffer = await capturedBlob.arrayBuffer();

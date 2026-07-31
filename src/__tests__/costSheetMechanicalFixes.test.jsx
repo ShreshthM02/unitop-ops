@@ -2,19 +2,34 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
+// The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
+// consolidated into the shared ExportMenu dropdown (one Export button, the
+// formats inside it). These tests still verify exactly what they did before
+// -- the generated PDF HTML and XLSX workbook -- they just have to open the
+// menu to reach the format, the same way a user now does.
+const clickExport = (label) => {
+  fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+  fireEvent.click(screen.getByText(label));
+};
+
+
 const fakeQuery = { id: 'UTQ-2026-095', tourFileId: 'TF-095', groupName: 'Export Test Group', nights: 3 };
 
 describe('CostSheet: PDF and XLSX export buttons now exist (item #1)', () => {
-  it('shows both Export PDF and Export XLSX buttons', () => {
+  it('offers both PDF and Excel from a single Export control', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    expect(screen.getByText(/🖨 Export PDF/)).toBeTruthy();
-    expect(screen.getByText(/📊 Export XLSX/)).toBeTruthy();
+    // One control now, not two buttons -- the formats live inside it.
+    expect(screen.queryByText(/🖨 Export PDF/)).toBeNull();
+    expect(screen.queryByText(/📊 Export XLSX/)).toBeNull();
+    fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+    expect(screen.getByText('📕 PDF')).toBeTruthy();
+    expect(screen.getByText('📊 Excel')).toBeTruthy();
   });
 
   it('clicking Export PDF opens a print window and logs to the audit trail', () => {
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() });
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
-    fireEvent.click(screen.getByText(/🖨 Export PDF/));
+    clickExport('📕 PDF');
     expect(openSpy).toHaveBeenCalled();
     openSpy.mockRestore();
   });
@@ -39,7 +54,7 @@ describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare
     });
 
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
-    fireEvent.click(screen.getByText(/📊 Export XLSX/));
+    clickExport('📊 Excel');
     // exceljs writeBuffer on a fully styled workbook genuinely takes
     // variable time -- poll rather than assume a fixed delay is enough.
     for (let i = 0; i < 40 && !capturedBlob; i++) {

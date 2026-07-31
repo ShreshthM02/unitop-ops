@@ -109,7 +109,9 @@ describe('Version pills: clicking to VIEW is separate from clicking to mark FINA
     // pill row.
     let dropdownBtn;
     await waitFor(() => {
-      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      // The footer's Export menu is also a '▾' dropdown now, so this has to
+      // pick the version one specifically rather than the first match.
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
       expect(dropdownBtn).toBeTruthy();
     });
     fireEvent.click(dropdownBtn);
