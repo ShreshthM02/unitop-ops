@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTaxInvoiceVersions, saveTaxInvoiceVersion, markTaxInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTaxInvoiceVersions, saveTaxInvoiceVersion, markTaxInvoiceVersionFinal, loadExistingInvoiceNumbers, logAudit, db } = Lib;
 
 export default function TaxInvoice({ query, payments, template, docSettings, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(template||{}) };
@@ -76,7 +76,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
     setVersion(v => v+1);
   };
 
-  const buildPrintHTML = () => {
+  const buildPrintHTML = (asBlocks) => {
     const itemRows=inv.items.map(it=>`<tr><td>${it.desc}</td><td style="text-align:center">${it.hsn}</td><td style="text-align:center">${it.qty}</td><td class="amount">₹ ${parseFloat(it.rate).toLocaleString()}</td><td class="amount">₹ ${parseFloat(it.amount).toLocaleString()}</td></tr>`);
     const gstRow = inv.igst
       ? `<tr><td colspan="4" style="text-align:right">IGST @ ${inv.gstRate}%</td><td class="amount">₹ ${gstCalc.toLocaleString()}</td></tr>`
@@ -158,11 +158,28 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
           </div>
         </div>`;
 
-    return buildPaginatedLetterheadDocument({
+    // asBlocks lets the Word export reuse this document's existing
+    // content definition instead of maintaining a second one that could
+    // silently drift from what the PDF shows.
+    const docArgs = {
       title: `Tax Invoice ${inv.invoiceNo}`,
       bodyBlocks: [metaBlock, partiesBlock, itemsBlock, totalsBlock, closingBlock],
       headerFooterAllPages, printOnLetterhead, showPageNum,
+    };
+    if (asBlocks) return docArgs;
+    return buildPaginatedLetterheadDocument(docArgs);
+  };
+
+  // Word (.docx) export -- reuses buildPrintHTML(true)'s blocks so this
+  // document's Word output always matches its PDF content.
+  const exportDocx = async () => {
+    const args = await buildPrintHTML(true);
+    const blob = await buildDocxBlobFromBodyBlocks({
+      bodyBlocks: args.bodyBlocks,
+      toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+      orientation: args.orientation,
     });
+    await downloadDocx(blob, `Tax Invoice - ${inv.invoiceNo}`);
   };
 
   const handlePrint = async () => printHTML(await buildPrintHTML());
@@ -281,7 +298,11 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
         <div style={{padding:"12px 20px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1}}/>
-          <button onClick={handlePrint} className="btn btn-success">🖨 Print / PDF</button>
+          <ExportMenu G={G} actions={[
+            { id:"pdf",   label:"PDF",   icon:"📕", onSelect: handlePrint, hint:"Opens your browser's print dialog" },
+            { id:"word",  label:"Word",  icon:"📄", onSelect: exportDocx,  hint:"Downloads a .docx file" },
+            { id:"print", label:"Print", icon:"🖨", onSelect: handlePrint, separatorBefore:true },
+          ]}/>
           {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
         </div>
       </div>

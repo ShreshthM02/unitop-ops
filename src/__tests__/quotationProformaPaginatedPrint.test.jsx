@@ -97,7 +97,9 @@ describe('ProformaInvoice: migrated to the shared toggle hook and async paginate
     const originalOpen = window.open;
     window.open = vi.fn(() => ({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() }));
     render(<ProformaInvoice query={fakeQuery} template={{}} onClose={()=>{}}/>);
-    expect(() => fireEvent.click(screen.getAllByText('🖨 Print / PDF')[0])).not.toThrow();
+    // Print now lives inside the shared ExportMenu dropdown.
+    fireEvent.click(screen.getAllByText('\u2b07 Export \u25be')[0]);
+    expect(() => fireEvent.click(screen.getByText('📕 PDF'))).not.toThrow();
     await waitFor(() => expect(window.open).toHaveBeenCalled());
     window.open = originalOpen;
   });

@@ -55,7 +55,9 @@ describe('MealPlanDocument: migrated to the new async, paginated print builder',
     const originalOpen = window.open;
     window.open = vi.fn(() => ({ document: { write: vi.fn(), close: vi.fn(), readyState: 'complete' }, print: vi.fn() }));
     render(<MealPlanDocument query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    expect(() => fireEvent.click(screen.getByText('🖨 Print / Export PDF'))).not.toThrow();
+    // Print now lives inside the shared ExportMenu dropdown.
+    fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+    expect(() => fireEvent.click(screen.getByText('📕 PDF'))).not.toThrow();
     await waitFor(() => expect(window.open).toHaveBeenCalled());
     window.open = originalOpen;
   });

@@ -7,6 +7,7 @@ export * from './utils.js';
 export * from './letterhead.js';
 export * from './wordLetterhead.js';
 export * from './wordExport.js';
+export * from './wordFromBlocks.js';
 export * from './LetterheadControls.jsx';
 export * from './VersionDropdown.jsx';
 export * from './ExportMenu.jsx';

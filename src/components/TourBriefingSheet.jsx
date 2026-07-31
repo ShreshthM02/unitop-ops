@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -236,17 +236,34 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     }
   };
 
-  const buildPrintHTML = () => {
+  const buildPrintHTML = (asBlocks) => {
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin-top:10pt" alt="Stamp"/>` : '';
     const sectionsBlocks = printOrder.flatMap(id=>sectionBlocks(id)).filter(b => b !== "");
     const footerNoteBlock = footer ? `<div style="margin-top:20pt;white-space:pre-line;font-size:10pt">${footer}</div>` : '';
 
-    return buildPaginatedLetterheadDocument({
+    // asBlocks lets the Word export reuse this document's existing
+    // content definition instead of maintaining a second one that could
+    // silently drift from what the PDF shows.
+    const docArgs = {
       title: `Tour Briefing Sheet — ${query.groupName||query.clientName}`,
       extraHeadCSS: `body{font-family:'Times New Roman',serif;}`,
       bodyBlocks: [...sectionsBlocks, footerNoteBlock, stampHTML],
       headerFooterAllPages, printOnLetterhead, showPageNum,
+    };
+    if (asBlocks) return docArgs;
+    return buildPaginatedLetterheadDocument(docArgs);
+  };
+
+  // Word (.docx) export -- reuses buildPrintHTML(true)'s blocks so this
+  // document's Word output always matches its PDF content.
+  const exportDocx = async () => {
+    const args = await buildPrintHTML(true);
+    const blob = await buildDocxBlobFromBodyBlocks({
+      bodyBlocks: args.bodyBlocks,
+      toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+      orientation: args.orientation,
     });
+    await downloadDocx(blob, `Tour Briefing Sheet - ${query.groupName||query.clientName}`);
   };
 
   const handlePrint = async () => printHTML(await buildPrintHTML());
@@ -361,7 +378,11 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1,fontSize:11,color:G.gray400,alignSelf:"center"}}>{viewMode==="content" ? "Drag section tiles to reorder in print output" : ""}</div>
           {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
-          <button onClick={handlePrint} className="btn btn-primary">🖨 Print / Export PDF</button>
+          <ExportMenu G={G} actions={[
+            { id:"pdf",   label:"PDF",   icon:"📕", onSelect: handlePrint, hint:"Opens your browser's print dialog" },
+            { id:"word",  label:"Word",  icon:"📄", onSelect: exportDocx,  hint:"Downloads a .docx file" },
+            { id:"print", label:"Print", icon:"🖨", onSelect: handlePrint, separatorBefore:true },
+          ]}/>
         </div>
       </div>
     </div>

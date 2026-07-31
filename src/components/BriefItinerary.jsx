@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, buildPaginatedLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
 
 // Brief Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -103,7 +103,7 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
 
-  const buildPrintHTML = () => {
+  const buildPrintHTML = (asBlocks) => {
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(briefTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
 
@@ -133,11 +133,28 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
       </div>
       ${stampHTML}`;
 
-    return buildPaginatedLetterheadDocument({
+    // asBlocks lets the Word export reuse this document's existing
+    // content definition instead of maintaining a second one that could
+    // silently drift from what the PDF shows.
+    const docArgs = {
       title: `${tourTitle} — Brief Itinerary`,
       bodyBlocks: [titleBlock, ...dayBlocks, closingBlock],
       headerFooterAllPages, printOnLetterhead, showPageNum,
+    };
+    if (asBlocks) return docArgs;
+    return buildPaginatedLetterheadDocument(docArgs);
+  };
+
+  // Word (.docx) export -- reuses buildPrintHTML(true)'s blocks so this
+  // document's Word output always matches its PDF content.
+  const exportDocx = async () => {
+    const args = await buildPrintHTML(true);
+    const blob = await buildDocxBlobFromBodyBlocks({
+      bodyBlocks: args.bodyBlocks,
+      toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+      orientation: args.orientation,
     });
+    await downloadDocx(blob, `Brief Itinerary - ${query.groupName||query.clientName}`);
   };
 
   const handlePrint = async () => printHTML(await buildPrintHTML());
@@ -284,7 +301,11 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${G.gray200}`, display:"flex", gap:10, flexShrink:0, background:G.gray50 }}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{ flex:1 }}/>
-          <button onClick={handlePrint} className="btn btn-primary">🖨 Print</button>
+          <ExportMenu G={G} actions={[
+            { id:"pdf",   label:"PDF",   icon:"📕", onSelect: handlePrint, hint:"Opens your browser's print dialog" },
+            { id:"word",  label:"Word",  icon:"📄", onSelect: exportDocx,  hint:"Downloads a .docx file" },
+            { id:"print", label:"Print", icon:"🖨", onSelect: handlePrint, separatorBefore:true },
+          ]}/>
           {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{nextVersion}</button>}
         </div>
       </div>
