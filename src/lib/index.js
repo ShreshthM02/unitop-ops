@@ -11,5 +11,6 @@ export * from './wordFromBlocks.js';
 export * from './LetterheadControls.jsx';
 export * from './VersionDropdown.jsx';
 export * from './ExportMenu.jsx';
+export * from './DayItemsEditor.jsx';
 export * from './useRealtimeTable.js';
 export * from './supabase.js';

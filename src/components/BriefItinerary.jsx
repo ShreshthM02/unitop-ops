@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DayItemsEditor, DocTabBar, DocPreviewFrame, printHTML, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, itineraryItemHTML, logAudit, db } = Lib;
 
 // Brief Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -17,9 +17,9 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
   const [route, setRoute] = useState("");
   const [duration, setDuration] = useState(`${query.nights || "?"} Days / ${query.nights ? Number(query.nights)-1 : "?"} Nights`);
   const [itinDays, setItinDays] = useState([
-    { id:1, dayLabel:"DAY-1", title:"Arrival", route:"", distance:"", time:"", meals:["D"], description:"Meeting & greeting at the airport and transfer to hotel.\nOvernight stay at the hotel.", hotel:"" },
-    { id:2, dayLabel:"DAY-2", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
-    { id:3, dayLabel:"DAY-3", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
+    { id:1, dayLabel:"DAY-1", title:"Arrival", meals:["D"], items:[] },
+    { id:2, dayLabel:"DAY-2", title:"", meals:["B","L","D"], items:[] },
+    { id:3, dayLabel:"DAY-3", title:"", meals:["B","L","D"], items:[] },
   ]);
   const [viewMode, setViewMode] = useState("content");
   const toggles = useLetterheadToggles();
@@ -117,7 +117,7 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
     const meals = d.meals.includes(m) ? d.meals.filter(x=>x!==m) : [...d.meals, m].sort();
     return {...d, meals};
   }));
-  const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" }]);
+  const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", meals:["B","L","D"], items:[] }]);
   const removeDay = (i) => setItinDays(prev => prev.filter((_,idx)=>idx!==i));
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
@@ -140,9 +140,8 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
       const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
       return `<div style="padding:9pt 0;border-bottom:0.5pt solid #eee">
         <div style="font-size:11pt;font-weight:bold;color:#1A3A52">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-        ${d.route||d.distance||d.time?`<div style="font-size:9pt;color:#888;margin:2pt 0">${[d.route,d.distance&&d.time?`(${d.distance} / ${d.time})`:d.distance||d.time].filter(Boolean).join(" — ")}</div>`:""}
+        ${(d.items||[]).map(itineraryItemHTML).join("")}
         <div style="margin-top:5pt">${mealStr}</div>
-        ${d.hotel?`<div style="font-size:9pt;color:#555;margin-top:3pt">🏨 ${d.hotel}</div>`:""}
       </div>`;
     });
 
@@ -284,24 +283,18 @@ export default function BriefItinerary({ query, briefTemplate, onClose, currentU
                   <span style={{ cursor:"pointer", color:G.gray400 }} onClick={()=>removeDay(i)}>✕</span>
                 </div>
                 <div style={{ padding:"12px 14px" }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:8, marginBottom:8 }}>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Route / Movement</div>
-                      <input style={inp} value={d.route} onChange={e=>updateDay(i,"route",e.target.value)} placeholder="e.g. Leh – Alchi – Leh"/>
-                    </div>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Distance (km)</div>
-                      <input style={inp} value={d.distance} onChange={e=>updateDay(i,"distance",e.target.value)} placeholder="65 km"/>
-                    </div>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Drive Time</div>
-                      <input style={inp} value={d.time} onChange={e=>updateDay(i,"time",e.target.value)} placeholder="1.5 hrs"/>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Hotel / Overnight</div>
-                    <input style={inp} value={d.hotel} onChange={e=>updateDay(i,"hotel",e.target.value)} placeholder="e.g. Hotel Leh Palace / Similar"/>
-                  </div>
+                  {/* A day is now an ordered list of typed items rather than a
+                      fixed route/distance/time/hotel block -- a single day can
+                      be movement, two sightseeing stops, more movement, a
+                      flight, then the stay, in that order. */}
+                  <DayItemsEditor
+                    items={d.items}
+                    onChange={(items) => updateDay(i, "items", items)}
+                    style="brief"
+                    G={G}
+                    inp={inp}
+                    readOnly={readOnly}
+                  />
                 </div>
               </div>
             ))}

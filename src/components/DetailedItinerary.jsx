@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
 
 // Detailed Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -111,10 +111,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
     const meals = d.meals.includes(m) ? d.meals.filter(x=>x!==m) : [...d.meals, m].sort();
     return {...d, meals};
   }));
-  const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"", transports:[], arrivalFrom:"", arrivalTime:"", departureTo:"", departureTime:"" }]);
-  const addDayTransport = (i) => setItinDays(prev=>prev.map((d,idx)=>idx===i?{...d,transports:[...(d.transports||[]),{type:"Flight",number:"",from:"",to:"",time:""}]}:d));
-  const removeDayTransport = (i,ti) => setItinDays(prev=>prev.map((d,idx)=>idx===i?{...d,transports:(d.transports||[]).filter((_,tidx)=>tidx!==ti)}:d));
-  const updateDayTransport = (i,ti,f,v) => setItinDays(prev=>prev.map((d,idx)=>idx===i?{...d,transports:(d.transports||[]).map((t,tidx)=>tidx===ti?{...t,[f]:v}:t)}:d));
+  const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", meals:["B","L","D"], items:[] }]);
   const removeDay = (i) => setItinDays(prev => prev.filter((_,idx)=>idx!==i));
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
@@ -138,10 +135,8 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
       const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
       return `<div style="margin-bottom:16pt">
         <div style="font-size:12pt;font-weight:bold;color:#1A3A52;margin-bottom:2pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-        ${d.route||d.distance||d.time?`<div style="font-size:9.5pt;color:#8B1A1A;font-weight:600;margin-bottom:5pt">${[d.route,d.distance&&d.time?`(${d.distance} / ${d.time})`:d.distance||d.time].filter(Boolean).join(" — ")}</div>`:""}
-        <p style="font-size:9.5pt;color:#333;line-height:1.6;margin:6pt 0">${(d.description||"").replace(/\n/g,"<br/>")}</p>
+        ${(d.items||[]).map(itineraryItemHTML).join("")}
         <div style="margin-top:6pt">${mealStr}</div>
-        ${d.hotel?`<div style="font-size:9pt;color:#555;margin-top:5pt">🏨 Overnight: ${d.hotel}</div>`:""}
       </div>`;
     }).join("");
 
@@ -268,58 +263,23 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
                   <span style={{ cursor:"pointer", color:G.gray400 }} onClick={()=>removeDay(i)}>✕</span>
                 </div>
 
-                {/* Day body */}
+                {/* Day body -- an ordered list of typed items, same editor as
+                    Brief. Detailed additionally offers the Description type
+                    (1.12), which can be added as many times as needed and
+                    dragged anywhere in the day. The old fixed Route /
+                    Description / Hotel fields, the separate Flights/Trains
+                    list and the Arrival/Departure block (1.8) are all gone --
+                    they are item types now, or in the case of
+                    arrival/departure, dropped as requested. */}
                 <div style={{ padding:"12px 14px" }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:8, marginBottom:8 }}>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Route / Movement</div>
-                      <input style={inp} value={d.route} onChange={e=>updateDay(i,"route",e.target.value)} placeholder="e.g. Leh – Alchi – Leh"/>
-                    </div>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Distance (km)</div>
-                      <input style={inp} value={d.distance} onChange={e=>updateDay(i,"distance",e.target.value)} placeholder="65 km"/>
-                    </div>
-                    <div>
-                      <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Drive Time</div>
-                      <input style={inp} value={d.time} onChange={e=>updateDay(i,"time",e.target.value)} placeholder="1.5 hrs"/>
-                    </div>
-                  </div>
-                  <div style={{ marginBottom:8 }}>
-                    <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Detailed Description</div>
-                    <textarea style={ta} value={d.description} onChange={e=>updateDay(i,"description",e.target.value)}
-                      placeholder="After breakfast, drive to... Visit ... Overnight stay at hotel."/>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Hotel / Overnight</div>
-                    <input style={inp} value={d.hotel} onChange={e=>updateDay(i,"hotel",e.target.value)} placeholder="e.g. Hotel Leh Palace / Similar"/>
-                  </div>
-                </div>
-                {/* Flights / Trains */}
-                <div style={{marginTop:8,padding:"0 14px"}}>
-                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Flights / Trains (add as many as needed)</div>
-                  {(d.transports||[]).map((t,ti)=>(
-                    <div key={ti} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:5}}>
-                      <select style={{...inp,fontSize:10}} value={t.type||"Flight"} onChange={e=>updateDayTransport(i,ti,"type",e.target.value)}>
-                        {["Flight","Train"].map(x=><option key={x}>{x}</option>)}
-                      </select>
-                      <input style={{...inp,fontSize:10}} value={t.number||""} onChange={e=>updateDayTransport(i,ti,"number",e.target.value)} placeholder="Flight/Train No."/>
-                      <input style={{...inp,fontSize:10}} value={t.from||""} onChange={e=>updateDayTransport(i,ti,"from",e.target.value)} placeholder="From (e.g. DEL)"/>
-                      <input style={{...inp,fontSize:10}} value={t.to||""} onChange={e=>updateDayTransport(i,ti,"to",e.target.value)} placeholder="To (e.g. LEH)"/>
-                      <input style={{...inp,fontSize:10}} value={t.time||""} onChange={e=>updateDayTransport(i,ti,"time",e.target.value)} placeholder="Time"/>
-                      <span style={{cursor:"pointer",color:G.gray400,fontSize:13,alignSelf:"center"}} onClick={()=>removeDayTransport(i,ti)}>✕</span>
-                    </div>
-                  ))}
-                  <button className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>addDayTransport(i)}>+ Flight/Train</button>
-                </div>
-                {/* Arrival / Departure for this day */}
-                <div style={{marginTop:8,padding:"0 14px 12px"}}>
-                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Arrival / Departure Details</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                    <input style={{...inp,fontSize:10}} value={d.arrivalFrom||""} onChange={e=>updateDay(i,"arrivalFrom",e.target.value)} placeholder="Arrival from (city/country)"/>
-                    <input style={{...inp,fontSize:10}} value={d.arrivalTime||""} onChange={e=>updateDay(i,"arrivalTime",e.target.value)} placeholder="Arrival time"/>
-                    <input style={{...inp,fontSize:10}} value={d.departureTo||""} onChange={e=>updateDay(i,"departureTo",e.target.value)} placeholder="Departure to (city/country)"/>
-                    <input style={{...inp,fontSize:10}} value={d.departureTime||""} onChange={e=>updateDay(i,"departureTime",e.target.value)} placeholder="Departure time"/>
-                  </div>
+                  <DayItemsEditor
+                    items={d.items}
+                    onChange={(items) => updateDay(i, "items", items)}
+                    style="detailed"
+                    G={G}
+                    inp={inp}
+                    readOnly={readOnly}
+                  />
                 </div>
               </div>
             ))}

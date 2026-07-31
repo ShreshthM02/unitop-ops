@@ -52,11 +52,23 @@ describe('extractHotelsFromCostSheetDays: consolidates consecutive same-hotel da
 });
 
 describe('extractItineraryBuilderDaysFromCostSheet: Itinerary Builder shape (meals as letter array, one row per day)', () => {
-  it('maps to dayLabel/route/hotel with meals as an array of included letters only', () => {
+  it('maps to dayLabel + meals, with movement and hotel becoming ordered day items', () => {
     const result = extractItineraryBuilderDaysFromCostSheet([
       { day: 'Day 1', movement: 'DEL-SXR', hotel: 'Hotel A', mealPlan: 'B/D' },
     ]);
-    expect(result[0]).toMatchObject({ dayLabel: 'Day 1', route: 'DEL-SXR', hotel: 'Hotel A', meals: ['B','D'] });
+    // A day is now an ordered item list rather than fixed route/hotel fields,
+    // so the extractor's output goes through the same legacy->items
+    // conversion the load path uses. Meals stay a day-level field.
+    expect(result[0]).toMatchObject({ dayLabel: 'Day 1', meals: ['B','D'] });
+    expect(result[0].items.map(i => [i.type, i.text])).toEqual([
+      ['route', 'DEL-SXR'],
+      ['stay', 'Hotel A'],
+    ]);
+  });
+
+  it('a Cost Sheet day with no movement or hotel yields no items, not blank ones', () => {
+    const result = extractItineraryBuilderDaysFromCostSheet([{ day: 'Day 1', movement: '', hotel: '', mealPlan: 'B' }]);
+    expect(result[0].items).toEqual([]);
   });
   it('does not consolidate by hotel -- one row per day, unlike the hotels extractor', () => {
     const result = extractItineraryBuilderDaysFromCostSheet([

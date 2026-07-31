@@ -657,7 +657,12 @@ export function extractItineraryBuilderDaysFromCostSheet(csDays) {
         (letter==="B"&&flags.breakfast) || (letter==="L"&&flags.lunch) || (letter==="D"&&flags.dinner)),
       description: "", hotel: d.hotel || "",
     };
-  });
+  })
+  // Reuse the same legacy->items conversion the load path uses rather than
+  // building items here too. One conversion, already tested, and a Cost Sheet
+  // day with no movement or hotel correctly yields a day with no items
+  // instead of blank ones.
+  .map(migrateItineraryDay);
 }
 
 // Computes a group slab's final price from a saved Cost Sheet snapshot
@@ -909,7 +914,11 @@ export function mapDbItineraryRow(row) {
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     tourTitle: row.tour_title || "", tagline: row.tagline || "", route: row.route || "",
-    duration: row.duration || "", activeTab: row.active_tab || "brief", days: row.days || [],
+    // Migrated on the way IN, so every saved row -- including ones written
+    // before days carried an item list -- arrives in the current shape and
+    // no component has to know both. migrateItineraryDay is idempotent, so
+    // already-converted rows pass straight through.
+    duration: row.duration || "", activeTab: row.active_tab || "brief", days: migrateItineraryDays(row.days || []),
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
   };
 }
@@ -1547,4 +1556,106 @@ export function mergeDocTemplates(defaults, saved) {
     }
   }
   return out;
+}
+
+// ─── ITINERARY DAY ITEMS (Group B of the 2026-07-31 itinerary feedback) ──
+// A day used to be a fixed set of fields: one route (+distance/time), one
+// hotel, one description. That shape cannot express the real requirement --
+// a single day can be movement, then two sightseeing stops, then more
+// movement, then a flight, then the overnight stay, in that order. So a day
+// now carries an ORDERED LIST of typed items instead.
+//
+// Types offered when adding: route, sightseeing, transport (Flight/Train),
+// stay (Overnight Stay). `description` is a fifth type that exists in the
+// model but is only offered in the Detailed Itinerary's add menu -- it is
+// also where legacy per-day description text lands on migration, so no
+// existing content is dropped just because Brief no longer offers the field.
+export const ITINERARY_ITEM_TYPES = [
+  { id: "route",       label: "Route / Movement", icon: "🚌", fields: ["text", "distance", "time"] },
+  { id: "sightseeing", label: "Sightseeing",      icon: "📍", fields: ["text"] },
+  { id: "transport",   label: "Flight / Train",   icon: "✈",  fields: ["text"] },
+  { id: "stay",        label: "Overnight Stay",   icon: "🏨", fields: ["text"] },
+  { id: "description", label: "Description",      icon: "📝", fields: ["text"] },
+];
+
+export const ITINERARY_ITEM_TYPE_IDS = ITINERARY_ITEM_TYPES.map(t => t.id);
+
+// Types a user can ADD by hand, per document. Detailed gets description
+// blocks (1.12); Brief does not.
+export const addableItemTypes = (style) =>
+  ITINERARY_ITEM_TYPES.filter(t => t.id !== "description" || style === "detailed");
+
+let _itemSeq = 0;
+export function newItineraryItem(type) {
+  _itemSeq += 1;
+  return { id: `it-${Date.now()}-${_itemSeq}`, type, text: "", distance: "", time: "" };
+}
+
+// True once a day has been converted. Old rows have no `items` array at all.
+const dayHasItems = (day) => Array.isArray(day && day.items);
+
+// Converts ONE legacy day into the item-list shape, preserving order:
+// route -> description -> stay. Empty legacy fields produce no item, which is
+// also what makes 1.10 fall out for free -- an export can only render items
+// that exist, so there is nothing blank left to suppress.
+export function migrateItineraryDay(day) {
+  if (!day) return day;
+  if (dayHasItems(day)) return day;
+  const items = [];
+  const push = (type, text, extra = {}) => {
+    if (!text || !String(text).trim()) return;
+    items.push({ ...newItineraryItem(type), text: String(text), ...extra });
+  };
+  push("route", day.route, { distance: day.distance || "", time: day.time || "" });
+  // A day with distance/time but no route text still carries real
+  // information, so it must not be silently dropped.
+  if (!items.length && (day.distance || day.time)) {
+    items.push({ ...newItineraryItem("route"), text: "", distance: day.distance || "", time: day.time || "" });
+  }
+  push("description", day.description);
+  push("stay", day.hotel);
+  // Legacy fields are deliberately dropped from the migrated day rather than
+  // kept alongside `items`: leaving both would give the day two sources of
+  // truth for the same content, which is exactly the drift this codebase has
+  // been bitten by before.
+  const { route, distance, time, description, hotel, ...rest } = day;
+  return { ...rest, items };
+}
+
+export function migrateItineraryDays(days) {
+  return (days || []).map(migrateItineraryDay);
+}
+
+// Moves an item within a day's list. Returns a NEW array; out-of-range or
+// no-op moves return the list unchanged rather than corrupting it.
+export function reorderItems(items, from, to) {
+  const list = items || [];
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+  const next = list.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+// Renders one item as print HTML. Kept beside the model so the Brief and
+// Detailed documents cannot drift in how they present the same item.
+export function itineraryItemHTML(item) {
+  if (!item) return "";
+  const text = (item.text || "").trim();
+  const meta = [item.distance, item.time].filter(Boolean).join(" / ");
+  switch (item.type) {
+    case "route":
+      if (!text && !meta) return "";
+      return `<div style="font-size:9.5pt;color:#333;margin:2pt 0"><strong>${text}</strong>${meta ? ` <span style="color:#888">(${meta})</span>` : ""}</div>`;
+    case "sightseeing":
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">📍 ${text}</div>` : "";
+    case "transport":
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">✈ ${text}</div>` : "";
+    case "stay":
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">🏨 ${text}</div>` : "";
+    case "description":
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:3pt 0;white-space:pre-wrap">${text}</div>` : "";
+    default:
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
+  }
 }
