@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
 
 // Detailed Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -174,22 +174,26 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
               </div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.tourFileId||query.id} · {query.destination}</div>
             </div>
-            {versions.length > 0 && (
-              <div style={{display:"flex",gap:4}}>
-                {versions.map(v=>(
-                  <div key={v.version} style={{display:"flex",borderRadius:10,overflow:"hidden",border:viewingVersion===v.version?"1px solid #fff":"1px solid transparent"}}>
-                    <div onClick={()=>loadVersionIntoDraft(v)} title={v.note||`View v${v.version}`}
-                      style={{padding:"3px 8px",background:G.navyMid,color:"#fff",fontSize:10,cursor:"pointer",fontWeight:viewingVersion===v.version?700:400}}>
-                      v{v.version}
-                    </div>
-                    <div onClick={()=>{if(readOnly)return;setFinalVersion(v.version);markItineraryVersionFinal(db,query.id,v.version,"detailed");logAudit(db,query.id,currentUser?.name,`Detailed Itinerary v${v.version} marked final`);}} title="Mark as final"
-                      style={{padding:"3px 6px",background:finalVersion===v.version?"#059669":G.navyMid,color:"#fff",fontSize:10,cursor:readOnly?"default":"pointer",borderLeft:"1px solid rgba(255,255,255,0.2)"}}>
-                      {finalVersion===v.version?"★":"☆"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Detailed Itinerary was the one document left on the old
+                always-expanded version-pill row when VersionDropdown was
+                rolled out to the other seven, because its redesign was
+                deferred. The redesign no longer blocks this -- the pills
+                behave identically, they just take more room and look
+                inconsistent beside every other document. */}
+            <VersionDropdown
+              versions={versions}
+              viewingVersion={viewingVersion}
+              displayVersion={nextVersion - 1}
+              finalVersion={finalVersion}
+              onSelectVersion={loadVersionIntoDraft}
+              onMarkFinal={(v) => {
+                setFinalVersion(v.version);
+                markItineraryVersionFinal(db, query.id, v.version, "detailed");
+                logAudit(db, query.id, currentUser?.name, `Detailed Itinerary v${v.version} marked final`);
+              }}
+              readOnly={readOnly}
+              G={G}
+            />
             {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{nextVersion}</button>}
             <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>

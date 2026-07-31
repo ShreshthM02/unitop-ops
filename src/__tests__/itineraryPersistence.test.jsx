@@ -146,7 +146,13 @@ describe('DetailedItinerary: real versioned persistence (Phase 0 of the Document
     expect(screen.getByDisplayValue('Detailed Route')).toBeTruthy();
     expect(screen.queryByDisplayValue('Brief Should Not Appear')).toBeNull();
     // Its own v3 should show as final (★), confirming per-style final
-    // tracking survived the split correctly
+    // tracking survived the split correctly. Detailed Itinerary now uses the
+    // shared VersionDropdown like every other document, so the star lives in
+    // the panel rather than in an always-visible pill row -- open it first.
+    const toggle = Array.from(document.querySelectorAll('button'))
+      .find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
+    expect(toggle, 'version dropdown toggle not found').toBeTruthy();
+    fireEvent.click(toggle);
     expect(screen.getByText('★')).toBeTruthy();
   });
 });
