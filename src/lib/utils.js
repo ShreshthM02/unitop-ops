@@ -1594,13 +1594,55 @@ export function newItineraryItem(type) {
 // True once a day has been converted. Old rows have no `items` array at all.
 const dayHasItems = (day) => Array.isArray(day && day.items);
 
+// Detailed Itinerary days used to carry a separate `transports` array of
+// {type, number, from, to, time} rows, edited in their own block. Folding
+// that list into the `transport` item type is what removed the block -- but
+// the conversion has to exist for the fold to be true, otherwise the rows
+// survive on the day object, unreadable and unreachable, which is the exact
+// two-sources-of-truth situation this migration is meant to prevent.
+//
+// Note these rows never appeared in the printed document even before the
+// item model, so no client-facing output ever depended on them; the cost of
+// getting this wrong was orphaned data, not a broken export.
+function transportRowToText(t) {
+  if (!t) return "";
+  if (typeof t === "string") return t.trim();
+  const kind = (t.type || "").trim();
+  const number = (t.number || "").trim();
+  const leg = [t.from, t.to].map(v => (v || "").trim()).filter(Boolean).join(" / ");
+  const time = (t.time || "").trim();
+  const head = [kind, number].filter(Boolean).join(" ");
+  return [[head, leg].filter(Boolean).join(" — "), time ? `at ${time}` : ""]
+    .filter(Boolean).join(" ").trim();
+}
+
+function transportItemsFrom(day) {
+  return (day.transports || [])
+    .map(transportRowToText)
+    .filter(Boolean)
+    .map(text => ({ ...newItineraryItem("transport"), text }));
+}
+
 // Converts ONE legacy day into the item-list shape, preserving order:
 // route -> description -> stay. Empty legacy fields produce no item, which is
 // also what makes 1.10 fall out for free -- an export can only render items
 // that exist, so there is nothing blank left to suppress.
 export function migrateItineraryDay(day) {
   if (!day) return day;
-  if (dayHasItems(day)) return day;
+  if (dayHasItems(day)) {
+    if (!day.transports || day.transports.length === 0) return day;
+    // Converted day that still carries legacy transport rows: append them as
+    // transport items, ahead of a trailing stay if there is one, and drop the
+    // old key so the day is left with a single source of truth.
+    const { transports, ...rest } = day;
+    const converted = transportItemsFrom(day);
+    const existing = day.items;
+    const lastIsStay = existing.length > 0 && existing[existing.length - 1].type === "stay";
+    const items = lastIsStay
+      ? [...existing.slice(0, -1), ...converted, existing[existing.length - 1]]
+      : [...existing, ...converted];
+    return { ...rest, items };
+  }
   const items = [];
   const push = (type, text, extra = {}) => {
     if (!text || !String(text).trim()) return;
@@ -1613,12 +1655,15 @@ export function migrateItineraryDay(day) {
     items.push({ ...newItineraryItem("route"), text: "", distance: day.distance || "", time: day.time || "" });
   }
   push("description", day.description);
+  // Transports sit after movement and before the overnight stay -- you
+  // travel, then you check in.
+  items.push(...transportItemsFrom(day));
   push("stay", day.hotel);
   // Legacy fields are deliberately dropped from the migrated day rather than
   // kept alongside `items`: leaving both would give the day two sources of
   // truth for the same content, which is exactly the drift this codebase has
   // been bitten by before.
-  const { route, distance, time, description, hotel, ...rest } = day;
+  const { route, distance, time, description, hotel, transports, ...rest } = day;
   return { ...rest, items };
 }
 

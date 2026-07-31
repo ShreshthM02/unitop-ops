@@ -110,3 +110,59 @@ describe('item rendering for export', () => {
     expect(itineraryItemHTML({ type:'route', text:'', distance:'90 km', time:'3 hrs' })).toContain('90 km / 3 hrs');
   });
 });
+
+describe('legacy Detailed `transports` rows (follow-up: the item model removed the block without converting them)', () => {
+  const row = { type:'Flight', number:'6E 2134', from:'DEL', to:'VNS', time:'09:45' };
+
+  it('converts each transport row into a transport item', () => {
+    const out = migrateItineraryDay({ id:1, transports:[row] });
+    expect(out.items.map(i=>i.type)).toEqual(['transport']);
+    expect(out.items[0].text).toBe('Flight 6E 2134 — DEL / VNS at 09:45');
+  });
+
+  it('places transports after movement and before the overnight stay', () => {
+    const out = migrateItineraryDay({ id:1, route:'A - B', transports:[row], hotel:'Hotel X' });
+    expect(out.items.map(i=>i.type)).toEqual(['route','transport','stay']);
+  });
+
+  it('drops the legacy key so the day keeps a single source of truth', () => {
+    const out = migrateItineraryDay({ id:1, transports:[row] });
+    expect(out).not.toHaveProperty('transports');
+  });
+
+  it('composes readable text from partial rows rather than emitting stray separators', () => {
+    expect(migrateItineraryDay({ transports:[{ type:'Train', number:'', from:'Delhi', to:'Agra', time:'' }] }).items[0].text)
+      .toBe('Train — Delhi / Agra');
+    expect(migrateItineraryDay({ transports:[{ type:'', number:'AI 101', from:'', to:'', time:'18:00' }] }).items[0].text)
+      .toBe('AI 101 at 18:00');
+  });
+
+  it('skips rows that carry no information at all', () => {
+    const out = migrateItineraryDay({ id:1, transports:[{ type:'', number:'', from:'', to:'', time:'' }] });
+    expect(out.items).toEqual([]);
+  });
+
+  it('also rescues a day that was already migrated but kept an orphaned transports array', () => {
+    // Anyone who opened and saved a Detailed itinerary between the item model
+    // shipping and this fix has exactly this shape on disk.
+    const alreadyMigrated = { id:1, items:[
+      { id:'a', type:'route', text:'A - B' },
+      { id:'b', type:'stay', text:'Hotel X' },
+    ], transports:[row] };
+    const out = migrateItineraryDay(alreadyMigrated);
+    expect(out.items.map(i=>i.type)).toEqual(['route','transport','stay']);
+    expect(out).not.toHaveProperty('transports');
+  });
+
+  it('appends to the end when a migrated day has no trailing stay', () => {
+    const out = migrateItineraryDay({ id:1, items:[{ id:'a', type:'route' }], transports:[row] });
+    expect(out.items.map(i=>i.type)).toEqual(['route','transport']);
+  });
+
+  it('still short-circuits a migrated day with no legacy transports', () => {
+    const day = { id:1, items:[{ id:'a', type:'route' }] };
+    expect(migrateItineraryDay(day)).toBe(day);
+    const emptyArr = { id:2, items:[], transports:[] };
+    expect(migrateItineraryDay(emptyArr)).toBe(emptyArr);
+  });
+});
