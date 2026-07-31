@@ -88,9 +88,14 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
     setRemark("");
   };
 
-  // Docs available: query = cost sheet + quotation only; tour file = all
+  // Docs available: query = cost sheet + itinerary + quotation; tour file = all.
+  // Itinerary was originally tour-file-only, but an itinerary is part of what
+  // gets quoted -- it is drafted while the query is still being won, not after.
+  // It also pre-fills from the final Cost Sheet, which already exists at this
+  // stage, so nothing it depends on is missing here.
   const queryDocs = [
     {icon:"📊",label:"Cost Sheet",    panel:"costsheet"},
+    {icon:"🗺", label:"Itinerary",     panel:"itinerary"},
     {icon:"📋",label:"Quotation",     panel:"quotation"},
   ];
   const caseFileDocs = [

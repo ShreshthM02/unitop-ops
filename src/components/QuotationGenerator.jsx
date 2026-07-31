@@ -199,10 +199,21 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     q.pulledFromCostSheetVersion !== finalCostSheetVersion.version;
   const pullLatestFinal = () => { if (finalCostSheetVersion) pullFromCostSheet(finalCostSheetVersion); };
 
-  const saveVersion = () => {
+  // Last caller still ignoring the save result. Same treatment as the
+  // itineraries and Cost Sheet: confirm the insert BEFORE showing the version
+  // as saved, and surface the real reason if it fails. The optimistic
+  // setVersions that used to run first is now after the await -- that
+  // ordering was the whole bug on the itinerary side.
+  const [saveError, setSaveError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const saveVersion = async () => {
     const snap = { ...q, version, note: versionNote };
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await saveQuotationVersion(db, query.id, snap, currentUser?.id);
+    setSaving(false);
+    if (error) { setSaveError(error); return; }
     setVersions(p => [...p.filter(v => v.version !== version), snap]);
-    saveQuotationVersion(db, query.id, snap, currentUser?.id);
     logAudit(db, query.id, currentUser?.name, `Quotation v${version} saved${versionNote?" — "+versionNote:""}`);
     if (q.finalPriceEntries.length > 0) {
       logFinalPriceAgreementChange(db, query.id, currentUser?.name || "Unknown", q.finalPriceEntries, q.currency)
@@ -939,9 +950,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             { id:"word",  label:"Word",  icon:"📄", onSelect: exportQuotationDocx, hint:"Downloads a .docx file" },
             { id:"print", label:"Print", icon:"🖨", onSelect: printQuotation, separatorBefore:true },
           ]}/>
+          {saveError && (
+            <span style={{fontSize:11,color:"#B91C1C",maxWidth:420}} title={saveError}>
+              ⚠ Not saved — {saveError}
+            </span>
+          )}
           {!readOnly && (
-            <button className="btn btn-primary" onClick={saveVersion}>
-              💾 Save v{version}
+            <button className="btn btn-primary" onClick={saveVersion} disabled={saving}>
+              {saving ? "Saving…" : `💾 Save v${version}`}
             </button>
           )}
         </div>

@@ -56,7 +56,7 @@ function addCustomLine(paxPaying, foc, rate) {
 }
 
 describe('Final Price Agreement tab: Pax Paying vs FOC', () => {
-  it('shows separate Pax Paying and FOC fields, not just one Pax field', () => {
+  it('shows separate Pax Paying and FOC fields, not just one Pax field', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     fireEvent.click(screen.getByText('+ Add Rate Line'));
@@ -64,7 +64,7 @@ describe('Final Price Agreement tab: Pax Paying vs FOC', () => {
     expect(screen.getAllByText('FOC').length).toBeGreaterThan(0);
   });
 
-  it('FOC counts toward total confirmed pax but not toward tour value -- the actual 18 paying + 1 FOC example', () => {
+  it('FOC counts toward total confirmed pax but not toward tour value -- the actual 18 paying + 1 FOC example', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     addCustomLine('18', '1', '237');
@@ -73,7 +73,7 @@ describe('Final Price Agreement tab: Pax Paying vs FOC', () => {
     expect(screen.getByText(/4266/)).toBeTruthy(); // Tour Value = 18 * 237, FOC contributes 0
   });
 
-  it('the warning message clarifies FOC is optional', () => {
+  it('the warning message clarifies FOC is optional', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     expect(screen.getByText(/FOC is optional/)).toBeTruthy();
@@ -81,7 +81,7 @@ describe('Final Price Agreement tab: Pax Paying vs FOC', () => {
 });
 
 describe('Multiple rate lines still work correctly with the new column layout', () => {
-  it('totals correctly sum across multiple lines (18 paying @ 237 + 2 paying @ 50, no FOC)', () => {
+  it('totals correctly sum across multiple lines (18 paying @ 237 + 2 paying @ 50, no FOC)', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     addCustomLine('18', '0', '237');
@@ -90,7 +90,7 @@ describe('Multiple rate lines still work correctly with the new column layout', 
     expect(screen.getByText(/4366/)).toBeTruthy(); // 18*237 + 2*50
   });
 
-  it('a rate line can be removed', () => {
+  it('a rate line can be removed', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     fireEvent.click(screen.getByText('+ Add Rate Line'));
@@ -101,7 +101,7 @@ describe('Multiple rate lines still work correctly with the new column layout', 
     expect(screen.getAllByPlaceholderText('e.g. 18').length).toBe(1);
   });
 
-  it('selecting a slab auto-fills and locks the rate field (the 2nd "0"-placeholder input, after FOC)', () => {
+  it('selecting a slab auto-fills and locks the rate field (the 2nd "0"-placeholder input, after FOC)', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     const priceInputs = document.querySelectorAll('input[placeholder="237"]');
     fireEvent.change(priceInputs[0], { target: { value: '237' } });
@@ -117,9 +117,13 @@ describe('Multiple rate lines still work correctly with the new column layout', 
 });
 
 describe('Marking final is blocked without complete rate lines (Pax Paying + rate required, FOC optional)', () => {
-  it('clicking the star with no rate lines shows a warning and does not mark final', () => {
+  it('clicking the star with no rate lines shows a warning and does not mark final', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    // Saving is now awaited before the version is shown as saved (the insert
+    // has to be confirmed first), so the test has to let it settle rather
+    // than asserting in the same tick.
+    await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
     openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
@@ -127,11 +131,15 @@ describe('Marking final is blocked without complete rate lines (Pax Paying + rat
     expect(starButtons[0].textContent).toBe('☆');
   });
 
-  it('a version with Pax Paying + rate on every line (FOC left blank) can be marked final', () => {
+  it('a version with Pax Paying + rate on every line (FOC left blank) can be marked final', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x',name:'Priya'}}/>);
     openFinalPriceTab();
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    // Saving is now awaited before the version is shown as saved (the insert
+    // has to be confirmed first), so the test has to let it settle rather
+    // than asserting in the same tick.
+    await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
     openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
@@ -141,7 +149,7 @@ describe('Marking final is blocked without complete rate lines (Pax Paying + rat
 });
 
 describe('"Last Changes" audit log within the Final Price tab', () => {
-  it('shows a placeholder message when nothing has been logged yet', () => {
+  it('shows a placeholder message when nothing has been logged yet', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     openFinalPriceTab();
     expect(screen.getByText(/No changes logged yet/)).toBeTruthy();
@@ -153,18 +161,26 @@ describe('"Last Changes" audit log within the Final Price tab', () => {
     addCustomLine('20', '', '200');
     mockDb.from.mockClear();
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    // Saving is now awaited before the version is shown as saved (the insert
+    // has to be confirmed first), so the test has to let it settle rather
+    // than asserting in the same tick.
+    await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
     expect(mockDb.from).toHaveBeenCalledWith('query_audit');
   });
 });
 
 describe('Update Final Price in place (no new version for a pax-count refinement)', () => {
-  it('the update-in-place button only appears when viewing the currently-final version', () => {
+  it('the update-in-place button only appears when viewing the currently-final version', async () => {
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x',name:'Priya'}}/>);
     openFinalPriceTab();
     expect(screen.queryByText(/Update Final Price/)).toBeNull(); // no final version yet
 
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    // Saving is now awaited before the version is shown as saved (the insert
+    // has to be confirmed first), so the test has to let it settle rather
+    // than asserting in the same tick.
+    await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
     openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]); // now v1 is final and being viewed
@@ -176,6 +192,10 @@ describe('Update Final Price in place (no new version for a pax-count refinement
     openFinalPriceTab();
     addCustomLine('20', '', '200');
     fireEvent.click(screen.getByText(/💾 Save v1/));
+    // Saving is now awaited before the version is shown as saved (the insert
+    // has to be confirmed first), so the test has to let it settle rather
+    // than asserting in the same tick.
+    await waitFor(() => expect(screen.queryByText('Saving…')).toBeNull());
     openVersionDropdown();
     const starButtons = document.querySelectorAll('[title="Mark as final"]');
     fireEvent.click(starButtons[0]);
