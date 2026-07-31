@@ -53,10 +53,11 @@ describe('QuotationGenerator: migrated to the shared toggle hook and async pagin
     const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     // Header's own Print/PDF button was removed (redundant with the
-    // footer's Print/Export PDF button, which is always visible
-    // regardless of active tab) as part of decluttering the header.
-    const printButtons = screen.getAllByText('🖨 Print / Export PDF');
-    expect(() => fireEvent.click(printButtons[0])).not.toThrow();
+    // footer's export control, which is always visible regardless of
+    // active tab) as part of decluttering the header. That footer control
+    // is now the shared ExportMenu, so reaching PDF means opening it first.
+    fireEvent.click(screen.getByText('⬇ Export ▾'));
+    expect(() => fireEvent.click(screen.getByText('📕 PDF'))).not.toThrow();
   });
 });
 
@@ -122,13 +123,16 @@ describe('QuotationGenerator: table-splitting wiring across all 4 tables (itiner
 });
 
 describe('QuotationGenerator: header decluttering (version dropdown, single Print button, toggles moved into Preview)', () => {
-  it('only one Print button exists in the whole document now (was two: header + footer)', async () => {
+  it('only one export control exists in the whole document now (was two Print buttons: header + footer)', async () => {
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
     render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
-    expect(screen.getAllByText('🖨 Print / Export PDF')).toHaveLength(1);
+    // Single shared ExportMenu in the footer; the PDF and Print entries
+    // live inside its panel rather than as separate top-level buttons.
+    expect(screen.getAllByText('⬇ Export ▾')).toHaveLength(1);
+    expect(screen.queryByText('🖨 Print / Export PDF')).toBeNull();
   });
 
   it('the toggle bar is not visible on the Content tab (default), only inside Preview', async () => {

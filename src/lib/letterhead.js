@@ -89,6 +89,16 @@ export const invoiceLetterheadCSS = `
     .print-page-content { flex: 1 1 auto; overflow: hidden; }
     .print-page-num { flex: 0 0 auto; text-align: right; padding: 1mm 2mm 0; font-size: 7.5pt; color: #999; font-family: 'Inter', Arial, sans-serif; }
     .print-page-content > * + * { margin-top: 0; }
+    /* The reset above exists so a block that happens to land first on a page
+       doesn't inherit a leading gap and push content down. But it was also
+       silently stripping the top margin from every section heading mid-page,
+       which is why raising h2's margin had no visible effect at all -- the
+       measured gap stayed at the table's own 6pt bottom margin regardless of
+       what h2 asked for. These two rules are more specific than the reset
+       (0,1,1 vs 0,1,0), so headings get real breathing room between
+       sections, while a heading that opens a page still sits flush. */
+    .print-page-content > h2 { margin-top: 26pt; }
+    .print-page-content > h2:first-child { margin-top: 0; }
 
     /* ── Shared document content styles (unchanged from before) ──────────── */
     .inv-title { font-family: 'Playfair Display', Georgia, serif; font-size: 18pt; font-weight: 700; color: #1A3A52; text-align: center; margin-bottom: 10pt; letter-spacing: 1pt; text-transform: uppercase; }
@@ -401,7 +411,24 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
   const wrapTableChunk = (headerHTML, rowsChunk, extraClassName) =>
     `<table class="content-table${extraClassName ? " " + extraClassName : ""}" style="width:100%;border-collapse:collapse"><thead>${headerHTML}</thead><tbody>${rowsChunk.join("")}</tbody></table>`;
 
-  bodyBlocks.forEach((block) => {
+  // A section heading must never be the last thing on a page with its
+  // content starting the next one -- that produced a stranded "ACCOMMODATION"
+  // heading above ~36mm of blank space in real output. Before placing a
+  // heading we look ahead and require room for the heading plus the smallest
+  // meaningful piece of whatever follows (a table's header row + its first
+  // data row, or a plain block in full).
+  const isHeadingHTML = (b) => typeof b === "string" && /^\s*<h2[\s>]/i.test(b);
+  const minHeightOfBlock = (b) => {
+    if (!b) return 0;
+    if (typeof b === "object" && b.type === "table") {
+      if (!b.rowsHTML || b.rowsHTML.length === 0) return 0;
+      const { headerHeightPx, rowHeightsPx } = tableMeasureFn(b.headerHTML, b.rowsHTML, containerWidthPx);
+      return headerHeightPx + rowHeightsPx[0];
+    }
+    return measureFn(b, containerWidthPx);
+  };
+
+  bodyBlocks.forEach((block, blockIdx) => {
     if (block && typeof block === "object" && block.type === "table") {
       const { headerHTML, rowsHTML, className } = block;
       if (rowsHTML.length === 0) return; // nothing to place
@@ -436,7 +463,12 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
 
     const html = block;
     const h = measureFn(html, containerWidthPx);
-    if (currentHeight + h > pageContentHeightPx && currentPage.length > 0) flushPage();
+    // Keep-with-next: a heading needs room for itself AND the start of the
+    // block it introduces, otherwise push both to the next page.
+    const needed = isHeadingHTML(html)
+      ? h + minHeightOfBlock(bodyBlocks[blockIdx + 1])
+      : h;
+    if (currentHeight + needed > pageContentHeightPx && currentPage.length > 0) flushPage();
     currentPage.push(html);
     currentHeight += h;
   });

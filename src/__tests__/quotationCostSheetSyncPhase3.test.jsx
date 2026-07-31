@@ -179,7 +179,9 @@ describe('QuotationGenerator: header decluttering -- version pills collapsed int
     const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
     const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     await rtlWaitFor(() => {
-      const dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      const // The footer's Export menu is also a '▾' dropdown now, so this has to
+      // pick the version one specifically rather than the first match.
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
       expect(dropdownBtn).toBeTruthy();
       expect(dropdownBtn.textContent).toContain('v1');
     });
@@ -198,7 +200,9 @@ describe('QuotationGenerator: header decluttering -- version pills collapsed int
     const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     let dropdownBtn;
     await rtlWaitFor(() => {
-      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      // The footer's Export menu is also a '▾' dropdown now, so this has to
+      // pick the version one specifically rather than the first match.
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
       expect(dropdownBtn).toBeTruthy();
     });
     fireEvent.click(dropdownBtn);
@@ -214,7 +218,9 @@ describe('QuotationGenerator: header decluttering -- version pills collapsed int
     const { container } = render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     let dropdownBtn;
     await rtlWaitFor(() => {
-      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾'));
+      // The footer's Export menu is also a '▾' dropdown now, so this has to
+      // pick the version one specifically rather than the first match.
+      dropdownBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
       expect(dropdownBtn).toBeTruthy();
     });
     fireEvent.click(dropdownBtn);
