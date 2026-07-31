@@ -20,7 +20,7 @@ const GRAY = "888888";
 function sectionHeading(text) {
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
-    spacing: { before: 200, after: 80 },
+    spacing: { before: 440, after: 160 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "DDDDDD" } },
     children: [new TextRun({ text, bold: true, size: 20, color: NAVY, allCaps: true })],
   });
@@ -88,14 +88,14 @@ function buildQuotationBody(q, showStamp) {
   });
   body.push(dataTable(itinHeaders, itinRows));
 
-  // Domestic Flights / Trains (1.3)
+  // Domestic Flights / Trains (1.3, 2.3: each entry carries its own day/date)
   if (q.showFlights && q.flights.length) {
     body.push(sectionHeading(q.flightsHeading || "Domestic Flights"));
-    body.push(...bulletList(q.flights));
+    body.push(dataTable(["Day", "Flight Details"], q.flights.map((f) => [(f && f.day) || "\u2014", (f && f.detail) || ""])));
   }
   if (q.showTrains && q.trains.length) {
     body.push(sectionHeading(q.trainsHeading || "Domestic Trains"));
-    body.push(...bulletList(q.trains));
+    body.push(dataTable(["Day", "Train Details"], q.trains.map((t) => [(t && t.day) || "\u2014", (t && t.detail) || ""])));
   }
 
   // Accommodation

@@ -8,7 +8,7 @@ const baseQ = {
   itinerary: [{ day: 'Day 01', date: '', movement: 'Delhi arrival', bf: '', lunch: '', dinner: '' }],
   showItinDate: false,
   hotels: [{ place: 'Delhi', nights: '1', hotel: 'Hotel X' }],
-  showFlights: true, flights: ['DEL-VNS 6E123'], flightsHeading: 'Domestic Flights',
+  showFlights: true, flights: [{ day: 'Day 02', detail: 'DEL-VNS 6E123' }], flightsHeading: 'Domestic Flights',
   showTrains: false, trains: [], trainsHeading: 'Domestic Trains',
   showMonuments: true, monuments: [{ name: 'Taj', fee: '500' }], monumentNote: 'Monument Fees Heading',
   showRemarks: true, remarks: 'Confirm by Friday', remarksHeading: 'Remarks',

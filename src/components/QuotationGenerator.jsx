@@ -237,7 +237,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       if (winY != null) window.scrollTo(0, winY);
       scrollRestoreRef.current = null;
     }
-  }, [q.slabs.length, q.monuments.length]);
+  // The restore has to be keyed on every list/toggle whose change alters
+  // layout height. It previously only watched slabs and monuments, so the
+  // flights/trains/remarks sections added in batch 1 -- and the
+  // includes/excludes lists, which had the same latent problem -- saved a
+  // scroll position that was never applied, dropping the user back at the
+  // top of the quotation on every add/remove/toggle.
+  }, [q.slabs.length, q.monuments.length, q.flights.length, q.trains.length,
+      q.includes.length, q.excludes.length,
+      q.showFlights, q.showTrains, q.showRemarks, q.showMonuments, q.showItinDate]);
   const saveScrollForRestore = () => {
     scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
   };
@@ -281,8 +289,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   }));
   const addHotelRow = () => setQ(prev => ({ ...prev, hotels: [...prev.hotels, {place:"",nights:"",hotel:""}] }));
   const updateList = (key, i, val) => setQ(prev => ({ ...prev, [key]: prev[key].map((x,idx)=>idx===i?val:x) }));
-  const addListItem = (key) => setQ(prev => ({ ...prev, [key]: [...prev[key], ""] }));
-  const removeListItem = (key, i) => setQ(prev => ({ ...prev, [key]: prev[key].filter((_,idx)=>idx!==i) }));
+  // saveScrollForRestore here (rather than at each call site) so every
+  // list-backed section -- flights, trains, includes, excludes -- keeps the
+  // user's scroll position on add/remove.
+  const addListItem = (key) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: [...prev[key], key==="flights"||key==="trains" ? { day:"", detail:"" } : ""] })); };
+  const removeListItem = (key, i) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: prev[key].filter((_,idx)=>idx!==i) })); };
+  // Section show/hide toggles change layout height too, so they need the
+  // same treatment as add/remove.
+  const setToggle = (key, val) => { saveScrollForRestore(); setF(key, val); };
   const updateMonument = (i, field, val) => setQ(prev => ({
     ...prev, monuments: prev.monuments.map((m,idx)=>idx===i?{...m,[field]:val}:m)
   }));
@@ -317,12 +331,23 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     };
     const itineraryHeading = `<h2>Day-wise Itinerary</h2>`;
 
-    // 1.3: Domestic Flights / Domestic Trains -- plain free-text, multiple
-    // entries, optional display, quotation-only for now (see project notes).
-    const flightsHeadingBlock = q.showFlights ? `<h2>${q.flightsHeading}</h2>` : "";
-    const flightsBlock = (q.showFlights && q.flights.length) ? `<ul>${q.flights.map(f=>'<li>'+f+'</li>').join('')}</ul>` : "";
-    const trainsHeadingBlock = q.showTrains ? `<h2>${q.trainsHeading}</h2>` : "";
-    const trainsBlock = (q.showTrains && q.trains.length) ? `<ul>${q.trains.map(t=>'<li>'+t+'</li>').join('')}</ul>` : "";
+    // 1.3 / 2.3: Domestic Flights / Domestic Trains -- each entry now carries
+    // its own day/date alongside the free-text detail. The `|| "Domestic
+    // Flights"` fallbacks matter: a doc_templates row saved before these
+    // heading fields existed used to yield undefined here and print the
+    // literal word "undefined" as the section heading.
+    const flightsHeadingBlock = q.showFlights ? `<h2>${q.flightsHeading || "Domestic Flights"}</h2>` : "";
+    const flightsBlock = (q.showFlights && q.flights.length) ? {
+      type: "table",
+      headerHTML: `<tr><th>Day</th><th>Flight Details</th></tr>`,
+      rowsHTML: q.flights.map(f=>'<tr><td>'+((f&&f.day)||'—')+'</td><td>'+((f&&f.detail)||'')+'</td></tr>'),
+    } : null;
+    const trainsHeadingBlock = q.showTrains ? `<h2>${q.trainsHeading || "Domestic Trains"}</h2>` : "";
+    const trainsBlock = (q.showTrains && q.trains.length) ? {
+      type: "table",
+      headerHTML: `<tr><th>Day</th><th>Train Details</th></tr>`,
+      rowsHTML: q.trains.map(t=>'<tr><td>'+((t&&t.day)||'—')+'</td><td>'+((t&&t.detail)||'')+'</td></tr>'),
+    } : null;
 
     const accommodationBlock = {
       type: "table",
@@ -342,7 +367,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     // was previously baked into priceBlock as a single opaque string,
     // which meant a long monuments list for a big tour couldn't split
     // across pages on its own.
-    const monumentsHeadingBlock = q.showMonuments ? `<h2>${q.monumentNote}</h2>` : "";
+    const monumentsHeadingBlock = q.showMonuments ? `<h2>${q.monumentNote || "Monument Fees"}</h2>` : "";
     const monumentsBlock = q.showMonuments ? {
       type: "table",
       headerHTML: `<tr><th>Monument</th><th>Fee</th></tr>`,
@@ -351,7 +376,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
     // 1.5: Remarks -- single free-text field, optional display, placed
     // directly below the (now relocated) Monument Fees section.
-    const remarksHeadingBlock = q.showRemarks ? `<h2>${q.remarksHeading}</h2>` : "";
+    const remarksHeadingBlock = q.showRemarks ? `<h2>${q.remarksHeading || "Remarks"}</h2>` : "";
     const remarksBlock = (q.showRemarks && q.remarks) ? `<p style="font-size:9.5pt;white-space:pre-wrap;">${q.remarks}</p>` : "";
 
     const inclusionsBlock = `
@@ -372,7 +397,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     return buildPaginatedLetterheadDocument({
       title: `Quotation — ${q.attnCompany}`,
       extraHeadCSS: `
-        h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:10pt 0 4pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
+        h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:22pt 0 8pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
         .price-table td:last-child{font-weight:bold;color:#C0392B;}
         ol,ul{margin:3pt 0 0 14pt;padding:0;}
         li{margin-bottom:2pt;font-size:9pt;}
@@ -569,7 +594,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{ marginBottom:8 }}>
             <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
               <input type="checkbox" checked={q.showItinDate}
-                onChange={e=>setF("showItinDate",e.target.checked)}/> Show a Date column (dates are often fluid at quotation stage -- leave off if not yet fixed)
+                onChange={e=>setToggle("showItinDate",e.target.checked)}/> Show a Date column (dates are often fluid at quotation stage -- leave off if not yet fixed)
             </label>
           </div>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
@@ -617,7 +642,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
               <input type="checkbox" checked={q.showFlights}
-                onChange={e=>setF("showFlights",e.target.checked)}/> Show domestic flights in quotation
+                onChange={e=>setToggle("showFlights",e.target.checked)}/> Show domestic flights in quotation
             </label>
           </div>
           {q.showFlights && (
@@ -625,8 +650,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               {q.flights.map((item,i)=>(
                 <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
                   <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
-                  <input style={{...inputStyle,flex:1}} value={item}
-                    onChange={e=>updateList("flights",i,e.target.value)} placeholder="e.g. Delhi / Varanasi — 6E 2134"/>
+                  <input style={{...inputStyle,width:110,flex:"0 0 110px"}} value={item.day||""}
+                    onChange={e=>updateList("flights",i,{...item,day:e.target.value})} placeholder="Day 02 / 12 Oct"/>
+                  <input style={{...inputStyle,flex:1}} value={item.detail||""}
+                    onChange={e=>updateList("flights",i,{...item,detail:e.target.value})} placeholder="e.g. Delhi / Varanasi — 6E 2134"/>
                   <span style={{ cursor:"pointer", color:G.gray400 }}
                     onClick={()=>removeListItem("flights",i)}>✕</span>
                 </div>
@@ -640,7 +667,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
               <input type="checkbox" checked={q.showTrains}
-                onChange={e=>setF("showTrains",e.target.checked)}/> Show domestic trains in quotation
+                onChange={e=>setToggle("showTrains",e.target.checked)}/> Show domestic trains in quotation
             </label>
           </div>
           {q.showTrains && (
@@ -648,8 +675,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               {q.trains.map((item,i)=>(
                 <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
                   <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
-                  <input style={{...inputStyle,flex:1}} value={item}
-                    onChange={e=>updateList("trains",i,e.target.value)} placeholder="e.g. Delhi / Agra — Shatabdi Express"/>
+                  <input style={{...inputStyle,width:110,flex:"0 0 110px"}} value={item.day||""}
+                    onChange={e=>updateList("trains",i,{...item,day:e.target.value})} placeholder="Day 03 / 13 Oct"/>
+                  <input style={{...inputStyle,flex:1}} value={item.detail||""}
+                    onChange={e=>updateList("trains",i,{...item,detail:e.target.value})} placeholder="e.g. Delhi / Agra — Shatabdi Express"/>
                   <span style={{ cursor:"pointer", color:G.gray400 }}
                     onClick={()=>removeListItem("trains",i)}>✕</span>
                 </div>
@@ -697,7 +726,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
               <input type="checkbox" checked={q.showMonuments}
-                onChange={e=>setF("showMonuments",e.target.checked)}/> Show monument fees in quotation
+                onChange={e=>setToggle("showMonuments",e.target.checked)}/> Show monument fees in quotation
             </label>
           </div>
           {q.showMonuments && (
@@ -726,7 +755,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
               <input type="checkbox" checked={q.showRemarks}
-                onChange={e=>setF("showRemarks",e.target.checked)}/> Show remarks in quotation
+                onChange={e=>setToggle("showRemarks",e.target.checked)}/> Show remarks in quotation
             </label>
           </div>
           {q.showRemarks && (

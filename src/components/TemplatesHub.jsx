@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, db } = Lib;
 
 export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings}){
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
@@ -12,15 +12,31 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   // Draft copy of ALL document templates (quotation, proforma, taxinvoice, ...),
   // seeded from the live value passed down from UnitopApp. Edits here stay
   // local until "Save All Settings" — same pattern as settings/typo above.
-  const [tmpl,setTmpl]=React.useState(()=>({...DEFAULT_DOC_TEMPLATES,...(docTemplates||{})}));
+  //
+  // mergeDocTemplates (not a plain spread) so that template fields added to
+  // the code after the user last saved still fall back to their defaults
+  // instead of vanishing -- see the note on mergeDocTemplates in utils.js.
+  const [tmpl,setTmpl]=React.useState(()=>mergeDocTemplates(DEFAULT_DOC_TEMPLATES,docTemplates));
+  // UnitopApp mounts with DEFAULT_DOC_TEMPLATES and only calls
+  // setDocTemplates once the Supabase load resolves. If this pane was opened
+  // before that landed, the lazy initializer above had already captured the
+  // defaults and would never pick the real values up -- the user would see
+  // default text, edit it, and on save overwrite their actual stored
+  // template. Re-seed when the prop changes, but never clobber edits the
+  // user has already made in this session.
+  const dirtyRef=React.useRef(false);
+  React.useEffect(()=>{
+    if(dirtyRef.current) return;
+    setTmpl(mergeDocTemplates(DEFAULT_DOC_TEMPLATES,docTemplates));
+  },[docTemplates]);
   const [saved,setSaved]=React.useState("");
   const setS=(d,f,v)=>setSettings(p=>({...p,[d]:{...p[d],[f]:v}}));
   const setT=(k,v)=>setTypo(p=>({...p,[k]:v}));
   // Generic field setter for any doc's template: setTF('proforma','bankName',...)
-  const setTF=(doc,k,v)=>setTmpl(p=>({...p,[doc]:{...p[doc],[k]:v}}));
-  const updQTL=(k,i,v)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].map((x,xi)=>xi===i?v:x)}}));
-  const addQTL=(k)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:[...p.quotation[k],""]}}));
-  const rmQTL=(k,i)=>setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].filter((_,xi)=>xi!==i)}}));
+  const setTF=(doc,k,v)=>{dirtyRef.current=true;setTmpl(p=>({...p,[doc]:{...p[doc],[k]:v}}));};
+  const updQTL=(k,i,v)=>{dirtyRef.current=true;setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].map((x,xi)=>xi===i?v:x)}}));};
+  const addQTL=(k)=>{dirtyRef.current=true;setTmpl(p=>({...p,quotation:{...p.quotation,[k]:[...p.quotation[k],""]}}));};
+  const rmQTL=(k,i)=>{dirtyRef.current=true;setTmpl(p=>({...p,quotation:{...p.quotation,[k]:p.quotation[k].filter((_,xi)=>xi!==i)}}));};
   const saveAll=()=>{
     saveAppSetting(db,"typography",typo);
     if(setDocSettings)setDocSettings(settings);

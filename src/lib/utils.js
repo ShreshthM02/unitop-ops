@@ -1507,3 +1507,36 @@ export function getVendorAssignmentHistory(vendorId, tourExecutions, queries) {
   });
   return rows.sort((a, b) => new Date(b.travelDate || 0) - new Date(a.travelDate || 0));
 }
+
+// ── DOC TEMPLATE MERGING ────────────────────────────────────────────────
+// Merges a saved doc_templates value over DEFAULT_DOC_TEMPLATES *per
+// document*, field by field, rather than replacing whole document objects.
+//
+// Why this matters: the old code did `{...DEFAULT_DOC_TEMPLATES, ...saved}`,
+// a top-level spread. Because `saved.quotation` is itself an object, that
+// spread replaced the ENTIRE default quotation template with whatever was
+// stored in Supabase. Any template field added to the code AFTER a user last
+// hit "Save All Settings" was therefore simply absent -- not defaulted,
+// absent. Downstream that surfaced as a literal "undefined" printing in the
+// Quotation PDF for the flights/trains/remarks headings added in batch 1,
+// and as blank Template Content fields that looked broken.
+//
+// Field-level merge means a newly-added template field always falls back to
+// its default until the user explicitly sets it, no migration required.
+export function mergeDocTemplates(defaults, saved) {
+  const out = { ...defaults };
+  if (!saved || typeof saved !== "object") return out;
+  for (const key of Object.keys(saved)) {
+    const savedDoc = saved[key];
+    const defaultDoc = defaults[key];
+    // Only merge when both sides are plain objects; otherwise take the saved
+    // value as-is (covers doc keys the defaults don't know about).
+    if (savedDoc && typeof savedDoc === "object" && !Array.isArray(savedDoc)
+        && defaultDoc && typeof defaultDoc === "object" && !Array.isArray(defaultDoc)) {
+      out[key] = { ...defaultDoc, ...savedDoc };
+    } else {
+      out[key] = savedDoc;
+    }
+  }
+  return out;
+}
