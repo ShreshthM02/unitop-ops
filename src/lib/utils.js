@@ -865,6 +865,8 @@ export function mapDbMealPlanRow(row) {
     heading: row.heading || "", rows: row.rows || [],
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
     pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
+    routeMapImage: row.route_map_image ?? null,
+    dayImageOverrides: row.day_image_overrides || {},
   };
 }
 
@@ -922,6 +924,8 @@ export function mapDbItineraryRow(row) {
     duration: row.duration || "", activeTab: row.active_tab || "brief", days: migrateItineraryDays(row.days || []),
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
     pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
+    routeMapImage: row.route_map_image ?? null,
+    dayImageOverrides: row.day_image_overrides || {},
   };
 }
 
@@ -946,6 +950,10 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
       // same way Brief tracks its Cost Sheet version. NEW COLUMN -- requires
       // a migration on the live database (see schemaCompleteness.test).
       pulled_from_brief_version: snap.pulledFromBriefVersion ?? null,
+      // Brochure settings for the client-facing export. NEW COLUMNS --
+      // require a migration (see schemaCompleteness.test).
+      route_map_image: snap.routeMapImage ?? null,
+      day_image_overrides: snap.dayImageOverrides ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };
@@ -1201,6 +1209,8 @@ export function mapDbQuotationRow(row) {
     // synced_from_cost_sheet_version.
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
     pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
+    routeMapImage: row.route_map_image ?? null,
+    dayImageOverrides: row.day_image_overrides || {},
   };
 }
 

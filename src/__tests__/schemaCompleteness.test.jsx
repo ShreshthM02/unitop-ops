@@ -116,7 +116,11 @@ describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from
   // pulled_from_brief_version added 2026-08-01 for Detailed Itinerary's
   // snapshot pull from Brief (1.12). Requires:
   //   ALTER TABLE itineraries ADD COLUMN pulled_from_brief_version integer;
-  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version', 'pulled_from_brief_version'];
+  // route_map_image / day_image_overrides added 2026-08-01 for the brochure
+  // export (1.13/1.14). Require:
+  //   ALTER TABLE itineraries ADD COLUMN route_map_image text;
+  //   ALTER TABLE itineraries ADD COLUMN day_image_overrides jsonb;
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version', 'pulled_from_brief_version', 'route_map_image', 'day_image_overrides'];
   it('every intended column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveItineraryVersion(db, 'UTQ-1', { version: 1 }, null);

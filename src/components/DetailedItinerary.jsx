@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, mergeBriefDaysIntoDetailed, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, mergeBriefDaysIntoDetailed, loadPhotoLibrary, resolveDayImages, buildBrochureDocument, brochureCSS, createMeasurementContext, measureHTMLHeight, ExportMenu, logAudit, db } = Lib;
 
 // Detailed Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -53,6 +53,11 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const [latestBriefVersion, setLatestBriefVersion] = useState(null);
   const [pulledFromBriefVersion, setPulledFromBriefVersion] = useState(null);
   const [pulledFromCostSheetVersion, setPulledFromCostSheetVersion] = useState(null);
+  // Brochure export (1.13/1.14). The photo library auto-suggests a picture
+  // per day from its destination; overrides pin or clear individual days.
+  const [photoLibrary, setPhotoLibrary] = useState([]);
+  const [dayImageOverrides, setDayImageOverrides] = useState({});
+  const [routeMapImage, setRouteMapImage] = useState(null);
   const [pullMessage, setPullMessage] = useState("");
   const [pulling, setPulling] = useState(false);
 
@@ -85,6 +90,9 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   };
 
   useEffect(() => {
+    // The library is optional: if the table or bucket doesn't exist yet the
+    // brochure simply renders without photography rather than failing.
+    loadPhotoLibrary(db).then(({ photos }) => setPhotoLibrary(photos));
     loadItineraryVersions(db, query.id).then(loaded => {
       // Both styles live in the same table; the star-marked Brief version is
       // the source of truth if there is one, otherwise the latest saved.
@@ -103,6 +111,8 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
       const latest = detailedVersions[detailedVersions.length - 1];
       loadVersionIntoDraft(latest);
       setPulledFromBriefVersion(latest.pulledFromBriefVersion ?? null);
+      setRouteMapImage(latest.routeMapImage ?? null);
+      setDayImageOverrides(latest.dayImageOverrides || {});
       setPulledFromCostSheetVersion(latest.pulledFromCostSheetVersion ?? null);
     });
   }, [query.id]);
@@ -115,7 +125,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const [saveError, setSaveError] = useState(null);
   const [saving, setSaving] = useState(false);
   const saveVersion = async () => {
-    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion, pulledFromBriefVersion };
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion, pulledFromBriefVersion, routeMapImage, dayImageOverrides };
     setSaving(true);
     setSaveError(null);
     const { error } = await saveItineraryVersion(db, query.id, snap, currentUser?.id);
@@ -177,6 +187,33 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
 
   const handlePrint = () => printHTML(buildPrintHTML());
 
+  // Client-facing brochure. Deliberately a separate document from the
+  // internal print view above -- same content, entirely different audience
+  // and layout (see src/lib/brochure.js for why it is not on the letterhead
+  // engine).
+  const buildBrochureHTML = () => {
+    const ctx = createMeasurementContext(brochureCSS());
+    try {
+      return buildBrochureDocument({
+        cover: {
+          title: tourTitle || query.groupName || "Itinerary",
+          tagline, duration, route,
+          heroImage: resolveDayImages(itinDays, photoLibrary, dayImageOverrides)[itinDays[0] && itinDays[0].id] || null,
+          eyebrow: "Unitop Tours & Travel",
+        },
+        days: itinDays,
+        dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
+        routeMapImage,
+        closingText: "Tour ends as you leave footprints and take memories.",
+        footerLabel: tourTitle || query.groupName || "",
+        measureFn: (html, width) => measureHTMLHeight(html, width, ctx.doc),
+      });
+    } finally {
+      ctx.cleanup();
+    }
+  };
+  const printBrochure = () => printHTML(buildBrochureHTML());
+
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{ background:G.white, width:780, height:"100vh", overflowY:"auto", boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
@@ -212,7 +249,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
               G={G}
             />
             {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{nextVersion}</button>}
-            <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
+
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
           {isStaleVsBrief && !readOnly && (
@@ -317,7 +354,11 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${G.gray200}`, display:"flex", gap:10, flexShrink:0, background:G.gray50 }}>
           <button onClick={onClose} className="btn btn-ghost">Close</button>
           <div style={{ flex:1 }}/>
-          <button onClick={handlePrint} className="btn btn-primary">🖨 Print</button>
+          <ExportMenu G={G} actions={[
+            { id:"brochure", label:"Brochure PDF", icon:"📗", onSelect: printBrochure, hint:"Client-facing, with photos" },
+            { id:"pdf",      label:"Internal PDF", icon:"📕", onSelect: handlePrint,   hint:"Plain letterhead layout" },
+            { id:"print",    label:"Print",        icon:"🖨", onSelect: handlePrint, separatorBefore:true },
+          ]}/>
           {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{nextVersion}</button>}
         </div>
       </div>
