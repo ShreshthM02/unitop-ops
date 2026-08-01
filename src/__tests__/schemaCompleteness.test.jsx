@@ -112,8 +112,11 @@ describe('Schema completeness: meal_plans (saveMealPlanVersion) -- pulled_from_c
 // active_tab. Split 2026-07-24 into two separate components
 // (BriefItinerary.jsx, DetailedItinerary.jsx) that each save into this
 // same shared table, filtering to their own style's rows.
-describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from_cost_sheet_version is a NEW column, requires migration', () => {
-  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version'];
+describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from_cost_sheet_version and pulled_from_brief_version are NEW columns, require migration', () => {
+  // pulled_from_brief_version added 2026-08-01 for Detailed Itinerary's
+  // snapshot pull from Brief (1.12). Requires:
+  //   ALTER TABLE itineraries ADD COLUMN pulled_from_brief_version integer;
+  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'tour_title', 'tagline', 'route', 'duration', 'active_tab', 'days', 'created_by', 'pulled_from_cost_sheet_version', 'pulled_from_brief_version'];
   it('every intended column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveItineraryVersion(db, 'UTQ-1', { version: 1 }, null);

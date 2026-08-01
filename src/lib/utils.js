@@ -864,6 +864,7 @@ export function mapDbMealPlanRow(row) {
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     heading: row.heading || "", rows: row.rows || [],
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
+    pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
   };
 }
 
@@ -920,6 +921,7 @@ export function mapDbItineraryRow(row) {
     // already-converted rows pass straight through.
     duration: row.duration || "", activeTab: row.active_tab || "brief", days: migrateItineraryDays(row.days || []),
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
+    pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
   };
 }
 
@@ -940,6 +942,10 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
       tour_title: snap.tourTitle || null, tagline: snap.tagline || null, route: snap.route || null,
       duration: snap.duration || null, active_tab: snap.activeTab || "brief", days: snap.days || [],
       pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
+      // Detailed Itinerary tracks which Brief version it was pulled from, the
+      // same way Brief tracks its Cost Sheet version. NEW COLUMN -- requires
+      // a migration on the live database (see schemaCompleteness.test).
+      pulled_from_brief_version: snap.pulledFromBriefVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };
@@ -1194,6 +1200,7 @@ export function mapDbQuotationRow(row) {
     // Phase 3), same pattern as tour_execution's
     // synced_from_cost_sheet_version.
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
+    pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
   };
 }
 
@@ -1703,4 +1710,58 @@ export function itineraryItemHTML(item) {
     default:
       return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
   }
+}
+
+// ─── DETAILED ITINERARY PULLS FROM BRIEF (1.12) ─────────────────────────
+// Detailed Itinerary previously pulled its days straight from the Cost
+// Sheet, in parallel with Brief. That made the two documents siblings
+// drawing on the same source, so the same day could be edited in Brief and
+// silently differ in Detailed. The chain is now Cost Sheet -> Brief ->
+// Detailed: Brief owns the itinerary content, and Detailed adds description
+// blocks on top of it.
+//
+// The hard part is that a naive pull would replace Detailed's days
+// wholesale -- and description blocks are the ONLY thing Detailed
+// contributes. Someone who writes a page of prose per day and then presses
+// "Pull latest" to pick up a corrected hotel name would lose all of it. So
+// the merge deliberately keeps description items and lets Brief own
+// everything else.
+//
+// Description position: a description that was LAST in its day goes last
+// again, and any other keeps the index it previously occupied, clamped to
+// the new list length. Position by index alone is not enough -- a closing
+// note sitting at index 1 of 2 would land mid-day once Brief grew to three
+// items, which reads as a bug to whoever wrote it. Anchoring the trailing
+// case separately keeps both common intents intact: an intro paragraph
+// stays at the top, a closing note stays at the bottom. Nothing here
+// pretends we can perfectly restore a position when the surrounding items
+// have changed underneath it.
+//
+// Day count follows Brief, since Brief owns the itinerary's shape. That
+// means descriptions on days Brief no longer has are dropped, so the caller
+// gets a count back and can say so rather than losing prose quietly.
+export function mergeBriefDaysIntoDetailed(briefDays, detailedDays) {
+  const brief = briefDays || [];
+  const detailed = detailedDays || [];
+  let preserved = 0;
+
+  const days = brief.map((briefDay, i) => {
+    const items = (briefDay.items || []).map(it => ({ ...it }));
+    const existing = (detailed[i] && detailed[i].items) || [];
+    existing.forEach((item, idx) => {
+      if (item.type !== "description") return;
+      const wasLast = idx === existing.length - 1;
+      items.splice(wasLast ? items.length : Math.min(idx, items.length), 0, { ...item });
+      preserved += 1;
+    });
+    return { ...briefDay, items };
+  });
+
+  let droppedDescriptions = 0;
+  for (let i = brief.length; i < detailed.length; i += 1) {
+    droppedDescriptions += ((detailed[i] && detailed[i].items) || [])
+      .filter(it => it.type === "description").length;
+  }
+
+  return { days, preserved, droppedDescriptions, droppedDays: Math.max(0, detailed.length - brief.length) };
 }

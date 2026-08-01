@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, mergeBriefDaysIntoDetailed, logAudit, db } = Lib;
 
 // Detailed Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -46,45 +46,67 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
     setViewingVersion(v.version);
   };
 
-  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  // Detailed's source is now the Brief Itinerary, not the Cost Sheet (1.12).
+  // Brief owns the itinerary content and pulls from the Cost Sheet itself, so
+  // the chain is Cost Sheet -> Brief -> Detailed rather than two siblings
+  // drawing on the same source and drifting apart.
+  const [latestBriefVersion, setLatestBriefVersion] = useState(null);
+  const [pulledFromBriefVersion, setPulledFromBriefVersion] = useState(null);
   const [pulledFromCostSheetVersion, setPulledFromCostSheetVersion] = useState(null);
   const [pullMessage, setPullMessage] = useState("");
   const [pulling, setPulling] = useState(false);
 
-  const pullFromCostSheet = async (targetVersion) => {
+  const pullFromBrief = async (targetVersion) => {
     setPulling(true);
     setPullMessage("");
     try {
-      const source = targetVersion || finalCostSheetVersion;
-      if (!source) { setPullMessage("No final Cost Sheet found for this tour yet."); setPulling(false); return; }
-      const extracted = extractItineraryBuilderDaysFromCostSheet(source.days);
-      if (extracted.length > 0) setItinDays(extracted);
-      setPulledFromCostSheetVersion(source.version);
-      setPullMessage(`Pulled from Cost Sheet v${source.version}.`);
+      const source = targetVersion || latestBriefVersion;
+      if (!source) { setPullMessage("No saved Brief Itinerary found for this tour yet."); setPulling(false); return; }
+      // Merge rather than replace: description blocks are the only thing this
+      // document contributes, so a pull that wiped them would punish anyone
+      // who pulls a corrected hotel name after writing a page of prose.
+      const { days, preserved, droppedDescriptions } = mergeBriefDaysIntoDetailed(source.days, itinDays);
+      setItinDays(days);
+      if (source.tourTitle) setTourTitle(source.tourTitle);
+      if (source.tagline) setTagline(source.tagline);
+      if (source.route) setRoute(source.route);
+      if (source.duration) setDuration(source.duration);
+      setPulledFromBriefVersion(source.version);
+      setPulledFromCostSheetVersion(source.pulledFromCostSheetVersion ?? null);
+      setPullMessage(
+        `Pulled from Brief Itinerary v${source.version}.`
+        + (preserved ? ` ${preserved} description block${preserved === 1 ? "" : "s"} kept.` : "")
+        + (droppedDescriptions ? ` ${droppedDescriptions} description block${droppedDescriptions === 1 ? "" : "s"} dropped — the Brief no longer has those days.` : "")
+      );
     } catch (e) {
-      setPullMessage("Failed to pull from Cost Sheet.");
+      setPullMessage("Failed to pull from Brief Itinerary.");
     }
     setPulling(false);
   };
 
   useEffect(() => {
     loadItineraryVersions(db, query.id).then(loaded => {
+      // Both styles live in the same table; the star-marked Brief version is
+      // the source of truth if there is one, otherwise the latest saved.
+      const briefVersions = loaded.filter(v => v.activeTab === "brief");
+      const briefSource = briefVersions.find(v => v.isFinal) || briefVersions[briefVersions.length - 1] || null;
+      setLatestBriefVersion(briefSource);
+
       const detailedVersions = loaded.filter(v => v.activeTab === "detailed");
       if (detailedVersions.length === 0) {
-        loadFinalCostSheetVersion(db, query.id).then(finalV => {
-          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
-        });
+        if (briefSource) pullFromBrief(briefSource);
         return;
       }
       setVersions(detailedVersions);
       const finalV = detailedVersions.find(v => v.isFinal);
       if (finalV) setFinalVersion(finalV.version);
-      loadVersionIntoDraft(detailedVersions[detailedVersions.length - 1]);
-      setPulledFromCostSheetVersion(detailedVersions[detailedVersions.length - 1].pulledFromCostSheetVersion ?? null);
-      loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
+      const latest = detailedVersions[detailedVersions.length - 1];
+      loadVersionIntoDraft(latest);
+      setPulledFromBriefVersion(latest.pulledFromBriefVersion ?? null);
+      setPulledFromCostSheetVersion(latest.pulledFromCostSheetVersion ?? null);
     });
   }, [query.id]);
-  const isStaleVsCostSheet = finalCostSheetVersion && pulledFromCostSheetVersion !== finalCostSheetVersion.version;
+  const isStaleVsBrief = latestBriefVersion && pulledFromBriefVersion !== latestBriefVersion.version;
 
   // See BriefItinerary for the full note: the version list must only be
   // updated after the insert is confirmed, because the db wrapper resolves
@@ -93,7 +115,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const [saveError, setSaveError] = useState(null);
   const [saving, setSaving] = useState(false);
   const saveVersion = async () => {
-    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion };
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion, pulledFromBriefVersion };
     setSaving(true);
     setSaveError(null);
     const { error } = await saveItineraryVersion(db, query.id, snap, currentUser?.id);
@@ -193,13 +215,13 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
             <button onClick={handlePrint} className="btn btn-success" style={{ fontSize:11 }}>🖨 Print / PDF</button>
             <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
-          {isStaleVsCostSheet && !readOnly && (
+          {isStaleVsBrief && !readOnly && (
             <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:10.5,color:"#7D6608",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
               <span style={{flex:1}}>
-                Cost Sheet v{finalCostSheetVersion.version} (final) has route/hotel data
-                {pulledFromCostSheetVersion ? ` newer than what this was last pulled from (v${pulledFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
+                Brief Itinerary v{latestBriefVersion.version} has itinerary content
+                {pulledFromBriefVersion ? ` newer than what this was last pulled from (v${pulledFromBriefVersion})` : " that hasn't been pulled in yet"}. Your description blocks are kept.
               </span>
-              <button onClick={()=>pullFromCostSheet(finalCostSheetVersion)} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
+              <button onClick={()=>pullFromBrief(latestBriefVersion)} disabled={pulling} className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}}>
                 {pulling ? "Pulling…" : "↻ Pull latest"}
               </button>
             </div>
