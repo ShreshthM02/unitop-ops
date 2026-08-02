@@ -109,10 +109,16 @@ export function computeBBox(points, padDeg = 0.9) {
  * sectors:  [{ from, to, distance, time, mode }]  mode: 'road' | 'flight'
  * features: GeoJSON features for the land beneath (states, countries)
  */
+// Reference places and region names carry no itinerary meaning -- they exist
+// so the drawing reads as a MAP rather than a diagram of eight dots floating
+// on a blank field. They are deliberately quiet: small, grey, unmarked or
+// hairline-dotted, and never allowed to compete with the tour's own stops.
 export function buildRouteMapSVG({
   stops = [],
   sectors = [],
   features = [],
+  reference = [],
+  regions = [],
   width = 900,
   height = 620,
   pad = 34,
@@ -148,6 +154,27 @@ export function buildRouteMapSVG({
       opacity="${flight ? 0.85 : 0.9}"/>`;
   }).join("");
 
+  // Drawn BEFORE the route and the real stops, so anything that collides
+  // ends up underneath rather than on top of the itinerary.
+  const regionLabels = regions.map(r => {
+    const [x, y] = project(r.lon, r.lat);
+    if (x < pad || x > width - pad || y < pad || y > height - pad) return "";
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle"
+      font-family="Helvetica, Arial, sans-serif" font-size="${r.size || 11}"
+      letter-spacing="${r.spacing || 2.4}" fill="${theme.soft}" opacity="0.5"
+      text-transform="uppercase">${esc((r.name || "").toUpperCase())}</text>`;
+  }).join("");
+
+  const referenceMarks = reference.map(r => {
+    const [x, y] = project(r.lon, r.lat);
+    if (x < pad || x > width - pad || y < pad || y > height - pad) return "";
+    return `<g opacity="0.55">
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.8" fill="${theme.soft}"/>
+      <text x="${(x + 5).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="start"
+        font-family="Helvetica, Arial, sans-serif" font-size="8.5" fill="${theme.soft}">${esc(r.name)}</text>
+    </g>`;
+  }).join("");
+
   const markers = pts.map(p => {
     const [x, y] = p.xy;
     const { anchor, dx } = labelAnchor(x, y, cx, cy);
@@ -181,6 +208,8 @@ export function buildRouteMapSVG({
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
     <rect width="${width}" height="${height}" fill="${theme.sea}"/>
     ${landPaths}
+    ${regionLabels}
+    ${referenceMarks}
     ${legs}
     ${markers}
     ${legend}

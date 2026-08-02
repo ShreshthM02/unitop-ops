@@ -32,14 +32,30 @@ describe('brochure is its own document class, not the letterhead engine', () => 
 });
 
 describe('cover page', () => {
-  it('renders title, duration, route and tagline over a hero image', () => {
+  it('renders title, duration, route and tagline on paper, with the photograph below', () => {
     const html = brochureCoverHTML({ title:'Footsteps of Buddha', duration:'9 Days / 8 Nights', route:'Bodhgaya – Varanasi', tagline:'A transformative journey.', heroImage:'https://x/hero.jpg' });
     expect(html).toContain('Footsteps of Buddha');
     expect(html).toContain('9 Days / 8 Nights');
     expect(html).toContain('Bodhgaya – Varanasi');
     expect(html).toContain('A transformative journey.');
     expect(html).toContain('https://x/hero.jpg');
-    expect(html).toContain('bro-cover-veil');
+    // Split panel, not full-bleed: type sits on paper and the photograph
+    // gets its own band, so neither needs a scrim over the other.
+    expect(html).toContain('bro-cover-top');
+    expect(html).toContain('bro-cover-photo');
+    expect(html).not.toContain('bro-cover-veil');
+  });
+
+  it('shows the logo as the hero when one is supplied', () => {
+    const html = brochureCoverHTML({ title:'T', logo:'data:image/png;base64,AAA' });
+    expect(html).toContain('bro-cover-logo');
+    expect(html).toContain('data:image/png;base64,AAA');
+  });
+
+  it('falls back to the company name when no logo is available', () => {
+    const html = brochureCoverHTML({ title:'T', brand:'Unitop Tours' });
+    expect(html).toContain('Unitop Tours');
+    expect(html).not.toContain('<img src="data:image/png');
   });
 
   it('falls back to a solid panel when there is no hero image, rather than a broken frame', () => {
@@ -68,27 +84,29 @@ describe('day cards', () => {
     expect(html).toContain('Dinner');
   });
 
-  it('includes an image when one is supplied and omits the figure entirely when not', () => {
-    expect(brochureDayHTML(day(), 0, 'https://x/1.jpg')).toContain('https://x/1.jpg');
+  it('carries no per-day inset at all -- imagery belongs to the page, not one day', () => {
+    // A photo beside day 1 while days 2 and 3 had none read as "this day
+    // matters more". Images now live only in the page-level band.
+    expect(brochureDayHTML(day(), 0, 'https://x/1.jpg')).not.toContain('bro-day-figure');
     expect(brochureDayHTML(day(), 0, null)).not.toContain('bro-day-figure');
   });
 
-  it('keeps photos on a consistent side at a consistent size', () => {
-    // Alternating sides was tried and dropped: with a left rail carrying the
-    // day numeral, flipping the photo breaks the vertical spine the eye
-    // follows down the page. Consistency reads calmer than novelty here.
-    for (const i of [0, 1, 2, 3]) {
-      expect(brochureDayHTML(day(), i, 'i.jpg')).toContain('bro-day-figure');
-    }
+  it('gives each page one dominant photo band rather than a stamp per day', () => {
+    const html = buildBrochureDocument({
+      cover:{ title:'T' }, days:[day(), day({ id:'d2' })], dayImages:{ d1:'https://x/band.jpg' },
+    });
+    expect(html).toContain('bro-band');
+    expect(html).toContain('https://x/band.jpg');
+    expect(html).not.toContain('bro-day-figure');
   });
 
-  it('lifts the overnight stay out of the timeline into the day footer', () => {
-    // "Where am I sleeping" is looked up directly, not read down to.
+  it('keeps the overnight hotel out of the client brochure entirely, while the field stays in the data', () => {
+    // Hotels are frequently not final at itinerary stage, and naming them
+    // here duplicates the Quotation. The stay item is still stored and
+    // editable; it just isn't printed on a client-facing page.
     const html = brochureDayHTML(day(), 0, null);
-    expect(html).toContain('bro-stay');
-    expect(html).toContain('Hotel Bodhgaya Regency');
-    const tl = html.slice(html.indexOf('bro-tl'), html.indexOf('bro-day-foot'));
-    expect(tl).not.toContain('Hotel Bodhgaya Regency');
+    expect(html).not.toContain('Hotel Bodhgaya Regency');
+    expect(day().items.some(i => i.type === 'stay')).toBe(true);
   });
 
   it('shows the one-line note that says what a place actually is', () => {
@@ -190,9 +208,8 @@ describe('whole document', () => {
     expect(breaks).toBe(pages - 1);
   });
 
-  it('per-day images can be keyed by day id or by index', () => {
-    expect(buildBrochureDocument({ ...base, dayImages:{ d2:'by-id.jpg' } })).toContain('by-id.jpg');
-    expect(buildBrochureDocument({ ...base, dayImages:{ 0:'by-index.jpg' } })).toContain('by-index.jpg');
+  it('page band images are keyed by day id', () => {
+    expect(buildBrochureDocument({ ...base, dayImages:{ d1:'by-id.jpg' } })).toContain('by-id.jpg');
   });
 
   it('falls back to one day per page when no measurer is available, rather than guessing heights', () => {

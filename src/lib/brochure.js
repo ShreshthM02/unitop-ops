@@ -93,45 +93,42 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   }
   .bro-foot-rule { border-top: 0.5pt solid ${theme.rule}; padding-top: 2.5mm; width: 100%; display: flex; justify-content: space-between; }
 
-  /* ── Cover ───────────────────────────────────────────────────────── */
-  .bro-cover { padding: 0; }
-  .bro-cover-hero { position: absolute; inset: 0; }
-  .bro-cover-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .bro-cover-veil {
-    position: absolute; inset: 0;
-    background: linear-gradient(175deg, rgba(12,22,32,0.55) 0%, rgba(12,22,32,0.16) 36%, rgba(12,22,32,0.88) 100%);
+  /* ── Cover ───────────────────────────────────────────────────────
+     NOT full-bleed. A photograph behind the type means the type needs a
+     scrim to stay legible, and a scrim over a photograph muddies both --
+     you end up with a darkened picture and greyed text, which is why the
+     first version read as heavy. Splitting the sheet instead gives each
+     element clean air: the identity block sits on paper where it can
+     breathe, and the photograph gets to be a photograph at full strength
+     rather than a background. Same reasoning as a book jacket. */
+  .bro-cover { padding: 0; background: ${theme.paper}; }
+  .bro-cover-top {
+    flex: 0 0 57%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 16mm 22mm 12mm;
   }
-  /* No hero: a deliberate ink field rather than a broken frame, so a
-     brochure with no photography still looks intentional. */
-  .bro-cover--plain { background: ${theme.ink}; }
-  .bro-cover-inner {
-    position: relative; height: 100%;
-    display: flex; flex-direction: column; justify-content: space-between;
-    padding: 22mm 20mm 20mm; color: #fff;
-  }
-  .bro-cover-brand {
-    font-size: 8pt; letter-spacing: 3.4px; text-transform: uppercase;
-    opacity: 0.85; font-weight: 600;
-  }
+  .bro-cover-logo { margin-bottom: 11mm; }
+  .bro-cover-logo img { height: 22mm; display: block; }
   .bro-cover-title {
-    font-family: ${DISPLAY};
-    font-size: 40pt; line-height: 1.04; font-weight: 700;
-    margin: 0 0 6mm; letter-spacing: -0.5px;
+    font-family: ${DISPLAY}; font-size: 33pt; line-height: 1.08;
+    font-weight: 700; margin: 0; letter-spacing: -0.4px; color: ${theme.ink};
   }
-  .bro-cover-rule { width: 26mm; height: 2pt; background: ${theme.accent}; margin-bottom: 6mm; }
+  .bro-cover-rule { width: 24mm; height: 1.6pt; background: ${theme.accent}; margin: 6mm auto; }
   .bro-cover-duration {
-    font-size: 10pt; letter-spacing: 3px; text-transform: uppercase;
-    font-weight: 600; margin-bottom: 4mm; color: #F0D9C4;
+    font-size: 9.5pt; letter-spacing: 3.6px; text-transform: uppercase;
+    font-weight: 700; color: ${theme.accent}; margin-bottom: 5mm;
   }
-  .bro-cover-route { font-size: 10.5pt; line-height: 1.65; opacity: 0.93; max-width: 138mm; }
+  .bro-cover-route {
+    font-size: 9.5pt; line-height: 1.75; color: ${theme.ink};
+    max-width: 128mm; opacity: 0.85;
+  }
   .bro-cover-tagline {
-    font-family: ${DISPLAY}; font-style: italic;
-    font-size: 12pt; line-height: 1.6; opacity: 0.95;
-    margin-top: 7mm; max-width: 128mm;
+    font-family: ${DISPLAY}; font-style: italic; font-size: 11.5pt;
+    line-height: 1.65; color: ${theme.soft}; margin-top: 7mm; max-width: 122mm;
   }
-
-  .bro-cover-logo { height: 13mm; margin-bottom: 5mm; }
-  .bro-cover-logo img { height: 13mm; display: block; }
+  .bro-cover-photo { flex: 1 1 auto; position: relative; overflow: hidden; border-top: 2.5pt solid ${theme.accent}; }
+  .bro-cover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bro-cover--plain .bro-cover-photo { background: ${theme.ink}; }
 
   /* PHOTO SIZING. The first version used 46x34mm insets, one per day. Below
      roughly 60mm wide an image stops reading as a photograph and becomes
@@ -139,24 +136,14 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      weight. The rule now is ONE dominant image per page, not one per day:
      a full-width band above the day blocks. Fewer, larger, and it needs
      less library coverage rather than more. */
-  .bro-band { margin: 0 0 9mm; }
-  .bro-band img { width: 100%; height: 52mm; object-fit: cover; display: block; border-radius: 1mm; }
+  .bro-band { margin: 0 0 7mm; }
+  .bro-band img { width: 100%; height: 40mm; object-fit: cover; display: block; border-radius: 1mm; }
   .bro-band-cap {
     font-size: 6.5pt; letter-spacing: 1.4px; text-transform: uppercase;
     color: ${theme.soft}; margin-top: 2mm;
   }
 
-  /* One full-bleed plate at the midpoint. A document needs somewhere to
-     breathe; this is the page that makes it feel like a brochure rather
-     than a report. */
-  .bro-plate { position: relative; padding: 0; }
-  .bro-plate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .bro-plate-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(12,22,32,0.15) 0%, rgba(12,22,32,0.72) 100%); }
-  .bro-plate-cap {
-    position: absolute; left: 20mm; right: 20mm; bottom: 22mm; color: #fff;
-  }
-  .bro-plate-name { font-family: ${DISPLAY}; font-size: 26pt; font-weight: 700; line-height: 1.1; }
-  .bro-plate-sub { font-size: 9.5pt; letter-spacing: 2.4px; text-transform: uppercase; opacity: 0.85; margin-top: 3mm; }
+; font-size: 26pt; font-weight: 700; line-height: 1.1; }
 
   .bro-map-fig { margin-bottom: 7mm; }
   .bro-map-fig img, .bro-map-fig svg { width: 100%; display: block; }
@@ -223,11 +210,6 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   }
   .bro-day-cols { display: flex; gap: 6mm; align-items: flex-start; }
   .bro-day-text { flex: 1 1 auto; min-width: 0; }
-  .bro-day-figure { flex: 0 0 46mm; }
-  .bro-day-figure img {
-    width: 46mm; height: 34mm; object-fit: cover; display: block;
-    border-radius: 1mm;
-  }
   .bro-day-caption {
     font-size: 6.5pt; color: ${theme.soft}; margin-top: 1.5mm;
     letter-spacing: 0.4px; text-transform: uppercase;
@@ -293,6 +275,15 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   /* ── Route map ───────────────────────────────────────────────────── */
   .bro-map img { max-width: 100%; max-height: 195mm; object-fit: contain; display: block; margin: 0 auto; }
 
+  .bro-signoff { margin-top: 10mm; padding-top: 6mm; text-align: center; }
+  .bro-signoff-rule { width: 16mm; height: 1.4pt; background: ${theme.accent}; margin: 0 auto 5mm; }
+  .bro-signoff-text {
+    font-family: ${DISPLAY}; font-style: italic; font-size: 12.5pt;
+    line-height: 1.5; color: ${theme.ink}; margin-bottom: 5mm;
+  }
+  .bro-signoff-contact { font-size: 7.5pt; line-height: 1.6; color: ${theme.soft}; }
+  .bro-signoff-contact strong { color: ${theme.ink}; font-weight: 600; display: block; margin-bottom: 1.5mm; font-size: 8.5pt; }
+
   /* ── Closing ─────────────────────────────────────────────────────── */
   .bro-closing { display: flex; flex-direction: column; height: 100%; align-items: center; justify-content: center; text-align: center; }
   .bro-closing-mark { width: 18mm; height: 1.5pt; background: ${theme.accent}; margin-bottom: 9mm; }
@@ -344,11 +335,10 @@ export function brochureDayHTML(day, index, image) {
     ? [(lead.text || "").trim(), [lead.distance, lead.time].filter(Boolean).join(" · ")].filter(Boolean).join("  ·  ")
     : "";
   const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
-  // Images moved to a page-level band (see .bro-band): one dominant image
-  // per page reads far better than a stamp beside every day.
-  const figure = image
-    ? `<div class="bro-day-figure"><img src="${esc(image)}" alt=""/>${day.imageCaption ? `<div class="bro-day-caption">${esc(day.imageCaption)}</div>` : ""}</div>`
-    : "";
+  // No per-day inset. One day carrying a photo while the two beside it
+  // carry none made those days look neglected -- the reader reads it as
+  // "this day matters more". Imagery lives only at page level now, where it
+  // belongs to the spread rather than to any single day.
 
   return `<div class="bro-day">
     <div class="bro-day-rail">
@@ -360,29 +350,25 @@ export function brochureDayHTML(day, index, image) {
       ${leadLine ? `<div class="bro-day-route">${esc(leadLine)}</div>` : ""}
       <div class="bro-day-cols">
         <div class="bro-day-text">${timeline ? `<ul class="bro-tl">${timeline}</ul>` : ""}</div>
-        ${figure}
       </div>
-      ${(meals || stay) ? `<div class="bro-day-foot">${meals}${stay ? `<div class="bro-stay">Overnight · <strong>${esc(stay)}</strong></div>` : ""}</div>` : ""}
+      ${meals ? `<div class="bro-day-foot">${meals}</div>` : ""}
     </div>
   </div>`;
 }
 
 export function brochureCoverHTML({ title, tagline, duration, route, heroImage, brand, logo } = {}) {
-  const hero = heroImage
-    ? `<div class="bro-cover-hero"><img src="${esc(heroImage)}" alt=""/></div><div class="bro-cover-veil"></div>`
-    : "";
   return `<div class="bro-page bro-page--notlast bro-cover${heroImage ? "" : " bro-cover--plain"}">
-    ${hero}
-    <div class="bro-cover-inner">
-      ${logo ? `<div class="bro-cover-logo"><img src="${esc(logo)}" alt=""/></div>` : `<div class="bro-cover-brand">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>`}
-      <div>
-        <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
-        <div class="bro-cover-rule"></div>
-        ${duration ? `<div class="bro-cover-duration">${esc(duration)}</div>` : ""}
-        ${route ? `<div class="bro-cover-route">${esc(route)}</div>` : ""}
-        ${tagline ? `<div class="bro-cover-tagline">${esc(tagline)}</div>` : ""}
-      </div>
+    <div class="bro-cover-top">
+      ${logo
+        ? `<div class="bro-cover-logo"><img src="${esc(logo)}" alt=""/></div>`
+        : `<div class="bro-cover-logo" style="font-size:9pt;letter-spacing:3px;text-transform:uppercase;color:${BROCHURE_THEME.soft}">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>`}
+      <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
+      <div class="bro-cover-rule"></div>
+      ${duration ? `<div class="bro-cover-duration">${esc(duration)}</div>` : ""}
+      ${route ? `<div class="bro-cover-route">${esc(route)}</div>` : ""}
+      ${tagline ? `<div class="bro-cover-tagline">${esc(tagline)}</div>` : ""}
     </div>
+    <div class="bro-cover-photo">${heroImage ? `<img src="${esc(heroImage)}" alt=""/>` : ""}</div>
   </div>`;
 }
 
@@ -414,19 +400,17 @@ export function brochureGlanceHTML(days, facts = {}, mapHTML = "", sectorTableHT
   // the map already shows the sectors, and saying it twice wastes the space
   // the map needs.
   if (mapHTML) {
-    const compact = (days || []).map((d, i) => `<tr>
-      <td class="g-day">${String(i + 1).padStart(2, "0")}</td>
-      <td><span class="g-route">${esc(d.title || "")}</span></td>
-      <td class="g-stay">${esc(stayOf(d) || "—")}</td>
-    </tr>`).join("");
+    // One table, not two. The earlier pair (day/overnight beside
+    // sector/distance) split the reader's attention across two grids saying
+    // related things. Merged into a single sector table, with the stats
+    // strip carrying the headline numbers -- the overnight column is gone
+    // entirely, because the hotel is often not final at itinerary stage and
+    // the map already marks where the nights fall.
     return `<div class="bro-body">
       <div class="bro-eyebrow">Overview</div>
       <h2 class="bro-h">Your Journey at a Glance</h2>
       <div class="bro-map-fig">${mapHTML}</div>
-      <div class="bro-cols2">
-        <div><table class="bro-glance"><thead><tr><th>Day</th><th></th><th>Overnight</th></tr></thead><tbody>${compact}</tbody></table></div>
-        <div>${sectorTableHTML}</div>
-      </div>
+      ${sectorTableHTML}
       ${cells ? `<div class="bro-facts">${cells}</div>` : ""}
     </div>`;
   }
@@ -447,11 +431,19 @@ export function brochureGlanceHTML(days, facts = {}, mapHTML = "", sectorTableHT
 // is budgeted as though it were empty and quietly overflows by roughly the
 // height of that heading -- found by measuring real output rather than by
 // reading the code.
-export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, firstPageReservePx = 0, measureFn } = {}) {
+// reservePerPagePx accounts for the photo band that sits above the day
+// blocks on every day page. The band is assigned AFTER pagination, so
+// without reserving for it here the page is budgeted as though it were
+// text-only and overflows by the height of the image -- which is exactly
+// what happened once the per-day insets were removed and the band arrived.
+// Reserved on every day page rather than only those that end up with a
+// photo: slightly conservative, but a page can never overflow, and
+// conservative beats clever for something a client receives.
+export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, firstPageReservePx = 0, reservePerPagePx = 0, measureFn } = {}) {
   const pages = [];
   let current = [];
   let used = 0;
-  const budget = () => pageHeightPx - (pages.length === 0 ? firstPageReservePx : 0);
+  const budget = () => pageHeightPx - reservePerPagePx - (pages.length === 0 ? firstPageReservePx : 0);
   (dayHTMLs || []).forEach(html => {
     const h = measureFn(html, contentWidthPx);
     // A block taller than a page still has to go somewhere: give it its own
@@ -475,7 +467,6 @@ export function buildBrochureDocument({
   routeMapImage = null,
   mapHTML = "",
   sectorTableHTML = "",
-  plate = null,
   logo = null,
   closingText = "",
   contact = null,
@@ -488,7 +479,15 @@ export function buildBrochureDocument({
   const dayHTMLs = days.map((d, i) => brochureDayHTML(d, i, dayImages[d.id] || dayImages[i] || null));
   const dayPages = measureFn
     // ~26mm of heading sits above the first day block.
-    ? paginateBrochureDays(dayHTMLs, { measureFn, firstPageReservePx: 98 })
+    ? paginateBrochureDays(dayHTMLs, {
+        measureFn,
+        firstPageReservePx: 98,
+        // ~40mm band + caption + margin, reserved when any photography
+        // exists. Sized deliberately: a taller band pushed a ninth day onto
+        // a page of its own, and a page holding one short day plus the
+        // sign-off reads as padding.
+        reservePerPagePx: Object.keys(dayImages || {}).length ? 165 : 0,
+      })
     // No measurer (no DOM): two per page is a predictable fallback that
     // never overflows. Not producing a broken file matters more than density.
     : dayHTMLs.reduce((acc, h, i) => { if (i % 2 === 0) acc.push([h]); else acc[acc.length - 1].push(h); return acc; }, []);
@@ -513,10 +512,6 @@ export function buildBrochureDocument({
     bodies.push(`<div class="bro-body">${i === 0 ? `<div class="bro-eyebrow">Day by Day</div><h2 class="bro-h">The Itinerary</h2>` : ""}${
       band ? `<div class="bro-band"><img src="${esc(band.src)}" alt=""/>${band.caption ? `<div class="bro-band-cap">${esc(band.caption)}</div>` : ""}</div>` : ""
     }${cards.join("")}</div>`);
-    // Full-bleed plate after the first day page, as a mid-document breath.
-    if (plate && i === 0) {
-      bodies.push({ __plate: true, src: plate.src, name: plate.name || "", sub: plate.sub || "" });
-    }
   });
   if (hotels.length) {
     bodies.push(`<div class="bro-body">
@@ -545,23 +540,22 @@ export function buildBrochureDocument({
       </div>
     </div>`);
   }
-  if (closingText || contact) {
-    bodies.push(`<div class="bro-body bro-closing">
-      <div class="bro-closing-mark"></div>
-      ${closingText ? `<div class="bro-closing-text">${esc(closingText)}</div>` : ""}
-      ${contact ? `<div class="bro-closing-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
-    </div>`);
+  // Closing folded into the foot of the final page rather than given a
+  // sheet of its own. One sentence and an address do not justify a page in a
+  // six-page document, and a near-empty last page reads as padding.
+  if ((closingText || contact) && bodies.length) {
+    const last = bodies.length - 1;
+    bodies[last] = bodies[last].replace(/<\/div>\s*$/, `
+      <div class="bro-signoff">
+        <div class="bro-signoff-rule"></div>
+        ${closingText ? `<div class="bro-signoff-text">${esc(closingText)}</div>` : ""}
+        ${contact ? `<div class="bro-signoff-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
+      </div></div>`);
   }
 
   const total = bodies.length + 1;
   const pagesHTML = bodies.map((body, i) => {
     const isLast = i === bodies.length - 1;
-    if (body && body.__plate) {
-      return `<div class="bro-page${isLast ? "" : " bro-page--notlast"} bro-plate">
-        <img src="${esc(body.src)}" alt=""/><div class="bro-plate-veil"></div>
-        <div class="bro-plate-cap"><div class="bro-plate-name">${esc(body.name)}</div>${body.sub ? `<div class="bro-plate-sub">${esc(body.sub)}</div>` : ""}</div>
-      </div>`;
-    }
     const foot = showPageNumbers
       ? `<div class="bro-foot"><div class="bro-foot-rule"><span>${esc(footerLabel)}</span><span>${i + 2} / ${total}</span></div></div>`
       : `<div class="bro-foot"></div>`;
