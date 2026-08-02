@@ -1,58 +1,80 @@
 // Brochure document class -- the client-facing Detailed Itinerary.
 //
-// This deliberately does NOT run on the letterhead engine. That engine is
-// built around fixed header/footer furniture and an 8mm/14mm margin box, and
-// every page it produces is a business document: address block, sections,
-// signature. A brochure is the opposite shape -- full-bleed photography,
-// coloured panels, a cover page with no letterhead at all -- so putting it
-// through that engine would have meant fighting the margin box on every
-// page and overriding the header/footer away. Two small purpose-built
-// engines beat one general engine bent past its design.
+// This does NOT run on the letterhead engine. That engine is built around
+// fixed header/footer furniture and an 8mm/14mm margin box, and everything
+// it produces is a business document. A brochure is the opposite shape, so
+// putting it through that engine would mean fighting the margin box on
+// every page. Two purpose-built engines beat one bent past its design.
 //
-// What IS shared: the measurement approach (real DOM heights measured in an
-// isolated iframe carrying the real print CSS) and the fixed-height-page
-// pagination model. Those were both learned the hard way on the letterhead
-// side and there is no reason to relearn them here.
+// ── DESIGN INTENT (rewritten 2026-08-01) ────────────────────────────────
+// The first attempt was laid out the way a developer builds a page:
+// defensible spacing, no point of view. It read as competent and
+// forgettable. This one makes deliberate choices, and the governing one is
+// that we are NOT imitating a scrapbook-style Canva brochure. Torn-paper
+// edges and layered artwork are precisely what print CSS is worst at, so
+// copying that style means losing on its own terms. What print CSS is
+// genuinely excellent at is EDITORIAL layout -- the look of a good travel
+// magazine. So:
 //
-// Images arrive as data (URLs or data URIs) and are never fetched here. The
-// destination-keyed photo library that supplies them is a separate piece of
-// work; this module only has to render whatever it is handed, and render
-// sensibly when handed nothing.
+//   * Warm cream stock, not office white. Paper you'd want to hold.
+//   * One accent (burnt saffron), used sparingly and always meaningfully:
+//     day numbers, rules, route lines. Never decoration for its own sake.
+//   * A confident serif display against a quiet sans body.
+//   * Generous whitespace. Restraint is what reads as expensive.
+//   * Photographs in clean rectangles at one consistent size, so the page
+//     rhythm holds whether a given day has a photo or not.
+//
+// Two structural decisions matter more than the styling, because they are
+// what make it informative rather than merely pretty:
+//
+//   1. AN "AT A GLANCE" PAGE. A client absorbs the whole tour in ten
+//      seconds -- day, route, overnight, one table -- before reading any
+//      detail. No other page earns its space as cheaply.
+//   2. PLACE NOTES. Every stop can carry one line saying what the place
+//      actually is. "Sarnath" tells a client nothing; "where the Buddha
+//      gave his first sermon" is the difference between a list of names and
+//      an itinerary worth reading. Optional everywhere, so a hurried entry
+//      still renders cleanly.
 
 import { itineraryItemHTML } from "./utils.js";
 
 export const BROCHURE_PAGE = { widthMm: 210, heightMm: 297 };
-
-// Content height available on an interior page, in px at 96dpi. A brochure
-// page has no header/footer furniture, only a modest bottom strip for the
-// page number, so nearly the whole sheet is usable.
-export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 26) * (96 / 25.4));
-export const BROCHURE_CONTENT_WIDTH_PX = Math.round((210 - 32) * (96 / 25.4));
+export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 40) * (96 / 25.4));
+export const BROCHURE_CONTENT_WIDTH_PX = Math.round((210 - 40) * (96 / 25.4));
 
 export const BROCHURE_THEME = {
-  ink: "#1A3A52",
-  accent: "#C2703D",
-  muted: "#6B7280",
-  paper: "#FFFFFF",
-  panel: "#FAF7F2",
+  paper: "#FDFBF6",   // warm cream, not office white
+  ink: "#1B2B3A",     // deep charcoal-navy
+  accent: "#B4622D",  // burnt saffron
+  soft: "#8A8172",    // muted warm grey for secondary text
+  rule: "#E4DCCD",    // hairline rules that sit on cream
+  panel: "#F5EFE3",   // quiet fill for pills
 };
+
+// Real fonts load in the browser; the fallbacks preserve the character (an
+// elegant transitional serif, a neutral humanist sans) when they don't.
+const DISPLAY = `'Playfair Display', 'GFS Baskerville', 'Bitstream Charter', Georgia, serif`;
+const BODY = `'Inter', Carlito, 'DejaVu Sans', -apple-system, Arial, sans-serif`;
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const MEAL_LABEL = { B: "Breakfast", L: "Lunch", D: "Dinner" };
 
 export const brochureCSS = (theme = BROCHURE_THEME) => `
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    font-family: 'Inter', -apple-system, Arial, sans-serif;
+    font-family: ${BODY};
     color: ${theme.ink};
+    background: ${theme.paper};
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  /* Full-bleed fixed page. Same fixed-height model as the letterhead
-     engine -- page-break-after must live on this element, not a wrapper,
-     or the height silently stops applying. */
+  /* Fixed-height page. page-break-after must sit on the SAME element that
+     carries the height -- on a wrapper it silently stops applying. Learned
+     the hard way on the letterhead engine; not relearning it here. */
   .bro-page {
     width: ${BROCHURE_PAGE.widthMm}mm;
     height: ${BROCHURE_PAGE.heightMm}mm;
@@ -63,145 +85,323 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     flex-direction: column;
   }
   .bro-page--notlast { page-break-after: always; }
-  .bro-body { flex: 1 1 auto; padding: 16mm 16mm 0; }
+  .bro-body { flex: 1 1 auto; padding: 20mm 20mm 0; }
   .bro-foot {
-    flex: 0 0 auto; height: 10mm; padding: 0 16mm;
-    display: flex; align-items: center; justify-content: space-between;
-    font-size: 7.5pt; color: ${theme.muted};
+    flex: 0 0 auto; height: 14mm; padding: 0 20mm 5mm;
+    display: flex; align-items: flex-end;
+    font-size: 7pt; letter-spacing: 0.6px; color: ${theme.soft};
   }
+  .bro-foot-rule { border-top: 0.5pt solid ${theme.rule}; padding-top: 2.5mm; width: 100%; display: flex; justify-content: space-between; }
 
-  /* ── Cover ── */
+  /* ── Cover ───────────────────────────────────────────────────────── */
   .bro-cover { padding: 0; }
   .bro-cover-hero { position: absolute; inset: 0; }
   .bro-cover-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .bro-cover-veil {
     position: absolute; inset: 0;
-    background: linear-gradient(180deg, rgba(10,20,30,0.62) 0%, rgba(10,20,30,0.28) 42%, rgba(10,20,30,0.78) 100%);
+    background: linear-gradient(175deg, rgba(12,22,32,0.55) 0%, rgba(12,22,32,0.16) 36%, rgba(12,22,32,0.88) 100%);
   }
-  /* No hero image: a flat panel rather than a broken frame, so a brochure
-     with no photography yet still prints as a deliberate-looking document. */
+  /* No hero: a deliberate ink field rather than a broken frame, so a
+     brochure with no photography still looks intentional. */
   .bro-cover--plain { background: ${theme.ink}; }
   .bro-cover-inner {
     position: relative; height: 100%;
-    display: flex; flex-direction: column; justify-content: flex-end;
-    padding: 24mm 18mm;
-    color: #fff;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 22mm 20mm 20mm; color: #fff;
   }
-  .bro-cover-eyebrow {
-    font-size: 9pt; letter-spacing: 3px; text-transform: uppercase;
-    opacity: 0.85; margin-bottom: 6mm;
+  .bro-cover-brand {
+    font-size: 8pt; letter-spacing: 3.4px; text-transform: uppercase;
+    opacity: 0.85; font-weight: 600;
   }
   .bro-cover-title {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 34pt; line-height: 1.08; font-weight: 700; margin: 0 0 5mm;
+    font-family: ${DISPLAY};
+    font-size: 40pt; line-height: 1.04; font-weight: 700;
+    margin: 0 0 6mm; letter-spacing: -0.5px;
   }
-  .bro-cover-rule { width: 22mm; height: 2.5pt; background: ${theme.accent}; margin-bottom: 5mm; }
-  .bro-cover-meta { font-size: 11pt; line-height: 1.6; opacity: 0.95; }
-  .bro-cover-tagline { font-size: 10pt; line-height: 1.6; opacity: 0.9; margin-top: 5mm; max-width: 120mm; }
+  .bro-cover-rule { width: 26mm; height: 2pt; background: ${theme.accent}; margin-bottom: 6mm; }
+  .bro-cover-duration {
+    font-size: 10pt; letter-spacing: 3px; text-transform: uppercase;
+    font-weight: 600; margin-bottom: 4mm; color: #F0D9C4;
+  }
+  .bro-cover-route { font-size: 10.5pt; line-height: 1.65; opacity: 0.93; max-width: 138mm; }
+  .bro-cover-tagline {
+    font-family: ${DISPLAY}; font-style: italic;
+    font-size: 12pt; line-height: 1.6; opacity: 0.95;
+    margin-top: 7mm; max-width: 128mm;
+  }
 
-  /* ── Day cards ── */
-  .bro-day { break-inside: avoid; margin-bottom: 9mm; }
-  .bro-day-head { display: flex; align-items: baseline; gap: 4mm; margin-bottom: 3mm; }
-  .bro-day-badge {
-    flex: 0 0 auto; background: ${theme.accent}; color: #fff;
-    font-size: 8.5pt; font-weight: 700; letter-spacing: 1px;
-    padding: 1.6mm 3.4mm; border-radius: 2mm; text-transform: uppercase;
+  /* ── Section headings ────────────────────────────────────────────── */
+  .bro-eyebrow {
+    font-size: 7.5pt; letter-spacing: 3px; text-transform: uppercase;
+    color: ${theme.accent}; font-weight: 700; margin-bottom: 3mm;
   }
+  .bro-h {
+    font-family: ${DISPLAY}; font-size: 22pt; font-weight: 700;
+    margin: 0 0 7mm; letter-spacing: -0.3px; line-height: 1.15;
+  }
+
+  /* ── At a glance ─────────────────────────────────────────────────── */
+  .bro-glance { width: 100%; border-collapse: collapse; }
+  .bro-glance th {
+    text-align: left; font-size: 7pt; letter-spacing: 1.8px; text-transform: uppercase;
+    color: ${theme.soft}; font-weight: 700; padding: 0 3mm 2.5mm 0;
+    border-bottom: 1pt solid ${theme.ink};
+  }
+  .bro-glance td {
+    padding: 3.1mm 3mm 3.1mm 0; font-size: 9pt; vertical-align: top;
+    border-bottom: 0.5pt solid ${theme.rule}; line-height: 1.45;
+  }
+  .bro-glance .g-day {
+    width: 14mm; font-family: ${DISPLAY}; font-size: 12pt;
+    font-weight: 700; color: ${theme.accent};
+  }
+  .bro-glance .g-route { font-weight: 600; }
+  .bro-glance .g-stay { width: 44mm; color: ${theme.soft}; font-size: 8.5pt; }
+  .bro-meta { font-size: 8pt; color: ${theme.soft}; font-weight: 500; }
+
+  .bro-facts { display: flex; margin-top: 11mm; border-top: 1pt solid ${theme.ink}; padding-top: 6mm; }
+  .bro-fact { flex: 1; }
+  .bro-fact-n {
+    font-family: ${DISPLAY}; font-size: 21pt; font-weight: 700;
+    color: ${theme.accent}; line-height: 1;
+  }
+  .bro-fact-l {
+    font-size: 7pt; letter-spacing: 1.6px; text-transform: uppercase;
+    color: ${theme.soft}; margin-top: 2mm; font-weight: 600;
+  }
+
+  /* ── Day block ───────────────────────────────────────────────────── */
+  .bro-day { display: flex; gap: 6mm; break-inside: avoid; margin-bottom: 11mm; }
+  .bro-day-rail { flex: 0 0 15mm; text-align: right; padding-top: 1mm; }
+  .bro-day-num {
+    font-family: ${DISPLAY}; font-size: 27pt; font-weight: 700;
+    color: ${theme.accent}; line-height: 0.9; letter-spacing: -1px;
+  }
+  .bro-day-word {
+    font-size: 6.5pt; letter-spacing: 2.2px; text-transform: uppercase;
+    color: ${theme.soft}; font-weight: 700; margin-top: 1.5mm;
+  }
+  .bro-day-main { flex: 1 1 auto; min-width: 0; border-left: 0.5pt solid ${theme.rule}; padding-left: 6mm; }
   .bro-day-title {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 15pt; font-weight: 700; color: ${theme.ink}; margin: 0;
+    font-family: ${DISPLAY}; font-size: 14.5pt; font-weight: 700;
+    margin: 0 0 2.5mm; line-height: 1.25;
   }
-  .bro-day-grid { display: flex; gap: 6mm; align-items: flex-start; }
-  .bro-day-grid--flip { flex-direction: row-reverse; }
-  .bro-day-figure { flex: 0 0 58mm; }
+  .bro-day-route {
+    font-size: 8pt; letter-spacing: 0.4px; color: ${theme.accent};
+    font-weight: 600; margin-bottom: 4.5mm; text-transform: uppercase;
+  }
+  .bro-day-cols { display: flex; gap: 6mm; align-items: flex-start; }
+  .bro-day-text { flex: 1 1 auto; min-width: 0; }
+  .bro-day-figure { flex: 0 0 46mm; }
   .bro-day-figure img {
-    width: 58mm; height: 42mm; object-fit: cover; display: block;
-    border-radius: 2mm;
+    width: 46mm; height: 34mm; object-fit: cover; display: block;
+    border-radius: 1mm;
   }
-  .bro-day-content { flex: 1 1 auto; min-width: 0; }
-  .bro-day-meals { margin-top: 3mm; }
-  .bro-meal {
-    display: inline-block; background: ${theme.panel}; color: ${theme.ink};
-    border: 0.6pt solid #E7DFD3; border-radius: 8pt;
-    font-size: 7.5pt; padding: 1mm 2.6mm; margin-right: 1.6mm;
+  .bro-day-caption {
+    font-size: 6.5pt; color: ${theme.soft}; margin-top: 1.5mm;
+    letter-spacing: 0.4px; text-transform: uppercase;
   }
 
-  /* ── Route map page ── */
-  .bro-map { text-align: center; }
-  .bro-map img { max-width: 100%; max-height: 210mm; object-fit: contain; display: block; margin: 0 auto; }
-
-  .bro-section-title {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 18pt; font-weight: 700; margin: 0 0 6mm; color: ${theme.ink};
+  /* The day's plan as a timeline. Markers give the eye a spine to run
+     down, so a day reads as a sequence rather than a paragraph. */
+  .bro-tl { list-style: none; margin: 0; padding: 0; }
+  .bro-tl-item { position: relative; padding-left: 5.5mm; margin-bottom: 3.2mm; }
+  .bro-tl-item::before {
+    content: ""; position: absolute; left: 0; top: 1.5mm;
+    width: 1.8mm; height: 1.8mm; border-radius: 50%;
+    background: ${theme.accent};
   }
+  .bro-tl-item--soft::before { background: ${theme.paper}; border: 0.5pt solid ${theme.soft}; }
+  .bro-tl-name { font-size: 9.5pt; font-weight: 600; line-height: 1.4; }
+  /* The one line about a place -- what turns a list of names into
+     something a client actually learns from. */
+  .bro-tl-note { font-size: 8.5pt; line-height: 1.5; color: ${theme.soft}; margin-top: 0.8mm; }
+  .bro-tl-prose { font-size: 9pt; line-height: 1.6; margin: 0; }
 
-  /* ── Closing ── */
-  .bro-closing { display: flex; height: 100%; align-items: center; justify-content: center; text-align: center; }
+  .bro-day-foot {
+    display: flex; align-items: center; gap: 2.5mm; flex-wrap: wrap;
+    margin-top: 4.5mm; padding-top: 3mm; border-top: 0.5pt solid ${theme.rule};
+  }
+  .bro-pill {
+    font-size: 7pt; letter-spacing: 0.8px; text-transform: uppercase;
+    background: ${theme.panel}; color: ${theme.ink}; font-weight: 600;
+    padding: 1.2mm 2.8mm; border-radius: 6pt;
+  }
+  .bro-stay { font-size: 8.5pt; color: ${theme.soft}; margin-left: auto; }
+  .bro-stay strong { color: ${theme.ink}; font-weight: 600; }
+
+  /* ── Info tables and lists ───────────────────────────────────────── */
+  .bro-table { width: 100%; border-collapse: collapse; }
+  .bro-table th {
+    text-align: left; font-size: 7pt; letter-spacing: 1.8px; text-transform: uppercase;
+    color: ${theme.soft}; font-weight: 700; padding: 0 3mm 2.5mm 0;
+    border-bottom: 1pt solid ${theme.ink};
+  }
+  .bro-table td {
+    padding: 3mm 3mm 3mm 0; font-size: 9pt; vertical-align: top;
+    border-bottom: 0.5pt solid ${theme.rule};
+  }
+  .bro-cols2 { display: flex; gap: 12mm; }
+  .bro-cols2 > div { flex: 1; }
+  .bro-subh {
+    font-size: 7pt; letter-spacing: 1.8px; text-transform: uppercase;
+    color: ${theme.soft}; font-weight: 700; padding-bottom: 2.5mm;
+    border-bottom: 1pt solid ${theme.ink}; margin-bottom: 4mm;
+  }
+  .bro-list { list-style: none; margin: 0; padding: 0; }
+  .bro-list li {
+    font-size: 8.5pt; line-height: 1.55; padding-left: 4mm;
+    position: relative; margin-bottom: 2.4mm;
+  }
+  .bro-list li::before {
+    content: ""; position: absolute; left: 0; top: 1.7mm;
+    width: 1.4mm; height: 1.4mm; background: ${theme.accent}; border-radius: 50%;
+  }
+  .bro-list--x li::before { background: ${theme.paper}; border: 0.5pt solid ${theme.soft}; }
+
+  /* ── Route map ───────────────────────────────────────────────────── */
+  .bro-map img { max-width: 100%; max-height: 195mm; object-fit: contain; display: block; margin: 0 auto; }
+
+  /* ── Closing ─────────────────────────────────────────────────────── */
+  .bro-closing { display: flex; flex-direction: column; height: 100%; align-items: center; justify-content: center; text-align: center; }
+  .bro-closing-mark { width: 18mm; height: 1.5pt; background: ${theme.accent}; margin-bottom: 9mm; }
   .bro-closing-text {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 16pt; color: ${theme.accent}; letter-spacing: 1px; line-height: 1.6;
-    max-width: 140mm;
+    font-family: ${DISPLAY}; font-style: italic; font-size: 17pt;
+    line-height: 1.55; max-width: 132mm; margin-bottom: 11mm;
   }
+  .bro-closing-contact { font-size: 8.5pt; line-height: 1.75; color: ${theme.soft}; }
+  .bro-closing-contact strong { color: ${theme.ink}; font-weight: 600; display: block; margin-bottom: 2mm; font-size: 9.5pt; }
 `;
 
-// One day rendered as a card. Alternating image side gives the page rhythm
-// without needing per-day configuration -- the sample brochure does the same
-// thing by hand.
+// ── Item rendering ───────────────────────────────────────────────────
+// Items may carry a `note`: one line explaining what the place is.
+// Everything degrades to just the name when it's absent.
+function timelineItemHTML(item) {
+  if (!item) return "";
+  const text = (item.text || "").trim();
+  const note = (item.note || "").trim();
+  const meta = [item.distance, item.time].filter(Boolean).join(" · ");
+  const soft = item.type !== "sightseeing";
+  const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;
+
+  if (item.type === "description") {
+    return text ? `<li class="${cls}"><p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "";
+  }
+  if (!text && !meta) return "";
+  return `<li class="${cls}">
+    <div class="bro-tl-name">${esc(text)}${meta ? ` <span class="bro-meta">— ${esc(meta)}</span>` : ""}</div>
+    ${note ? `<div class="bro-tl-note">${esc(note)}</div>` : ""}
+  </li>`;
+}
+
+// The overnight stay is lifted OUT of the timeline into the day's footer:
+// "where am I sleeping" is looked up directly, not read down to.
+const stayOf = (day) => ((day.items || []).find(i => i.type === "stay" && (i.text || "").trim()) || {}).text || "";
+
+// The first route item doubles as the day's headline movement, shown under
+// the title. Keeping it out of the timeline avoids stating it twice.
+const leadRouteOf = (day) => (day.items || []).find(i => i.type === "route" && ((i.text || "").trim() || i.distance || i.time)) || null;
+
 export function brochureDayHTML(day, index, image) {
-  const label = esc(day.dayLabel || `DAY-${index + 1}`);
-  const title = day.title ? `<h3 class="bro-day-title">${esc(day.title)}</h3>` : "";
-  const items = (day.items || []).map(itineraryItemHTML).join("");
-  const meals = (day.meals || []).map(m =>
-    `<span class="bro-meal">${m === "B" ? "Breakfast" : m === "L" ? "Lunch" : "Dinner"}</span>`).join("");
-  const flip = index % 2 === 1 ? " bro-day-grid--flip" : "";
-  const figure = image
-    ? `<div class="bro-day-figure"><img src="${esc(image)}" alt=""/></div>`
+  const items = day.items || [];
+  const lead = leadRouteOf(day);
+  const stay = stayOf(day);
+  const timeline = items.filter(i => i !== lead && i.type !== "stay").map(timelineItemHTML).join("");
+
+  const num = String(index + 1).padStart(2, "0");
+  const leadLine = lead
+    ? [(lead.text || "").trim(), [lead.distance, lead.time].filter(Boolean).join(" · ")].filter(Boolean).join("  ·  ")
     : "";
+  const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
+  const figure = image
+    ? `<div class="bro-day-figure"><img src="${esc(image)}" alt=""/>${day.imageCaption ? `<div class="bro-day-caption">${esc(day.imageCaption)}</div>` : ""}</div>`
+    : "";
+
   return `<div class="bro-day">
-    <div class="bro-day-head"><span class="bro-day-badge">${label}</span>${title}</div>
-    <div class="bro-day-grid${flip}">
-      ${figure}
-      <div class="bro-day-content">
-        ${items}
-        ${meals ? `<div class="bro-day-meals">${meals}</div>` : ""}
+    <div class="bro-day-rail">
+      <div class="bro-day-num">${num}</div>
+      <div class="bro-day-word">Day</div>
+    </div>
+    <div class="bro-day-main">
+      ${day.title ? `<h3 class="bro-day-title">${esc(day.title)}</h3>` : ""}
+      ${leadLine ? `<div class="bro-day-route">${esc(leadLine)}</div>` : ""}
+      <div class="bro-day-cols">
+        <div class="bro-day-text">${timeline ? `<ul class="bro-tl">${timeline}</ul>` : ""}</div>
+        ${figure}
+      </div>
+      ${(meals || stay) ? `<div class="bro-day-foot">${meals}${stay ? `<div class="bro-stay">Overnight · <strong>${esc(stay)}</strong></div>` : ""}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+export function brochureCoverHTML({ title, tagline, duration, route, heroImage, brand } = {}) {
+  const hero = heroImage
+    ? `<div class="bro-cover-hero"><img src="${esc(heroImage)}" alt=""/></div><div class="bro-cover-veil"></div>`
+    : "";
+  return `<div class="bro-page bro-page--notlast bro-cover${heroImage ? "" : " bro-cover--plain"}">
+    ${hero}
+    <div class="bro-cover-inner">
+      <div class="bro-cover-brand">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>
+      <div>
+        <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
+        <div class="bro-cover-rule"></div>
+        ${duration ? `<div class="bro-cover-duration">${esc(duration)}</div>` : ""}
+        ${route ? `<div class="bro-cover-route">${esc(route)}</div>` : ""}
+        ${tagline ? `<div class="bro-cover-tagline">${esc(tagline)}</div>` : ""}
       </div>
     </div>
   </div>`;
 }
 
-export function brochureCoverHTML({ title, tagline, duration, route, heroImage, eyebrow }) {
-  const hero = heroImage
-    ? `<div class="bro-cover-hero"><img src="${esc(heroImage)}" alt=""/></div><div class="bro-cover-veil"></div>`
-    : "";
-  const meta = [duration, route].filter(Boolean).map(v => `<div>${esc(v)}</div>`).join("");
-  return `<div class="bro-page bro-page--notlast bro-cover${heroImage ? "" : " bro-cover--plain"}">
-    ${hero}
-    <div class="bro-cover-inner">
-      ${eyebrow ? `<div class="bro-cover-eyebrow">${esc(eyebrow)}</div>` : ""}
-      <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
-      <div class="bro-cover-rule"></div>
-      <div class="bro-cover-meta">${meta}</div>
-      ${tagline ? `<div class="bro-cover-tagline">${esc(tagline)}</div>` : ""}
-    </div>
+// A whole tour absorbed in ten seconds, before any detail.
+export function brochureGlanceHTML(days, facts = {}) {
+  const rows = (days || []).map((d, i) => {
+    const lead = leadRouteOf(d);
+    const headline = (lead && (lead.text || "").trim())
+      || d.title
+      || ((d.items || []).find(x => x.type === "sightseeing" && x.text) || {}).text
+      || "—";
+    const meta = lead ? [lead.distance, lead.time].filter(Boolean).join(" · ") : "";
+    return `<tr>
+      <td class="g-day">${String(i + 1).padStart(2, "0")}</td>
+      <td><span class="g-route">${esc(headline)}</span>${meta ? `<div class="bro-meta">${esc(meta)}</div>` : ""}</td>
+      <td class="g-stay">${esc(stayOf(d) || "—")}</td>
+    </tr>`;
+  }).join("");
+
+  const cells = [
+    facts.days && { n: facts.days, l: "Days" },
+    facts.nights && { n: facts.nights, l: "Nights" },
+    facts.sites && { n: facts.sites, l: "Sites Visited" },
+    facts.distance && { n: facts.distance, l: "Road Distance" },
+  ].filter(Boolean).map(f => `<div class="bro-fact"><div class="bro-fact-n">${esc(f.n)}</div><div class="bro-fact-l">${esc(f.l)}</div></div>`).join("");
+
+  return `<div class="bro-body">
+    <div class="bro-eyebrow">Overview</div>
+    <h2 class="bro-h">Your Journey at a Glance</h2>
+    <table class="bro-glance">
+      <thead><tr><th>Day</th><th>Route &amp; Highlights</th><th>Overnight</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${cells ? `<div class="bro-facts">${cells}</div>` : ""}
   </div>`;
 }
 
-// Flows day cards into fixed-height pages using measured heights, the same
-// model the letterhead paginator uses. measureFn is injectable so tests can
-// run without a DOM.
-export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, measureFn } = {}) {
+// firstPageReservePx accounts for the section heading that sits above the
+// first day page ("Day by Day / The Itinerary"). Without it the first page
+// is budgeted as though it were empty and quietly overflows by roughly the
+// height of that heading -- found by measuring real output rather than by
+// reading the code.
+export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, firstPageReservePx = 0, measureFn } = {}) {
   const pages = [];
   let current = [];
   let used = 0;
+  const budget = () => pageHeightPx - (pages.length === 0 ? firstPageReservePx : 0);
   (dayHTMLs || []).forEach(html => {
     const h = measureFn(html, contentWidthPx);
-    // A card taller than a whole page still has to go somewhere -- give it
-    // its own page rather than dropping it or looping forever.
-    if (used + h > pageHeightPx && current.length > 0) {
-      pages.push(current);
-      current = [];
-      used = 0;
-    }
+    // A block taller than a page still has to go somewhere: give it its own
+    // page rather than dropping it or looping forever.
+    if (used + h > budget() && current.length > 0) { pages.push(current); current = []; used = 0; }
     current.push(html);
     used += h;
   });
@@ -209,14 +409,18 @@ export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT
   return pages;
 }
 
-// Assembles the whole brochure. Pages: cover, day pages, optional route map,
-// optional closing. Returns a complete HTML document string.
 export function buildBrochureDocument({
   cover = {},
   days = [],
   dayImages = {},
+  hotels = [],
+  includes = [],
+  excludes = [],
+  facts = {},
   routeMapImage = null,
   closingText = "",
+  contact = null,
+  showGlance = true,
   showPageNumbers = true,
   theme = BROCHURE_THEME,
   measureFn,
@@ -224,49 +428,76 @@ export function buildBrochureDocument({
 } = {}) {
   const dayHTMLs = days.map((d, i) => brochureDayHTML(d, i, dayImages[d.id] || dayImages[i] || null));
   const dayPages = measureFn
-    ? paginateBrochureDays(dayHTMLs, { measureFn })
-    // Without a measurer (no DOM), fall back to one day per page rather than
-    // guessing at heights -- predictable and never overflows, which matters
-    // more than density for a fallback path.
-    : dayHTMLs.map(h => [h]);
+    // ~26mm of heading sits above the first day block.
+    ? paginateBrochureDays(dayHTMLs, { measureFn, firstPageReservePx: 98 })
+    // No measurer (no DOM): two per page is a predictable fallback that
+    // never overflows. Not producing a broken file matters more than density.
+    : dayHTMLs.reduce((acc, h, i) => { if (i % 2 === 0) acc.push([h]); else acc[acc.length - 1].push(h); return acc; }, []);
 
   const bodies = [];
-  dayPages.forEach(cards => bodies.push(`<div class="bro-body">${cards.join("")}</div>`));
-  if (routeMapImage) {
-    bodies.push(`<div class="bro-body bro-map"><h2 class="bro-section-title">Tour Route Map</h2><img src="${esc(routeMapImage)}" alt="Tour route map"/></div>`);
+  if (showGlance && days.length) bodies.push(brochureGlanceHTML(days, facts));
+  dayPages.forEach((cards, i) => bodies.push(
+    `<div class="bro-body">${i === 0 ? `<div class="bro-eyebrow">Day by Day</div><h2 class="bro-h">The Itinerary</h2>` : ""}${cards.join("")}</div>`
+  ));
+  if (hotels.length) {
+    bodies.push(`<div class="bro-body">
+      <div class="bro-eyebrow">Accommodation</div>
+      <h2 class="bro-h">Where You'll Stay</h2>
+      <table class="bro-table">
+        <thead><tr><th>Destination</th><th>Nights</th><th>Hotel</th></tr></thead>
+        <tbody>${hotels.map(h => `<tr><td>${esc(h.place)}</td><td>${esc(h.nights)}</td><td>${esc(h.hotel)}</td></tr>`).join("")}</tbody>
+      </table>
+    </div>`);
   }
-  if (closingText) {
-    bodies.push(`<div class="bro-body bro-closing"><div class="bro-closing-text">${esc(closingText)}</div></div>`);
+  if (routeMapImage) {
+    bodies.push(`<div class="bro-body bro-map">
+      <div class="bro-eyebrow">Getting Around</div>
+      <h2 class="bro-h">Tour Route Map</h2>
+      <img src="${esc(routeMapImage)}" alt="Tour route map"/>
+    </div>`);
+  }
+  if (includes.length || excludes.length) {
+    bodies.push(`<div class="bro-body">
+      <div class="bro-eyebrow">The Detail</div>
+      <h2 class="bro-h">What's Included</h2>
+      <div class="bro-cols2">
+        <div>${includes.length ? `<div class="bro-subh">Included</div><ul class="bro-list">${includes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>
+        <div>${excludes.length ? `<div class="bro-subh">Not Included</div><ul class="bro-list bro-list--x">${excludes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>
+      </div>
+    </div>`);
+  }
+  if (closingText || contact) {
+    bodies.push(`<div class="bro-body bro-closing">
+      <div class="bro-closing-mark"></div>
+      ${closingText ? `<div class="bro-closing-text">${esc(closingText)}</div>` : ""}
+      ${contact ? `<div class="bro-closing-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
+    </div>`);
   }
 
-  const total = bodies.length + 1; // +1 for the cover
+  const total = bodies.length + 1;
   const pagesHTML = bodies.map((body, i) => {
     const isLast = i === bodies.length - 1;
     const foot = showPageNumbers
-      ? `<div class="bro-foot"><span>${esc(footerLabel)}</span><span>${i + 2} / ${total}</span></div>`
+      ? `<div class="bro-foot"><div class="bro-foot-rule"><span>${esc(footerLabel)}</span><span>${i + 2} / ${total}</span></div></div>`
       : `<div class="bro-foot"></div>`;
     return `<div class="bro-page${isLast ? "" : " bro-page--notlast"}">${body}${foot}</div>`;
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap" rel="stylesheet">
     <style>${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }
 
-// Screen-only preview styling for the brochure, mirroring the letterhead
-// preview but WITHOUT the margin padding -- a brochure is full-bleed, so
-// padding the sheet would misrepresent exactly the thing the preview exists
-// to show. Wrapped in @media screen so it can never reach print output.
+// Screen-only preview styling. Deliberately does NOT pad the sheet -- a
+// brochure is full-bleed, so padding would misrepresent the very thing the
+// preview exists to show. @media screen so it can never reach print.
 export const BROCHURE_PREVIEW_CSS = `
 @media screen {
   html, body { background: #525659 !important; margin: 0 !important; padding: 0 !important; }
   body { padding: 16px 0 !important; }
-  .bro-page {
-    margin: 0 auto 16px !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.45) !important;
-  }
+  .bro-page { margin: 0 auto 16px !important; box-shadow: 0 2px 12px rgba(0,0,0,0.45) !important; }
   .bro-page:last-child { margin-bottom: 0 !important; }
 }
 `;

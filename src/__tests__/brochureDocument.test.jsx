@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildBrochureDocument, brochureDayHTML, brochureCoverHTML,
   paginateBrochureDays, withBrochurePreviewStyles, BROCHURE_PREVIEW_CSS, brochureCSS,
+  brochureGlanceHTML,
 } from '../lib/brochure.js';
 
 const day = (over = {}) => ({
@@ -54,12 +55,14 @@ describe('cover page', () => {
 });
 
 describe('day cards', () => {
-  it('renders the day label, title, items and meals', () => {
+  it('renders the day number, title, items and meals', () => {
     const html = brochureDayHTML(day(), 0, null);
-    expect(html).toContain('DAY-1');
+    // The day is numbered from its position, as a large display numeral --
+    // the stored dayLabel is an internal field, not client-facing copy.
+    expect(html).toContain('01');
     expect(html).toContain('Arrival at Bodhgaya');
     expect(html).toContain('Airport – Hotel');
-    expect(html).toContain('12 km / 30 min');
+    expect(html).toContain('12 km · 30 min');
     expect(html).toContain('Mahabodhi Temple');
     expect(html).toContain('Breakfast');
     expect(html).toContain('Dinner');
@@ -70,15 +73,49 @@ describe('day cards', () => {
     expect(brochureDayHTML(day(), 0, null)).not.toContain('bro-day-figure');
   });
 
-  it('alternates the image side to give the page rhythm without per-day config', () => {
-    expect(brochureDayHTML(day(), 0, 'i.jpg')).not.toContain('bro-day-grid--flip');
-    expect(brochureDayHTML(day(), 1, 'i.jpg')).toContain('bro-day-grid--flip');
+  it('keeps photos on a consistent side at a consistent size', () => {
+    // Alternating sides was tried and dropped: with a left rail carrying the
+    // day numeral, flipping the photo breaks the vertical spine the eye
+    // follows down the page. Consistency reads calmer than novelty here.
+    for (const i of [0, 1, 2, 3]) {
+      expect(brochureDayHTML(day(), i, 'i.jpg')).toContain('bro-day-figure');
+    }
+  });
+
+  it('lifts the overnight stay out of the timeline into the day footer', () => {
+    // "Where am I sleeping" is looked up directly, not read down to.
+    const html = brochureDayHTML(day(), 0, null);
+    expect(html).toContain('bro-stay');
+    expect(html).toContain('Hotel Bodhgaya Regency');
+    const tl = html.slice(html.indexOf('bro-tl'), html.indexOf('bro-day-foot'));
+    expect(tl).not.toContain('Hotel Bodhgaya Regency');
+  });
+
+  it('shows the one-line note that says what a place actually is', () => {
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Sarnath', note:'Where the Buddha gave his first sermon.' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('Sarnath');
+    expect(html).toContain('Where the Buddha gave his first sermon.');
+  });
+
+  it('renders cleanly when a place has no note, so a hurried entry still looks right', () => {
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Sarnath' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('Sarnath');
+    expect(html).not.toContain('bro-tl-note');
+  });
+
+  it('promotes the first route to a headline under the title, without repeating it in the timeline', () => {
+    const html = brochureDayHTML(day(), 0, null);
+    expect(html).toContain('bro-day-route');
+    expect(html.match(/Airport – Hotel/g)).toHaveLength(1);
   });
 
   it('renders a day with no items at all without emitting empty rows', () => {
-    const html = brochureDayHTML({ dayLabel:'DAY-2', items:[], meals:[] }, 1, null);
-    expect(html).toContain('DAY-2');
-    expect(html).not.toContain('bro-meal');
+    const html = brochureDayHTML({ id:'d', items:[], meals:[] }, 1, null);
+    expect(html).toContain('02');
+    expect(html).not.toContain('bro-pill');
+    expect(html).not.toContain('bro-tl-item');
   });
 });
 
@@ -120,10 +157,11 @@ describe('whole document', () => {
     const html = buildBrochureDocument({ ...base, footerLabel:'Unitop Tours' });
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('Footsteps of Buddha');
-    expect(html).toContain('DAY-1');
-    expect(html).toContain('DAY-2');
+    expect(html).toContain('Arrival at Bodhgaya');
+    expect(html).toContain('Bodhgaya');
     expect(html).toContain('Unitop Tours');
-    expect(html).toMatch(/2 \/ 2/);
+    // Cover + glance + day page(s): numbering counts every sheet.
+    expect(html).toMatch(/\d+ \/ \d+/);
   });
 
   it('1.14: includes the uploaded route map on its own page when supplied', () => {
@@ -188,5 +226,86 @@ describe('preview styling', () => {
 
   it('is a no-op on empty input', () => {
     expect(withBrochurePreviewStyles('')).toBe('');
+  });
+});
+
+describe('at-a-glance page: the whole tour absorbed before any detail', () => {
+  const d = (id, title, items, meals) => ({ id, title, items, meals });
+  const days = [
+    d('d1', 'Arrival at Bodhgaya', [
+      { id:'r', type:'route', text:'Gaya Airport – Bodhgaya', distance:'12 km', time:'30 min' },
+      { id:'s', type:'stay', text:'Hotel Oaks' },
+    ], ['D']),
+    d('d2', 'Rajgir & Nalanda', [
+      { id:'r2', type:'route', text:'Bodhgaya – Rajgir', distance:'70 km', time:'2 hrs' },
+      { id:'s2', type:'stay', text:'Hotel Oaks' },
+    ], ['B','L','D']),
+  ];
+
+  it('lists every day with its route and overnight in one table', () => {
+    const html = brochureGlanceHTML(days, {});
+    expect(html).toContain('Your Journey at a Glance');
+    expect(html).toContain('Gaya Airport – Bodhgaya');
+    expect(html).toContain('Bodhgaya – Rajgir');
+    expect(html).toContain('Hotel Oaks');
+    expect(html).toContain('01');
+    expect(html).toContain('02');
+  });
+
+  it('falls back to the day title, then a sightseeing stop, when there is no route', () => {
+    expect(brochureGlanceHTML([{ id:'x', title:'Free Day in Varanasi', items:[] }], {})).toContain('Free Day in Varanasi');
+    expect(brochureGlanceHTML([{ id:'y', items:[{ id:'s', type:'sightseeing', text:'Dhamek Stupa' }] }], {})).toContain('Dhamek Stupa');
+  });
+
+  it('shows an em dash rather than a blank cell for a day with nothing recorded', () => {
+    expect(brochureGlanceHTML([{ id:'z', items:[] }], {})).toContain('—');
+  });
+
+  it('renders the headline facts when supplied and omits the strip entirely when not', () => {
+    expect(brochureGlanceHTML(days, { days:'9', nights:'8', sites:'18', distance:'1,105 km' })).toContain('1,105 km');
+    expect(brochureGlanceHTML(days, {})).not.toContain('bro-facts');
+  });
+
+  it('can be turned off for a document that does not want it', () => {
+    const html = buildBrochureDocument({ cover:{ title:'X' }, days, showGlance:false });
+    expect(html).not.toContain('Your Journey at a Glance');
+  });
+});
+
+describe('pagination reserves room for the section heading on the first day page', () => {
+  it('fits fewer days on the first page than on later ones', () => {
+    const measure = () => 300;
+    // 971px budget: 3 blocks fit normally, but only 2 once ~98px of heading
+    // is reserved. Without the reserve the first page silently overflowed.
+    const withReserve = paginateBrochureDays(['a','b','c','d','e','f'], { pageHeightPx: 971, firstPageReservePx: 98, measureFn: measure });
+    expect(withReserve[0]).toHaveLength(2);
+    expect(withReserve[1]).toHaveLength(3);
+  });
+
+  it('behaves as before when nothing is reserved', () => {
+    const pages = paginateBrochureDays(['a','b','c','d'], { pageHeightPx: 971, measureFn: () => 300 });
+    expect(pages[0]).toHaveLength(3);
+  });
+});
+
+describe('supporting pages', () => {
+  const base = { cover:{ title:'T' }, days:[{ id:'d1', items:[{ id:'a', type:'route', text:'A – B' }] }] };
+
+  it('includes the hotels page only when hotels are supplied', () => {
+    expect(buildBrochureDocument({ ...base, hotels:[{ place:'Bodhgaya', nights:'3', hotel:'Oaks' }] })).toContain("Where You'll Stay");
+    expect(buildBrochureDocument(base)).not.toContain("Where You'll Stay");
+  });
+
+  it('includes the inclusions page only when there is something to list', () => {
+    const html = buildBrochureDocument({ ...base, includes:['Hotels'], excludes:['Airfare'] });
+    expect(html).toContain('Included');
+    expect(html).toContain('Not Included');
+    expect(buildBrochureDocument(base).split('<body>')[1]).not.toContain('bro-list');
+  });
+
+  it('renders a closing page with contact details when supplied', () => {
+    const html = buildBrochureDocument({ ...base, closingText:'Safe travels.', contact:{ name:'Unitop', lines:['hello@x.com'] } });
+    expect(html).toContain('Safe travels.');
+    expect(html).toContain('hello@x.com');
   });
 });
