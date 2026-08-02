@@ -130,6 +130,37 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     margin-top: 7mm; max-width: 128mm;
   }
 
+  .bro-cover-logo { height: 13mm; margin-bottom: 5mm; }
+  .bro-cover-logo img { height: 13mm; display: block; }
+
+  /* PHOTO SIZING. The first version used 46x34mm insets, one per day. Below
+     roughly 60mm wide an image stops reading as a photograph and becomes
+     decoration, and nine identical stamps meant none of them carried any
+     weight. The rule now is ONE dominant image per page, not one per day:
+     a full-width band above the day blocks. Fewer, larger, and it needs
+     less library coverage rather than more. */
+  .bro-band { margin: 0 0 9mm; }
+  .bro-band img { width: 100%; height: 52mm; object-fit: cover; display: block; border-radius: 1mm; }
+  .bro-band-cap {
+    font-size: 6.5pt; letter-spacing: 1.4px; text-transform: uppercase;
+    color: ${theme.soft}; margin-top: 2mm;
+  }
+
+  /* One full-bleed plate at the midpoint. A document needs somewhere to
+     breathe; this is the page that makes it feel like a brochure rather
+     than a report. */
+  .bro-plate { position: relative; padding: 0; }
+  .bro-plate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .bro-plate-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(12,22,32,0.15) 0%, rgba(12,22,32,0.72) 100%); }
+  .bro-plate-cap {
+    position: absolute; left: 20mm; right: 20mm; bottom: 22mm; color: #fff;
+  }
+  .bro-plate-name { font-family: ${DISPLAY}; font-size: 26pt; font-weight: 700; line-height: 1.1; }
+  .bro-plate-sub { font-size: 9.5pt; letter-spacing: 2.4px; text-transform: uppercase; opacity: 0.85; margin-top: 3mm; }
+
+  .bro-map-fig { margin-bottom: 7mm; }
+  .bro-map-fig img, .bro-map-fig svg { width: 100%; display: block; }
+
   /* ── Section headings ────────────────────────────────────────────── */
   .bro-eyebrow {
     font-size: 7.5pt; letter-spacing: 3px; text-transform: uppercase;
@@ -313,6 +344,8 @@ export function brochureDayHTML(day, index, image) {
     ? [(lead.text || "").trim(), [lead.distance, lead.time].filter(Boolean).join(" · ")].filter(Boolean).join("  ·  ")
     : "";
   const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
+  // Images moved to a page-level band (see .bro-band): one dominant image
+  // per page reads far better than a stamp beside every day.
   const figure = image
     ? `<div class="bro-day-figure"><img src="${esc(image)}" alt=""/>${day.imageCaption ? `<div class="bro-day-caption">${esc(day.imageCaption)}</div>` : ""}</div>`
     : "";
@@ -334,14 +367,14 @@ export function brochureDayHTML(day, index, image) {
   </div>`;
 }
 
-export function brochureCoverHTML({ title, tagline, duration, route, heroImage, brand } = {}) {
+export function brochureCoverHTML({ title, tagline, duration, route, heroImage, brand, logo } = {}) {
   const hero = heroImage
     ? `<div class="bro-cover-hero"><img src="${esc(heroImage)}" alt=""/></div><div class="bro-cover-veil"></div>`
     : "";
   return `<div class="bro-page bro-page--notlast bro-cover${heroImage ? "" : " bro-cover--plain"}">
     ${hero}
     <div class="bro-cover-inner">
-      <div class="bro-cover-brand">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>
+      ${logo ? `<div class="bro-cover-logo"><img src="${esc(logo)}" alt=""/></div>` : `<div class="bro-cover-brand">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>`}
       <div>
         <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
         <div class="bro-cover-rule"></div>
@@ -354,7 +387,7 @@ export function brochureCoverHTML({ title, tagline, duration, route, heroImage, 
 }
 
 // A whole tour absorbed in ten seconds, before any detail.
-export function brochureGlanceHTML(days, facts = {}) {
+export function brochureGlanceHTML(days, facts = {}, mapHTML = "", sectorTableHTML = "") {
   const rows = (days || []).map((d, i) => {
     const lead = leadRouteOf(d);
     const headline = (lead && (lead.text || "").trim())
@@ -375,6 +408,28 @@ export function brochureGlanceHTML(days, facts = {}) {
     facts.sites && { n: facts.sites, l: "Sites Visited" },
     facts.distance && { n: facts.distance, l: "Road Distance" },
   ].filter(Boolean).map(f => `<div class="bro-fact"><div class="bro-fact-n">${esc(f.n)}</div><div class="bro-fact-l">${esc(f.l)}</div></div>`).join("");
+
+  // Map and table on ONE page: the map gives geography, the table gives
+  // sequence. Where the map is present the table drops its route column --
+  // the map already shows the sectors, and saying it twice wastes the space
+  // the map needs.
+  if (mapHTML) {
+    const compact = (days || []).map((d, i) => `<tr>
+      <td class="g-day">${String(i + 1).padStart(2, "0")}</td>
+      <td><span class="g-route">${esc(d.title || "")}</span></td>
+      <td class="g-stay">${esc(stayOf(d) || "—")}</td>
+    </tr>`).join("");
+    return `<div class="bro-body">
+      <div class="bro-eyebrow">Overview</div>
+      <h2 class="bro-h">Your Journey at a Glance</h2>
+      <div class="bro-map-fig">${mapHTML}</div>
+      <div class="bro-cols2">
+        <div><table class="bro-glance"><thead><tr><th>Day</th><th></th><th>Overnight</th></tr></thead><tbody>${compact}</tbody></table></div>
+        <div>${sectorTableHTML}</div>
+      </div>
+      ${cells ? `<div class="bro-facts">${cells}</div>` : ""}
+    </div>`;
+  }
 
   return `<div class="bro-body">
     <div class="bro-eyebrow">Overview</div>
@@ -418,6 +473,10 @@ export function buildBrochureDocument({
   excludes = [],
   facts = {},
   routeMapImage = null,
+  mapHTML = "",
+  sectorTableHTML = "",
+  plate = null,
+  logo = null,
   closingText = "",
   contact = null,
   showGlance = true,
@@ -435,10 +494,30 @@ export function buildBrochureDocument({
     : dayHTMLs.reduce((acc, h, i) => { if (i % 2 === 0) acc.push([h]); else acc[acc.length - 1].push(h); return acc; }, []);
 
   const bodies = [];
-  if (showGlance && days.length) bodies.push(brochureGlanceHTML(days, facts));
-  dayPages.forEach((cards, i) => bodies.push(
-    `<div class="bro-body">${i === 0 ? `<div class="bro-eyebrow">Day by Day</div><h2 class="bro-h">The Itinerary</h2>` : ""}${cards.join("")}</div>`
-  ));
+  if (showGlance && days.length) bodies.push(brochureGlanceHTML(days, facts, mapHTML, sectorTableHTML));
+  // Pick one image per page from the days it holds, and render it as a band
+  // above them. Pages beyond the available images simply have none, which
+  // looks deliberate rather than short.
+  let cursor = 0;
+  const pageImageFor = (pageIndex) => {
+    const perPage = Math.max(1, Math.ceil(dayHTMLs.length / Math.max(1, dayPages.length)));
+    const slice = days.slice(pageIndex * perPage, (pageIndex + 1) * perPage);
+    for (const d of slice) {
+      const img = dayImages[d.id];
+      if (img) return { src: img, caption: d.title || "" };
+    }
+    return null;
+  };
+  dayPages.forEach((cards, i) => {
+    const band = pageImageFor(i);
+    bodies.push(`<div class="bro-body">${i === 0 ? `<div class="bro-eyebrow">Day by Day</div><h2 class="bro-h">The Itinerary</h2>` : ""}${
+      band ? `<div class="bro-band"><img src="${esc(band.src)}" alt=""/>${band.caption ? `<div class="bro-band-cap">${esc(band.caption)}</div>` : ""}</div>` : ""
+    }${cards.join("")}</div>`);
+    // Full-bleed plate after the first day page, as a mid-document breath.
+    if (plate && i === 0) {
+      bodies.push({ __plate: true, src: plate.src, name: plate.name || "", sub: plate.sub || "" });
+    }
+  });
   if (hotels.length) {
     bodies.push(`<div class="bro-body">
       <div class="bro-eyebrow">Accommodation</div>
@@ -477,6 +556,12 @@ export function buildBrochureDocument({
   const total = bodies.length + 1;
   const pagesHTML = bodies.map((body, i) => {
     const isLast = i === bodies.length - 1;
+    if (body && body.__plate) {
+      return `<div class="bro-page${isLast ? "" : " bro-page--notlast"} bro-plate">
+        <img src="${esc(body.src)}" alt=""/><div class="bro-plate-veil"></div>
+        <div class="bro-plate-cap"><div class="bro-plate-name">${esc(body.name)}</div>${body.sub ? `<div class="bro-plate-sub">${esc(body.sub)}</div>` : ""}</div>
+      </div>`;
+    }
     const foot = showPageNumbers
       ? `<div class="bro-foot"><div class="bro-foot-rule"><span>${esc(footerLabel)}</span><span>${i + 2} / ${total}</span></div></div>`
       : `<div class="bro-foot"></div>`;
@@ -487,7 +572,7 @@ export function buildBrochureDocument({
     <title>${esc(cover.title || "Itinerary")}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap" rel="stylesheet">
     <style>${brochureCSS(theme)}</style>
-  </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
+  </head><body>${brochureCoverHTML({ ...cover, logo })}${pagesHTML}</body></html>`;
 }
 
 // Screen-only preview styling. Deliberately does NOT pad the sheet -- a

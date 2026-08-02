@@ -9,6 +9,7 @@ export * from './wordLetterhead.js';
 export * from './wordExport.js';
 export * from './wordFromBlocks.js';
 export * from './brochure.js';
+export * from './routeMap.js';
 export * from './photoLibrary.js';
 export * from './LetterheadControls.jsx';
 export * from './VersionDropdown.jsx';
