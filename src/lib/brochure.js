@@ -143,8 +143,6 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     color: ${theme.soft}; margin-top: 2mm;
   }
 
-; font-size: 26pt; font-weight: 700; line-height: 1.1; }
-
   .bro-map-fig { margin-bottom: 7mm; }
   .bro-map-fig img, .bro-map-fig svg { width: 100%; display: block; }
 
@@ -210,10 +208,6 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   }
   .bro-day-cols { display: flex; gap: 6mm; align-items: flex-start; }
   .bro-day-text { flex: 1 1 auto; min-width: 0; }
-  .bro-day-caption {
-    font-size: 6.5pt; color: ${theme.soft}; margin-top: 1.5mm;
-    letter-spacing: 0.4px; text-transform: uppercase;
-  }
 
   /* The day's plan as a timeline. Markers give the eye a spine to run
      down, so a day reads as a sequence rather than a paragraph. */
