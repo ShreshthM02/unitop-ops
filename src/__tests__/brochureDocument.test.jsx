@@ -278,9 +278,20 @@ describe('at-a-glance page: the whole tour absorbed before any detail', () => {
     expect(brochureGlanceHTML([{ id:'z', items:[] }], {})).toContain('—');
   });
 
-  it('renders the headline facts when supplied and omits the strip entirely when not', () => {
-    expect(brochureGlanceHTML(days, { days:'9', nights:'8', sites:'18', distance:'1,105 km' })).toContain('1,105 km');
-    expect(brochureGlanceHTML(days, {})).not.toContain('bro-facts');
+  it('renders the headline facts when supplied', () => {
+    expect(brochureGlanceHTML(days, { days:'9', nights:'8', distance:'1,105 km' })).toContain('1,105 km');
+  });
+
+  it('derives the destination count from the itinerary rather than taking a typed number', () => {
+    // A hand-typed "Sites Visited" could drift from the document it sits on.
+    // A derived count cannot, and it excludes airports and departures.
+    const html = brochureGlanceHTML(days, {});
+    expect(html).toContain('Destinations');
+    expect(html).toContain('bro-facts');
+  });
+
+  it('omits the strip when there is nothing at all to count or show', () => {
+    expect(brochureGlanceHTML([{ id:'x', items:[] }], {})).not.toContain('bro-facts');
   });
 
   it('can be turned off for a document that does not want it', () => {
