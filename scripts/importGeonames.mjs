@@ -52,6 +52,7 @@ import { pipeline } from "stream/promises";
 import { createReadStream } from "fs";
 import { createInterface } from "readline";
 import { execFileSync } from "child_process";
+import { platform } from "os";
 
 // Countries worth holding. India first; the neighbours matter because
 // itineraries cross into Nepal, Bhutan and Sri Lanka regularly.
@@ -76,6 +77,21 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const BATCH = 500;
 
+// Windows has no `unzip`, which the first version assumed. PowerShell's
+// Expand-Archive is present on every supported Windows version, so the
+// platform picks its own tool rather than the developer's machine deciding
+// for everyone.
+function extract(zip, dir) {
+  if (platform() === "win32") {
+    execFileSync("powershell", [
+      "-NoProfile", "-Command",
+      `Expand-Archive -Path '${zip}' -DestinationPath '${dir}' -Force`,
+    ], { stdio: "pipe" });
+  } else {
+    execFileSync("unzip", ["-o", "-q", zip, "-d", dir]);
+  }
+}
+
 async function download(country, dir) {
   const url = `https://download.geonames.org/export/dump/${country}.zip`;
   const zip = join(dir, `${country}.zip`);
@@ -83,7 +99,7 @@ async function download(country, dir) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${country}: HTTP ${res.status}`);
   await pipeline(res.body, createWriteStream(zip));
-  execFileSync("unzip", ["-o", "-q", zip, "-d", dir]);
+  extract(zip, dir);
   console.log("ok");
   return join(dir, `${country}.txt`);
 }
