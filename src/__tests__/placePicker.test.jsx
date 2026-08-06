@@ -1,0 +1,116 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { PlacePicker } from '../lib/PlacePicker.jsx';
+import { G } from '../lib/constants.js';
+
+const gaz = [
+  { name:'Bodhgaya',   lat:24.696, lon:84.991, country:'India', admin1:'Bihar',         population:38000 },
+  { name:'Aurangabad', lat:24.752, lon:84.374, country:'India', admin1:'Bihar',         population:102000 },
+  { name:'Aurangabad', lat:19.876, lon:75.343, country:'India', admin1:'Maharashtra',   population:1175000 },
+  { name:'Varanasi',   lat:25.318, lon:82.974, country:'India', admin1:'Uttar Pradesh', population:1200000, alt:['Benares'] },
+];
+const inp = {};
+const setup = (props = {}) => {
+  const onChange = vi.fn();
+  render(<PlacePicker gazetteer={gaz} G={G} inp={inp} onChange={onChange} {...props}/>);
+  return onChange;
+};
+
+describe('the picker always shows its working', () => {
+  it('names the chosen place with its state and country', () => {
+    setup({ query:'Bodhgaya' });
+    expect(screen.getByText('Bodhgaya, Bihar, India')).toBeTruthy();
+  });
+
+  it('explains the reason even on a confident match, so it can be checked', () => {
+    // A silent correct answer and a silent wrong one look identical.
+    setup({ query:'Bodhgaya' });
+    expect(screen.getByText(/Located/)).toBeTruthy();
+    expect(screen.getByText(/Exact name match/)).toBeTruthy();
+  });
+
+  it('flags an ambiguous name and says what else it matched', () => {
+    setup({ query:'Aurangabad' });
+    expect(screen.getByText(/Check this/)).toBeTruthy();
+    expect(screen.getByText(/Also matches/)).toBeTruthy();
+  });
+
+  it('marks a fuzzy match as a guess rather than presenting it as fact', () => {
+    setup({ query:'Bodhgya' });
+    expect(screen.getByText(/Best guess/)).toBeTruthy();
+  });
+
+  it('says plainly when nothing matched, without treating it as an error', () => {
+    setup({ query:'Somewhere Nobody Has Heard Of' });
+    expect(screen.getByText(/No match for/)).toBeTruthy();
+    expect(screen.getByText(/Not found/)).toBeTruthy();
+  });
+});
+
+describe('the picker always accepts a correction', () => {
+  it('offers Change on a confident match, not only an uncertain one', () => {
+    setup({ query:'Bodhgaya' });
+    expect(screen.getByText('Change')).toBeTruthy();
+  });
+
+  it('lists the other candidates so a wrong pick can be overridden in one click', () => {
+    const onChange = setup({ query:'Aurangabad', context:[{ lat:24.7, lon:85.0 }] });
+    fireEvent.click(screen.getByText('Change'));
+    const other = screen.getByText('Aurangabad, Maharashtra, India');
+    fireEvent.click(other);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ admin1:'Maharashtra' }));
+  });
+
+  it('lets someone who knows the answer search for it directly', () => {
+    const onChange = setup({ query:'Bodhgaya' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Search places'), { target:{ value:'Varan' } });
+    fireEvent.click(screen.getByText('Varanasi, Uttar Pradesh, India'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name:'Varanasi' }));
+  });
+
+  it('accepts hand-entered coordinates for a place in no gazetteer', () => {
+    const onChange = setup({ query:'A hamlet with no entry' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'),  { target:{ value:'25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ source:'manual', lat:25.1, lon:84.2 }));
+  });
+
+  it('refuses to accept nonsense coordinates rather than plotting them', () => {
+    setup({ query:'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'),  { target:{ value:'999' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'84' } });
+    expect(screen.getByText('Use these').disabled).toBe(true);
+  });
+});
+
+describe('an explicit choice is respected', () => {
+  it('never re-resolves over a place the user picked', () => {
+    // The typed name still says Aurangabad; the user chose Maharashtra.
+    // Re-resolving would silently undo that on the next render.
+    setup({ query:'Aurangabad', value:{ name:'Aurangabad', admin1:'Maharashtra', country:'India', lat:19.876, lon:75.343 } });
+    expect(screen.getByText('Aurangabad, Maharashtra, India')).toBeTruthy();
+    expect(screen.getByText(/Chosen manually/)).toBeTruthy();
+  });
+
+  it('hides every control when read-only', () => {
+    setup({ query:'Bodhgaya', readOnly:true });
+    expect(screen.queryByText('Change')).toBeNull();
+  });
+});
+
+describe('degrades without a gazetteer', () => {
+  it('offers manual placement when the gazetteer is empty, rather than dead-ending', () => {
+    // This is the state before the GeoNames import runs.
+    const onChange = setup({ query:'Bodhgaya', gazetteer:[] });
+    expect(screen.getByText(/No match for/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'),  { target:{ value:'24.7' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'85.0' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalled();
+  });
+});

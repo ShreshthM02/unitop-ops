@@ -579,6 +579,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <div style={{textAlign:"center",padding:"4px 0 6px",fontSize:9,color:"rgba(255,255,255,0.18)",letterSpacing:"0.5px"}}>
             v1.9.3
           </div>
+          {/* GeoNames is CC-BY 4.0, which requires attribution wherever the
+              data is used. It belongs here rather than on client documents:
+              the obligation is ours, and a brochure is not the place to
+              discharge it. */}
+          <div style={{textAlign:"center",padding:"0 8px 8px",fontSize:8,color:"rgba(255,255,255,0.14)",lineHeight:1.5}}>
+            Place data © <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer"
+              style={{color:"rgba(255,255,255,0.22)",textDecoration:"none"}}>GeoNames</a>, CC BY 4.0
+          </div>
         </div>
 
         <div className="main">
