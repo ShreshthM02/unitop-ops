@@ -93,14 +93,25 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   // gets quoted -- it is drafted while the query is still being won, not after.
   // It also pre-fills from the final Cost Sheet, which already exists at this
   // stage, so nothing it depends on is missing here.
+  //
+  // Detailed Itinerary (the client-facing brochure, with per-day photos and
+  // the generated route map) is tour-file-only, not query-stage: it is
+  // prepared once the tour is confirmed, and it depends on per-day place
+  // resolution against the gazetteer, which is naturally a step taken after
+  // the day-by-day plan is settled rather than while still quoting. This
+  // matches the boundary already enforced elsewhere (see DocButtons in
+  // UnitopApp.jsx, which only shows it in the Tour Files view) -- this drawer
+  // had simply never been given the button, so the document existed and
+  // worked but had no way to be reached from the query-stage workflow.
   const queryDocs = [
     {icon:"📊",label:"Cost Sheet",    panel:"costsheet"},
-    {icon:"🗺", label:"Itinerary",     panel:"itinerary"},
+    {icon:"🗺", label:"Brief Itin.",   panel:"itinerary"},
     {icon:"📋",label:"Quotation",     panel:"quotation"},
   ];
   const caseFileDocs = [
     {icon:"📊",label:"Cost Sheet",        panel:"costsheet"},
-    {icon:"🗺", label:"Itinerary",         panel:"itinerary"},
+    {icon:"🗺", label:"Brief Itin.",       panel:"itinerary"},
+    {icon:"📖",label:"Detailed Itin.",    panel:"detailedItinerary"},
     {icon:"📋",label:"Quotation",         panel:"quotation"},
     {icon:"🧾",label:"Proforma Inv.",     panel:"proforma"},
     {icon:"₹", label:"Payments",          panel:"payments"},

@@ -115,6 +115,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       const {panel, query} = e.detail;
       if(panel==="costsheet") setShowCostSheet(query);
       else if(panel==="itinerary") setShowBriefItinerary(query);
+      else if(panel==="detailedItinerary") setShowDetailedItinerary(query);
       else if(panel==="quotation") setShowQuotation(query);
       else if(panel==="proforma")  setShowProforma(query);
       else if(panel==="payments")  setShowPayments(query);
