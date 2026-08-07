@@ -62,6 +62,17 @@ describe('fetchPlaceCandidates: the RPC path reaches alt_names', () => {
     expect(out[0]).toMatchObject({ name: 'Varanasi' });
   });
 
+  it('the fallback also checks ascii_name, not just name -- GeoNames often records the canonical name with diacritics', async () => {
+    // Confirmed against the real data: Rajgir's `name` is "Rājgīr" (with
+    // macrons), while `ascii_name` holds the plain "Rajgir". ILIKE does not
+    // fold accents, so a name-only fallback query would never match a
+    // plain-ASCII search term against that row at all.
+    const db = fakeDbNoRpc([]);
+    await fetchPlaceCandidates(db, 'Rajgir');
+    const orFilter = db.calls[0].filters.find(f => f[0] === 'or');
+    expect(orFilter[1]).toContain('ascii_name.ilike.*rajgir*');
+  });
+
   it('returns nothing for an empty query rather than issuing a wasted request', async () => {
     const db = fakeDbWithRpc([]);
     expect(await fetchPlaceCandidates(db, '')).toEqual([]);

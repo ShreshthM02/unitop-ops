@@ -36,6 +36,14 @@ function mapRow(r) {
 //     limit lim;
 //   $$;
 //
+//   -- REQUIRED, and easy to miss: creating a function does not by itself
+//   -- let PostgREST's anon-keyed API role call it. Testing the function
+//   -- directly in the SQL editor runs as the database owner and will
+//   -- succeed regardless of this grant, which is exactly the trap -- it
+//   -- can look confirmed working there while the live app, calling through
+//   -- the REST API as `anon`, still cannot invoke it at all.
+//   grant execute on function search_gazetteer(text, int) to anon, authenticated;
+//
 // WHY THIS EXISTS. A name typed by an operator does not have to match
 // GeoNames' own canonical `name` column -- Kushinagar's canonical GeoNames
 // entry is recorded under an older name, with "Kushinagar" appearing only
@@ -59,7 +67,14 @@ async function viaNameFilter(db, query, { limit = 60 } = {}) {
   if (!raw) return [];
   const canon = canonicalName(query);
   const terms = [...new Set([raw, canon])];
-  const orExpr = terms.map(t => `name.ilike.*${t}*`).join(",");
+  // Checks ascii_name as well as name. GeoNames' canonical `name` often
+  // carries diacritics -- Rajgir's is recorded as "Rājgīr" -- and ILIKE
+  // does not fold accents, so a plain-ASCII search term would never match
+  // the accented column even though the exact same place has a clean
+  // ascii_name entry ("Rajgir") sitting right next to it. This path only
+  // runs at all when the RPC below is unavailable, but it should still
+  // find what it reasonably can while degraded.
+  const orExpr = terms.flatMap(t => [`name.ilike.*${t}*`, `ascii_name.ilike.*${t}*`]).join(",");
   try {
     const { data, error } = await db.from("gazetteer").select(COLUMNS)
       .or(orExpr).order("population", { ascending: false }).limit(limit);
