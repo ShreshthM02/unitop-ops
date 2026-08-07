@@ -150,6 +150,16 @@ describe('Documents actually apply their template prop', () => {
     expect(html).toContain('DETAIL TAGLINE');
   });
 
+  it('DetailedItinerary offers an editable closing line, no longer a hard-coded sentence', () => {
+    // Regression: closingText was previously hard-coded into buildBrochureHTML
+    // with no field to change it -- every itinerary got the identical
+    // sign-off regardless of destination or client.
+    render(<DetailedItinerary query={fakeQuery} onClose={()=>{}}/>);
+    const field = screen.getByDisplayValue('Tour ends as you leave footprints and take memories.');
+    fireEvent.change(field, { target: { value: 'Safe travels, and see you again soon.' } });
+    expect(screen.getByDisplayValue('Safe travels, and see you again soon.')).toBeTruthy();
+  });
+
   it('every document falls back to sensible hardcoded defaults when no template prop is passed', () => {
     expect(() => render(<ProformaInvoice query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TaxInvoice query={fakeQuery} payments={{}} onClose={()=>{}}/>)).not.toThrow();

@@ -21,6 +21,13 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const [tagline, setTagline] = useState("");
   const [route, setRoute] = useState("");
   const [duration, setDuration] = useState(`${query.nights || "?"} Days / ${query.nights ? Number(query.nights)-1 : "?"} Nights`);
+  // Closing line / sign-off for the brochure's final page. Was hard-coded
+  // into buildBrochureHTML with no way to change it per tour -- every
+  // itinerary got the same generic sentence regardless of destination or
+  // client. Defaults to that same sentence so nothing changes for an
+  // itinerary that never touches this field, but it is now a real,
+  // editable, saved value like everything else on this document.
+  const [closingText, setClosingText] = useState("Tour ends as you leave footprints and take memories.");
   const [itinDays, setItinDays] = useState([
     { id:1, dayLabel:"DAY-1", title:"Arrival", route:"", distance:"", time:"", meals:["D"], description:"Meeting & greeting at the airport and transfer to hotel.\nOvernight stay at the hotel.", hotel:"" },
     { id:2, dayLabel:"DAY-2", title:"", route:"", distance:"", time:"", meals:["B","L","D"], description:"", hotel:"" },
@@ -43,6 +50,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
     setRoute(v.route || "");
     setDuration(v.duration || duration);
     setItinDays(v.days && v.days.length ? v.days : itinDays);
+    setClosingText(v.closingText || "Tour ends as you leave footprints and take memories.");
     setViewingVersion(v.version);
   };
 
@@ -130,7 +138,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const [saveError, setSaveError] = useState(null);
   const [saving, setSaving] = useState(false);
   const saveVersion = async () => {
-    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion, pulledFromBriefVersion, routeMapImage, dayImageOverrides };
+    const snap = { version: nextVersion, tourTitle, tagline, route, duration, activeTab: "detailed", days: [...itinDays], note: versionNote, pulledFromCostSheetVersion, pulledFromBriefVersion, routeMapImage, dayImageOverrides, closingText };
     setSaving(true);
     setSaveError(null);
     const { error } = await saveItineraryVersion(db, query.id, snap, currentUser?.id);
@@ -249,7 +257,7 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
         // not mutually exclusive, see buildBrochureDocument in brochure.js.
         mapHTML, sectorTableHTML, gatewayNote,
         routeMapImage,
-        closingText: "Tour ends as you leave footprints and take memories.",
+        closingText,
         footerLabel: tourTitle || query.groupName || "",
         measureFn: (html, width) => measureHTMLHeight(html, width, ctx.doc),
       });
@@ -407,6 +415,16 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
             ))}
 
             <button className="btn btn-ghost" style={{ fontSize:11, marginBottom:24 }} onClick={addDay}>+ Add Day</button>
+
+            {/* Closing line / sign-off -- the last thing on the brochure's
+                final page. Previously hard-coded, identical on every
+                itinerary regardless of destination or client. */}
+            <div style={{ background:G.white, border:`1px solid ${G.gray200}`, borderRadius:10, padding:14, marginBottom:24 }}>
+              <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Closing Line / Sign-off</div>
+              <input style={inp} value={closingText} disabled={readOnly}
+                onChange={e=>setClosingText(e.target.value)}
+                placeholder="Tour ends as you leave footprints and take memories."/>
+            </div>
           </div>
         ) : (
           <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
