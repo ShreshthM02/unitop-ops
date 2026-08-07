@@ -39,6 +39,12 @@ export function PlacePicker({
   gazetteer = [],
   context = [],       // coordinates of other resolved stops in this itinerary
   onChange,
+  // Optional async search against the real table (1M+ rows), for callers
+  // where `gazetteer` only holds the handful of candidates fetched for the
+  // day's own text. Without this the search box falls back to filtering
+  // `gazetteer` locally, which is exactly right for tests and for any
+  // caller that already holds a full array in memory.
+  onSearch,
   G,
   inp,
   readOnly = false,
@@ -47,6 +53,8 @@ export function PlacePicker({
   const [term, setTerm] = useState("");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
+  const [dbResults, setDbResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   // Only resolve when nothing has been chosen. A user's explicit pick must
   // never be silently re-resolved out from under them on the next render.
@@ -60,9 +68,25 @@ export function PlacePicker({
   const reason = value ? "Chosen manually." : (auto ? auto.reason : "");
   const alternatives = (auto && auto.candidates) || [];
 
-  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); } }, [open]);
+  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); setDbResults([]); } }, [open]);
 
-  const results = term.trim().length >= 2 ? searchGazetteer(term, gazetteer, { limit: 12 }) : [];
+  // Query the real table as the user types. No debounce: this is an
+  // internal tool used a few times per itinerary, not a public search box,
+  // and the gazetteer's indexes make a single prefix lookup cheap. A stale
+  // response is discarded if the term has since changed.
+  useEffect(() => {
+    if (!onSearch || term.trim().length < 2) { setDbResults([]); return; }
+    let cancelled = false;
+    setSearching(true);
+    Promise.resolve(onSearch(term)).then(rows => {
+      if (!cancelled) { setDbResults(rows || []); setSearching(false); }
+    }).catch(() => { if (!cancelled) setSearching(false); });
+    return () => { cancelled = true; };
+  }, [term, onSearch]);
+
+  const results = term.trim().length >= 2
+    ? (onSearch ? dbResults : searchGazetteer(term, gazetteer, { limit: 12 }))
+    : [];
   const style = STATUS_STYLE[status] || STATUS_STYLE.unmatched;
 
   const pick = (place) => { onChange && onChange(place); setOpen(false); };
@@ -131,7 +155,10 @@ export function PlacePicker({
               {describe(r)}
             </button>
           ))}
-          {term.trim().length >= 2 && results.length === 0 && (
+          {searching && (
+            <div style={{ fontSize: 11, color: G.gray400, padding: "4px 0" }}>Searching…</div>
+          )}
+          {!searching && term.trim().length >= 2 && results.length === 0 && (
             <div style={{ fontSize: 11, color: G.gray400, padding: "4px 0" }}>
               Nothing found — enter coordinates below instead.
             </div>

@@ -51,6 +51,15 @@ export const _supa = (() => {
     const builder = {
       select: (cols="*") => { _query = `?select=${cols}`; return builder; },
       eq: (col, val) => { _filters.push(`${col}=eq.${val}`); return builder; },
+      // Added for gazetteer lookups (place name search). PostgREST treats a
+      // bare `*` in an ilike value as the SQL `%` wildcard, so callers pass
+      // patterns like `*varanasi*` or `varanasi*` directly.
+      ilike: (col, val) => { _filters.push(`${col}=ilike.${encodeURIComponent(val)}`); return builder; },
+      // Raw PostgREST or() expression, e.g. "name.ilike.*a*,name.ilike.*b*".
+      // Left unencoded like eq()/ilike()'s column names -- this wrapper has
+      // never encoded filter syntax, only values, and encoding the commas
+      // and parentheses PostgREST needs for or() would break the syntax.
+      or: (expr) => { _filters.push(`or=(${expr})`); return builder; },
       order: (col, {ascending=true}={}) => { _order = `&order=${col}.${ascending?"asc":"desc"}`; return builder; },
       limit: (n) => { _limit = `&limit=${n}`; return builder; },
       insert: async (rows) => {

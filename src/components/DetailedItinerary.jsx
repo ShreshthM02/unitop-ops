@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, mergeBriefDaysIntoDetailed, loadPhotoLibrary, resolveDayImages, buildBrochureDocument, brochureCSS, createMeasurementContext, measureHTMLHeight, ExportMenu, logAudit, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, mergeBriefDaysIntoDetailed, loadPhotoLibrary, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, measureHTMLHeight, ExportMenu, logAudit, PlacePicker, fetchPlaceCandidates, searchGazetteerDb, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db } = Lib;
 
 // Detailed Itinerary -- split out 2026-07-24 from the old combined
 // ItineraryBuilder.jsx into its own standalone document (Letterhead
@@ -56,6 +56,11 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   // Brochure export (1.13/1.14). The photo library auto-suggests a picture
   // per day from its destination; overrides pin or clear individual days.
   const [photoLibrary, setPhotoLibrary] = useState([]);
+  // Small candidate sets fetched from the gazetteer per day -- NOT the whole
+  // table. placeResolver.js ranks these; this component's only job is to ask
+  // for a plausible few and hand them over. Keyed by day id so a re-render
+  // does not lose what was already fetched.
+  const [placeCandidates, setPlaceCandidates] = useState({});
   const [dayImageOverrides, setDayImageOverrides] = useState({});
   const [routeMapImage, setRouteMapImage] = useState(null);
   const [pullMessage, setPullMessage] = useState("");
@@ -144,6 +149,30 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
     return {...d, meals};
   }));
   const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", meals:["B","L","D"], items:[] }]);
+
+  const placeQueryFor = (day) =>
+    (dayImageTextCandidates(day)[0]) || day.title || day.dayLabel || "";
+
+  // Fetches a SMALL candidate set per day from the real gazetteer -- not the
+  // whole million-row table, just enough for placeResolver.js to rank. Skips
+  // any day that already has an explicit choice (nothing to resolve) and
+  // re-fetches only when a day's derived query text actually changes, so
+  // editing unrelated text elsewhere does not refire this for every day.
+  const placeQuerySignature = itinDays.map(d => `${d.id}:${d.place ? "chosen" : placeQueryFor(d)}`).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    itinDays.forEach(async (d) => {
+      if (d.place) return;
+      const q = placeQueryFor(d);
+      if (!q || q.trim().length < 2) return;
+      const cached = placeCandidates[d.id];
+      if (cached && cached.query === q) return;
+      const rows = await fetchPlaceCandidates(db, q);
+      if (!cancelled) setPlaceCandidates(prev => ({ ...prev, [d.id]: { query: q, rows } }));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeQuerySignature]);
   const removeDay = (i) => setItinDays(prev => prev.filter((_,idx)=>idx!==i));
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
@@ -194,15 +223,31 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
   const buildBrochureHTML = () => {
     const ctx = createMeasurementContext(brochureCSS());
     try {
+      // Turns each day's resolved PlacePicker choice into map data. Days
+      // with no resolved place are simply absent from the map -- see
+      // buildMapDataFromResolvedDays for why an unresolved day breaks the
+      // chain rather than silently joining across it.
+      const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
+      const { ground, gateways } = partitionGateways(stops, sectors);
+      const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors }) : "";
+      const sectorTableHTML = stops.length
+        ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => ({ title: d.place ? d.place.name : d.title })))
+        : "";
+      const gatewayNote = gatewayNoteHTML(gateways);
+
       return buildBrochureDocument({
         cover: {
           title: tourTitle || query.groupName || "Itinerary",
           tagline, duration, route,
           heroImage: resolveDayImages(itinDays, photoLibrary, dayImageOverrides)[itinDays[0] && itinDays[0].id] || null,
-          eyebrow: "Unitop Tours & Travel",
         },
         days: itinDays,
         dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
+        // Auto-generated from the itinerary's own resolved places. A
+        // separately uploaded routeMapImage (if ever added via an upload
+        // UI) still renders as its own dedicated page -- this and that are
+        // not mutually exclusive, see buildBrochureDocument in brochure.js.
+        mapHTML, sectorTableHTML, gatewayNote,
         routeMapImage,
         closingText: "Tour ends as you leave footprints and take memories.",
         footerLabel: tourTitle || query.groupName || "",
@@ -320,6 +365,24 @@ export default function DetailedItinerary({ query, detailTemplate, onClose, curr
                     ))}
                   </div>
                   <span style={{ cursor:"pointer", color:G.gray400 }} onClick={()=>removeDay(i)}>✕</span>
+                </div>
+
+                {/* Where this day sits on the map. Resolved from the day's
+                    own text against the real gazetteer; see PlacePicker for
+                    why it always shows its reasoning and always accepts a
+                    correction rather than silently committing a guess. */}
+                <div style={{ padding:"8px 14px 0" }}>
+                  <PlacePicker
+                    query={placeQueryFor(d)}
+                    value={d.place}
+                    gazetteer={(placeCandidates[d.id] && placeCandidates[d.id].rows) || []}
+                    context={itinDays.filter((x, xi) => xi !== i && x.place).map(x => x.place)}
+                    onChange={(place) => updateDay(i, "place", place)}
+                    onSearch={(term) => searchGazetteerDb(db, term)}
+                    G={G}
+                    inp={inp}
+                    readOnly={readOnly}
+                  />
                 </div>
 
                 {/* Day body -- an ordered list of typed items, same editor as

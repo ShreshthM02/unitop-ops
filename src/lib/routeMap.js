@@ -210,6 +210,55 @@ export function gatewayNoteHTML(gateways, theme = MAP_THEME) {
   </div>`;
 }
 
+// Turns the itinerary's own day-by-day places into map data.
+//
+// Deliberately day-granularity: each day carries at most one resolved
+// place, matching what PlacePicker actually captures. A day whose route
+// text visits several sub-stops ("Bodhgaya - Rajgir - Nalanda - Bodhgaya")
+// still shows that detail in its own timeline text; the map is answering a
+// coarser question -- where does the group sleep, night by night -- and
+// that question only needs one point per day.
+//
+// Pure and DB-free on purpose, like the rest of this file: it takes exactly
+// the shape DetailedItinerary's `itinDays` state already has (each day
+// optionally carrying a `.place`) and returns exactly what
+// buildRouteMapSVG / buildSectorTableHTML / partitionGateways expect.
+export function buildMapDataFromResolvedDays(days) {
+  const list = days || [];
+  const stops = [];
+  const byName = new Map();
+  const sectors = [];
+  let prev = null;
+
+  list.forEach((day, idx) => {
+    const place = day && day.place;
+    if (!place || !place.name) { prev = null; return; }
+    const dayNo = idx + 1;
+    let stop = byName.get(place.name);
+    if (!stop) {
+      stop = { name: place.name, lat: place.lat, lon: place.lon, country: place.country, days: [] };
+      byName.set(place.name, stop);
+      stops.push(stop);
+    }
+    stop.days.push(dayNo);
+    if (prev && prev.name !== place.name) {
+      // A day carrying a transport-type item is treated as a flown leg; road
+      // is the default in the absence of any signal to the contrary, which
+      // matches how most inter-town movement in these itineraries happens.
+      const flew = (day.items || []).some(i => i.type === "transport");
+      const lead = (day.items || []).find(i => i.type === "route" && (i.distance || i.time));
+      sectors.push({
+        from: prev.name, to: place.name, day: dayNo,
+        mode: flew ? "flight" : "road",
+        distance: lead ? lead.distance : "", time: lead ? lead.time : "",
+      });
+    }
+    prev = stop;
+  });
+
+  return { stops, sectors };
+}
+
 export function computeBBox(points, padDeg = 0.9) {
   const lons = points.map(p => p.lon);
   const lats = points.map(p => p.lat);

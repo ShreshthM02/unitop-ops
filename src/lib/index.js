@@ -11,6 +11,7 @@ export * from './wordFromBlocks.js';
 export * from './brochure.js';
 export * from './routeMap.js';
 export * from './placeResolver.js';
+export * from './gazetteerQuery.js';
 export * from './PlacePicker.jsx';
 export * from './photoLibrary.js';
 export * from './LetterheadControls.jsx';

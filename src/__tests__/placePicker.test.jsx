@@ -114,3 +114,38 @@ describe('degrades without a gazetteer', () => {
     expect(onChange).toHaveBeenCalled();
   });
 });
+
+describe('async search against the real gazetteer', () => {
+  it('calls onSearch instead of filtering the local array when provided', async () => {
+    const onSearch = vi.fn(async () => [{ name:'Varanasi', admin1:'Uttar Pradesh', country:'India', lat:25.3, lon:83.0 }]);
+    const onChange = vi.fn();
+    render(<PlacePicker query="Bodhgaya" gazetteer={[]} onSearch={onSearch} onChange={onChange} G={G} inp={inp}/>);
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Search places'), { target:{ value:'Varan' } });
+    await screen.findByText('Varanasi, Uttar Pradesh, India');
+    expect(onSearch).toHaveBeenCalledWith('Varan');
+    fireEvent.click(screen.getByText('Varanasi, Uttar Pradesh, India'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name:'Varanasi' }));
+  });
+
+  it('shows a searching indicator while the async call is in flight', async () => {
+    let resolvePromise;
+    const onSearch = vi.fn(() => new Promise(res => { resolvePromise = res; }));
+    render(<PlacePicker query="X" gazetteer={[]} onSearch={onSearch} G={G} inp={inp}/>);
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Search places'), { target:{ value:'va' } });
+    await screen.findByText('Searching…');
+    resolvePromise([]);
+    await screen.findByText(/Nothing found/);
+  });
+
+  it('never touches the local array when onSearch is supplied', () => {
+    const onSearch = vi.fn(async () => []);
+    render(<PlacePicker query="X" gazetteer={gaz} onSearch={onSearch} G={G} inp={inp}/>);
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Search places'), { target:{ value:'Bodh' } });
+    // gaz has a real Bodhgaya entry -- if this were filtering gaz locally it
+    // would appear instantly, before onSearch could ever resolve.
+    expect(screen.queryByText('Bodhgaya, Bihar, India')).toBeNull();
+  });
+});

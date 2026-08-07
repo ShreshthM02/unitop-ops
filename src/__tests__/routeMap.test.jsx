@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRouteMapSVG, buildSectorTableHTML, computeBBox, formatDayLabel, partitionGateways, gatewayNoteHTML } from '../lib/routeMap.js';
+import { buildRouteMapSVG, buildSectorTableHTML, computeBBox, formatDayLabel, partitionGateways, gatewayNoteHTML, buildMapDataFromResolvedDays } from '../lib/routeMap.js';
 
 const stops = [
   { name:'Bodhgaya', lon:84.991, lat:24.696, dayLabel:'1' },
@@ -246,5 +246,86 @@ describe('a loop tour must not lose the place it starts and ends at', () => {
     const stops = [{ name:'A', lon:80, lat:25 }, { name:'B', lon:82, lat:26 }];
     const secs = [{ from:'A', to:'B', mode:'flight' }, { from:'B', to:'A', mode:'flight' }];
     expect(partitionGateways(stops, secs).gateways).toEqual([]);
+  });
+});
+
+describe('buildMapDataFromResolvedDays: the itinerary\u2019s own places become map data', () => {
+  const place = (name, lat, lon, country) => ({ name, lat, lon, country });
+
+  it('one stop per distinct place, with every day it covers', () => {
+    const days = [
+      { place: place('Bodhgaya', 24.7, 85.0, 'India'), items: [] },
+      { place: place('Bodhgaya', 24.7, 85.0, 'India'), items: [] },
+      { place: place('Varanasi', 25.3, 83.0, 'India'), items: [] },
+    ];
+    const { stops } = buildMapDataFromResolvedDays(days);
+    expect(stops.map(s => s.name)).toEqual(['Bodhgaya', 'Varanasi']);
+    expect(stops[0].days).toEqual([1, 2]);
+    expect(stops[1].days).toEqual([3]);
+  });
+
+  it('adds a return visit to the same stop\u2019s day list rather than duplicating it', () => {
+    const days = [
+      { place: place('Bodhgaya', 24.7, 85.0), items: [] },
+      { place: place('Lumbini', 27.5, 83.3), items: [] },
+      { place: place('Bodhgaya', 24.7, 85.0), items: [] },
+    ];
+    const { stops } = buildMapDataFromResolvedDays(days);
+    expect(stops).toHaveLength(2);
+    expect(stops.find(s => s.name === 'Bodhgaya').days).toEqual([1, 3]);
+  });
+
+  it('emits a sector for every day the place changes', () => {
+    const days = [
+      { place: place('Bodhgaya', 24.7, 85.0), items: [] },
+      { place: place('Varanasi', 25.3, 83.0), items: [{ id:'r', type:'route', text:'Bodhgaya - Varanasi', distance:'255 km', time:'6 hrs' }] },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors).toEqual([{ from:'Bodhgaya', to:'Varanasi', day:2, mode:'road', distance:'255 km', time:'6 hrs' }]);
+  });
+
+  it('marks a sector as a flight when the day carries a transport item', () => {
+    const days = [
+      { place: place('Bangkok', 13.75, 100.5), items: [] },
+      { place: place('Bodhgaya', 24.7, 85.0), items: [{ id:'t', type:'transport', text:'TG-327' }] },
+    ];
+    expect(buildMapDataFromResolvedDays(days).sectors[0].mode).toBe('flight');
+  });
+
+  it('skips a day with no resolved place, without breaking the chain around it', () => {
+    const days = [
+      { place: place('Bodhgaya', 24.7, 85.0), items: [] },
+      { place: null, items: [] },
+      { place: place('Varanasi', 25.3, 83.0), items: [] },
+    ];
+    const { stops, sectors } = buildMapDataFromResolvedDays(days);
+    expect(stops.map(s => s.name)).toEqual(['Bodhgaya', 'Varanasi']);
+    // No day 2 place, so there is nothing to draw a sector to/from -- an
+    // unresolved day breaks the chain rather than silently joining across it.
+    expect(sectors).toEqual([]);
+  });
+
+  it('produces no sectors when consecutive days share the same place', () => {
+    const days = [{ place: place('Bodhgaya', 24.7, 85.0), items: [] }, { place: place('Bodhgaya', 24.7, 85.0), items: [] }];
+    expect(buildMapDataFromResolvedDays(days).sectors).toEqual([]);
+  });
+
+  it('handles no days and no places without throwing', () => {
+    expect(buildMapDataFromResolvedDays([])).toEqual({ stops: [], sectors: [] });
+    expect(buildMapDataFromResolvedDays([{ items: [] }, { place: null, items: [] }])).toEqual({ stops: [], sectors: [] });
+    expect(buildMapDataFromResolvedDays(undefined)).toEqual({ stops: [], sectors: [] });
+  });
+
+  it('feeds straight into the real map builders without adaptation', () => {
+    const days = [
+      { place: place('Bodhgaya', 24.696, 84.991, 'India'), items: [] },
+      { place: place('Varanasi', 25.318, 82.974, 'India'), items: [{ id:'r', type:'route', text:'x', distance:'255 km', time:'6 hrs' }] },
+    ];
+    const { stops, sectors } = buildMapDataFromResolvedDays(days);
+    const svg = buildRouteMapSVG({ stops, sectors });
+    expect(svg).toContain('Bodhgaya');
+    expect(svg).toContain('Varanasi');
+    const table = buildSectorTableHTML(sectors, undefined, days.map(d => ({ title: d.place && d.place.name })));
+    expect(table).toContain('255 km');
   });
 });
