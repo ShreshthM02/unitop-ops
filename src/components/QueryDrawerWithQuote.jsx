@@ -89,29 +89,28 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   };
 
   // Docs available: query = cost sheet + itinerary + quotation; tour file = all.
-  // Itinerary was originally tour-file-only, but an itinerary is part of what
-  // gets quoted -- it is drafted while the query is still being won, not after.
-  // It also pre-fills from the final Cost Sheet, which already exists at this
-  // stage, so nothing it depends on is missing here.
+  // Itinerary is available at query stage, not only after tour-file
+  // conversion -- it is drafted while the query is still being won, and it
+  // pre-fills from the final Cost Sheet, which already exists by then.
   //
-  // Detailed Itinerary (the client-facing brochure, with per-day photos and
-  // the generated route map) is tour-file-only, not query-stage: it is
-  // prepared once the tour is confirmed, and it depends on per-day place
-  // resolution against the gazetteer, which is naturally a step taken after
-  // the day-by-day plan is settled rather than while still quoting. This
-  // matches the boundary already enforced elsewhere (see DocButtons in
-  // UnitopApp.jsx, which only shows it in the Tour Files view) -- this drawer
-  // had simply never been given the button, so the document existed and
-  // worked but had no way to be reached from the query-stage workflow.
+  // Brief Itinerary and Detailed Itinerary used to be two separate
+  // documents, with Detailed gated to tour-file stage because it depended
+  // on per-day place resolution against the gazetteer -- naturally a step
+  // taken once the day-by-day plan was settled. They are now ONE document
+  // (Itinerary) with a Brief/Detailed flavor toggle inside it, sharing one
+  // set of days, so that gate no longer makes sense: someone drafting at
+  // query stage can already see and use both views, and place resolution
+  // for the Detailed flavor is simply unresolved (shows "no match yet",
+  // same as any day not yet filled in) rather than the whole document being
+  // hidden.
   const queryDocs = [
     {icon:"📊",label:"Cost Sheet",    panel:"costsheet"},
-    {icon:"🗺", label:"Brief Itin.",   panel:"itinerary"},
+    {icon:"📖",label:"Itinerary",     panel:"itinerary"},
     {icon:"📋",label:"Quotation",     panel:"quotation"},
   ];
   const caseFileDocs = [
     {icon:"📊",label:"Cost Sheet",        panel:"costsheet"},
-    {icon:"🗺", label:"Brief Itin.",       panel:"itinerary"},
-    {icon:"📖",label:"Detailed Itin.",    panel:"detailedItinerary"},
+    {icon:"📖",label:"Itinerary",         panel:"itinerary"},
     {icon:"📋",label:"Quotation",         panel:"quotation"},
     {icon:"🧾",label:"Proforma Inv.",     panel:"proforma"},
     {icon:"₹", label:"Payments",          panel:"payments"},

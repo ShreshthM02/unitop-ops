@@ -220,7 +220,7 @@ export function gatewayNoteHTML(gateways, theme = MAP_THEME) {
 // that question only needs one point per day.
 //
 // Pure and DB-free on purpose, like the rest of this file: it takes exactly
-// the shape DetailedItinerary's `itinDays` state already has (each day
+// the shape the Itinerary editor's `itinDays` state already has (each day
 // optionally carrying a `.place`) and returns exactly what
 // buildRouteMapSVG / buildSectorTableHTML / partitionGateways expect.
 export function buildMapDataFromResolvedDays(days) {

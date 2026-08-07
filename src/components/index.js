@@ -9,8 +9,7 @@ export { default as EnhancedPaymentTracker } from './EnhancedPaymentTracker.jsx'
 export { default as ExchangeOrderGenerator } from './ExchangeOrderGenerator.jsx';
 export { default as GanttView } from './GanttView.jsx';
 export { default as InAppChat } from './InAppChat.jsx';
-export { default as BriefItinerary } from './BriefItinerary.jsx';
-export { default as DetailedItinerary } from './DetailedItinerary.jsx';
+export { default as Itinerary } from './Itinerary.jsx';
 export { default as KanbanView } from './KanbanView.jsx';
 export { default as LoginScreen } from './LoginScreen.jsx';
 export { default as MealPlanDocument } from './MealPlanDocument.jsx';

@@ -90,7 +90,6 @@ function makeDb() {
 const DOCS = [
   ['MealPlanDocument', 'MealPlanDocument'],
   ['TaxInvoice', 'TaxInvoice'],
-  ['BriefItinerary', 'BriefItinerary'],
   ['TourBriefingSheet', 'TourBriefingSheet'],
   ['ProformaInvoice', 'ProformaInvoice'],
 ];
@@ -116,6 +115,22 @@ describe('Word export is offered on every letterhead document', () => {
       expect(screen.getByText('📕 PDF')).toBeTruthy();
     });
   }
+});
+
+describe('Itinerary offers distinct Brief and Detailed exports, not the generic single PDF+Word shape', () => {
+  it('Export menu lists Brief PDF, Brief Word, Detailed PDF and Detailed Internal PDF', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: makeDb(), realtimeClient: null }));
+    vi.resetModules();
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    render(<Itinerary query={fakeQuery} onClose={()=>{}} currentUser={{id:'x',name:'T'}}/>);
+    const toggle = await screen.findByText('\u2b07 Export \u25be');
+    fireEvent.click(toggle);
+    expect(screen.getByText('📕 Brief PDF')).toBeTruthy();
+    expect(screen.getByText('📄 Brief Word')).toBeTruthy();
+    expect(screen.getByText('📗 Detailed PDF')).toBeTruthy();
+    expect(screen.getByText('📘 Detailed Internal PDF')).toBeTruthy();
+    expect(screen.getByText('🖨 Print')).toBeTruthy();
+  });
 });
 
 describe('buildPrintHTML(asBlocks) returns content instead of built HTML', () => {

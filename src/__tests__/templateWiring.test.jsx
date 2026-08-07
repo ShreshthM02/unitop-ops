@@ -5,8 +5,7 @@ import ProformaInvoice from '../components/ProformaInvoice.jsx';
 import TaxInvoice from '../components/TaxInvoice.jsx';
 import MealPlanDocument from '../components/MealPlanDocument.jsx';
 import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
-import BriefItinerary from '../components/BriefItinerary.jsx';
-import DetailedItinerary from '../components/DetailedItinerary.jsx';
+import Itinerary from '../components/Itinerary.jsx';
 import { DEFAULT_DOC_TEMPLATES } from '../lib/constants.js';
 
 const fakeQuery = {
@@ -122,9 +121,9 @@ describe('Documents actually apply their template prop', () => {
     expect(html).toContain('Custom footer block.');
   });
 
-  it('BriefItinerary uses briefTemplate for its closing tagline', async () => {
+  it('Itinerary (Brief flavor, the default) uses briefTemplate for its closing tagline', async () => {
     const { container } = render(
-      <BriefItinerary
+      <Itinerary
         query={fakeQuery}
         briefTemplate={{ closingTagline: 'BRIEF TAGLINE' }}
         onClose={()=>{}}
@@ -137,24 +136,28 @@ describe('Documents actually apply their template prop', () => {
     });
   });
 
-  it('DetailedItinerary uses detailTemplate for its closing tagline', () => {
+  it('Itinerary (Detailed flavor) uses detailTemplate for its closing tagline', async () => {
     const { container } = render(
-      <DetailedItinerary
+      <Itinerary
         query={fakeQuery}
         detailTemplate={{ closingTagline: 'DETAIL TAGLINE' }}
         onClose={()=>{}}
       />
     );
+    fireEvent.click(screen.getByText('Detailed'));
     fireEvent.click(screen.getByText('👁 Preview'));
-    const html = container.querySelector('iframe').getAttribute('srcdoc');
-    expect(html).toContain('DETAIL TAGLINE');
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      expect(html).toContain('DETAIL TAGLINE');
+    });
   });
 
-  it('DetailedItinerary offers an editable closing line, no longer a hard-coded sentence', () => {
+  it('the Detailed flavor offers an editable closing line, no longer a hard-coded sentence', () => {
     // Regression: closingText was previously hard-coded into buildBrochureHTML
     // with no field to change it -- every itinerary got the identical
     // sign-off regardless of destination or client.
-    render(<DetailedItinerary query={fakeQuery} onClose={()=>{}}/>);
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
     const field = screen.getByDisplayValue('Tour ends as you leave footprints and take memories.');
     fireEvent.change(field, { target: { value: 'Safe travels, and see you again soon.' } });
     expect(screen.getByDisplayValue('Safe travels, and see you again soon.')).toBeTruthy();
@@ -165,7 +168,6 @@ describe('Documents actually apply their template prop', () => {
     expect(() => render(<TaxInvoice query={fakeQuery} payments={{}} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<MealPlanDocument query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
-    expect(() => render(<BriefItinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
-    expect(() => render(<DetailedItinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
+    expect(() => render(<Itinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
   });
 });

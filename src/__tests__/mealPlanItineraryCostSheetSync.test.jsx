@@ -58,14 +58,14 @@ describe('MealPlanDocument Phase 4: auto-pulls from the star-marked Cost Sheet o
   });
 });
 
-describe('BriefItinerary Phase 4: auto-pulls from the star-marked Cost Sheet on creation', () => {
+describe('Itinerary (Brief flavor, the default) Phase 4: auto-pulls from the star-marked Cost Sheet on creation', () => {
   it('a brand-new Itinerary (zero saved versions) with a final Cost Sheet available pulls automatically', async () => {
     const finalCS = { id: 'cs-4', version: 3, is_final: true, days: [{ day:'Day 1', movement:'DEL-AGRA', hotel:'Taj Hotel', mealPlan:'D' }] };
     const db = makeDb({ costSheetRows: [finalCS] });
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: BriefItinerary } = await import('../components/BriefItinerary.jsx');
-    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    render(<Itinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v3/)).toBeTruthy());
     expect(screen.getByDisplayValue('DEL-AGRA')).toBeTruthy();
     expect(screen.getByDisplayValue('Taj Hotel')).toBeTruthy();
@@ -77,8 +77,8 @@ describe('BriefItinerary Phase 4: auto-pulls from the star-marked Cost Sheet on 
     const db = makeDb({ costSheetRows: [finalCS], itineraryRows: [savedItinerary] });
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: BriefItinerary } = await import('../components/BriefItinerary.jsx');
-    render(<BriefItinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    render(<Itinerary query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => expect(screen.getByText(/Cost Sheet v4 \(final\) has route\/hotel data/)).toBeTruthy());
     fireEvent.click(screen.getByText('↻ Pull latest'));
     await waitFor(() => expect(screen.getByDisplayValue('NEWER-ROUTE')).toBeTruthy());

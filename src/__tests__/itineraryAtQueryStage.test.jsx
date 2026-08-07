@@ -13,53 +13,54 @@ describe('1.3 Itinerary is available at query stage, not only after tour-file co
     render(<QueryDrawerWithQuote query={baseQuery} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
     expect(screen.getByText('Cost Sheet')).toBeTruthy();
-    expect(screen.getByText('Brief Itin.')).toBeTruthy();
+    expect(screen.getByText('Itinerary')).toBeTruthy();
     expect(screen.getByText('Quotation')).toBeTruthy();
   });
 
   it('does NOT leak the tour-file-only documents into the query stage', () => {
     render(<QueryDrawerWithQuote query={baseQuery} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
-    // These stay gated behind conversion -- widening Itinerary must not have
-    // widened everything else with it.
+    // These stay gated behind conversion.
     expect(screen.queryByText('Tax Invoice')).toBeNull();
     expect(screen.queryByText('Exchange Orders')).toBeNull();
     expect(screen.queryByText('Meal Plan')).toBeNull();
     expect(screen.queryByText('Tour Briefing Sheet')).toBeNull();
-    // Detailed Itinerary (the brochure) is also tour-file-only -- see the
-    // test below for the boundary this enforces.
-    expect(screen.queryByText('Detailed Itin.')).toBeNull();
   });
 
   it('a converted tour file still offers the full document set including Itinerary', () => {
     render(<QueryDrawerWithQuote query={{ ...baseQuery, tourFileId: 'TUR-2026-001' }} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
-    expect(screen.getByText('Brief Itin.')).toBeTruthy();
+    expect(screen.getByText('Itinerary')).toBeTruthy();
     expect(screen.getByText('Tax Invoice')).toBeTruthy();
     expect(screen.getByText('Meal Plan')).toBeTruthy();
   });
 });
 
-describe('Detailed Itinerary is reachable from the drawer at tour-file stage', () => {
-  // Regression test: DetailedItinerary.jsx, its PlacePicker, and its
-  // generated map all existed and worked, but this drawer -- the actual
-  // day-to-day entry point -- never had a button for it. It was only
-  // reachable from the separate Tour Files list view. Fixed by adding the
-  // button here and wiring its panel event in UnitopApp.jsx.
-  it('shows a Detailed Itin. button once a query has become a tour file', () => {
-    render(<QueryDrawerWithQuote query={{ ...baseQuery, tourFileId: 'TUR-2026-001' }} {...props}/>);
-    fireEvent.click(screen.getByText('📋 Docs'));
-    expect(screen.getByText('Detailed Itin.')).toBeTruthy();
-  });
-
-  it('dispatches the detailedItinerary panel event when clicked', () => {
+describe('Itinerary (both Brief and Detailed) is reachable from the drawer, at either stage', () => {
+  // History: Brief and Detailed Itinerary were once two separate documents.
+  // Detailed existed, worked, and was fully built (PlacePicker, generated
+  // map, brochure export) but was reachable ONLY from the separate Tour
+  // Files list view -- this drawer, the actual day-to-day entry point, had
+  // no button for it at all. They have since been merged into one document
+  // (Itinerary) with an internal Brief/Detailed flavor toggle, available at
+  // query stage like Brief always was, so there is now exactly one button
+  // to find rather than two -- see Itinerary.jsx for the merge itself.
+  it('one Itinerary button reaches both flavors, at query stage', () => {
     const handler = vi.fn();
     document.addEventListener('unitop-open', handler);
+    render(<QueryDrawerWithQuote query={baseQuery} {...props}/>);
+    fireEvent.click(screen.getByText('📋 Docs'));
+    fireEvent.click(screen.getByText('Itinerary'));
+    expect(handler).toHaveBeenCalled();
+    expect(handler.mock.calls[0][0].detail.panel).toBe('itinerary');
+    document.removeEventListener('unitop-open', handler);
+  });
+
+  it('the same one Itinerary button is present at tour-file stage too', () => {
     render(<QueryDrawerWithQuote query={{ ...baseQuery, tourFileId: 'TUR-2026-001' }} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
-    fireEvent.click(screen.getByText('Detailed Itin.'));
-    expect(handler).toHaveBeenCalled();
-    expect(handler.mock.calls[0][0].detail.panel).toBe('detailedItinerary');
-    document.removeEventListener('unitop-open', handler);
+    expect(screen.getByText('Itinerary')).toBeTruthy();
+    // Only one Itinerary entry, not a separate Brief/Detailed pair.
+    expect(screen.getAllByText('Itinerary')).toHaveLength(1);
   });
 });
