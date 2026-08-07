@@ -1710,11 +1710,15 @@ export function itineraryItemHTML(item) {
       if (!text && !meta) return "";
       return `<div style="font-size:9.5pt;color:#333;margin:2pt 0"><strong>${text}</strong>${meta ? ` <span style="color:#888">(${meta})</span>` : ""}</div>`;
     case "sightseeing":
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">📍 ${text}</div>` : "";
+      // No icon here -- this string is printed onto the letterhead, not
+      // shown in the editor. ITINERARY_ITEM_TYPES above carries the icon
+      // for the app's own Add Item menu and item rows; that usage is fine
+      // and stays. A client-facing document is a different audience.
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
     case "transport":
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">✈ ${text}</div>` : "";
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
     case "stay":
-      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">🏨 ${text}</div>` : "";
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">${text}</div>` : "";
     case "description":
       return text ? `<div style="font-size:9.5pt;color:#333;margin:3pt 0;white-space:pre-wrap">${text}</div>` : "";
     default:

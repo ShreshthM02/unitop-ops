@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, reorderItems } from './utils.js';
 
 // Editor for one day's ordered list of typed items. Shared by Brief and
@@ -18,7 +19,32 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const addBtnRef = useRef(null);
+  const [menuPos, setMenuPos] = useState(null);
   const list = items || [];
+
+  // Each day card is rendered with overflow:hidden (to clip its own rounded
+  // corners), and this menu used to be positioned relative to that card --
+  // so it was clipped to invisible the moment the card was short enough for
+  // the menu to spill past its bottom edge, which is exactly what "Add Item"
+  // does on every day with more than a couple of rows already in it. A
+  // portal renders the menu directly on document.body, positioned from the
+  // trigger button's real screen coordinates, so no ancestor's overflow can
+  // clip it regardless of where in the page this editor is used.
+  useEffect(() => {
+    if (!addOpen || !addBtnRef.current) return;
+    const place = () => {
+      const r = addBtnRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 4, left: r.left });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [addOpen]);
 
   const update = (i, patch) => onChange(list.map((it, idx) => idx === i ? { ...it, ...patch } : it));
   const remove = (i) => onChange(list.filter((_, idx) => idx !== i));
@@ -101,24 +127,57 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
       })}
 
       {!readOnly && (
-        <div style={{ position:"relative", display:"inline-block" }}>
-          <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={() => setAddOpen(o => !o)}>+ Add Item ▾</button>
-          {addOpen && (
-            <div style={{ position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:20, background:G.white,
-              border:`1px solid ${G.gray200}`, borderRadius:8, boxShadow:"0 6px 20px rgba(0,0,0,0.14)", minWidth:180, padding:4 }}>
-              {addableItemTypes(docStyle).map(t => (
-                <button key={t.id} onClick={() => add(t.id)}
-                  style={{ display:"block", width:"100%", textAlign:"left", border:"none", background:"none",
-                    cursor:"pointer", padding:"7px 9px", borderRadius:6, fontSize:12, fontFamily:"'Inter',sans-serif", color:G.gray800 }}
-                  onMouseEnter={e => e.currentTarget.style.background = G.gray50}
-                  onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                  {t.icon} {t.label}
-                </button>
-              ))}
-            </div>
+        <div style={{ display:"inline-block" }}>
+          <button ref={addBtnRef} className="btn btn-ghost" style={{ fontSize:11 }}
+            onClick={() => setAddOpen(o => !o)}>+ Add Item ▾</button>
+          {addOpen && menuPos && createPortal(
+            <AddItemMenu
+              pos={menuPos}
+              G={G}
+              types={addableItemTypes(docStyle)}
+              onPick={add}
+              onDismiss={() => setAddOpen(false)}
+            />,
+            document.body,
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Split out so the outside-click listener only exists while the menu is
+// actually open -- attaching it unconditionally on every DayItemsEditor
+// instance (there is one per day) would mean a document-wide listener per
+// day card for the entire time the itinerary is open.
+function AddItemMenu({ pos, G, types, onPick, onDismiss }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onClickOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) onDismiss(); };
+    const onEsc = (e) => { if (e.key === 'Escape') onDismiss(); };
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [onDismiss]);
+
+  return (
+    <div ref={ref} role="menu" style={{
+      position:"fixed", top:pos.top, left:pos.left, zIndex:1000, background:G.white,
+      border:`1px solid ${G.gray200}`, borderRadius:8, boxShadow:"0 6px 20px rgba(0,0,0,0.14)",
+      minWidth:180, padding:4,
+    }}>
+      {types.map(t => (
+        <button key={t.id} role="menuitem" onClick={() => onPick(t.id)}
+          style={{ display:"block", width:"100%", textAlign:"left", border:"none", background:"none",
+            cursor:"pointer", padding:"7px 9px", borderRadius:6, fontSize:12, fontFamily:"'Inter',sans-serif", color:G.gray800 }}
+          onMouseEnter={e => e.currentTarget.style.background = G.gray50}
+          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+          {t.icon} {t.label}
+        </button>
+      ))}
     </div>
   );
 }

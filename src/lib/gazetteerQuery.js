@@ -20,10 +20,41 @@ function mapRow(r) {
   };
 }
 
-// Candidates for resolvePlace(): searches both the raw text and its known
-// canonical spelling ("Benares" -> also searches "varanasi"), so an aliased
-// name reaches the database query, not just the in-memory alias table.
-export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
+// RUN ONCE IN THE SUPABASE SQL EDITOR, same as the gazetteer table itself:
+//
+//   create or replace function search_gazetteer(term text, lim int default 60)
+//   returns setof gazetteer
+//   language sql stable
+//   as $$
+//     select g.* from gazetteer g
+//     where g.name ilike '%' || term || '%'
+//        or g.ascii_name ilike '%' || term || '%'
+//        or exists (
+//          select 1 from unnest(g.alt_names) a where a ilike '%' || term || '%'
+//        )
+//     order by g.population desc nulls last
+//     limit lim;
+//   $$;
+//
+// WHY THIS EXISTS. A name typed by an operator does not have to match
+// GeoNames' own canonical `name` column -- Kushinagar's canonical GeoNames
+// entry is recorded under an older name, with "Kushinagar" appearing only
+// in its alternate names. The `.or()` filter this module used before only
+// ever matched the `name` column: it could rank an alt-name match once
+// fetched (placeResolver.js does that correctly), but it could never FETCH
+// that row from the million-row table in the first place, because
+// PostgREST's plain filter syntax has no operator for "does any element of
+// this array match this pattern". A SQL function is what actually reaches
+// inside the array. Where the function has not been created yet (a fresh
+// database before this migration is run), both exported functions fall
+// back to the previous name-only query rather than returning nothing.
+async function viaRpc(db, term) {
+  const { data, error } = await db.rpc("search_gazetteer", { term, lim: 60 });
+  if (error || !data) return null;
+  return data.map(mapRow);
+}
+
+async function viaNameFilter(db, query, { limit = 60 } = {}) {
   const raw = normalizePlaceName(query);
   if (!raw) return [];
   const canon = canonicalName(query);
@@ -39,11 +70,32 @@ export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
   }
 }
 
-// Typeahead for the picker's search box: prefix match, which is what the
-// gazetteer_name_idx (lower(name)) is built to serve quickly at this scale.
+// Candidates for resolvePlace(): searches name, ascii_name and alt_names.
+export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
+  const raw = normalizePlaceName(query);
+  if (!raw) return [];
+  try {
+    const rpcResult = await viaRpc(db, raw);
+    if (rpcResult) return rpcResult.slice(0, limit);
+  } catch (e) {
+    // fall through to the name-only path below
+  }
+  return viaNameFilter(db, query, { limit });
+}
+
+// Typeahead for the picker's search box.
 export async function searchGazetteerDb(db, term, { limit = 15, country = null } = {}) {
   const q = normalizePlaceName(term);
   if (q.length < 2) return [];
+  try {
+    const rpcResult = await viaRpc(db, q);
+    if (rpcResult) {
+      const filtered = country ? rpcResult.filter(r => r.country === country) : rpcResult;
+      return filtered.slice(0, limit);
+    }
+  } catch (e) {
+    // fall through
+  }
   try {
     let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `${q}*`);
     if (country) builder = builder.eq("country", country);
@@ -54,3 +106,4 @@ export async function searchGazetteerDb(db, term, { limit = 15, country = null }
     return [];
   }
 }
+

@@ -91,3 +91,37 @@ describe('1.7/1.9 DayItemsEditor', () => {
     expect(screen.getByText(/No items yet/)).toBeTruthy();
   });
 });
+
+describe('the Add Item menu escapes an overflow:hidden ancestor', () => {
+  // Regression test: each day card is rendered with overflow:hidden (to
+  // clip its own rounded corners), and the menu used to be an absolutely
+  // positioned child of that card -- so it was clipped to invisible the
+  // moment a day had enough items for the menu to spill past the card's
+  // bottom edge. The fix renders the menu through a portal onto
+  // document.body, which this test proves by finding it OUTSIDE the
+  // clipping container rather than inside it.
+  it('renders the open menu as a direct child of document.body, not inside the clipping wrapper', () => {
+    const { container } = render(
+      <div style={{ overflow: 'hidden', height: 40 }} data-testid="clipper">
+        <DayItemsEditor items={[]} onChange={() => {}} G={G} inp={{}}/>
+      </div>
+    );
+    fireEvent.click(screen.getByText('+ Add Item ▾'));
+    const menu = screen.getByRole('menu');
+    const clipper = container.querySelector('[data-testid="clipper"]');
+    expect(clipper.contains(menu)).toBe(false);
+    expect(document.body.contains(menu)).toBe(true);
+  });
+
+  it('closes the menu on outside click and on Escape', () => {
+    render(<DayItemsEditor items={[]} onChange={() => {}} G={G} inp={{}}/>);
+    fireEvent.click(screen.getByText('+ Add Item ▾'));
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(screen.getByText('+ Add Item ▾'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});

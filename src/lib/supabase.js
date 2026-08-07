@@ -209,7 +209,26 @@ export const _supa = (() => {
     },
   };
 
-  return { from, auth };
+  // Calls a Postgres function via PostgREST's /rpc/ endpoint. Added for
+  // search_gazetteer() -- see gazetteerQuery.js for why a plain column
+  // filter cannot do what that function does (matching inside the
+  // alt_names array, which PostgREST's own filter syntax has no operator
+  // for).
+  const rpc = async (fnName, params = {}) => {
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/${fnName}`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(params),
+      });
+      const data = r.ok ? await r.json() : null;
+      return { data, error: r.ok ? null : { message: await r.text().catch(() => "") } };
+    } catch (e) {
+      return { data: null, error: { message: e.message } };
+    }
+  };
+
+  return { from, auth, rpc };
 })();
 
 const db = _supa;

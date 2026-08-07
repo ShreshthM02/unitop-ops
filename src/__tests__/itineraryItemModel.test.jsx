@@ -99,6 +99,19 @@ describe('item rendering for export', () => {
     expect(itineraryItemHTML({ type:'description', text:'Line 1\nLine 2' })).toContain('white-space:pre-wrap');
   });
 
+  it('never puts an emoji icon into the printed/exported HTML -- that is editor-only decoration', () => {
+    // Regression: sightseeing/transport/stay used to hard-code an icon
+    // (a location pin, a plane, a hotel) directly into this string, which
+    // is what gets printed onto the letterhead. ITINERARY_ITEM_TYPES still
+    // carries icons for the app's own Add Item menu; that is a different,
+    // in-app-only usage and is untouched by this.
+    const emoji = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u;
+    const html = ['route', 'sightseeing', 'transport', 'stay', 'description']
+      .map(type => itineraryItemHTML({ type, text: 'X', distance: 'd', time: 't' }))
+      .join('');
+    expect(emoji.test(html)).toBe(false);
+  });
+
   it('1.10: an item with no content renders nothing at all, not an empty row', () => {
     for (const type of ['route','sightseeing','transport','stay','description']) {
       expect(itineraryItemHTML({ type, text:'' }), type).toBe('');
