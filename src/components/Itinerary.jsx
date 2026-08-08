@@ -43,19 +43,37 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     { id:2, dayLabel:"DAY-2", title:"", meals:["B","L","D"], items:[] },
     { id:3, dayLabel:"DAY-3", title:"", meals:["B","L","D"], items:[] },
   ]);
-  // Closing line / sign-off, detailed-flavor only (the brochure's final
-  // page). Previously hard-coded into buildBrochureHTML with no field to
-  // change it at all.
-  const [closingText, setClosingText] = useState("Tour ends as you leave footprints and take memories.");
+  // Closing line and Remarks, now per flavor -- each was Detailed-only
+  // before. A short internal remark for Brief has no reason to be a long
+  // client-facing paragraph, and vice versa, so each flavor gets its own
+  // independent field rather than one shared text box.
+  const DEFAULT_CLOSING = "Tour ends as you leave footprints and take memories.";
+  const [briefClosingText, setBriefClosingText] = useState(DEFAULT_CLOSING);
+  const [detailedClosingText, setDetailedClosingText] = useState(DEFAULT_CLOSING);
+  const [briefRemarks, setBriefRemarks] = useState("");
+  const [detailedRemarks, setDetailedRemarks] = useState("");
+  const closingText = docFlavor === "brief" ? briefClosingText : detailedClosingText;
+  const setClosingText = docFlavor === "brief" ? setBriefClosingText : setDetailedClosingText;
+  const remarksText = docFlavor === "brief" ? briefRemarks : detailedRemarks;
+  const setRemarksText = docFlavor === "brief" ? setBriefRemarks : setDetailedRemarks;
   const [viewMode, setViewMode] = useState("content");
   const toggles = useLetterheadToggles();
   const { showStamp, showPageNum, headerFooterAllPages, printOnLetterhead } = toggles;
 
   const [versions, setVersions] = useState([]);
-  const [finalVersion, setFinalVersion] = useState(null);
   const [viewingVersion, setViewingVersion] = useState(null);
   const [versionNote, setVersionNote] = useState("");
-  const nextVersion = versions.length ? Math.max(...versions.map(v => v.version)) + 1 : 1;
+
+  // Separate save-history per flavor, restored per your call: it should be
+  // possible to browse and mark final "Brief v3" independently of
+  // "Detailed v2" -- they are different documents in every way that
+  // matters for review and sign-off, even though editing them draws from
+  // one shared working set of days. Old data with no activeTab at all is
+  // treated as Brief's, since Brief is what this document always was
+  // before Detailed existed.
+  const flavorVersions = versions.filter(v => (v.activeTab || "brief") === docFlavor);
+  const finalVersion = (flavorVersions.find(v => v.isFinal) || {}).version || null;
+  const nextVersion = flavorVersions.length ? Math.max(...flavorVersions.map(v => v.version)) + 1 : 1;
 
   const loadVersionIntoDraft = (v) => {
     setTourTitle(v.tourTitle || query.destination || "");
@@ -63,7 +81,10 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     setRoute(v.route || "");
     setDuration(v.duration || duration);
     setItinDays(v.days && v.days.length ? v.days : itinDays);
-    setClosingText(v.closingText || "Tour ends as you leave footprints and take memories.");
+    setBriefClosingText(v.briefClosingText || DEFAULT_CLOSING);
+    setDetailedClosingText(v.detailedClosingText || v.closingText || DEFAULT_CLOSING);
+    setBriefRemarks(v.briefRemarks || "");
+    setDetailedRemarks(v.detailedRemarks || "");
     setRouteMapImage(v.routeMapImage ?? null);
     setDayImageOverrides(v.dayImageOverrides || {});
     setPulledFromCostSheetVersion(v.pulledFromCostSheetVersion ?? null);
@@ -103,9 +124,13 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     // simply renders without photography rather than failing.
     loadPhotoLibrary(db).then(({ photos }) => setPhotoLibrary(photos));
     loadItineraryVersions(db, query.id).then(loaded => {
-      // Single shared history now -- no activeTab filter. Old data saved
-      // before the merge still carries activeTab, and reads in here fine;
-      // it just no longer splits the timeline.
+      // The DRAFT you land on is the single overall latest save, regardless
+      // of which flavor tab was open when it happened -- editing is one
+      // shared working session across both tabs. What IS split by flavor is
+      // the browsable history below (flavorVersions) and each flavor's own
+      // version numbering: two independent, reviewable timelines you can
+      // mark final on their own, even though they both draw from the same
+      // day-by-day working set while you edit.
       if (loaded.length === 0) {
         loadFinalCostSheetVersion(db, query.id).then(finalV => {
           if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
@@ -113,8 +138,6 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         return;
       }
       setVersions(loaded);
-      const finalV = loaded.find(v => v.isFinal);
-      if (finalV) setFinalVersion(finalV.version);
       loadVersionIntoDraft(loaded[loaded.length - 1]);
       loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
@@ -133,7 +156,8 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       // Recorded for anyone reading history, not filtered on any more.
       activeTab: docFlavor,
       days: [...itinDays], note: versionNote,
-      pulledFromCostSheetVersion, routeMapImage, dayImageOverrides, closingText,
+      pulledFromCostSheetVersion, routeMapImage, dayImageOverrides,
+      briefClosingText, detailedClosingText, briefRemarks, detailedRemarks,
     };
     setSaving(true);
     setSaveError(null);
@@ -196,35 +220,44 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
 
+  // Both plain builders share this shape: title block, day-by-day content,
+  // then Remarks (if any) above the per-instance Closing Line (if any)
+  // above the template's own default closing tagline, which always renders
+  // exactly as it did before either of the new fields existed.
+  const buildDayBlocks = (flavor) => itinDays.map(d => {
+    const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
+    return { text: `<div style="margin-bottom:14pt">
+        <div style="font-size:11pt;font-weight:bold;color:#1A3A52;margin-bottom:2pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
+        ${(d.items||[]).map(item => itineraryItemHTML(item, flavor)).join("")}
+        <div style="margin-top:5pt">${mealStr}</div>
+      </div>` };
+  }).map(b => b.text);
+
+  const buildClosingBlock = (tmpl, remarks, closing, stampHTML) => `
+    ${remarks ? `<div style="margin-top:16pt;font-size:9.5pt;color:#333;white-space:pre-wrap"><strong style="color:#1A3A52">Remarks</strong><br/>${remarks}</div>` : ""}
+    ${closing ? `<div style="margin-top:${remarks?"8pt":"16pt"};font-size:9.5pt;color:#333;white-space:pre-wrap">${closing}</div>` : ""}
+    <div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
+      ${tmpl.closingTagline}
+    </div>
+    ${stampHTML}`;
+
+  const titleBlockFor = () => `
+    <div style="text-align:center;margin-bottom:16pt">
+      <div class="inv-title" style="margin-bottom:2pt">${tourTitle||"Tour Itinerary"}</div>
+      <div style="font-size:11pt;font-weight:600;color:#1A3A52">${duration}</div>
+      ${route?`<div style="font-size:10pt;color:#666;margin-top:2pt">${route}</div>`:''}
+      ${tagline?`<div style="font-size:9.5pt;font-style:italic;color:#666;margin-top:4pt">"${tagline}"</div>`:''}
+    </div>
+    <div style="height:2pt;background:linear-gradient(90deg,#cb0f0f,#061bb0);border-radius:2pt;margin-bottom:14pt"></div>
+    <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">ITINERARY</div>`;
+
   // ─── BRIEF: plain paginated letterhead, no photos ─────────────────────
   const buildBriefPrintHTML = (asBlocks) => {
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(briefTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
-    const titleBlock = `
-      <div style="text-align:center;margin-bottom:16pt">
-        <div class="inv-title" style="margin-bottom:2pt">${tourTitle||"Tour Itinerary"}</div>
-        <div style="font-size:11pt;font-weight:600;color:#1A3A52">${duration}</div>
-        ${route?`<div style="font-size:10pt;color:#666;margin-top:2pt">${route}</div>`:''}
-        ${tagline?`<div style="font-size:9.5pt;font-style:italic;color:#666;margin-top:4pt">"${tagline}"</div>`:''}
-      </div>
-      <div style="height:2pt;background:linear-gradient(90deg,#cb0f0f,#061bb0);border-radius:2pt;margin-bottom:14pt"></div>
-      <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">ITINERARY</div>`;
-    const dayBlocks = itinDays.map(d => {
-      const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-      return `<div style="padding:9pt 0;border-bottom:0.5pt solid #eee">
-        <div style="font-size:11pt;font-weight:bold;color:#1A3A52">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-        ${(d.items||[]).map(itineraryItemHTML).join("")}
-        <div style="margin-top:5pt">${mealStr}</div>
-      </div>`;
-    });
-    const closingBlock = `
-      <div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
-        ${tmpl.closingTagline}
-      </div>
-      ${stampHTML}`;
     const docArgs = {
       title: `${tourTitle} — Brief Itinerary`,
-      bodyBlocks: [titleBlock, ...dayBlocks, closingBlock],
+      bodyBlocks: [titleBlockFor(), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
     if (asBlocks) return docArgs;
@@ -242,38 +275,30 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const printBrief = async () => printHTML(await buildBriefPrintHTML());
 
   // ─── DETAILED: plain letterhead (internal) ─────────────────────────────
-  const buildDetailedPrintHTML = () => {
+  // Uses the same paginated/asBlocks builder as Brief now, which is what
+  // makes a Detailed Word export possible -- the old buildLetterheadDocument
+  // path never produced bodyBlocks, only finished HTML.
+  const buildDetailedPrintHTML = (asBlocks) => {
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
-    const titleBlock = `
-      <div style="text-align:center;margin-bottom:16pt">
-        <div class="inv-title" style="margin-bottom:2pt">${tourTitle||"Tour Itinerary"}</div>
-        <div style="font-size:11pt;font-weight:600;color:#1A3A52">${duration}</div>
-        ${route?`<div style="font-size:10pt;color:#666;margin-top:2pt">${route}</div>`:''}
-        ${tagline?`<div style="font-size:9.5pt;font-style:italic;color:#666;margin-top:4pt">"${tagline}"</div>`:''}
-      </div>
-      <div style="height:2pt;background:linear-gradient(90deg,#cb0f0f,#061bb0);border-radius:2pt;margin-bottom:14pt"></div>
-      <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">ITINERARY</div>`;
-    const dayBlocks = itinDays.map(d => {
-      const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-      return `<div style="margin-bottom:16pt">
-        <div style="font-size:12pt;font-weight:bold;color:#1A3A52;margin-bottom:2pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-        ${(d.items||[]).map(itineraryItemHTML).join("")}
-        <div style="margin-top:6pt">${mealStr}</div>
-      </div>`;
-    }).join("");
-    const closingBlock = `
-      <div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
-        ${tmpl.closingTagline}
-      </div>
-      ${stampHTML}`;
-    return buildLetterheadDocument({
+    const docArgs = {
       title: `${tourTitle} — Itinerary`,
-      bodyBlocks: [titleBlock, dayBlocks, closingBlock],
-      headerAllPages: headerFooterAllPages, footerAllPages: headerFooterAllPages, printOnLetterhead, showPageNum,
-    });
+      bodyBlocks: [titleBlockFor(), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
+      headerFooterAllPages, printOnLetterhead, showPageNum,
+    };
+    if (asBlocks) return docArgs;
+    return buildPaginatedLetterheadDocument(docArgs);
   };
-  const printDetailedInternal = () => printHTML(buildDetailedPrintHTML());
+  const exportDetailedDocx = async () => {
+    const args = await buildDetailedPrintHTML(true);
+    const blob = await buildDocxBlobFromBodyBlocks({
+      bodyBlocks: args.bodyBlocks,
+      toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+      orientation: args.orientation,
+    });
+    await downloadDocx(blob, `Detailed Itinerary - ${query.groupName||query.clientName}`);
+  };
+  const printDetailedInternal = async () => printHTML(await buildDetailedPrintHTML());
 
   // ─── DETAILED: client-facing brochure, with photos and generated map ──
   const buildBrochureHTML = () => {
@@ -296,7 +321,13 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
         mapHTML, sectorTableHTML, gatewayNote,
         routeMapImage,
-        closingText,
+        // The brochure is always Detailed's own document regardless of
+        // which tab happens to be open when Export is clicked -- it must
+        // use detailedRemarks/detailedClosingText directly, never the
+        // tab-dependent closingText/remarksText computed above (those are
+        // for the editor fields, which correctly follow the active tab).
+        remarksText: detailedRemarks,
+        closingText: detailedClosingText,
         footerLabel: tourTitle || query.groupName || "",
         measureFn: (html, width) => domMeasureHeightPx(html, width, ctx.doc),
       });
@@ -315,11 +346,11 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     if (docFlavor === "brief") {
       buildBriefPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
     } else {
-      setPreviewHTML(buildDetailedPrintHTML());
+      buildDetailedPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
     }
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, docFlavor, tourTitle, tagline, route, duration, itinDays, closingText, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
+  }, [viewMode, docFlavor, tourTitle, tagline, route, duration, itinDays, briefClosingText, detailedClosingText, briefRemarks, detailedRemarks, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -329,22 +360,24 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         <div style={{ background:G.navy, padding:"14px 20px", flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY · {versions.length>0?`v${nextVersion-1} saved`:"unsaved"}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>ITINERARY · {flavorVersions.length>0?`v${nextVersion-1} saved`:"unsaved"}</div>
               <div style={{ fontSize:17, fontWeight:700, color:G.white, fontFamily:"'Playfair Display',serif" }}>
                 {query.groupName||query.clientName||query.agentName}
               </div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>{query.tourFileId||query.id} · {query.destination}</div>
             </div>
             <VersionDropdown
-              versions={versions}
+              versions={flavorVersions}
               viewingVersion={viewingVersion}
               displayVersion={nextVersion-1}
               finalVersion={finalVersion}
               onSelectVersion={loadVersionIntoDraft}
               onMarkFinal={(v) => {
-                setFinalVersion(v.version);
                 markItineraryVersionFinal(db,query.id,v.version,v.activeTab || docFlavor);
-                logAudit(db,query.id,currentUser?.name,`Itinerary v${v.version} marked final`);
+                setVersions(prev => prev.map(x =>
+                  (x.activeTab || "brief") !== (v.activeTab || docFlavor) ? x
+                  : { ...x, isFinal: x.version === v.version }));
+                logAudit(db,query.id,currentUser?.name,`Itinerary v${v.version} (${v.activeTab || docFlavor}) marked final`);
               }}
               readOnly={readOnly}
               G={G}
@@ -478,14 +511,16 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
             <button className="btn btn-ghost" style={{ fontSize:11, marginBottom:24 }} onClick={addDay}>+ Add Day</button>
 
-            {docFlavor === "detailed" && (
-              <div style={{ background:G.white, border:`1px solid ${G.gray200}`, borderRadius:10, padding:14, marginBottom:24 }}>
-                <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Closing Line / Sign-off</div>
-                <input style={inp} value={closingText} disabled={readOnly}
-                  onChange={e=>setClosingText(e.target.value)}
-                  placeholder="Tour ends as you leave footprints and take memories."/>
-              </div>
-            )}
+            <div style={{ background:G.white, border:`1px solid ${G.gray200}`, borderRadius:10, padding:14, marginBottom:24 }}>
+              <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Remarks</div>
+              <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={remarksText} disabled={readOnly}
+                onChange={e=>setRemarksText(e.target.value)}
+                placeholder="Internal note or reminder for this document"/>
+              <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", margin:"12px 0 3px" }}>Closing Line / Sign-off</div>
+              <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={closingText} disabled={readOnly}
+                onChange={e=>setClosingText(e.target.value)}
+                placeholder="Tour ends as you leave footprints and take memories."/>
+            </div>
           </div>
         ) : (
           <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
@@ -502,7 +537,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
             { id:"brief-pdf",  label:"Brief PDF",       icon:"📕", onSelect: printBrief,     hint:"Plain letterhead, no photos" },
             { id:"brief-word", label:"Brief Word",      icon:"📄", onSelect: exportBriefDocx, hint:"Downloads a .docx file" },
             { id:"det-pdf",    label:"Detailed PDF",    icon:"📗", onSelect: printBrochure,  hint:"Client-facing, with photos", separatorBefore:true },
-            { id:"det-internal", label:"Detailed Internal PDF", icon:"📘", onSelect: printDetailedInternal, hint:"Plain letterhead layout" },
+            { id:"det-word",   label:"Detailed Word",   icon:"📄", onSelect: exportDetailedDocx, hint:"Downloads a .docx file" },
             { id:"print",      label:"Print",           icon:"🖨", onSelect: docFlavor === "brief" ? printBrief : printDetailedInternal, separatorBefore:true },
           ]}/>
           {!readOnly && <button onClick={saveVersion} disabled={saving} className="btn btn-primary">{saving ? "Saving…" : `💾 Save v${nextVersion}`}</button>}

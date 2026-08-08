@@ -320,7 +320,7 @@ export function createMeasurementContext(cssText) {
 // doc defaults to the global document for backward compatibility /
 // direct test use, but callers that care about real print-accurate
 // measurement should pass the doc from createMeasurementContext.
-function domMeasureHeightPx(html, containerWidthPx, doc = document) {
+export function domMeasureHeightPx(html, containerWidthPx, doc = document) {
   if (typeof document === "undefined") {
     throw new Error("domMeasureHeightPx requires a real browser DOM. Pass an explicit measureFn to paginateBodyBlocks when calling outside a browser (e.g. in tests).");
   }

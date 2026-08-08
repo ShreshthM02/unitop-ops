@@ -2,14 +2,17 @@ import { describe, it, expect } from 'vitest';
 import {
   ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem,
   migrateItineraryDay, migrateItineraryDays, reorderItems, itineraryItemHTML,
+  itemTextForFlavor, withItemTextForFlavor,
 } from '../lib/utils.js';
 
 describe('itinerary item model', () => {
-  it('offers the four requested types for Brief, plus Description only for Detailed', () => {
-    const brief = addableItemTypes('brief').map(t => t.id);
-    const detailed = addableItemTypes('detailed').map(t => t.id);
-    expect(brief).toEqual(['route', 'sightseeing', 'transport', 'stay']);
-    expect(detailed).toEqual(['route', 'sightseeing', 'transport', 'stay', 'description']);
+  it('offers every type to both Brief and Detailed -- description and remarks are no longer Detailed-only', () => {
+    // Gating used to exist because description was shared text that would
+    // leak between flavors. It is now independent per flavor at the item
+    // level (itemTextForFlavor), so there is no longer a reason to hide the
+    // type itself from Brief.
+    const all = ['route', 'sightseeing', 'transport', 'stay', 'description', 'remarks'];
+    expect(addableItemTypes().map(t => t.id)).toEqual(all);
   });
 
   it('gives every new item a unique id, so reordering and React keys stay stable', () => {
@@ -177,5 +180,89 @@ describe('legacy Detailed `transports` rows (follow-up: the item model removed t
     expect(migrateItineraryDay(day)).toBe(day);
     const emptyArr = { id:2, items:[], transports:[] };
     expect(migrateItineraryDay(emptyArr)).toBe(emptyArr);
+  });
+});
+
+describe('description text is independent per flavor; every other type is shared', () => {
+  it('Brief always reads/writes item.text, never detailedText', () => {
+    const item = { id:'d1', type:'description', text:'Brief line', detailedText:'Longer detailed line' };
+    expect(itemTextForFlavor(item, 'brief')).toBe('Brief line');
+    const updated = withItemTextForFlavor(item, 'brief', 'New brief line');
+    expect(updated.text).toBe('New brief line');
+    expect(updated.detailedText).toBe('Longer detailed line'); // untouched
+  });
+
+  it('Detailed falls back to Brief\u2019s text until it has its own -- "detailed takes what brief offers"', () => {
+    const item = { id:'d1', type:'description', text:'Brief line' };
+    expect(itemTextForFlavor(item, 'detailed')).toBe('Brief line');
+  });
+
+  it('once Detailed has its own text, it no longer reads Brief\u2019s -- "not vice versa"', () => {
+    const item = { id:'d1', type:'description', text:'Brief line', detailedText:'Its own detailed line' };
+    expect(itemTextForFlavor(item, 'detailed')).toBe('Its own detailed line');
+    const updated = withItemTextForFlavor(item, 'detailed', 'Changed detailed line');
+    expect(updated.detailedText).toBe('Changed detailed line');
+    expect(updated.text).toBe('Brief line'); // Brief's own line is never altered by Detailed edits
+  });
+
+  it('every other item type shares the same text regardless of flavor', () => {
+    for (const type of ['route', 'sightseeing', 'transport', 'stay', 'remarks']) {
+      const item = { id:'x', type, text:'Shared content' };
+      expect(itemTextForFlavor(item, 'brief')).toBe('Shared content');
+      expect(itemTextForFlavor(item, 'detailed')).toBe('Shared content');
+    }
+  });
+});
+
+describe('transport items distinguish flight from train explicitly', () => {
+  it('defaults new transport items to flight', () => {
+    expect(newItineraryItem('transport').mode).toBe('flight');
+  });
+
+  it('the export renders a different label for each mode -- no shared icon to confuse them', () => {
+    const flight = itineraryItemHTML({ type:'transport', text:'6E 2134', mode:'flight' });
+    const train = itineraryItemHTML({ type:'transport', text:'12345', mode:'train' });
+    expect(flight).toContain('Flight');
+    expect(flight).not.toContain('>Train<');
+    expect(train).toContain('Train');
+    expect(train).not.toContain('>Flight<');
+  });
+
+  it('an old item with no mode at all still renders (defaults to Flight in the export, not a crash)', () => {
+    expect(() => itineraryItemHTML({ type:'transport', text:'Old data, no mode field' })).not.toThrow();
+  });
+});
+
+describe('remarks item type', () => {
+  it('has no icon -- the word "Remarks" is the label', () => {
+    expect(ITINERARY_ITEM_TYPES.find(t => t.id === 'remarks').icon).toBeNull();
+  });
+
+  it('renders in the export with a REMARKS label, whitespace preserved for multi-line notes', () => {
+    const html = itineraryItemHTML({ type:'remarks', text:'Line one\nLine two' });
+    expect(html).toContain('Remarks');
+    expect(html).toContain('white-space:pre-wrap');
+  });
+});
+
+describe('export labels: minimal typographic marks, not emoji, and no colour-coding by type', () => {
+  it('sightseeing, stay and remarks each get a distinct text label instead of an icon', () => {
+    expect(itineraryItemHTML({ type:'sightseeing', text:'Temple' })).toContain('Sightseeing');
+    expect(itineraryItemHTML({ type:'stay', text:'Hotel X' })).toContain('Stay');
+    expect(itineraryItemHTML({ type:'remarks', text:'Note' })).toContain('Remarks');
+  });
+
+  it('route and description stay unlabelled, exactly as before', () => {
+    const route = itineraryItemHTML({ type:'route', text:'A - B' });
+    const desc = itineraryItemHTML({ type:'description', text:'Some prose.' });
+    expect(route).not.toMatch(/Route|Movement/);
+    expect(desc).not.toMatch(/Description/);
+  });
+
+  it('no emoji anywhere in any export label', () => {
+    const emoji = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u;
+    const html = ['sightseeing','transport','stay','remarks'].map(type =>
+      itineraryItemHTML({ type, text:'X', mode:'train' })).join('');
+    expect(emoji.test(html)).toBe(false);
   });
 });

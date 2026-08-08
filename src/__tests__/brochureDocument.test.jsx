@@ -337,3 +337,34 @@ describe('supporting pages', () => {
     expect(html).toContain('hello@x.com');
   });
 });
+
+describe('remarksText folds into the last page above the closing line', () => {
+  const days = [{ id:1, dayLabel:'Day 1', title:'Arrival', items:[{ id:'a', type:'sightseeing', text:'X' }] }];
+
+  it('renders remarks before closingText, both on the last page', () => {
+    const html = buildBrochureDocument({
+      cover: { title:'T' }, days,
+      remarksText: 'Please confirm the vegetarian meal request.',
+      closingText: 'Tour ends as you leave footprints and take memories.',
+    });
+    const remarksIdx = html.indexOf('Please confirm the vegetarian meal request.');
+    const closingIdx = html.indexOf('Tour ends as you leave footprints and take memories.');
+    expect(remarksIdx).toBeGreaterThan(-1);
+    expect(closingIdx).toBeGreaterThan(remarksIdx);
+  });
+
+  it('preserves multi-line remarks', () => {
+    const html = buildBrochureDocument({ cover:{ title:'T' }, days, remarksText: 'Line one\nLine two' });
+    expect(html).toContain('white-space:pre-wrap');
+  });
+
+  it('omits the signoff fold entirely when there is nothing to show', () => {
+    const html = buildBrochureDocument({ cover:{ title:'T' }, days });
+    expect(html).not.toContain('class="bro-signoff"');
+  });
+
+  it('still folds in when only remarks is given, with no closing text', () => {
+    const html = buildBrochureDocument({ cover:{ title:'T' }, days, remarksText: 'Just a note.' });
+    expect(html).toContain('Just a note.');
+  });
+});

@@ -1582,30 +1582,77 @@ export function mergeDocTemplates(defaults, saved) {
 // movement, then a flight, then the overnight stay, in that order. So a day
 // now carries an ORDERED LIST of typed items instead.
 //
-// Types offered when adding: route, sightseeing, transport (Flight/Train),
-// stay (Overnight Stay). `description` is a fifth type that exists in the
-// model but is only offered in the Detailed Itinerary's add menu -- it is
-// also where legacy per-day description text lands on migration, so no
-// existing content is dropped just because Brief no longer offers the field.
+// Types offered when adding: route, sightseeing, transport (flight or
+// train, distinguished by `mode`), stay (Overnight Stay), description,
+// remarks. Description and remarks are both available to Brief now --
+// see below for how each stays independent between Brief and Detailed
+// without one flavor's content leaking into the other.
 export const ITINERARY_ITEM_TYPES = [
   { id: "route",       label: "Route / Movement", icon: "🚌", fields: ["text", "distance", "time"] },
   { id: "sightseeing", label: "Sightseeing",      icon: "📍", fields: ["text"] },
   { id: "transport",   label: "Flight / Train",   icon: "✈",  fields: ["text"] },
   { id: "stay",        label: "Overnight Stay",   icon: "🏨", fields: ["text"] },
   { id: "description", label: "Description",      icon: "📝", fields: ["text"] },
+  // No icon in the editor either -- a remark is a note, not a movement or a
+  // stop, and an icon here would imply it belongs to the same family of
+  // structural items as the rest. The word itself is the clearest signal.
+  { id: "remarks",     label: "Remarks",          icon: null, fields: ["text"] },
 ];
 
 export const ITINERARY_ITEM_TYPE_IDS = ITINERARY_ITEM_TYPES.map(t => t.id);
 
-// Types a user can ADD by hand, per document. Detailed gets description
-// blocks (1.12); Brief does not.
-export const addableItemTypes = (style) =>
-  ITINERARY_ITEM_TYPES.filter(t => t.id !== "description" || style === "detailed");
+// Both flavors can now add every type. Description and remarks used to be
+// gated to Detailed-only; the gate is gone because the fields underneath
+// them are no longer shared text -- see itemTextForFlavor below.
+export const addableItemTypes = () => ITINERARY_ITEM_TYPES;
 
 let _itemSeq = 0;
 export function newItineraryItem(type) {
   _itemSeq += 1;
-  return { id: `it-${Date.now()}-${_itemSeq}`, type, text: "", distance: "", time: "" };
+  const base = { id: `it-${Date.now()}-${_itemSeq}`, type, text: "", distance: "", time: "" };
+  // Flight vs train needs an explicit choice, not a guess from free text --
+  // guessing from words like "flight" or "train" would silently mislabel
+  // anything typed differently (a flight number alone, an airline code).
+  // Defaults to flight since that has been the overwhelmingly more common
+  // case in this business's existing data.
+  if (type === "transport") base.mode = "flight";
+  return base;
+}
+
+// The text to show for an item UNDER A GIVEN FLAVOR.
+//
+// Every item type except description is single-text: the same route,
+// sightseeing stop, flight, hotel or remark is true regardless of which
+// document you are printing, so both flavors read and write the same
+// `item.text`.
+//
+// Description is the one type that genuinely needs to differ: a short
+// brief-facing line and a longer client-facing paragraph are not the same
+// content awkwardly forced into one field, they are legitimately two
+// different pieces of writing. So a description item carries a second
+// field, `detailedText`, alongside the ordinary `text`:
+//   - Brief always reads and writes `text`.
+//   - Detailed reads `detailedText` if it has ever been given one, and
+//     otherwise falls back to showing `text` -- Detailed starts from
+//     whatever Brief already says, which is what "detailed takes what
+//     brief offers" means, but Brief can never see anything typed only
+//     under Detailed, which is the "not vice versa" half.
+//   - Editing under Detailed always writes `detailedText`, creating that
+//     independent field the first time it happens; it never touches
+//     `text`, so Brief's own line is never altered by Detailed edits.
+export function itemTextForFlavor(item, flavor) {
+  if (!item) return "";
+  if (item.type === "description" && flavor === "detailed") {
+    return item.detailedText != null ? item.detailedText : (item.text || "");
+  }
+  return item.text || "";
+}
+
+export function withItemTextForFlavor(item, flavor, value) {
+  if (item.type === "description" && flavor === "detailed") {
+    return { ...item, detailedText: value };
+  }
+  return { ...item, text: value };
 }
 
 // True once a day has been converted. Old rows have no `items` array at all.
@@ -1701,26 +1748,43 @@ export function reorderItems(items, from, to) {
 
 // Renders one item as print HTML. Kept beside the model so the Brief and
 // Detailed documents cannot drift in how they present the same item.
-export function itineraryItemHTML(item) {
+//
+// LABELS, NOT ICONS. Emoji icons were tried and removed once already for
+// looking unprofessional on a letterhead document; then removing them
+// entirely left sightseeing, a flight, a train and an overnight stay all
+// reading as identical unlabelled lines, which lost real information (most
+// pointedly, a flight and a train became visually indistinguishable). The
+// replacement is typographic: a small, muted, letter-spaced uppercase word
+// ahead of the line -- SIGHTSEEING, FLIGHT, TRAIN, STAY, REMARKS -- reading
+// as refined document typography rather than clip-art, while still telling
+// the two transport modes apart at a glance, which no shared icon could.
+// Route and description stay unlabelled, as they always were: a route line
+// is self-evidently a route from its bold movement text, and a description
+// is self-evidently prose from its paragraph styling.
+function itemLabel(text) {
+  return `<span style="font-size:7pt;font-weight:700;letter-spacing:0.8pt;color:#9CA3AF;text-transform:uppercase;margin-right:5pt">${text}</span>`;
+}
+
+export function itineraryItemHTML(item, flavor = "brief") {
   if (!item) return "";
-  const text = (item.text || "").trim();
+  const text = (itemTextForFlavor(item, flavor) || "").trim();
   const meta = [item.distance, item.time].filter(Boolean).join(" / ");
   switch (item.type) {
     case "route":
       if (!text && !meta) return "";
       return `<div style="font-size:9.5pt;color:#333;margin:2pt 0"><strong>${text}</strong>${meta ? ` <span style="color:#888">(${meta})</span>` : ""}</div>`;
     case "sightseeing":
-      // No icon here -- this string is printed onto the letterhead, not
-      // shown in the editor. ITINERARY_ITEM_TYPES above carries the icon
-      // for the app's own Add Item menu and item rows; that usage is fine
-      // and stays. A client-facing document is a different audience.
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
-    case "transport":
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${itemLabel("Sightseeing")}${text}</div>` : "";
+    case "transport": {
+      const mode = item.mode === "train" ? "Train" : "Flight";
+      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${itemLabel(mode)}${text}</div>` : "";
+    }
     case "stay":
-      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">${text}</div>` : "";
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">${itemLabel("Stay")}${text}</div>` : "";
     case "description":
       return text ? `<div style="font-size:9.5pt;color:#333;margin:3pt 0;white-space:pre-wrap">${text}</div>` : "";
+    case "remarks":
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap">${itemLabel("Remarks")}${text}</div>` : "";
     default:
       return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
   }

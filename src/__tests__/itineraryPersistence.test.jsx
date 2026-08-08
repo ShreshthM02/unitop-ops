@@ -24,15 +24,15 @@ const fakeQuery = { id: 'UTQ-2026-700', groupName: 'Itinerary Persistence Test',
 beforeEach(() => { mockDb.from.mockClear(); });
 
 // Brief and Detailed Itinerary were split into two separate components on
-// 2026-07-24, then merged back into ONE document (Itinerary) with a
-// Brief/Detailed flavor toggle -- they always shared the same day-by-day
-// structure and the same `itineraries` table, split only by an active_tab
-// tag on each saved version. That split is now gone from how history is
-// READ: loadItineraryVersions returns every version regardless of which
-// flavor was active when it was saved, and the whole list is one shared
-// timeline. active_tab is still WRITTEN on save (recording which flavor was
-// open at the time, for anyone reading old data), but nothing filters on it
-// any more.
+// 2026-07-24, merged into one document (Itinerary) with a Brief/Detailed
+// flavor toggle, then had their SAVE HISTORY split apart again by explicit
+// request: it should be possible to browse and mark final "Brief v3"
+// independently of "Detailed v2". What stays merged is the live editing
+// draft -- one shared working set of days, loaded as the single overall
+// latest save regardless of which flavor tag it carries -- while the
+// version DROPDOWN and NEXT-VERSION NUMBERING are filtered per flavor, so
+// each flavor keeps its own independent, reviewable timeline even though
+// both draw from the same table and the same in-progress draft.
 
 describe('Itinerary: real versioned persistence (Phase 0 of the Document Chain plan), now a single shared history', () => {
   it('calls loadItineraryVersions (via db.from("itineraries")) on mount', async () => {
@@ -82,7 +82,7 @@ describe('Itinerary: real versioned persistence (Phase 0 of the Document Chain p
     expect(await screen.findByText(/ITINERARY/)).toBeTruthy();
   });
 
-  it('loads EVERY saved version regardless of which flavor tag it carries -- one shared timeline, not two filtered ones', async () => {
+  it('the draft you land on is the overall latest save regardless of flavor tag, but the version DROPDOWN and NUMBERING are per-flavor', async () => {
     const versionRows = [
       { version: 1, tour_title: 'First Save', route: 'Delhi - Leh - Alchi', active_tab: 'brief',
         days: [{id:1,dayLabel:'DAY-1',title:'Custom Title',meals:['B'],items:[]}], is_final: false },
@@ -104,19 +104,49 @@ describe('Itinerary: real versioned persistence (Phase 0 of the Document Chain p
     vi.resetModules();
     const { default: It } = await import('../components/Itinerary.jsx');
     render(<It query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    // The LATEST version loads into the draft regardless of which flavor
-    // tag it was saved under -- version 2, tagged "detailed", is what shows.
+    // The DRAFT is the overall latest save, whichever tab it was saved
+    // under -- editing is one shared working session.
     await waitFor(() => expect(screen.getByDisplayValue('Second Save (Detailed Tab Open)')).toBeTruthy());
     expect(screen.getByDisplayValue('Delhi - Leh - Alchi v2')).toBeTruthy();
-    // Next version is 3, continuing the ONE shared sequence -- not 2 (which
-    // would mean the "detailed" row above was invisible to this load).
-    expect(screen.getAllByText(/💾 Save v3/).length).toBeGreaterThan(0);
+    // The document opens on the Brief tab by default, and Brief's own
+    // history has exactly ONE save (v1) -- so its next save is v2, not v3.
+    // A shared/single counter would show v3 here; per-flavor numbering
+    // shows v2, which is what distinguishes the two behaviours.
+    expect(screen.getAllByText(/💾 Save v2/).length).toBeGreaterThan(0);
   });
 
-  it('the version dropdown shows both flavors\u2019 saves in one list, and marking final works regardless of which flavor a version was saved under', async () => {
+  it('switching to the Detailed tab shows ITS OWN next version number, independent of Brief\u2019s', async () => {
     const versionRows = [
-      { version: 1, tour_title: 'Brief Save', route: '', active_tab: 'brief', days: [], is_final: false },
-      { version: 2, tour_title: 'Detailed Save', route: '', active_tab: 'detailed', days: [], is_final: true },
+      { version: 1, tour_title: 'Brief v1', route: '', active_tab: 'brief', days: [], is_final: false },
+      { version: 2, tour_title: 'Brief v2', route: '', active_tab: 'brief', days: [], is_final: false },
+      { version: 1, tour_title: 'Detailed v1', route: '', active_tab: 'detailed', days: [], is_final: false },
+    ];
+    const db = {
+      from: vi.fn((t) => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: t === 'itineraries' ? versionRows : [], error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: It } = await import('../components/Itinerary.jsx');
+    render(<It query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getAllByText(/💾 Save v3/).length).toBeGreaterThan(0)); // Brief: v1,v2 saved -> next v3
+    fireEvent.click(screen.getByText('Detailed'));
+    // Detailed only has v1 saved -> next is v2, a completely different
+    // counter from Brief's, proving the two histories are independent.
+    await waitFor(() => expect(screen.getAllByText(/💾 Save v2/).length).toBeGreaterThan(0));
+  });
+
+  it('the version dropdown for the active flavor only shows that flavor\u2019s own saves, and marking final is scoped to it', async () => {
+    const versionRows = [
+      { version: 1, tour_title: 'Brief Save', route: '', active_tab: 'brief', days: [], is_final: true },
+      { version: 1, tour_title: 'Detailed Save', route: '', active_tab: 'detailed', days: [], is_final: false },
     ];
     const db = {
       from: vi.fn((t) => {
@@ -134,11 +164,13 @@ describe('Itinerary: real versioned persistence (Phase 0 of the Document Chain p
     const { default: It } = await import('../components/Itinerary.jsx');
     render(<It query={fakeQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => expect(screen.getByDisplayValue('Detailed Save')).toBeTruthy());
+    // The draft loaded is Detailed's row (last in the array), but the doc
+    // opens on Brief's tab -- Brief's dropdown should show ONLY Brief's own
+    // final star, from Brief's v1, not Detailed's.
     const toggle = Array.from(document.querySelectorAll('button'))
       .find(b => b.textContent.includes('▾') && !b.textContent.includes('Export'));
     expect(toggle, 'version dropdown toggle not found').toBeTruthy();
     fireEvent.click(toggle);
-    // v2 (saved under the Detailed tag) is final -- shown in one shared list.
     expect(screen.getByText('★')).toBeTruthy();
   });
 });

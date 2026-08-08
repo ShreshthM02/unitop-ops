@@ -128,7 +128,7 @@ describe('Itinerary offers distinct Brief and Detailed exports, not the generic 
     expect(screen.getByText('📕 Brief PDF')).toBeTruthy();
     expect(screen.getByText('📄 Brief Word')).toBeTruthy();
     expect(screen.getByText('📗 Detailed PDF')).toBeTruthy();
-    expect(screen.getByText('📘 Detailed Internal PDF')).toBeTruthy();
+    expect(screen.getByText('📄 Detailed Word')).toBeTruthy();
     expect(screen.getByText('🖨 Print')).toBeTruthy();
   });
 });

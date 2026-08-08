@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, reorderItems } from './utils.js';
+import { ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, reorderItems, itemTextForFlavor, withItemTextForFlavor } from './utils.js';
 
-// Editor for one day's ordered list of typed items. Shared by Brief and
-// Detailed Itinerary so the two cannot drift in how the same item is edited
-// -- Detailed differs only in offering the Description type (1.12).
+// Editor for one day's ordered list of typed items. Shared by both flavors
+// of the Itinerary document so the two cannot drift in how the same item
+// type is edited. `flavor` ('brief' | 'detailed') only matters for the
+// description type, whose text is independent per flavor -- see
+// itemTextForFlavor/withItemTextForFlavor in utils.js for why.
 //
 // Drag-and-drop is hand-rolled on native HTML5 drag events rather than
 // pulling in a library. This is a short single-column list with no nesting,
@@ -15,7 +17,13 @@ import { ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, reorderItems 
 // the only way to reorder on a tablet, and must stay.
 const typeMeta = (id) => ITINERARY_ITEM_TYPES.find(t => t.id === id) || ITINERARY_ITEM_TYPES[0];
 
-export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, inp, readOnly }) {
+// Types whose text is naturally a paragraph rather than a single line --
+// rendered as a textarea so multi-line writing doesn't fight a single-row
+// input. Both were single-line inputs before; description in particular was
+// explicitly asked to become "a broader one paragraph style" box.
+const MULTILINE_TYPES = new Set(["description", "remarks"]);
+
+export function DayItemsEditor({ items, onChange, style: flavor = "brief", G, inp, readOnly }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -50,6 +58,7 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
   const remove = (i) => onChange(list.filter((_, idx) => idx !== i));
   const move = (from, to) => onChange(reorderItems(list, from, to));
   const add = (type) => { setAddOpen(false); onChange([...list, newItineraryItem(type)]); };
+  const setText = (i, value) => onChange(list.map((it, idx) => idx === i ? withItemTextForFlavor(it, flavor, value) : it));
 
   const onDrop = (i) => {
     if (dragIndex !== null && dragIndex !== i) move(dragIndex, i);
@@ -68,6 +77,8 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
         const meta = typeMeta(item.type);
         const isDragging = dragIndex === i;
         const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
+        const multiline = MULTILINE_TYPES.has(item.type);
+        const value = itemTextForFlavor(item, flavor);
         return (
           <div
             key={item.id}
@@ -78,29 +89,57 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
             onDrop={(e) => { e.preventDefault(); onDrop(i); }}
             onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
             style={{
-              display:"flex", alignItems:"flex-start", gap:8, marginBottom:6, padding:"7px 8px",
+              display:"flex", alignItems: multiline ? "flex-start" : "flex-start", gap:8, marginBottom:6, padding:"7px 8px",
               borderRadius:7, background: isDragging ? G.gray100 : G.white,
               border:`1px solid ${isOver ? G.accent : G.gray200}`,
               borderTop: isOver ? `2px solid ${G.accent}` : `1px solid ${G.gray200}`,
               opacity: isDragging ? 0.5 : 1,
             }}>
             <span title="Drag to reorder" style={{ cursor: readOnly ? "default" : "grab", color:G.gray400, fontSize:13, lineHeight:"22px", userSelect:"none" }}>⠿</span>
-            <span style={{ fontSize:12, lineHeight:"22px" }} title={meta.label}>{meta.icon}</span>
+            {meta.icon
+              ? <span style={{ fontSize:12, lineHeight:"22px" }} title={meta.label}>{meta.icon}</span>
+              : <span style={{ fontSize:9, lineHeight:"22px", color:G.gray400, fontWeight:700, letterSpacing:"0.5px" }} title={meta.label}>{meta.label.toUpperCase()}</span>}
 
-            <div style={{ flex:1, display:"flex", gap:6 }}>
-              <input
-                style={{ ...inp, flex:1 }}
-                value={item.text || ""}
-                disabled={readOnly}
-                onChange={(e) => update(i, { text: e.target.value })}
-                placeholder={
-                  item.type === "route" ? "e.g. Leh – Alchi – Leh"
-                  : item.type === "sightseeing" ? "e.g. Mahabodhi Temple"
-                  : item.type === "transport" ? "e.g. Delhi / Varanasi — 6E 2134"
-                  : item.type === "stay" ? "e.g. Hotel Leh Palace / Similar"
-                  : "Detailed description for this day"
-                }
-              />
+            <div style={{ flex:1, display:"flex", flexDirection: multiline ? "column" : "row", gap:6 }}>
+              {item.type === "transport" && !readOnly && (
+                <div style={{ display:"flex", gap:4, marginBottom:2 }}>
+                  {["flight","train"].map(m => (
+                    <button key={m} type="button" onClick={() => update(i, { mode: m })}
+                      style={{ padding:"2px 8px", borderRadius:4, fontSize:10, fontWeight:600, cursor:"pointer",
+                        border:`1px solid ${(item.mode||"flight")===m ? G.accent : G.gray200}`,
+                        background:(item.mode||"flight")===m ? "#FDEDEC" : G.white,
+                        color:(item.mode||"flight")===m ? G.accent : G.gray400 }}>
+                      {m === "flight" ? "Flight" : "Train"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {multiline ? (
+                <textarea
+                  style={{ ...inp, flex:1, minHeight:64, resize:"vertical", fontFamily:"'Inter',sans-serif", lineHeight:1.5 }}
+                  value={value}
+                  disabled={readOnly}
+                  onChange={(e) => setText(i, e.target.value)}
+                  placeholder={
+                    item.type === "description"
+                      ? (flavor === "detailed" ? "Longer, client-facing description for this day" : "Short description for this day")
+                      : "Internal note for this day"
+                  }
+                />
+              ) : (
+                <input
+                  style={{ ...inp, flex:1 }}
+                  value={value}
+                  disabled={readOnly}
+                  onChange={(e) => setText(i, e.target.value)}
+                  placeholder={
+                    item.type === "route" ? "e.g. Leh – Alchi – Leh"
+                    : item.type === "sightseeing" ? "e.g. Mahabodhi Temple"
+                    : item.type === "transport" ? (item.mode === "train" ? "e.g. Delhi / Varanasi — 12345" : "e.g. Delhi / Varanasi — 6E 2134")
+                    : "e.g. Hotel Leh Palace / Similar"
+                  }
+                />
+              )}
               {meta.fields.includes("distance") && (
                 <input style={{ ...inp, width:90 }} value={item.distance || ""} disabled={readOnly}
                   onChange={(e) => update(i, { distance: e.target.value })} placeholder="65 km"/>
@@ -134,7 +173,7 @@ export function DayItemsEditor({ items, onChange, style: docStyle = "brief", G, 
             <AddItemMenu
               pos={menuPos}
               G={G}
-              types={addableItemTypes(docStyle)}
+              types={addableItemTypes()}
               onPick={add}
               onDismiss={() => setAddOpen(false)}
             />,
@@ -175,7 +214,7 @@ function AddItemMenu({ pos, G, types, onPick, onDismiss }) {
             cursor:"pointer", padding:"7px 9px", borderRadius:6, fontSize:12, fontFamily:"'Inter',sans-serif", color:G.gray800 }}
           onMouseEnter={e => e.currentTarget.style.background = G.gray50}
           onMouseLeave={e => e.currentTarget.style.background = "none"}>
-          {t.icon} {t.label}
+          {t.icon ? `${t.icon} ${t.label}` : t.label}
         </button>
       ))}
     </div>

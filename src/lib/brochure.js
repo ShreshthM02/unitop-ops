@@ -622,6 +622,7 @@ export function buildBrochureDocument({
   sectorTableHTML = "",
   gatewayNote = "",
   logo = null,
+  remarksText = "",
   closingText = "",
   contact = null,
   notes = "",
@@ -704,11 +705,15 @@ export function buildBrochureDocument({
   // Closing folded into the foot of the final page rather than given a
   // sheet of its own. One sentence and an address do not justify a page in a
   // six-page document, and a near-empty last page reads as padding.
-  if ((closingText || contact) && bodies.length) {
+  // Remarks sits above the closing line, on the same fold -- a short
+  // operational note (a special request, a payment reminder) that belongs
+  // at the end of the document but is not itself the sign-off.
+  if ((remarksText || closingText || contact) && bodies.length) {
     const last = bodies.length - 1;
     bodies[last] = bodies[last].replace(/<\/div>\s*$/, `
       <div class="bro-signoff">
         <div class="bro-signoff-rule"></div>
+        ${remarksText ? `<div class="bro-signoff-text" style="white-space:pre-wrap">${esc(remarksText)}</div>` : ""}
         ${closingText ? `<div class="bro-signoff-text">${esc(closingText)}</div>` : ""}
         ${contact ? `<div class="bro-signoff-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
       </div></div>`);

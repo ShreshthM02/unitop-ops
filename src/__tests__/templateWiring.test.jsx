@@ -152,7 +152,7 @@ describe('Documents actually apply their template prop', () => {
     });
   });
 
-  it('the Detailed flavor offers an editable closing line, no longer a hard-coded sentence', () => {
+  it('Detailed offers its own editable closing line, no longer a hard-coded sentence', () => {
     // Regression: closingText was previously hard-coded into buildBrochureHTML
     // with no field to change it -- every itinerary got the identical
     // sign-off regardless of destination or client.
@@ -163,11 +163,52 @@ describe('Documents actually apply their template prop', () => {
     expect(screen.getByDisplayValue('Safe travels, and see you again soon.')).toBeTruthy();
   });
 
+  it('Brief now offers its own closing line too, independent of Detailed\u2019s', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    // Starts on Brief by default -- its closing field is right there too.
+    const briefField = screen.getByDisplayValue('Tour ends as you leave footprints and take memories.');
+    fireEvent.change(briefField, { target: { value: 'Brief-only sign-off.' } });
+    fireEvent.click(screen.getByText('Detailed'));
+    // Detailed still shows the untouched default -- editing Brief's did not
+    // leak into Detailed's.
+    expect(screen.getByDisplayValue('Tour ends as you leave footprints and take memories.')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Brief-only sign-off.')).toBeNull();
+  });
+
+  it('each flavor offers its own Remarks field, positioned above the closing line', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    expect(screen.getByText('Remarks')).toBeTruthy();
+    const remarksField = screen.getByPlaceholderText('Internal note or reminder for this document');
+    fireEvent.change(remarksField, { target: { value: 'Confirm veg meal request.' } });
+    expect(screen.getByDisplayValue('Confirm veg meal request.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Detailed'));
+    expect(screen.queryByDisplayValue('Confirm veg meal request.')).toBeNull();
+  });
+
   it('every document falls back to sensible hardcoded defaults when no template prop is passed', () => {
     expect(() => render(<ProformaInvoice query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TaxInvoice query={fakeQuery} payments={{}} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<MealPlanDocument query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<Itinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
+  });
+});
+
+describe('regression: a description added under Detailed must not appear under Brief', () => {
+  it('reproduces the exact reported scenario and confirms it no longer happens', async () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    // Switch to Detailed and add a description item to day 1.
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getAllByText('+ Add Item ▾')[0]);
+    fireEvent.click(screen.getByText('📝 Description'));
+    const detailedField = screen.getByPlaceholderText('Longer, client-facing description for this day');
+    fireEvent.change(detailedField, { target: { value: 'A long, client-facing paragraph about this day.' } });
+    expect(screen.getByDisplayValue('A long, client-facing paragraph about this day.')).toBeTruthy();
+
+    // Switch back to Brief -- the reported bug was this text showing up here.
+    fireEvent.click(screen.getByText('Brief'));
+    expect(screen.queryByDisplayValue('A long, client-facing paragraph about this day.')).toBeNull();
+    // Brief's own copy of that same item is empty, ready for its own text.
+    expect(screen.getByPlaceholderText('Short description for this day')).toBeTruthy();
   });
 });

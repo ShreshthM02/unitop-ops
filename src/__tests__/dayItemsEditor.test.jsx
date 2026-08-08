@@ -11,22 +11,26 @@ const renderEditor = (items, extra = {}) => {
 };
 
 describe('1.7/1.9 DayItemsEditor', () => {
-  it('offers the four types on Brief and adds the chosen one', () => {
+  it('offers every type on Brief now -- description and remarks are no longer Detailed-only', () => {
     const onChange = renderEditor([]);
     fireEvent.click(screen.getByText('+ Add Item ▾'));
     expect(screen.getByText('📍 Sightseeing')).toBeTruthy();
     expect(screen.getByText('✈ Flight / Train')).toBeTruthy();
     expect(screen.getByText('🏨 Overnight Stay')).toBeTruthy();
-    expect(screen.queryByText('📝 Description')).toBeNull(); // Detailed only
+    expect(screen.getByText('📝 Description')).toBeTruthy();
+    // No icon for Remarks -- the word itself is the label, deliberately.
+    expect(screen.getByText('Remarks')).toBeTruthy();
+    expect(screen.queryByText('📝📝 Remarks')).toBeNull();
     fireEvent.click(screen.getByText('📍 Sightseeing'));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0][0].type).toBe('sightseeing');
   });
 
-  it('1.12: Detailed additionally offers Description', () => {
+  it('offers the same types on Detailed too -- there is no longer a Brief/Detailed gate on item types', () => {
     renderEditor([], { style: 'detailed' });
     fireEvent.click(screen.getByText('+ Add Item ▾'));
     expect(screen.getByText('📝 Description')).toBeTruthy();
+    expect(screen.getByText('Remarks')).toBeTruthy();
   });
 
   it('shows only the fields a type actually has -- distance/time on route, not on sightseeing', () => {
@@ -123,5 +127,63 @@ describe('the Add Item menu escapes an overflow:hidden ancestor', () => {
     fireEvent.click(screen.getByText('+ Add Item ▾'));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('description and remarks render as a textarea, not a single-line input', () => {
+  it('a description item gets a multi-row textarea', () => {
+    renderEditor([{ id:'d1', type:'description', text:'Some paragraph text' }]);
+    const field = screen.getByDisplayValue('Some paragraph text');
+    expect(field.tagName).toBe('TEXTAREA');
+  });
+
+  it('a remarks item gets a multi-row textarea too', () => {
+    renderEditor([{ id:'r1', type:'remarks', text:'A note' }]);
+    expect(screen.getByDisplayValue('A note').tagName).toBe('TEXTAREA');
+  });
+
+  it('every other type stays a single-line input', () => {
+    renderEditor([{ id:'s1', type:'sightseeing', text:'Temple' }]);
+    expect(screen.getByDisplayValue('Temple').tagName).toBe('INPUT');
+  });
+});
+
+describe('description text is independent per flavor inside the editor', () => {
+  it('editing under Brief writes text, editing under Detailed writes detailedText', () => {
+    const item = { id:'d1', type:'description', text:'Brief version' };
+    const onChangeBrief = vi.fn();
+    const { unmount } = render(<DayItemsEditor items={[item]} onChange={onChangeBrief} style="brief" G={G} inp={inp}/>);
+    fireEvent.change(screen.getByDisplayValue('Brief version'), { target:{ value:'Updated brief' } });
+    // (kept single-line for this assertion; multi-line preservation is
+    // covered separately at the export level via white-space:pre-wrap)
+    expect(onChangeBrief.mock.calls[0][0][0].text).toBe('Updated brief');
+    unmount();
+
+    const onChangeDetailed = vi.fn();
+    render(<DayItemsEditor items={[item]} onChange={onChangeDetailed} style="detailed" G={G} inp={inp}/>);
+    fireEvent.change(screen.getByDisplayValue('Brief version'), { target:{ value:'Its own detailed text' } });
+    expect(onChangeDetailed.mock.calls[0][0][0].detailedText).toBe('Its own detailed text');
+    expect(onChangeDetailed.mock.calls[0][0][0].text).toBe('Brief version'); // unchanged
+  });
+
+  it('Detailed shows its own text once it has one, not Brief\u2019s', () => {
+    const item = { id:'d1', type:'description', text:'Brief version', detailedText:'Detailed version' };
+    render(<DayItemsEditor items={[item]} onChange={()=>{}} style="detailed" G={G} inp={inp}/>);
+    expect(screen.getByDisplayValue('Detailed version')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Brief version')).toBeNull();
+  });
+});
+
+describe('transport items offer an explicit Flight/Train toggle', () => {
+  it('defaults to Flight selected', () => {
+    renderEditor([{ id:'t1', type:'transport', text:'6E 2134', mode:'flight' }]);
+    expect(screen.getByText('Flight')).toBeTruthy();
+    expect(screen.getByText('Train')).toBeTruthy();
+  });
+
+  it('clicking Train updates the item\u2019s mode', () => {
+    const onChange = renderEditor([{ id:'t1', type:'transport', text:'12345', mode:'flight' }]);
+    fireEvent.click(screen.getByText('Train'));
+    expect(onChange.mock.calls[0][0][0].mode).toBe('train');
   });
 });
