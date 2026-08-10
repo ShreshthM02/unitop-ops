@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchPlaceCandidates, searchGazetteerDb } from '../lib/gazetteerQuery.js';
+import { fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace } from '../lib/gazetteerQuery.js';
 
 // A fake db with working search_gazetteer() and search_gazetteer_alt_names()
 // RPCs -- the normal case once the SQL migration has been run. `fast` is
@@ -154,5 +154,85 @@ describe('searchGazetteerDb: typeahead', () => {
     const db = fakeDbNoRpc([]);
     await searchGazetteerDb(db, 'lum', { country: 'Nepal' });
     expect(db.calls[0].filters.find(f => f[0] === 'eq')).toEqual(['eq', 'country', 'Nepal']);
+  });
+});
+
+// A fake db that additionally tracks custom_places reads/writes, layered on
+// top of the gazetteer fakes above.
+function fakeDbWithCustom({ fast = [], slow = [], custom = [] } = {}) {
+  const rpcCalls = [];
+  const customInserts = [];
+  let customQueried = false;
+  return {
+    rpcCalls, customInserts,
+    get customQueried() { return customQueried; },
+    rpc: async (fn, params) => {
+      rpcCalls.push({ fn, params });
+      return { data: fn === 'search_gazetteer_alt_names' ? slow : fast, error: null };
+    },
+    from: (table) => {
+      if (table === 'custom_places') {
+        const builder = {
+          select: () => builder,
+          ilike: (col, val) => { customQueried = true; return builder; },
+          eq: () => builder,
+          limit: (n) => ({ then: (res) => res({ data: custom, error: null }) }),
+          insert: async (row) => { customInserts.push(row); return { error: null }; },
+        };
+        return builder;
+      }
+      throw new Error('unexpected table: ' + table);
+    },
+  };
+}
+
+describe('custom_places: what a manually-placed coordinate teaches the app for next time', () => {
+  it('saveCustomPlace writes name/lat/lon/country/admin1', async () => {
+    const db = fakeDbWithCustom();
+    const { error } = await saveCustomPlace(db, { name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India', admin1: 'Bihar' });
+    expect(error).toBeNull();
+    expect(db.customInserts[0]).toMatchObject({ name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India', admin1: 'Bihar' });
+  });
+
+  it('refuses to save an invalid place rather than writing garbage', async () => {
+    const db = fakeDbWithCustom();
+    expect((await saveCustomPlace(db, { name: '', lat: 25.1, lon: 84.2 })).error).toBeTruthy();
+    expect((await saveCustomPlace(db, { name: 'X', lat: 'not a number', lon: 84.2 })).error).toBeTruthy();
+    expect((await saveCustomPlace(db, null)).error).toBeTruthy();
+    expect(db.customInserts.length).toBe(0);
+  });
+
+  it('a place with no country/admin1 still saves -- those are optional context, not required', async () => {
+    const db = fakeDbWithCustom();
+    const { error } = await saveCustomPlace(db, { name: 'X', lat: 1, lon: 2 });
+    expect(error).toBeNull();
+  });
+
+  it('fetchPlaceCandidates checks custom_places only after both gazetteer searches find nothing', async () => {
+    const db = fakeDbWithCustom({ fast: [], slow: [], custom: [{ name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India', admin1: 'Bihar' }] });
+    const out = await fetchPlaceCandidates(db, 'A Hamlet');
+    expect(db.rpcCalls.map(c => c.fn)).toEqual(['search_gazetteer', 'search_gazetteer_alt_names']);
+    expect(db.customQueried).toBe(true);
+    expect(out[0]).toMatchObject({ name: 'A Hamlet', source: 'custom' });
+  });
+
+  it('does NOT check custom_places when the fast gazetteer search already found something', async () => {
+    // A real GeoNames match should never be shadowed by an unnecessary
+    // extra query, let alone by a hand-entered one if both somehow exist.
+    const db = fakeDbWithCustom({ fast: [rajgir], custom: [{ name: 'Should not appear', lat: 0, lon: 0 }] });
+    const out = await fetchPlaceCandidates(db, 'Rajgir');
+    expect(db.customQueried).toBe(false);
+    expect(out[0].name).toBe('Rājgīr');
+  });
+
+  it('searchGazetteerDb (the typeahead) falls back to custom_places the same way', async () => {
+    const db = fakeDbWithCustom({ fast: [], slow: [], custom: [{ name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India' }] });
+    const out = await searchGazetteerDb(db, 'hamlet');
+    expect(out[0]).toMatchObject({ name: 'A Hamlet', source: 'custom' });
+  });
+
+  it('a genuine no-match anywhere still returns empty, not an error', async () => {
+    const db = fakeDbWithCustom({ fast: [], slow: [], custom: [] });
+    expect(await fetchPlaceCandidates(db, 'Nowhere At All')).toEqual([]);
   });
 });

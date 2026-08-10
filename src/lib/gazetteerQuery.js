@@ -92,6 +92,73 @@ async function viaRpc(db, term) {
   return [];
 }
 
+const CUSTOM_COLUMNS = "name,lat,lon,country,admin1";
+
+function mapCustomRow(r) {
+  return { name: r.name, lat: r.lat, lon: r.lon, country: r.country, admin1: r.admin1, population: 0, alt: [], source: "custom" };
+}
+
+// RUN ONCE, alongside the search_gazetteer migration above:
+//
+//   create table if not exists custom_places (
+//     id bigserial primary key,
+//     name text not null,
+//     lat double precision not null,
+//     lon double precision not null,
+//     country text,
+//     admin1 text,
+//     created_at timestamptz default now()
+//   );
+//   create index if not exists custom_places_name_trgm_idx
+//     on custom_places using gin (name gin_trgm_ops);
+//   alter table custom_places enable row level security;
+//   create policy "custom_places read" on custom_places for select to anon using (true);
+//   create policy "custom_places insert" on custom_places for insert to anon with check (true);
+//
+// WHY THIS EXISTS. Placing a coordinate by hand today only ever saves into
+// that one day, in that one itinerary -- it never teaches the gazetteer
+// anything, so the next person (or the same person, on a different tour)
+// who types the same village name starts from zero again, every time.
+// custom_places is a small, separate, app-owned table: never mixed into
+// the imported GeoNames data, so what the business has added itself stays
+// visibly distinct from what GeoNames shipped. It is checked as the LAST
+// resort in both search functions below, after the fast and slow gazetteer
+// paths -- a real GeoNames match should always win over a hand-entered one
+// if both somehow exist, since the imported data is the more authoritative
+// source for anywhere it actually covers.
+//
+// The insert policy is open to anon by design, matching how this app
+// already writes everywhere else (see the standing note in
+// supabase.js/authHeaders about the app never using authenticated writes).
+// It is a small, purpose-built table rather than a write opened on
+// `gazetteer` itself, which keeps a bad row easy to find and remove without
+// touching the imported reference data at all.
+export async function saveCustomPlace(db, place) {
+  if (!place || !place.name || !Number.isFinite(place.lat) || !Number.isFinite(place.lon)) {
+    return { error: "invalid place" };
+  }
+  try {
+    const { error } = await db.from("custom_places").insert({
+      name: place.name, lat: place.lat, lon: place.lon,
+      country: place.country || null, admin1: place.admin1 || null,
+    });
+    return { error: error ? error.message || String(error) : null };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+}
+
+async function viaCustomPlaces(db, term, limit) {
+  try {
+    const { data, error } = await db.from("custom_places").select(CUSTOM_COLUMNS)
+      .ilike("name", `*${term}*`).limit(limit);
+    if (error || !data) return [];
+    return data.map(mapCustomRow);
+  } catch (e) {
+    return [];
+  }
+}
+
 async function viaNameFilter(db, query, { limit = 60 } = {}) {
   const raw = normalizePlaceName(query);
   if (!raw) return [];
@@ -116,17 +183,26 @@ async function viaNameFilter(db, query, { limit = 60 } = {}) {
 }
 
 // Candidates for resolvePlace(): searches name and ascii_name fast, falling
-// back to alt_names only when those find nothing.
+// back to alt_names, then to anything the business has manually placed
+// before, only when everything faster has found nothing.
 export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
   const raw = normalizePlaceName(query);
   if (!raw) return [];
   try {
     const rpcResult = await viaRpc(db, raw);
-    if (rpcResult) return rpcResult.slice(0, limit);
+    // rpcResult is null only when the RPC itself is unavailable (not yet
+    // migrated); an empty array means it ran fine and genuinely found
+    // nothing, in which case re-running the same search client-side would
+    // be pure waste -- go straight to the one place left to check.
+    if (rpcResult !== null) {
+      return rpcResult.length ? rpcResult.slice(0, limit) : viaCustomPlaces(db, raw, limit);
+    }
   } catch (e) {
-    // fall through to the name-only path below
+    // fall through to the degraded path below
   }
-  return viaNameFilter(db, query, { limit });
+  const nameResult = await viaNameFilter(db, query, { limit });
+  if (nameResult.length) return nameResult;
+  return viaCustomPlaces(db, raw, limit);
 }
 
 // Typeahead for the picker's search box.
@@ -135,9 +211,11 @@ export async function searchGazetteerDb(db, term, { limit = 15, country = null }
   if (q.length < 2) return [];
   try {
     const rpcResult = await viaRpc(db, q);
-    if (rpcResult) {
+    if (rpcResult !== null) {
       const filtered = country ? rpcResult.filter(r => r.country === country) : rpcResult;
-      return filtered.slice(0, limit);
+      if (filtered.length) return filtered.slice(0, limit);
+      const custom = await viaCustomPlaces(db, q, limit);
+      return country ? custom.filter(r => r.country === country) : custom;
     }
   } catch (e) {
     // fall through
@@ -146,9 +224,10 @@ export async function searchGazetteerDb(db, term, { limit = 15, country = null }
     let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `${q}*`);
     if (country) builder = builder.eq("country", country);
     const { data, error } = await builder.order("population", { ascending: false }).limit(limit);
-    if (error || !data) return [];
-    return data.map(mapRow);
+    if (!error && data && data.length) return data.map(mapRow);
   } catch (e) {
-    return [];
+    // fall through
   }
+  const custom = await viaCustomPlaces(db, q, limit);
+  return country ? custom.filter(r => r.country === country) : custom;
 }

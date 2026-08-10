@@ -45,6 +45,12 @@ export function PlacePicker({
   // `gazetteer` locally, which is exactly right for tests and for any
   // caller that already holds a full array in memory.
   onSearch,
+  // Optional: when given, a manually-placed coordinate can be offered to
+  // custom_places so the next search for this name -- in this itinerary or
+  // any other -- finds it without anyone placing it by hand twice. Without
+  // this prop the checkbox simply does not appear; PlacePicker itself never
+  // talks to a database, matching onSearch's existing shape.
+  onSaveCustomPlace,
   G,
   inp,
   readOnly = false,
@@ -55,6 +61,12 @@ export function PlacePicker({
   const [lon, setLon] = useState("");
   const [dbResults, setDbResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  // Checked by default: remembering is the behaviour that actually helps
+  // -- someone types Alchi once, places it once, and it is never a blank
+  // search again for anyone. Unchecking is the exception, for a coordinate
+  // that is genuinely one-off (a client's private meeting point, say) and
+  // should not enter a shared table other tours will see.
+  const [remember, setRemember] = useState(true);
 
   // Only resolve when nothing has been chosen. A user's explicit pick must
   // never be silently re-resolved out from under them on the next render.
@@ -180,10 +192,21 @@ export function PlacePicker({
               className="btn btn-ghost"
               style={{ fontSize: 11 }}
               disabled={!isValidCoordinate(lat, lon)}
-              onClick={() => pick(manualPlace(query, lat, lon))}>
+              onClick={() => {
+                const place = manualPlace(query, lat, lon);
+                if (onSaveCustomPlace && remember) onSaveCustomPlace(place);
+                pick(place);
+              }}>
               Use these
             </button>
           </div>
+          {onSaveCustomPlace && (
+            <label style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, fontSize: 10.5, color: G.gray400, cursor: "pointer" }}>
+              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
+                style={{ margin: 0 }} aria-label="Remember this place for future searches"/>
+              Remember this place for future searches
+            </label>
+          )}
         </div>
       )}
     </div>

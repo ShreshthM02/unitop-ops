@@ -149,3 +149,49 @@ describe('async search against the real gazetteer', () => {
     expect(screen.queryByText('Bodhgaya, Bihar, India')).toBeNull();
   });
 });
+
+describe('remembering a manually-placed coordinate for next time', () => {
+  it('does not show the checkbox at all when no onSaveCustomPlace is given', () => {
+    setup({ query:'A Hamlet' });
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.queryByLabelText('Remember this place for future searches')).toBeNull();
+  });
+
+  it('shows the checkbox, checked by default, when onSaveCustomPlace is given', () => {
+    setup({ query:'A Hamlet', onSaveCustomPlace: vi.fn() });
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.getByLabelText('Remember this place for future searches').checked).toBe(true);
+  });
+
+  it('calls onSaveCustomPlace with the placed coordinate when "Use these" is clicked and the box is checked', () => {
+    const onSaveCustomPlace = vi.fn();
+    const onChange = setup({ query:'A Hamlet', onSaveCustomPlace, onChange: vi.fn() });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target:{ value:'25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onSaveCustomPlace).toHaveBeenCalledWith(expect.objectContaining({ name:'A Hamlet', lat:25.1, lon:84.2 }));
+  });
+
+  it('does NOT call onSaveCustomPlace when the box is unchecked -- a genuinely one-off coordinate', () => {
+    const onSaveCustomPlace = vi.fn();
+    setup({ query:'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByLabelText('Remember this place for future searches'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target:{ value:'25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onSaveCustomPlace).not.toHaveBeenCalled();
+  });
+
+  it('still calls onChange with the place regardless of the checkbox state', () => {
+    const onChange = vi.fn();
+    setup({ query:'X', onSaveCustomPlace: vi.fn(), onChange });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByLabelText('Remember this place for future searches')); // uncheck
+    fireEvent.change(screen.getByLabelText('Latitude'), { target:{ value:'1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target:{ value:'2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat:1, lon:2 }));
+  });
+});
