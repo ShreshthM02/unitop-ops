@@ -22,6 +22,9 @@ function mapRow(r) {
 
 // RUN ONCE IN THE SUPABASE SQL EDITOR, same as the gazetteer table itself:
 //
+//   create index if not exists gazetteer_ascii_trgm_idx
+//     on gazetteer using gin (lower(ascii_name) gin_trgm_ops);
+//
 //   create or replace function search_gazetteer(term text, lim int default 60)
 //   returns setof gazetteer
 //   language sql stable
@@ -29,37 +32,64 @@ function mapRow(r) {
 //     select g.* from gazetteer g
 //     where g.name ilike '%' || term || '%'
 //        or g.ascii_name ilike '%' || term || '%'
-//        or exists (
-//          select 1 from unnest(g.alt_names) a where a ilike '%' || term || '%'
-//        )
 //     order by g.population desc nulls last
 //     limit lim;
 //   $$;
 //
-//   -- REQUIRED, and easy to miss: creating a function does not by itself
-//   -- let PostgREST's anon-keyed API role call it. Testing the function
-//   -- directly in the SQL editor runs as the database owner and will
-//   -- succeed regardless of this grant, which is exactly the trap -- it
-//   -- can look confirmed working there while the live app, calling through
-//   -- the REST API as `anon`, still cannot invoke it at all.
-//   grant execute on function search_gazetteer(text, int) to anon, authenticated;
+//   create or replace function search_gazetteer_alt_names(term text, lim int default 60)
+//   returns setof gazetteer
+//   language sql stable
+//   as $$
+//     select g.* from gazetteer g
+//     where exists (
+//       select 1 from unnest(g.alt_names) a where a ilike '%' || term || '%'
+//     )
+//     order by g.population desc nulls last
+//     limit lim;
+//   $$;
 //
-// WHY THIS EXISTS. A name typed by an operator does not have to match
-// GeoNames' own canonical `name` column -- Kushinagar's canonical GeoNames
-// entry is recorded under an older name, with "Kushinagar" appearing only
-// in its alternate names. The `.or()` filter this module used before only
-// ever matched the `name` column: it could rank an alt-name match once
-// fetched (placeResolver.js does that correctly), but it could never FETCH
-// that row from the million-row table in the first place, because
-// PostgREST's plain filter syntax has no operator for "does any element of
-// this array match this pattern". A SQL function is what actually reaches
-// inside the array. Where the function has not been created yet (a fresh
-// database before this migration is run), both exported functions fall
-// back to the previous name-only query rather than returning nothing.
+//   grant execute on function search_gazetteer(text, int) to anon, authenticated;
+//   grant execute on function search_gazetteer_alt_names(text, int) to anon, authenticated;
+//
+// WHY TWO FUNCTIONS, NOT ONE. The original single function ORed all three
+// checks (name, ascii_name, alt_names) together in one WHERE clause. Proven
+// against a real EXPLAIN ANALYZE on the live table: that forced a full
+// sequential scan across all 1,005,362 rows every single search, 10.6
+// seconds, regardless of any index on name or ascii_name -- because the
+// alt_names check is `exists (select 1 from unnest(...) where ...)`, a
+// per-row correlated subquery no ordinary index can help with, and
+// Postgres cannot use an index for part of an OR when another branch of
+// that same OR requires a full scan anyway. The index was never the
+// problem; the query shape was.
+//
+// Splitting into two functions lets the COMMON case -- a name or
+// ascii_name match, which is the overwhelming majority of real searches,
+// Rajgir's own ascii_name "Rajgir" included -- run fast and index-backed
+// (search_gazetteer alone), while the RARE case (a town recorded only
+// under an old or alternate name, like Kushinagar filed as Kasia) still
+// works via the deliberately slower search_gazetteer_alt_names, called
+// only as a fallback when the fast search finds nothing. Accepting slow
+// for the rare path is fine; accepting slow for every search was not.
+//
+// Where neither function has been created yet (a fresh database before
+// this migration is run), both exported functions below fall back to a
+// plain client-side filter rather than returning nothing.
 async function viaRpc(db, term) {
   const { data, error } = await db.rpc("search_gazetteer", { term, lim: 60 });
   if (error || !data) return null;
-  return data.map(mapRow);
+  if (data.length > 0) return data.map(mapRow);
+  // Fast search found nothing -- try the slow, alt-names-only path before
+  // giving up. A missing/ungranted function here degrades to null, which
+  // callers already treat as "fall through to the plain filter", so this
+  // stays safe even on a database that has search_gazetteer but not yet
+  // search_gazetteer_alt_names.
+  try {
+    const alt = await db.rpc("search_gazetteer_alt_names", { term, lim: 60 });
+    if (!alt.error && alt.data) return alt.data.map(mapRow);
+  } catch (e) {
+    // fall through to returning the (empty) fast result below
+  }
+  return [];
 }
 
 async function viaNameFilter(db, query, { limit = 60 } = {}) {
@@ -72,7 +102,7 @@ async function viaNameFilter(db, query, { limit = 60 } = {}) {
   // does not fold accents, so a plain-ASCII search term would never match
   // the accented column even though the exact same place has a clean
   // ascii_name entry ("Rajgir") sitting right next to it. This path only
-  // runs at all when the RPC below is unavailable, but it should still
+  // runs at all when the RPCs above are unavailable, but it should still
   // find what it reasonably can while degraded.
   const orExpr = terms.flatMap(t => [`name.ilike.*${t}*`, `ascii_name.ilike.*${t}*`]).join(",");
   try {
@@ -85,7 +115,8 @@ async function viaNameFilter(db, query, { limit = 60 } = {}) {
   }
 }
 
-// Candidates for resolvePlace(): searches name, ascii_name and alt_names.
+// Candidates for resolvePlace(): searches name and ascii_name fast, falling
+// back to alt_names only when those find nothing.
 export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
   const raw = normalizePlaceName(query);
   if (!raw) return [];
@@ -121,4 +152,3 @@ export async function searchGazetteerDb(db, term, { limit = 15, country = null }
     return [];
   }
 }
-
