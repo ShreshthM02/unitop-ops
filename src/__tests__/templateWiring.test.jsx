@@ -175,11 +175,11 @@ describe('Documents actually apply their template prop', () => {
     expect(screen.queryByDisplayValue('Brief-only sign-off.')).toBeNull();
   });
 
-  it('each flavor offers its own Remarks field, positioned above the closing line', () => {
+  it('each flavor offers its own Notes field, positioned above the closing line', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
-    expect(screen.getByText('Remarks')).toBeTruthy();
-    const remarksField = screen.getByPlaceholderText('Internal note or reminder for this document');
-    fireEvent.change(remarksField, { target: { value: 'Confirm veg meal request.' } });
+    expect(screen.getByText('Notes')).toBeTruthy();
+    const notesField = screen.getByPlaceholderText('A note or reminder for this document');
+    fireEvent.change(notesField, { target: { value: 'Confirm veg meal request.' } });
     expect(screen.getByDisplayValue('Confirm veg meal request.')).toBeTruthy();
     fireEvent.click(screen.getByText('Detailed'));
     expect(screen.queryByDisplayValue('Confirm veg meal request.')).toBeNull();
@@ -192,23 +192,40 @@ describe('Documents actually apply their template prop', () => {
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<Itinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
   });
+
+  it('the day block uses a number rail + divider, not a single flush-left column -- addresses a real "left-heavy" report', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('👁 Preview'));
+    await waitFor(() => {
+      const html = container.querySelector('iframe').getAttribute('srcdoc');
+      // Day 1's zero-padded number rail, and meal badges right-aligned
+      // within the content column rather than left-stacked underneath it.
+      expect(html).toContain('01');
+      expect(html).toContain('text-align:right');
+    });
+  });
 });
 
-describe('regression: a description added under Detailed must not appear under Brief', () => {
-  it('reproduces the exact reported scenario and confirms it no longer happens', async () => {
+describe('regression: a note attached under Detailed must not appear under Brief', () => {
+  it('reproduces the equivalent of the exact reported scenario and confirms it does not happen', async () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
-    // Switch to Detailed and add a description item to day 1.
+    // Switch to Detailed, add a sightseeing item, and give it a note.
     fireEvent.click(screen.getByText('Detailed'));
     fireEvent.click(screen.getAllByText('+ Add Item ▾')[0]);
-    fireEvent.click(screen.getByText('📝 Description'));
-    const detailedField = screen.getByPlaceholderText('Longer, client-facing description for this day');
-    fireEvent.change(detailedField, { target: { value: 'A long, client-facing paragraph about this day.' } });
-    expect(screen.getByDisplayValue('A long, client-facing paragraph about this day.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Sightseeing'));
+    fireEvent.click(screen.getByText('+ Add note'));
+    const detailedField = screen.getByPlaceholderText('Longer, client-facing note about this — e.g. history of a monument');
+    fireEvent.change(detailedField, { target: { value: 'A long, client-facing paragraph about this monument.' } });
+    expect(screen.getByDisplayValue('A long, client-facing paragraph about this monument.')).toBeTruthy();
 
     // Switch back to Brief -- the reported bug was this text showing up here.
     fireEvent.click(screen.getByText('Brief'));
-    expect(screen.queryByDisplayValue('A long, client-facing paragraph about this day.')).toBeNull();
-    // Brief's own copy of that same item is empty, ready for its own text.
-    expect(screen.getByPlaceholderText('Short description for this day')).toBeTruthy();
+    expect(screen.queryByDisplayValue('A long, client-facing paragraph about this monument.')).toBeNull();
+  });
+
+  it('the original failure mode is now structurally impossible -- Description is not a selectable item type at all', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getAllByText('+ Add Item ▾')[0]);
+    expect(screen.queryByText('Description')).toBeNull();
   });
 });

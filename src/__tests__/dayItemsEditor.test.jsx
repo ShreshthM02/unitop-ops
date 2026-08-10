@@ -11,26 +11,24 @@ const renderEditor = (items, extra = {}) => {
 };
 
 describe('1.7/1.9 DayItemsEditor', () => {
-  it('offers every type on Brief now -- description and remarks are no longer Detailed-only', () => {
+  it('offers route, sightseeing, transport, stay and remarks -- description is no longer a selectable type', () => {
     const onChange = renderEditor([]);
     fireEvent.click(screen.getByText('+ Add Item ▾'));
-    expect(screen.getByText('📍 Sightseeing')).toBeTruthy();
-    expect(screen.getByText('✈ Flight / Train')).toBeTruthy();
-    expect(screen.getByText('🏨 Overnight Stay')).toBeTruthy();
-    expect(screen.getByText('📝 Description')).toBeTruthy();
-    // No icon for Remarks -- the word itself is the label, deliberately.
+    expect(screen.getByText('Sightseeing')).toBeTruthy();
+    expect(screen.getByText('Flight / Train')).toBeTruthy();
+    expect(screen.getByText('Overnight Stay')).toBeTruthy();
     expect(screen.getByText('Remarks')).toBeTruthy();
-    expect(screen.queryByText('📝📝 Remarks')).toBeNull();
-    fireEvent.click(screen.getByText('📍 Sightseeing'));
+    expect(screen.queryByText('Description')).toBeNull();
+    fireEvent.click(screen.getByText('Sightseeing'));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0][0].type).toBe('sightseeing');
   });
 
-  it('offers the same types on Detailed too -- there is no longer a Brief/Detailed gate on item types', () => {
+  it('offers the same types on Detailed too -- there is no Brief/Detailed gate on item types', () => {
     renderEditor([], { style: 'detailed' });
     fireEvent.click(screen.getByText('+ Add Item ▾'));
-    expect(screen.getByText('📝 Description')).toBeTruthy();
     expect(screen.getByText('Remarks')).toBeTruthy();
+    expect(screen.queryByText('Description')).toBeNull();
   });
 
   it('shows only the fields a type actually has -- distance/time on route, not on sightseeing', () => {
@@ -130,47 +128,58 @@ describe('the Add Item menu escapes an overflow:hidden ancestor', () => {
   });
 });
 
-describe('description and remarks render as a textarea, not a single-line input', () => {
-  it('a description item gets a multi-row textarea', () => {
-    renderEditor([{ id:'d1', type:'description', text:'Some paragraph text' }]);
-    const field = screen.getByDisplayValue('Some paragraph text');
-    expect(field.tagName).toBe('TEXTAREA');
-  });
-
-  it('a remarks item gets a multi-row textarea too', () => {
+describe('remarks renders as a textarea; other main-text fields stay single-line', () => {
+  it('a remarks item gets a multi-row textarea', () => {
     renderEditor([{ id:'r1', type:'remarks', text:'A note' }]);
     expect(screen.getByDisplayValue('A note').tagName).toBe('TEXTAREA');
   });
 
-  it('every other type stays a single-line input', () => {
+  it('every notable type\u2019s own text stays a single-line input', () => {
     renderEditor([{ id:'s1', type:'sightseeing', text:'Temple' }]);
     expect(screen.getByDisplayValue('Temple').tagName).toBe('INPUT');
   });
 });
 
-describe('description text is independent per flavor inside the editor', () => {
-  it('editing under Brief writes text, editing under Detailed writes detailedText', () => {
-    const item = { id:'d1', type:'description', text:'Brief version' };
+describe('a notable item can carry an attached note (what a standalone Description item used to be)', () => {
+  it('shows "+ Add note" for a notable item with none yet, and it opens a textarea', () => {
+    renderEditor([{ id:'s1', type:'sightseeing', text:'Temple' }]);
+    fireEvent.click(screen.getByText('+ Add note'));
+    expect(screen.getByPlaceholderText('Short note about this').tagName).toBe('TEXTAREA');
+  });
+
+  it('an existing note is shown open already, not hidden behind a click', () => {
+    renderEditor([{ id:'s1', type:'sightseeing', text:'Temple', note:'Built in 1653' }]);
+    expect(screen.getByDisplayValue('Built in 1653')).toBeTruthy();
+    expect(screen.queryByText('+ Add note')).toBeNull();
+  });
+
+  it('remarks itself is not offered a note -- a note on a note would be redundant', () => {
+    renderEditor([{ id:'r1', type:'remarks', text:'A note' }]);
+    expect(screen.queryByText('+ Add note')).toBeNull();
+  });
+});
+
+describe('a notable item\u2019s note is independent per flavor inside the editor', () => {
+  it('editing under Brief writes note, editing under Detailed writes detailedNote', () => {
+    const item = { id:'d1', type:'sightseeing', text:'Temple', note:'Brief note' };
     const onChangeBrief = vi.fn();
     const { unmount } = render(<DayItemsEditor items={[item]} onChange={onChangeBrief} style="brief" G={G} inp={inp}/>);
-    fireEvent.change(screen.getByDisplayValue('Brief version'), { target:{ value:'Updated brief' } });
-    // (kept single-line for this assertion; multi-line preservation is
-    // covered separately at the export level via white-space:pre-wrap)
-    expect(onChangeBrief.mock.calls[0][0][0].text).toBe('Updated brief');
+    fireEvent.change(screen.getByDisplayValue('Brief note'), { target:{ value:'Updated brief note' } });
+    expect(onChangeBrief.mock.calls[0][0][0].note).toBe('Updated brief note');
     unmount();
 
     const onChangeDetailed = vi.fn();
     render(<DayItemsEditor items={[item]} onChange={onChangeDetailed} style="detailed" G={G} inp={inp}/>);
-    fireEvent.change(screen.getByDisplayValue('Brief version'), { target:{ value:'Its own detailed text' } });
-    expect(onChangeDetailed.mock.calls[0][0][0].detailedText).toBe('Its own detailed text');
-    expect(onChangeDetailed.mock.calls[0][0][0].text).toBe('Brief version'); // unchanged
+    fireEvent.change(screen.getByDisplayValue('Brief note'), { target:{ value:'Its own detailed note' } });
+    expect(onChangeDetailed.mock.calls[0][0][0].detailedNote).toBe('Its own detailed note');
+    expect(onChangeDetailed.mock.calls[0][0][0].note).toBe('Brief note'); // unchanged
   });
 
-  it('Detailed shows its own text once it has one, not Brief\u2019s', () => {
-    const item = { id:'d1', type:'description', text:'Brief version', detailedText:'Detailed version' };
+  it('Detailed shows its own note once it has one, not Brief\u2019s', () => {
+    const item = { id:'d1', type:'sightseeing', text:'Temple', note:'Brief note', detailedNote:'Detailed note' };
     render(<DayItemsEditor items={[item]} onChange={()=>{}} style="detailed" G={G} inp={inp}/>);
-    expect(screen.getByDisplayValue('Detailed version')).toBeTruthy();
-    expect(screen.queryByDisplayValue('Brief version')).toBeNull();
+    expect(screen.getByDisplayValue('Detailed note')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Brief note')).toBeNull();
   });
 });
 
@@ -185,5 +194,26 @@ describe('transport items offer an explicit Flight/Train toggle', () => {
     const onChange = renderEditor([{ id:'t1', type:'transport', text:'12345', mode:'flight' }]);
     fireEvent.click(screen.getByText('Train'));
     expect(onChange.mock.calls[0][0][0].mode).toBe('train');
+  });
+});
+
+describe('transport items offer departure and arrival time fields', () => {
+  it('shows both fields for a transport item', () => {
+    renderEditor([{ id:'t1', type:'transport', text:'6E 2134', mode:'flight' }]);
+    expect(screen.getByLabelText('Departure time')).toBeTruthy();
+    expect(screen.getByLabelText('Arrival time')).toBeTruthy();
+  });
+
+  it('editing them updates depTime/arrTime, distinct from route\u2019s travel-time meta', () => {
+    const onChange = renderEditor([{ id:'t1', type:'transport', text:'6E 2134', mode:'flight' }]);
+    fireEvent.change(screen.getByLabelText('Departure time'), { target:{ value:'14:30' } });
+    expect(onChange.mock.calls[0][0][0].depTime).toBe('14:30');
+    fireEvent.change(screen.getByLabelText('Arrival time'), { target:{ value:'16:10' } });
+    expect(onChange.mock.calls[1][0][0].arrTime).toBe('16:10');
+  });
+
+  it('no time fields appear on non-transport items', () => {
+    renderEditor([{ id:'s1', type:'sightseeing', text:'Temple' }]);
+    expect(screen.queryByLabelText('Departure time')).toBeNull();
   });
 });

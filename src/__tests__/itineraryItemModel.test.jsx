@@ -1,17 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
-  ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem,
+  ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, NOTABLE_ITEM_TYPES,
   migrateItineraryDay, migrateItineraryDays, reorderItems, itineraryItemHTML,
-  itemTextForFlavor, withItemTextForFlavor,
+  itemTextForFlavor, withItemTextForFlavor, itemNoteForFlavor, withItemNoteForFlavor,
 } from '../lib/utils.js';
 
 describe('itinerary item model', () => {
-  it('offers every type to both Brief and Detailed -- description and remarks are no longer Detailed-only', () => {
-    // Gating used to exist because description was shared text that would
-    // leak between flavors. It is now independent per flavor at the item
-    // level (itemTextForFlavor), so there is no longer a reason to hide the
-    // type itself from Brief.
-    const all = ['route', 'sightseeing', 'transport', 'stay', 'description', 'remarks'];
+  it('offers route, sightseeing, transport, stay and remarks -- description is no longer a selectable type', () => {
+    // Description used to be its own type: a plain, unlabelled line that
+    // was indistinguishable enough from an unlabelled Route line to get
+    // picked by mistake for what was meant as a second movement (confirmed
+    // against a real export where exactly that happened). It is now an
+    // optional note attached to whichever item it is actually about
+    // (itemNoteForFlavor), not a fifth kind of event in the day.
+    const all = ['route', 'sightseeing', 'transport', 'stay', 'remarks'];
     expect(addableItemTypes().map(t => t.id)).toEqual(all);
   });
 
@@ -20,7 +22,7 @@ describe('itinerary item model', () => {
     expect(ids.size).toBe(50);
   });
 
-  it('supports the exact day-1 sequence from the request: route, sight, sight, route, flight, stay', () => {
+  it('supports the exact day-1 sequence from a real report: route, sight, sight, route, flight, stay', () => {
     const day = { id: 1, dayLabel: 'DAY-1', items: [
       { id:'a', type:'route' }, { id:'b', type:'sightseeing' }, { id:'c', type:'sightseeing' },
       { id:'d', type:'route' }, { id:'e', type:'transport' }, { id:'f', type:'stay' },
@@ -38,9 +40,11 @@ describe('migration from the legacy fixed-field day', () => {
     expect(out.items[0]).toMatchObject({ type:'route', text:'Delhi - Agra', distance:'210 km', time:'4 hrs' });
   });
 
-  it('preserves order: route, then description, then overnight stay', () => {
+  it('preserves order: route, then legacy description as remarks, then overnight stay', () => {
+    // day.description was always free text for the whole day -- exactly
+    // what a remarks item is now, so that is where it lands.
     const out = migrateItineraryDay({ id:1, route:'A - B', description:'Some detail', hotel:'Hotel X' });
-    expect(out.items.map(i => i.type)).toEqual(['route', 'description', 'stay']);
+    expect(out.items.map(i => i.type)).toEqual(['route', 'remarks', 'stay']);
     expect(out.items[1].text).toBe('Some detail');
     expect(out.items[2].text).toBe('Hotel X');
   });
@@ -99,7 +103,7 @@ describe('item rendering for export', () => {
     expect(itineraryItemHTML({ type:'sightseeing', text:'Taj Mahal' })).toContain('Taj Mahal');
     expect(itineraryItemHTML({ type:'transport', text:'6E 2134' })).toContain('6E 2134');
     expect(itineraryItemHTML({ type:'stay', text:'Hotel X' })).toContain('Hotel X');
-    expect(itineraryItemHTML({ type:'description', text:'Line 1\nLine 2' })).toContain('white-space:pre-wrap');
+    expect(itineraryItemHTML({ type:'remarks', text:'Line 1\nLine 2' })).toContain('white-space:pre-wrap');
   });
 
   it('never puts an emoji icon into the printed/exported HTML -- that is editor-only decoration', () => {
@@ -109,7 +113,7 @@ describe('item rendering for export', () => {
     // carries icons for the app's own Add Item menu; that is a different,
     // in-app-only usage and is untouched by this.
     const emoji = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u;
-    const html = ['route', 'sightseeing', 'transport', 'stay', 'description']
+    const html = ['route', 'sightseeing', 'transport', 'stay', 'remarks']
       .map(type => itineraryItemHTML({ type, text: 'X', distance: 'd', time: 't' }))
       .join('');
     expect(emoji.test(html)).toBe(false);
@@ -183,34 +187,55 @@ describe('legacy Detailed `transports` rows (follow-up: the item model removed t
   });
 });
 
-describe('description text is independent per flavor; every other type is shared', () => {
-  it('Brief always reads/writes item.text, never detailedText', () => {
-    const item = { id:'d1', type:'description', text:'Brief line', detailedText:'Longer detailed line' };
-    expect(itemTextForFlavor(item, 'brief')).toBe('Brief line');
-    const updated = withItemTextForFlavor(item, 'brief', 'New brief line');
-    expect(updated.text).toBe('New brief line');
-    expect(updated.detailedText).toBe('Longer detailed line'); // untouched
-  });
-
-  it('Detailed falls back to Brief\u2019s text until it has its own -- "detailed takes what brief offers"', () => {
-    const item = { id:'d1', type:'description', text:'Brief line' };
-    expect(itemTextForFlavor(item, 'detailed')).toBe('Brief line');
-  });
-
-  it('once Detailed has its own text, it no longer reads Brief\u2019s -- "not vice versa"', () => {
-    const item = { id:'d1', type:'description', text:'Brief line', detailedText:'Its own detailed line' };
-    expect(itemTextForFlavor(item, 'detailed')).toBe('Its own detailed line');
-    const updated = withItemTextForFlavor(item, 'detailed', 'Changed detailed line');
-    expect(updated.detailedText).toBe('Changed detailed line');
-    expect(updated.text).toBe('Brief line'); // Brief's own line is never altered by Detailed edits
-  });
-
-  it('every other item type shares the same text regardless of flavor', () => {
+describe('item text is always shared across flavors -- only the attached NOTE forks', () => {
+  it('every item type shares the same main text regardless of flavor', () => {
     for (const type of ['route', 'sightseeing', 'transport', 'stay', 'remarks']) {
       const item = { id:'x', type, text:'Shared content' };
       expect(itemTextForFlavor(item, 'brief')).toBe('Shared content');
       expect(itemTextForFlavor(item, 'detailed')).toBe('Shared content');
     }
+  });
+
+  it('writing text never touches the item\u2019s note, regardless of flavor', () => {
+    const item = { id:'x', type:'sightseeing', text:'Taj Mahal', note:'Built 1653' };
+    const updated = withItemTextForFlavor(item, 'detailed', 'Taj Mahal, Agra');
+    expect(updated.text).toBe('Taj Mahal, Agra');
+    expect(updated.note).toBe('Built 1653');
+  });
+});
+
+describe('the attached NOTE on a notable item is independent per flavor (moved here from the old description-as-a-type design)', () => {
+  it('Brief always reads/writes item.note, never detailedNote', () => {
+    const item = { id:'d1', type:'sightseeing', text:'Taj Mahal', note:'Brief note', detailedNote:'Longer detailed note' };
+    expect(itemNoteForFlavor(item, 'brief')).toBe('Brief note');
+    const updated = withItemNoteForFlavor(item, 'brief', 'New brief note');
+    expect(updated.note).toBe('New brief note');
+    expect(updated.detailedNote).toBe('Longer detailed note'); // untouched
+  });
+
+  it('Detailed falls back to Brief\u2019s note until it has its own -- "detailed takes what brief offers"', () => {
+    const item = { id:'d1', type:'stay', text:'Hotel X', note:'Brief note' };
+    expect(itemNoteForFlavor(item, 'detailed')).toBe('Brief note');
+  });
+
+  it('once Detailed has its own note, it no longer reads Brief\u2019s -- "not vice versa"', () => {
+    const item = { id:'d1', type:'route', text:'A - B', note:'Brief note', detailedNote:'Its own detailed note' };
+    expect(itemNoteForFlavor(item, 'detailed')).toBe('Its own detailed note');
+    const updated = withItemNoteForFlavor(item, 'detailed', 'Changed detailed note');
+    expect(updated.detailedNote).toBe('Changed detailed note');
+    expect(updated.note).toBe('Brief note'); // Brief's own note is never altered by Detailed edits
+  });
+
+  it('works the same way for every notable type -- route, sightseeing, transport, stay', () => {
+    for (const type of ['route', 'sightseeing', 'transport', 'stay']) {
+      const item = { id:'x', type, text:'X', note:'Brief note' };
+      expect(itemNoteForFlavor(item, 'detailed')).toBe('Brief note');
+      expect(NOTABLE_ITEM_TYPES.has(type)).toBe(true);
+    }
+  });
+
+  it('remarks is not itself notable -- a note on a note would just be more of the same field', () => {
+    expect(NOTABLE_ITEM_TYPES.has('remarks')).toBe(false);
   });
 });
 
@@ -219,13 +244,25 @@ describe('transport items distinguish flight from train explicitly', () => {
     expect(newItineraryItem('transport').mode).toBe('flight');
   });
 
-  it('the export renders a different label for each mode -- no shared icon to confuse them', () => {
+  it('the export uses a different icon for each mode -- flight and train no longer share one glyph', () => {
     const flight = itineraryItemHTML({ type:'transport', text:'6E 2134', mode:'flight' });
     const train = itineraryItemHTML({ type:'transport', text:'12345', mode:'train' });
-    expect(flight).toContain('Flight');
-    expect(flight).not.toContain('>Train<');
-    expect(train).toContain('Train');
-    expect(train).not.toContain('>Flight<');
+    // The SVG path data itself differs between the two -- checked via a
+    // distinguishing element each icon's path set alone contains.
+    expect(flight).toContain('polygon');   // the plane glyph
+    expect(train).toContain('<rect');      // the train glyph
+    expect(flight).not.toContain('<rect');
+    expect(train).not.toContain('polygon');
+  });
+
+  it('shows arrival and departure clock times when given, distinct from route\u2019s travel-time meta', () => {
+    const html = itineraryItemHTML({ type:'transport', text:'6E 2134', mode:'flight', depTime:'14:30', arrTime:'16:10' });
+    expect(html).toContain('Dep 14:30');
+    expect(html).toContain('Arr 16:10');
+  });
+
+  it('renders fine with no times given at all', () => {
+    expect(() => itineraryItemHTML({ type:'transport', text:'6E 2134', mode:'flight' })).not.toThrow();
   });
 
   it('an old item with no mode at all still renders (defaults to Flight in the export, not a crash)', () => {
@@ -234,35 +271,77 @@ describe('transport items distinguish flight from train explicitly', () => {
 });
 
 describe('remarks item type', () => {
-  it('has no icon -- the word "Remarks" is the label', () => {
+  it('has no icon in the editor -- the word "Remarks" is the label there', () => {
     expect(ITINERARY_ITEM_TYPES.find(t => t.id === 'remarks').icon).toBeNull();
   });
 
-  it('renders in the export with a REMARKS label, whitespace preserved for multi-line notes', () => {
+  it('renders in the export with a pencil icon, whitespace preserved for multi-line notes', () => {
     const html = itineraryItemHTML({ type:'remarks', text:'Line one\nLine two' });
-    expect(html).toContain('Remarks');
+    expect(html).toContain('<svg');
     expect(html).toContain('white-space:pre-wrap');
   });
 });
 
-describe('export labels: minimal typographic marks, not emoji, and no colour-coding by type', () => {
-  it('sightseeing, stay and remarks each get a distinct text label instead of an icon', () => {
-    expect(itineraryItemHTML({ type:'sightseeing', text:'Temple' })).toContain('Sightseeing');
-    expect(itineraryItemHTML({ type:'stay', text:'Hotel X' })).toContain('Stay');
-    expect(itineraryItemHTML({ type:'remarks', text:'Note' })).toContain('Remarks');
-  });
-
-  it('route and description stay unlabelled, exactly as before', () => {
+describe('export marks: minimal monochrome icons, not emoji, and every structural type at equal visual weight', () => {
+  it('route, sightseeing, transport and stay all render at the same font-size and without <strong> -- no type reads as more important than another', () => {
     const route = itineraryItemHTML({ type:'route', text:'A - B' });
-    const desc = itineraryItemHTML({ type:'description', text:'Some prose.' });
-    expect(route).not.toMatch(/Route|Movement/);
-    expect(desc).not.toMatch(/Description/);
+    const sight = itineraryItemHTML({ type:'sightseeing', text:'Temple' });
+    const transport = itineraryItemHTML({ type:'transport', text:'6E 2134' });
+    const stay = itineraryItemHTML({ type:'stay', text:'Hotel X' });
+    for (const html of [route, sight, transport, stay]) {
+      expect(html).toContain('font-size:9.5pt');
+      expect(html).not.toContain('<strong>');
+    }
   });
 
-  it('no emoji anywhere in any export label', () => {
+  it('sightseeing, stay and transport each carry a distinguishing icon', () => {
+    expect(itineraryItemHTML({ type:'sightseeing', text:'Temple' })).toContain('<svg');
+    expect(itineraryItemHTML({ type:'stay', text:'Hotel X' })).toContain('<svg');
+    expect(itineraryItemHTML({ type:'transport', text:'X', mode:'flight' })).toContain('<svg');
+  });
+
+  it('no emoji anywhere in any export line', () => {
     const emoji = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u;
     const html = ['sightseeing','transport','stay','remarks'].map(type =>
       itineraryItemHTML({ type, text:'X', mode:'train' })).join('');
     expect(emoji.test(html)).toBe(false);
+  });
+});
+
+describe('attached notes render as an indented sub-line under their parent item', () => {
+  it('a note appears smaller and indented beneath the item it belongs to', () => {
+    const html = itineraryItemHTML({ type:'sightseeing', text:'Mahabodhi Temple', note:'A UNESCO World Heritage Site.' });
+    expect(html).toContain('Mahabodhi Temple');
+    const noteIdx = html.indexOf('A UNESCO World Heritage Site.');
+    expect(noteIdx).toBeGreaterThan(html.indexOf('Mahabodhi Temple'));
+    expect(html).toContain('margin:1pt 0 3pt 14.5pt');
+  });
+
+  it('no note line at all when the item has none', () => {
+    const html = itineraryItemHTML({ type:'sightseeing', text:'Temple' });
+    expect(html).not.toContain('margin:1pt 0 3pt 14.5pt');
+  });
+
+  it('works on every notable type', () => {
+    for (const type of ['route', 'sightseeing', 'transport', 'stay']) {
+      const html = itineraryItemHTML({ type, text:'X', mode:'flight', note:'A note about this.' });
+      expect(html).toContain('A note about this.');
+    }
+  });
+});
+
+describe('regression: a second movement can no longer be mistaken for a Description item, because Description no longer exists as a type', () => {
+  it('addableItemTypes has no description entry to pick by mistake', () => {
+    expect(addableItemTypes().map(t => t.id)).not.toContain('description');
+  });
+
+  it('a legacy saved item of type description migrates into remarks rather than rendering as an unhandled type', () => {
+    const day = { id:1, items:[
+      { id:'a', type:'route', text:'BKK-CCU-PAT-GAY' },
+      { id:'b', type:'description', text:'this is also movement' },
+    ]};
+    const migrated = migrateItineraryDay(day);
+    expect(migrated.items[1].type).toBe('remarks');
+    expect(migrated.items[1].text).toBe('this is also movement');
   });
 });

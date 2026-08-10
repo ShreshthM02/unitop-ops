@@ -713,7 +713,7 @@ export function buildBrochureDocument({
     bodies[last] = bodies[last].replace(/<\/div>\s*$/, `
       <div class="bro-signoff">
         <div class="bro-signoff-rule"></div>
-        ${remarksText ? `<div class="bro-signoff-text" style="white-space:pre-wrap">${esc(remarksText)}</div>` : ""}
+        ${remarksText ? `<div class="bro-signoff-text" style="white-space:pre-wrap"><strong>Notes</strong><br/>${esc(remarksText)}</div>` : ""}
         ${closingText ? `<div class="bro-signoff-text">${esc(closingText)}</div>` : ""}
         ${contact ? `<div class="bro-signoff-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
       </div></div>`);

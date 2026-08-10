@@ -1583,76 +1583,94 @@ export function mergeDocTemplates(defaults, saved) {
 // now carries an ORDERED LIST of typed items instead.
 //
 // Types offered when adding: route, sightseeing, transport (flight or
-// train, distinguished by `mode`), stay (Overnight Stay), description,
-// remarks. Description and remarks are both available to Brief now --
-// see below for how each stays independent between Brief and Detailed
-// without one flavor's content leaking into the other.
+// train, distinguished by `mode`), stay (Overnight Stay), remarks (a
+// day-level aside, distinct from the whole-document Notes field).
+//
+// Description is deliberately NOT a type here any more. It used to be:
+// "add a Description item" produced a plain unlabelled line that looked
+// enough like an unlabelled Route line to be picked by mistake for what
+// was actually meant as a second movement -- confirmed against a real
+// export where exactly that happened. A description is not a fifth kind
+// of event in a day's chronology; it is commentary ON an event that
+// already exists -- the monument a Sightseeing stop names, the hotel a
+// Stay names, the leg a Route or a flight covers. So it is no longer
+// something you add to the list -- it is an optional note attached to
+// whichever item it is actually about. See itemNoteForFlavor below.
 export const ITINERARY_ITEM_TYPES = [
-  { id: "route",       label: "Route / Movement", icon: "🚌", fields: ["text", "distance", "time"] },
-  { id: "sightseeing", label: "Sightseeing",      icon: "📍", fields: ["text"] },
-  { id: "transport",   label: "Flight / Train",   icon: "✈",  fields: ["text"] },
-  { id: "stay",        label: "Overnight Stay",   icon: "🏨", fields: ["text"] },
-  { id: "description", label: "Description",      icon: "📝", fields: ["text"] },
-  // No icon in the editor either -- a remark is a note, not a movement or a
-  // stop, and an icon here would imply it belongs to the same family of
-  // structural items as the rest. The word itself is the clearest signal.
-  { id: "remarks",     label: "Remarks",          icon: null, fields: ["text"] },
+  { id: "route",       label: "Route / Movement", icon: "route", fields: ["text", "distance", "time"] },
+  { id: "sightseeing", label: "Sightseeing",      icon: "pin",   fields: ["text"] },
+  { id: "transport",   label: "Flight / Train",   icon: "plane", fields: ["text"] },
+  { id: "stay",        label: "Overnight Stay",   icon: "moon",  fields: ["text"] },
+  // No icon -- a remark is a note, not a movement or a stop, and an icon
+  // here would imply it belongs to the same family of structural items as
+  // the rest. The word itself is the clearest signal.
+  { id: "remarks",     label: "Remarks",          icon: null,        fields: ["text"] },
 ];
 
 export const ITINERARY_ITEM_TYPE_IDS = ITINERARY_ITEM_TYPES.map(t => t.id);
 
-// Both flavors can now add every type. Description and remarks used to be
-// gated to Detailed-only; the gate is gone because the fields underneath
-// them are no longer shared text -- see itemTextForFlavor below.
 export const addableItemTypes = () => ITINERARY_ITEM_TYPES;
+
+// Types that can carry an attached note -- everything with a real place in
+// the day's chronology. Remarks is itself already a freeform aside, so a
+// note on a note would just be more of the same field.
+export const NOTABLE_ITEM_TYPES = new Set(["route", "sightseeing", "transport", "stay"]);
 
 let _itemSeq = 0;
 export function newItineraryItem(type) {
   _itemSeq += 1;
   const base = { id: `it-${Date.now()}-${_itemSeq}`, type, text: "", distance: "", time: "" };
-  // Flight vs train needs an explicit choice, not a guess from free text --
-  // guessing from words like "flight" or "train" would silently mislabel
-  // anything typed differently (a flight number alone, an airline code).
-  // Defaults to flight since that has been the overwhelmingly more common
-  // case in this business's existing data.
-  if (type === "transport") base.mode = "flight";
+  if (type === "transport") {
+    // Flight vs train needs an explicit choice, not a guess from free text
+    // -- guessing from words like "flight" or "train" would silently
+    // mislabel anything typed differently (a flight number alone, an
+    // airline code). Defaults to flight since that has been the
+    // overwhelmingly more common case in this business's existing data.
+    base.mode = "flight";
+    // Clock times, not the journey duration -- "time" above is Route's
+    // travel-time meta (a 6hr drive), which is a different fact from "this
+    // flight departs at 14:30". Both can be true of the same day.
+    base.depTime = "";
+    base.arrTime = "";
+  }
   return base;
 }
 
-// The text to show for an item UNDER A GIVEN FLAVOR.
+// The MAIN text to show for an item under a given flavor.
 //
-// Every item type except description is single-text: the same route,
-// sightseeing stop, flight, hotel or remark is true regardless of which
-// document you are printing, so both flavors read and write the same
-// `item.text`.
-//
-// Description is the one type that genuinely needs to differ: a short
-// brief-facing line and a longer client-facing paragraph are not the same
-// content awkwardly forced into one field, they are legitimately two
-// different pieces of writing. So a description item carries a second
-// field, `detailedText`, alongside the ordinary `text`:
-//   - Brief always reads and writes `text`.
-//   - Detailed reads `detailedText` if it has ever been given one, and
-//     otherwise falls back to showing `text` -- Detailed starts from
-//     whatever Brief already says, which is what "detailed takes what
-//     brief offers" means, but Brief can never see anything typed only
-//     under Detailed, which is the "not vice versa" half.
-//   - Editing under Detailed always writes `detailedText`, creating that
-//     independent field the first time it happens; it never touches
-//     `text`, so Brief's own line is never altered by Detailed edits.
+// This is single-text for every type: the same route, sightseeing stop,
+// flight or hotel name is true regardless of which document you are
+// printing. What can differ per flavor now is the ATTACHED NOTE (below),
+// not the item's own identity -- Brief and Detailed should never disagree
+// about which hotel a day stays at, only about how much is said about it.
 export function itemTextForFlavor(item, flavor) {
   if (!item) return "";
-  if (item.type === "description" && flavor === "detailed") {
-    return item.detailedText != null ? item.detailedText : (item.text || "");
-  }
   return item.text || "";
 }
 
 export function withItemTextForFlavor(item, flavor, value) {
-  if (item.type === "description" && flavor === "detailed") {
-    return { ...item, detailedText: value };
-  }
   return { ...item, text: value };
+}
+
+// The attached NOTE for an item under a given flavor -- the description
+// that used to be its own item type, now scoped to whichever item it is
+// actually about. Same inheritance rule as before, just moved from being
+// type-specific (only 'description' items) to universal (any notable
+// item): Brief always reads/writes `note`; Detailed reads `detailedNote`
+// once it has one, falling back to Brief's `note` until then ("detailed
+// takes what brief offers"); writing under Detailed never touches Brief's
+// own note ("not vice versa").
+export function itemNoteForFlavor(item, flavor) {
+  if (!item) return "";
+  if (flavor === "detailed") {
+    return item.detailedNote != null ? item.detailedNote : (item.note || "");
+  }
+  return item.note || "";
+}
+
+export function withItemNoteForFlavor(item, flavor, value) {
+  if (flavor === "detailed") return { ...item, detailedNote: value };
+  return { ...item, note: value };
 }
 
 // True once a day has been converted. Old rows have no `items` array at all.
@@ -1694,17 +1712,26 @@ function transportItemsFrom(day) {
 export function migrateItineraryDay(day) {
   if (!day) return day;
   if (dayHasItems(day)) {
-    if (!day.transports || day.transports.length === 0) return day;
+    // Existing items of type 'description' predate the redesign that
+    // folded descriptions into per-item notes. Converting to 'remarks'
+    // keeps the text visible and editable rather than leaving a type the
+    // editor no longer recognises, or silently dropping it.
+    const hasLegacyDescription = day.items.some(it => it.type === "description");
+    const hasLegacyTransports = day.transports && day.transports.length > 0;
+    if (!hasLegacyDescription && !hasLegacyTransports) return day;
+    let items = hasLegacyDescription
+      ? day.items.map(it => it.type === "description" ? { ...it, type: "remarks" } : it)
+      : day.items;
+    if (!hasLegacyTransports) return { ...day, items };
     // Converted day that still carries legacy transport rows: append them as
     // transport items, ahead of a trailing stay if there is one, and drop the
     // old key so the day is left with a single source of truth.
     const { transports, ...rest } = day;
     const converted = transportItemsFrom(day);
-    const existing = day.items;
-    const lastIsStay = existing.length > 0 && existing[existing.length - 1].type === "stay";
-    const items = lastIsStay
-      ? [...existing.slice(0, -1), ...converted, existing[existing.length - 1]]
-      : [...existing, ...converted];
+    const lastIsStay = items.length > 0 && items[items.length - 1].type === "stay";
+    items = lastIsStay
+      ? [...items.slice(0, -1), ...converted, items[items.length - 1]]
+      : [...items, ...converted];
     return { ...rest, items };
   }
   const items = [];
@@ -1718,7 +1745,11 @@ export function migrateItineraryDay(day) {
   if (!items.length && (day.distance || day.time)) {
     items.push({ ...newItineraryItem("route"), text: "", distance: day.distance || "", time: day.time || "" });
   }
-  push("description", day.description);
+  // Legacy day-level description has no single item it was ever "about" --
+  // it was free text for the whole day, which is exactly what a remarks
+  // item is now, so that is where it lands rather than being guessed onto
+  // whichever item happens to come first.
+  push("remarks", day.description);
   // Transports sit after movement and before the overnight stay -- you
   // travel, then you check in.
   items.push(...transportItemsFrom(day));
@@ -1749,42 +1780,73 @@ export function reorderItems(items, from, to) {
 // Renders one item as print HTML. Kept beside the model so the Brief and
 // Detailed documents cannot drift in how they present the same item.
 //
-// LABELS, NOT ICONS. Emoji icons were tried and removed once already for
-// looking unprofessional on a letterhead document; then removing them
-// entirely left sightseeing, a flight, a train and an overnight stay all
-// reading as identical unlabelled lines, which lost real information (most
-// pointedly, a flight and a train became visually indistinguishable). The
-// replacement is typographic: a small, muted, letter-spaced uppercase word
-// ahead of the line -- SIGHTSEEING, FLIGHT, TRAIN, STAY, REMARKS -- reading
-// as refined document typography rather than clip-art, while still telling
-// the two transport modes apart at a glance, which no shared icon could.
-// Route and description stay unlabelled, as they always were: a route line
-// is self-evidently a route from its bold movement text, and a description
-// is self-evidently prose from its paragraph styling.
-function itemLabel(text) {
-  return `<span style="font-size:7pt;font-weight:700;letter-spacing:0.8pt;color:#9CA3AF;text-transform:uppercase;margin-right:5pt">${text}</span>`;
+// ICONS, NOT TEXT LABELS. Emoji were removed once for looking unprofessional
+// on a letterhead document; the typographic-label replacement then made
+// every structural line look alike in weight, which is what let a
+// Description item get mistaken for a second Route line in real use (both
+// unlabelled, both plain text, confirmed against a real export). These are
+// small monochrome line-icon glyphs, one shared stroke colour matching the
+// rest of the document's muted ink, sized to sit quietly ahead of the line
+// rather than announce themselves -- built to be read at a glance for
+// chronology, not admired.
+//
+// EVERY STRUCTURAL LINE RENDERS AT THE SAME WEIGHT AND SIZE. Route used to
+// be the only bold, unlabelled type; the inconsistency was arguable proof
+// that a road journey, a flight and a hotel are not different in
+// importance, only in kind -- and kind is now the icon's job, not the
+// font's.
+// Shared with DayItemsEditor.jsx so the live editor's icons and the
+// printed export's icons are drawn from the exact same path data -- two
+// separate hand-maintained copies would drift the moment one was tweaked
+// and the other forgotten.
+export const ICON_PATHS = {
+  route:  `<line x1="4" y1="12" x2="18" y2="12"/><polyline points="12 6 18 12 12 18"/>`,
+  pin:    `<path d="M19 9.5c0 6-7 11-7 11s-7-5-7-11a7 7 0 0 1 14 0z"/><circle cx="12" cy="9.5" r="2.4"/>`,
+  plane:  `<line x1="20" y1="3" x2="10.5" y2="12.5"/><polygon points="20 3 14 20 10.5 12.5 3 9 20 3"/>`,
+  train:  `<rect x="4.5" y="3" width="15" height="13" rx="2"/><line x1="4.5" y1="10.5" x2="19.5" y2="10.5"/><circle cx="8.5" cy="19.5" r="1.1"/><circle cx="15.5" cy="19.5" r="1.1"/>`,
+  moon:   `<path d="M20.5 13.7A8.5 8.5 0 1 1 10.3 3.5 6.7 6.7 0 0 0 20.5 13.7z"/>`,
+  pencil: `<path d="M11 20H4v-7L15.5 1.5a1.7 1.7 0 0 1 2.4 0l1.6 1.6a1.7 1.7 0 0 1 0 2.4L11 20z"/>`,
+};
+
+const ICON_COLOR = "#6B7280";
+function icon(name, mode) {
+  return `<svg viewBox="0 0 24 24" width="9.5" height="9.5" fill="none" stroke="${ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5pt;margin-right:5pt;flex-shrink:0">${ICON_PATHS[name] || ""}</svg>`;
+}
+
+// The sub-line for an item's attached note (see itemNoteForFlavor in the
+// model section above) -- smaller, muted, indented under its parent line
+// rather than given a line of its own in the day's main chronology, since
+// it is commentary on that line, not a separate event.
+function noteLine(item, flavor) {
+  const note = (itemNoteForFlavor(item, flavor) || "").trim();
+  if (!note) return "";
+  return `<div style="font-size:8.5pt;color:#888;margin:1pt 0 3pt 14.5pt;white-space:pre-wrap;line-height:1.45">${note}</div>`;
 }
 
 export function itineraryItemHTML(item, flavor = "brief") {
   if (!item) return "";
   const text = (itemTextForFlavor(item, flavor) || "").trim();
   const meta = [item.distance, item.time].filter(Boolean).join(" / ");
+  const row = (iconName, mode, body) =>
+    `<div style="font-size:9.5pt;color:#333;margin:2.5pt 0;display:flex;align-items:flex-start">${icon(iconName, mode)}<span>${body}</span></div>`;
   switch (item.type) {
-    case "route":
+    case "route": {
       if (!text && !meta) return "";
-      return `<div style="font-size:9.5pt;color:#333;margin:2pt 0"><strong>${text}</strong>${meta ? ` <span style="color:#888">(${meta})</span>` : ""}</div>`;
+      const body = `${text}${meta ? ` <span style="color:#888">(${meta})</span>` : ""}`;
+      return row("route", null, body) + noteLine(item, flavor);
+    }
     case "sightseeing":
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${itemLabel("Sightseeing")}${text}</div>` : "";
+      return text ? row("pin", null, text) + noteLine(item, flavor) : "";
     case "transport": {
-      const mode = item.mode === "train" ? "Train" : "Flight";
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${itemLabel(mode)}${text}</div>` : "";
+      if (!text) return "";
+      const times = [item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ");
+      const body = `${text}${times ? ` <span style="color:#888">(${times})</span>` : ""}`;
+      return row(item.mode === "train" ? "train" : "plane", item.mode, body) + noteLine(item, flavor);
     }
     case "stay":
-      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0">${itemLabel("Stay")}${text}</div>` : "";
-    case "description":
-      return text ? `<div style="font-size:9.5pt;color:#333;margin:3pt 0;white-space:pre-wrap">${text}</div>` : "";
+      return text ? row("moon", null, text) + noteLine(item, flavor) : "";
     case "remarks":
-      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap">${itemLabel("Remarks")}${text}</div>` : "";
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap;display:flex;align-items:flex-start">${icon("pencil")}<span>${text}</span></div>` : "";
     default:
       return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
   }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, fetchPlaceCandidates, searchGazetteerDb, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, fetchPlaceCandidates, searchGazetteerDb, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -220,21 +220,33 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
 
-  // Both plain builders share this shape: title block, day-by-day content,
-  // then Remarks (if any) above the per-instance Closing Line (if any)
-  // above the template's own default closing tagline, which always renders
-  // exactly as it did before either of the new fields existed.
-  const buildDayBlocks = (flavor) => itinDays.map(d => {
-    const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-right:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-    return { text: `<div style="margin-bottom:14pt">
-        <div style="font-size:11pt;font-weight:bold;color:#1A3A52;margin-bottom:2pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-        ${(d.items||[]).map(item => itineraryItemHTML(item, flavor)).join("")}
-        <div style="margin-top:5pt">${mealStr}</div>
-      </div>` };
-  }).map(b => b.text);
+  // Each day is a number-rail + divider + content row, not a single left-
+  // aligned column. A day with only a hotel line and meal badges is two or
+  // three short lines against the full 182mm content width -- flush-left,
+  // that reads as a page with a large empty right-hand gutter ("left
+  // heavy", reported against a real export). The rail gives every day a
+  // fixed visual anchor regardless of how much it contains, and meal
+  // badges are right-aligned within the content column rather than left-
+  // stacked, so each day's block has a deliberate right edge instead of
+  // trailing off wherever its shortest line happens to end.
+  const buildDayBlocks = (flavor) => itinDays.map((d, i) => {
+    const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
+    return `<div style="display:flex;align-items:flex-start;gap:12pt;margin-bottom:14pt;padding-bottom:11pt;border-bottom:0.5pt solid #eee">
+        <div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
+          <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
+          <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>
+        </div>
+        <div style="flex:0 0 1pt;align-self:stretch;background:#E5E7EB;min-height:20pt"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11pt;font-weight:bold;color:#1A3A52;margin-bottom:4pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
+          ${(d.items||[]).map(item => itineraryItemHTML(item, flavor)).join("")}
+          ${mealStr ? `<div style="margin-top:6pt;text-align:right">${mealStr}</div>` : ""}
+        </div>
+      </div>`;
+  });
 
   const buildClosingBlock = (tmpl, remarks, closing, stampHTML) => `
-    ${remarks ? `<div style="margin-top:16pt;font-size:9.5pt;color:#333;white-space:pre-wrap"><strong style="color:#1A3A52">Remarks</strong><br/>${remarks}</div>` : ""}
+    ${remarks ? `<div style="margin-top:16pt;font-size:9.5pt;color:#333;white-space:pre-wrap"><strong style="color:#1A3A52">Notes</strong><br/>${remarks}</div>` : ""}
     ${closing ? `<div style="margin-top:${remarks?"8pt":"16pt"};font-size:9.5pt;color:#333;white-space:pre-wrap">${closing}</div>` : ""}
     <div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
       ${tmpl.closingTagline}
@@ -512,10 +524,12 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
             <button className="btn btn-ghost" style={{ fontSize:11, marginBottom:24 }} onClick={addDay}>+ Add Day</button>
 
             <div style={{ background:G.white, border:`1px solid ${G.gray200}`, borderRadius:10, padding:14, marginBottom:24 }}>
-              <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Remarks</div>
+              <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3, display:"flex", alignItems:"center", gap:5 }}>
+                <ItemIcon name="pencil" size={11}/> Notes
+              </div>
               <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={remarksText} disabled={readOnly}
                 onChange={e=>setRemarksText(e.target.value)}
-                placeholder="Internal note or reminder for this document"/>
+                placeholder="A note or reminder for this document"/>
               <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", margin:"12px 0 3px" }}>Closing Line / Sign-off</div>
               <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={closingText} disabled={readOnly}
                 onChange={e=>setClosingText(e.target.value)}
