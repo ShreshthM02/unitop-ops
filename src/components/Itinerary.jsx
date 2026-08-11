@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -118,6 +118,30 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const [placeCandidates, setPlaceCandidates] = useState({});
   const [dayImageOverrides, setDayImageOverrides] = useState({});
   const [routeMapImage, setRouteMapImage] = useState(null);
+
+  // undefined -> remove the key entirely (back to auto-suggestion, and
+  // resolveDayImages' hasOwnProperty check must see it truly absent, not
+  // present-with-value-undefined). null -> explicit "no photo", kept as a
+  // real key so it is never re-suggested. A string -> a chosen URL.
+  const setDayImageOverride = (dayId, value) => setDayImageOverrides(prev => {
+    if (value === undefined) {
+      const { [dayId]: _drop, ...rest } = prev;
+      return rest;
+    }
+    return { ...prev, [dayId]: value };
+  });
+
+  const uploadPhoto = async ({ file, destination, label }) => {
+    const { photo, error } = await uploadLibraryPhoto(realtimeClient, db, { file, destination, label, createdBy: currentUser?.id });
+    if (photo) setPhotoLibrary(prev => [...prev, photo]);
+    return { photo, error };
+  };
+
+  const deletePhotoFromLibrary = async (id) => {
+    const { error } = await deleteLibraryPhoto(db, id);
+    if (!error) setPhotoLibrary(prev => prev.filter(p => p.id !== id));
+    return { error };
+  };
 
   useEffect(() => {
     // Optional: if the photo table/bucket doesn't exist yet, the brochure
@@ -364,6 +388,10 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, docFlavor, tourTitle, tagline, route, duration, itinDays, briefClosingText, detailedClosingText, briefRemarks, detailedRemarks, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
 
+  // Resolved once per render, not per day inside the loop below --
+  // resolveDayImages already walks every day in one pass.
+  const dayImages = resolveDayImages(itinDays, photoLibrary, dayImageOverrides);
+
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{ background:G.white, width:780, height:"100vh", overflowY:"auto", boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
@@ -506,6 +534,20 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                       inp={inp}
                       readOnly={readOnly}
                     />
+                    <div style={{ marginTop:8 }}>
+                      <PhotoPicker
+                        day={d}
+                        resolvedUrl={dayImages[d.id]}
+                        overrideValue={dayImageOverrides[d.id]}
+                        library={photoLibrary}
+                        onChangeOverride={(value) => setDayImageOverride(d.id, value)}
+                        onUpload={uploadPhoto}
+                        onDeleteFromLibrary={deletePhotoFromLibrary}
+                        G={G}
+                        inp={inp}
+                        readOnly={readOnly}
+                      />
+                    </div>
                   </div>
                 )}
 

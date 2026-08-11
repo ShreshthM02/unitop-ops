@@ -13,6 +13,7 @@ export * from './routeMap.js';
 export * from './placeResolver.js';
 export * from './gazetteerQuery.js';
 export * from './PlacePicker.jsx';
+export * from './PhotoPicker.jsx';
 export * from './photoLibrary.js';
 export * from './LetterheadControls.jsx';
 export * from './VersionDropdown.jsx';
