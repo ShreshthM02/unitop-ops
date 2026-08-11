@@ -95,7 +95,17 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-const BATCH = 500;
+// Smaller than it used to be. The gazetteer table now carries two GIN
+// trigram indexes (added later, for search speed) that were not present
+// during the original import -- every upsert has to maintain those index
+// structures too, not just write the row, which adds real per-row overhead
+// that was not there before. A 500-row batch that used to complete
+// comfortably started hitting Supabase's statement timeout partway through
+// India (confirmed: it failed after 457,000 rows had already landed
+// successfully, so this was a timeout on one batch, not a data problem).
+// 150 keeps each request's transaction short enough to clear the timeout
+// regardless of index maintenance cost.
+const BATCH = 150;
 
 // Windows has no `unzip`, which the first version assumed. PowerShell's
 // Expand-Archive is present on every supported Windows version, so the
@@ -160,7 +170,7 @@ async function* rows(file) {
   }
 }
 
-async function push(batch) {
+async function pushOnce(batch) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/gazetteer?on_conflict=geoname_id`, {
     method: "POST",
     headers: {
@@ -171,25 +181,69 @@ async function push(batch) {
     },
     body: JSON.stringify(batch),
   });
-  if (!res.ok) throw new Error(`upsert failed ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const err = new Error(`upsert failed ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+}
+
+// A statement timeout is the batch being too big for how long that
+// particular set of rows took to write, not a sign the data or the request
+// itself is bad -- confirmed by this exact failure happening after 457,000
+// otherwise-identical rows had already succeeded. Retrying the same size
+// would just fail again in the same way, so a timeout specifically halves
+// the batch and tries again, down to individual rows if it has to, rather
+// than losing the whole run (all seven countries after the one that failed,
+// previously) over one batch on one country.
+async function push(batch, depth = 0) {
+  try {
+    await pushOnce(batch);
+  } catch (e) {
+    const isTimeout = e.status === 500 && /timeout/i.test(e.message);
+    if (isTimeout && batch.length > 1 && depth < 6) {
+      const mid = Math.ceil(batch.length / 2);
+      await push(batch.slice(0, mid), depth + 1);
+      await push(batch.slice(mid), depth + 1);
+      return;
+    }
+    throw e;
+  }
 }
 
 const dir = await mkdtemp(join(tmpdir(), "geonames-"));
 let total = 0;
+const failed = [];
 try {
   for (const country of COUNTRIES) {
-    const file = await download(country.trim(), dir);
-    let batch = [];
-    let n = 0;
-    for await (const row of rows(file)) {
-      batch.push(row);
-      if (batch.length >= BATCH) { await push(batch); n += batch.length; batch = []; process.stdout.write(`\r  ${country}: ${n} places`); }
+    const c = country.trim();
+    try {
+      const file = await download(c, dir);
+      let batch = [];
+      let n = 0;
+      for await (const row of rows(file)) {
+        batch.push(row);
+        if (batch.length >= BATCH) { await push(batch); n += batch.length; batch = []; process.stdout.write(`\r  ${c}: ${n} places`); }
+      }
+      if (batch.length) { await push(batch); n += batch.length; }
+      total += n;
+      console.log(`\r  ${c}: ${n} places imported`);
+    } catch (e) {
+      // One country's exhausted retries should not cost the rest of the
+      // run every remaining country -- exactly what happened before this
+      // change, when a single timeout partway through India also silently
+      // skipped Nepal, Bhutan, Bangladesh, Sri Lanka, Myanmar, Pakistan and
+      // Thailand, none of which had even started yet.
+      console.log(`\n  ${c}: FAILED -- ${e.message}`);
+      failed.push(c);
     }
-    if (batch.length) { await push(batch); n += batch.length; }
-    total += n;
-    console.log(`\r  ${country}: ${n} places imported`);
   }
   console.log(`\nDone. ${total} places in the gazetteer.`);
+  if (failed.length) {
+    console.log(`\nFailed and skipped: ${failed.join(", ")}. Safe to re-run just these:`);
+    console.log(`  $env:GEONAMES_COUNTRIES = "${failed.join(",")}"`);
+    console.log(`  node scripts/importGeonames.mjs`);
+  }
   console.log("Remember the GeoNames attribution line in the app's About screen.");
 } finally {
   await rm(dir, { recursive: true, force: true });
