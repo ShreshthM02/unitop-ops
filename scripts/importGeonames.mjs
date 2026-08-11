@@ -58,13 +58,33 @@ import { platform } from "os";
 // itineraries cross into Nepal, Bhutan and Sri Lanka regularly.
 const COUNTRIES = (process.env.GEONAMES_COUNTRIES || "IN,NP,BT,BD,LK,MM,PK,TH").split(",");
 
-// GeoNames feature classes: P is populated places. Including everything else
-// (rivers, ridges, farms) would multiply the row count for no benefit -- the
-// resolver is looking up towns, not terrain.
+// GeoNames feature classes: P is populated places. That alone was the
+// original scope, and it left a real, confirmed gap: Nalanda has no
+// India/Bihar entry in the imported data at all, because Nalanda's actual
+// identity in GeoNames is the ancient university ruins -- class S (a "spot"
+// feature), not class P. A tour operator's map needs to find monuments and
+// historical sites by name just as reliably as it finds towns, so class P
+// alone was never really the right scope for this business.
+//
+// Rather than pull all of class S -- which is enormous and mostly noise for
+// this purpose (gas stations, mines, race tracks, cemeteries) -- this keeps
+// every class-P row and adds only a curated set of feature CODES within S
+// that a heritage/religious tour itinerary would actually reference: ruins,
+// historical sites, monasteries, temples, shrines, monuments, forts,
+// palaces, castles and religious centres. Extending this list later is one
+// line, not a re-think of the import's shape.
 const FEATURE_CLASS = "P";
+const HERITAGE_SITE_CODES = new Set([
+  "RUIN", "HSTS", "ANS",           // ruins, historical sites, ancient sites
+  "MSTY", "TMPL", "SHRN", "CTRR",  // monastery, temple, shrine, religious centre
+  "MNMT", "PAL", "CSTL", "FT",     // monument, palace, castle, fort
+]);
 
 // Below this, GeoNames is full of hamlets that add noise to autocomplete
 // without ever being sold. Set GEONAMES_MIN_POP=0 to keep everything.
+// Never applied to heritage sites -- a monument has no population to filter
+// on, and its being small is exactly why it needed adding in the first
+// place.
 const MIN_POP = Number(process.env.GEONAMES_MIN_POP ?? 0);
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -114,9 +134,15 @@ async function* rows(file) {
   const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
   for await (const line of rl) {
     const f = line.split("\t");
-    if (f[COL.fclass] !== FEATURE_CLASS) continue;
+    const fclass = f[COL.fclass];
+    const fcode = f[COL.fcode];
+    const isHeritageSite = fclass === "S" && HERITAGE_SITE_CODES.has(fcode);
+    if (fclass !== FEATURE_CLASS && !isHeritageSite) continue;
     const pop = Number(f[COL.population]) || 0;
-    if (pop < MIN_POP) continue;
+    // Population filtering only applies to populated places. A monument's
+    // population field is meaningless (usually 0), and that is exactly why
+    // it needed adding here rather than a reason to filter it back out.
+    if (fclass === FEATURE_CLASS && pop < MIN_POP) continue;
     yield {
       geoname_id: Number(f[COL.id]),
       name: f[COL.name],
