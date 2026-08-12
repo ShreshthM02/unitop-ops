@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   suggestPhotoForDay, resolveDayImages, libraryDestinations,
-  dayImageTextCandidates, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto,
+  dayImageTextCandidates, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, defaultResizeImage,
 } from '../lib/photoLibrary.js';
 
 const photo = (destination, url) => ({ id: destination, destination, url, label: '' });
@@ -156,5 +156,70 @@ describe('persistence', () => {
     expect((await deleteLibraryPhoto(ok, '1')).error).toBeNull();
     const bad = { from: () => ({ delete: () => ({ eq: async () => ({ error:{ message:'denied' } }) }) }) };
     expect((await deleteLibraryPhoto(bad, '1')).error).toContain('denied');
+  });
+});
+
+describe('uploads are resized before ever reaching storage', () => {
+  // Root cause of a reported 13MB, slow-to-render brochure PDF: nothing
+  // downscaled an uploaded photo before it went into the bucket, so a
+  // phone photo (commonly several MB, 4000x3000px) was stored and later
+  // embedded into an exported PDF at its full original resolution.
+
+  it('the file resizeFn returns is what actually gets uploaded, not the original', async () => {
+    const originalFile = { name: 'a.jpg', size: 8_000_000 };
+    const resizedFile = { name: 'a.jpg', size: 400_000 };
+    const upload = vi.fn(async () => ({ error: null }));
+    const client = { storage: { from: () => ({
+      upload, getPublicUrl: () => ({ data: { publicUrl: 'https://x/agra/1-a.jpg' } }),
+    }) } };
+    const db = { from: () => ({ insert: async (row) => ({ data: [{ id: '9', ...row }], error: null }) }) };
+    const resizeFn = vi.fn(async (f) => { expect(f).toBe(originalFile); return resizedFile; });
+
+    await uploadLibraryPhoto(client, db, { file: originalFile, destination: 'Agra', resizeFn });
+
+    expect(resizeFn).toHaveBeenCalledWith(originalFile);
+    expect(upload.mock.calls[0][1]).toBe(resizedFile); // the SECOND arg to .upload() is the file
+  });
+
+  it('a resizeFn that throws does not block the upload -- falls back to the original file', async () => {
+    const originalFile = { name: 'a.jpg' };
+    const upload = vi.fn(async () => ({ error: null }));
+    const client = { storage: { from: () => ({
+      upload, getPublicUrl: () => ({ data: { publicUrl: 'https://x/agra/1-a.jpg' } }),
+    }) } };
+    const db = { from: () => ({ insert: async (row) => ({ data: [{ id: '9', ...row }], error: null }) }) };
+    const resizeFn = vi.fn(async () => { throw new Error('canvas unavailable'); });
+
+    const { error } = await uploadLibraryPhoto(client, db, { file: originalFile, destination: 'Agra', resizeFn });
+
+    expect(error).toBeNull();
+    expect(upload.mock.calls[0][1]).toBe(originalFile);
+  });
+
+  it('with no resizeFn given, the real default is used and degrades gracefully in this test environment', async () => {
+    // No real canvas/image-decoding here (this is jsdom, not a browser) --
+    // confirmed the image element never fires onload OR onerror for a real
+    // File object, which is exactly why defaultResizeImage has a timeout
+    // fallback. A short timeoutMs here proves that fallback resolves
+    // rather than waiting out the real 8s default.
+    const originalFile = new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    const resized = await defaultResizeImage(originalFile, { timeoutMs: 50 });
+    expect(resized).toBe(originalFile);
+  }, 10000);
+});
+
+describe('defaultResizeImage: safe-return paths that do not require a real canvas', () => {
+  it('returns the file unchanged for a non-image type', async () => {
+    const file = { type: 'application/pdf' };
+    expect(await defaultResizeImage(file)).toBe(file);
+  });
+
+  it('returns the file unchanged for SVG -- vector art has no pixel dimensions to downscale', async () => {
+    const file = { type: 'image/svg+xml' };
+    expect(await defaultResizeImage(file)).toBe(file);
+  });
+
+  it('returns the file unchanged when there is no file at all, rather than throwing', async () => {
+    expect(await defaultResizeImage(null)).toBe(null);
   });
 });

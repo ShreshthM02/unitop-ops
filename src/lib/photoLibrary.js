@@ -115,6 +115,64 @@ export async function loadPhotoLibrary(db) {
   }
 }
 
+// Downscales an image client-side before it ever reaches storage. Nothing
+// did this before -- a phone photo uploaded straight through is commonly
+// 4000x3000px and several megabytes, and with one photo per day plus a
+// cover, that alone is enough raw image data to make an exported PDF run
+// into double-digit megabytes and take real time to render, since
+// print-to-PDF embeds whatever resolution the source image actually is,
+// not what it happens to display at on the page.
+//
+// 1600px on the long edge and JPEG quality 0.82 are generously above what
+// this brochure ever needs -- the largest a photo renders at is roughly
+// A4-page width, well under 1600px -- while still looking sharp printed.
+//
+// Only runs in a real browser DOM (Image/canvas are not available in Node
+// or in this project's jsdom test environment); falls back to the
+// original file untouched rather than blocking an upload over a resize
+// that could not run, for any reason -- an unsupported format, a missing
+// canvas 2d context, a browser that refuses toBlob. A photo that could not
+// be shrunk is still a photo worth having.
+export async function defaultResizeImage(file, { maxDim = 1600, quality = 0.82, timeoutMs = 8000 } = {}) {
+  if (typeof document === "undefined" || !file || !file.type || !file.type.startsWith("image/") || file.type === "image/svg+xml") {
+    return file;
+  }
+  try {
+    const resizePromise = new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(url);
+      img.onload = () => {
+        cleanup();
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        if (scale >= 1) { resolve(file); return; } // already small enough
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext && canvas.getContext("2d");
+        if (!ctx) { resolve(file); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          resolve(blob ? new File([blob], file.name, { type: "image/jpeg" }) : file);
+        }, "image/jpeg", quality);
+      };
+      img.onerror = () => { cleanup(); resolve(file); };
+      img.src = url;
+    });
+    // Confirmed necessary, not defensive-programming theatre: a real File
+    // object handed to this function inside this project's own jsdom test
+    // environment never fires onload OR onerror at all, which would hang
+    // an upload forever without this. The same failure mode is not
+    // guaranteed impossible in a real browser either, so the timeout stays
+    // even outside tests -- a slow resize should degrade to the original
+    // file, never block the upload indefinitely.
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(file), timeoutMs));
+    return await Promise.race([resizePromise, timeoutPromise]);
+  } catch (e) {
+    return file;
+  }
+}
+
 // Uploads a file to Supabase Storage and records it in the library.
 //
 // Storage goes through the real Supabase client (the one already created for
@@ -122,7 +180,10 @@ export async function loadPhotoLibrary(db) {
 // PostgREST and has no storage support. That client is null when the
 // environment is unconfigured -- exactly as Realtime handles it -- so this
 // reports a clear error instead of throwing on a null dereference.
-export async function uploadLibraryPhoto(client, db, { file, destination, label, createdBy }) {
+//
+// resizeFn defaults to defaultResizeImage above; overridable so this stays
+// testable without a real browser canvas.
+export async function uploadLibraryPhoto(client, db, { file, destination, label, createdBy, resizeFn = defaultResizeImage }) {
   if (!client || !client.storage) {
     return { photo: null, error: "Storage is not configured (VITE_SUPABASE_URL / VITE_SUPABASE_KEY missing)." };
   }
@@ -132,10 +193,11 @@ export async function uploadLibraryPhoto(client, db, { file, destination, label,
     // it would sit in the bucket costing storage and helping nobody.
     return { photo: null, error: "A destination is required so the photo can be reused." };
   }
+  const uploadFile = await resizeFn(file).catch(() => file);
   const safe = String(file.name || "photo").replace(/[^a-zA-Z0-9._-]/g, "-");
   const path = `${norm(destination).replace(/[^a-z0-9]+/g, "-")}/${Date.now()}-${safe}`;
   try {
-    const up = await client.storage.from(PHOTO_BUCKET).upload(path, file, { upsert: false });
+    const up = await client.storage.from(PHOTO_BUCKET).upload(path, uploadFile, { upsert: false });
     if (up.error) return { photo: null, error: up.error.message || String(up.error) };
     const { data: pub } = client.storage.from(PHOTO_BUCKET).getPublicUrl(path);
     const url = pub && pub.publicUrl;
