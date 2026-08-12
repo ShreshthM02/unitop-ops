@@ -229,27 +229,35 @@ export const ROLE_DEFAULTS = {
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:true,
     templates:true, user_management:true, force_move_stage:true,
+    // Backdoor access to what users add on the fly while using the
+    // itinerary/photo pickers -- everyone gets to ADD and DELETE their own
+    // entries through those pickers already (that is how the resolver
+    // learns), but the shared library those additions land in has no
+    // owner-level review surface without this. Admin-only by design: it is
+    // a dumping ground other people fill, and needs one place someone can
+    // actually audit and correct it.
+    place_library:true,
   },
   sales: {
     queries_create:true, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:true,
-    templates:false, user_management:false, force_move_stage:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false,
   },
   ops: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false, force_move_stage:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false,
   },
   accounts: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false, force_move_stage:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false,
   },
 };
 
@@ -270,6 +278,7 @@ export const PERM_LABELS = {
   templates:        "Edit Quote Templates (Admin)",
   user_management:  "User Management (Admin)",
   force_move_stage: "Move Tour File to Any Stage (Admin)",
+  place_library:    "Photo & Place Library (Admin)",
 };
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────

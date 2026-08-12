@@ -219,6 +219,26 @@ export async function uploadLibraryPhoto(client, db, { file, destination, label,
 // bucket: a brochure already exported and sent to a client may reference
 // that URL, and breaking a live link to reclaim a few kilobytes is a bad
 // trade. Bucket housekeeping is a separate, deliberate job.
+// Edits a library photo's own metadata (destination, caption) -- not its
+// image. Re-uploading a new image for an existing row is out of scope
+// here; that is a delete-and-re-upload, which keeps this function's
+// contract simple (update the row, not the storage object it points at).
+export async function updateLibraryPhoto(db, id, { destination, label } = {}) {
+  if (destination != null && !destination.trim()) {
+    return { error: "A destination is required so the photo can be reused." };
+  }
+  const patch = {};
+  if (destination != null) patch.destination = destination.trim();
+  if (label != null) patch.label = label.trim();
+  try {
+    const { error } = await db.from("photo_library").eq("id", id).update(patch);
+    if (error) return { error: error.message || String(error) };
+    return { error: null };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+}
+
 export async function deleteLibraryPhoto(db, id) {
   try {
     const { error } = await db.from("photo_library").delete().eq("id", id);

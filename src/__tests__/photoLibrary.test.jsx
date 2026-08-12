@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   suggestPhotoForDay, resolveDayImages, libraryDestinations,
-  dayImageTextCandidates, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, defaultResizeImage,
+  dayImageTextCandidates, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, defaultResizeImage, updateLibraryPhoto,
 } from '../lib/photoLibrary.js';
 
 const photo = (destination, url) => ({ id: destination, destination, url, label: '' });
@@ -221,5 +221,50 @@ describe('defaultResizeImage: safe-return paths that do not require a real canva
 
   it('returns the file unchanged when there is no file at all, rather than throwing', async () => {
     expect(await defaultResizeImage(null)).toBe(null);
+  });
+});
+
+describe('updateLibraryPhoto: editing a library entry\u2019s own metadata', () => {
+  function fakeUpdateDb(updateResult = { error: null }) {
+    const calls = [];
+    return {
+      calls,
+      from: () => {
+        const rec = { filters: [] };
+        const builder = {
+          eq: (col, val) => { rec.filters.push([col, val]); return builder; },
+          update: async (patch) => { calls.push({ filters: rec.filters, patch }); return updateResult; },
+        };
+        return builder;
+      },
+    };
+  }
+
+  it('updates destination and label together', async () => {
+    const db = fakeUpdateDb();
+    const { error } = await updateLibraryPhoto(db, 5, { destination: 'Agra', label: 'Taj at dawn' });
+    expect(error).toBeNull();
+    expect(db.calls[0].filters).toEqual([['id', 5]]);
+    expect(db.calls[0].patch).toEqual({ destination: 'Agra', label: 'Taj at dawn' });
+  });
+
+  it('refuses to clear the destination to empty -- an untagged photo can never be reused', async () => {
+    const db = fakeUpdateDb();
+    const { error } = await updateLibraryPhoto(db, 5, { destination: '   ' });
+    expect(error).toMatch(/destination is required/i);
+    expect(db.calls).toEqual([]);
+  });
+
+  it('a label-only edit needs no destination at all', async () => {
+    const db = fakeUpdateDb();
+    const { error } = await updateLibraryPhoto(db, 5, { label: 'New caption' });
+    expect(error).toBeNull();
+    expect(db.calls[0].patch).toEqual({ label: 'New caption' });
+  });
+
+  it('surfaces an update failure from the database', async () => {
+    const db = fakeUpdateDb({ error: { message: 'row not found' } });
+    const { error } = await updateLibraryPhoto(db, 5, { destination: 'X' });
+    expect(error).toContain('row not found');
   });
 });

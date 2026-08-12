@@ -21,6 +21,7 @@ import SmartSearch from './SmartSearch.jsx';
 import TaxInvoice from './TaxInvoice.jsx';
 import TeamView from './TeamView.jsx';
 import TemplatesHub from './TemplatesHub.jsx';
+import AdminPlaceLibrary from './AdminPlaceLibrary.jsx';
 import MealPlanDocument from './MealPlanDocument.jsx';
 import TourBriefingSheet from './TourBriefingSheet.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
@@ -509,10 +510,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     ...((can("templates")||can("user_management"))?[{section:"Admin",items:[
       ...(can("templates")?[{id:"templates_hub",icon:"🗂",label:"Templates"}]:[]),
       ...(can("user_management")?[{id:"usermgmt",icon:"👥",label:"User Management"}]:[]),
+      ...(can("place_library")?[{id:"place_library",icon:"📍",label:"Photo & Place Library"}]:[]),
     ]}]:[]),
   ];
 
-  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management"};
+  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library"};
   const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showMealPlan||showTourBrief;
 
   const DocButtons = ({q,stopProp=false}) => (
@@ -612,6 +614,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings}/>}
+            {view==="place_library" && <AdminPlaceLibrary/>}
 
             {view==="cancelled" && (
               <div>

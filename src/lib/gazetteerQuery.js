@@ -7,7 +7,7 @@
 // rows, not a million) and hands it to placeResolver's existing, tested
 // ranking. The two layers never merge, so the ranking logic stays testable
 // with a hand-built fixture even though the real table is enormous.
-import { normalizePlaceName, canonicalName } from "./placeResolver.js";
+import { normalizePlaceName, canonicalName, isValidCoordinate } from "./placeResolver.js";
 
 const COLUMNS = "name,ascii_name,alt_names,lat,lon,country,admin1,population";
 
@@ -143,6 +143,57 @@ export async function saveCustomPlace(db, place) {
       country: place.country || null, admin1: place.admin1 || null,
     });
     return { error: error ? error.message || String(error) : null };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+}
+
+// Every custom place ever saved -- the admin surface for reviewing what
+// the resolver has learned. Regular search only ever asks for a handful of
+// name-matched candidates; this is the one place that legitimately wants
+// the whole table.
+export async function listCustomPlaces(db) {
+  try {
+    const { data, error } = await db.from("custom_places").select("*").order("created_at", { ascending: false });
+    if (error) return { places: [], error: error.message || String(error) };
+    return { places: (data || []).map(mapCustomRow), error: null };
+  } catch (e) {
+    return { places: [], error: e.message || String(e) };
+  }
+}
+
+export async function updateCustomPlace(db, id, patch) {
+  if (patch && patch.name != null && !String(patch.name).trim()) {
+    return { error: "A name is required." };
+  }
+  // A coordinate update is treated as a pair, not two independent fields --
+  // a lat with no matching lon (or vice versa) is not a meaningful partial
+  // update, so both are required together whenever either is touched.
+  if (patch && (patch.lat != null || patch.lon != null)) {
+    if (patch.lat == null || patch.lon == null || !isValidCoordinate(patch.lat, patch.lon)) {
+      return { error: "Latitude and longitude must both be given, and in range." };
+    }
+  }
+  const clean = {};
+  if (patch.name != null) clean.name = String(patch.name).trim();
+  if (patch.lat != null) clean.lat = Number(patch.lat);
+  if (patch.lon != null) clean.lon = Number(patch.lon);
+  if (patch.country != null) clean.country = patch.country || null;
+  if (patch.admin1 != null) clean.admin1 = patch.admin1 || null;
+  try {
+    const { error } = await db.from("custom_places").eq("id", id).update(clean);
+    if (error) return { error: error.message || String(error) };
+    return { error: null };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+}
+
+export async function deleteCustomPlace(db, id) {
+  try {
+    const { error } = await db.from("custom_places").eq("id", id).delete();
+    if (error) return { error: error.message || String(error) };
+    return { error: null };
   } catch (e) {
     return { error: e.message || String(e) };
   }

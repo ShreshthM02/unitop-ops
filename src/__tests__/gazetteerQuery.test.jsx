@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace } from '../lib/gazetteerQuery.js';
+import { fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, listCustomPlaces, updateCustomPlace, deleteCustomPlace } from '../lib/gazetteerQuery.js';
 
 // A fake db with working search_gazetteer() and search_gazetteer_alt_names()
 // RPCs -- the normal case once the SQL migration has been run. `fast` is
@@ -234,5 +234,93 @@ describe('custom_places: what a manually-placed coordinate teaches the app for n
   it('a genuine no-match anywhere still returns empty, not an error', async () => {
     const db = fakeDbWithCustom({ fast: [], slow: [], custom: [] });
     expect(await fetchPlaceCandidates(db, 'Nowhere At All')).toEqual([]);
+  });
+});
+
+describe('custom_places admin CRUD: list, update, delete', () => {
+  function fakeAdminDb({ rows = [], updateResult = { error: null }, deleteResult = { error: null } } = {}) {
+    const calls = { update: [], delete: [], select: [] };
+    return {
+      calls,
+      from: (table) => {
+        const rec = { table, filters: [] };
+        const builder = {
+          select: (cols) => { calls.select.push({ table, cols }); return builder; },
+          eq: (col, val) => { rec.filters.push([col, val]); return builder; },
+          order: () => ({ then: (res) => res({ data: rows, error: null }) }),
+          update: async (patch) => { calls.update.push({ table, filters: rec.filters, patch }); return updateResult; },
+          delete: async () => { calls.delete.push({ table, filters: rec.filters }); return deleteResult; },
+        };
+        return builder;
+      },
+    };
+  }
+
+  it('listCustomPlaces returns every saved place, newest first', async () => {
+    const db = fakeAdminDb({ rows: [{ id: 1, name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India' }] });
+    const { places, error } = await listCustomPlaces(db);
+    expect(error).toBeNull();
+    expect(places[0]).toMatchObject({ name: 'A Hamlet', source: 'custom' });
+  });
+
+  it('listCustomPlaces reports a load failure rather than silently returning empty', async () => {
+    const db = { from: () => ({ select: () => ({ order: () => ({ then: (res) => res({ data: null, error: { message: 'timeout' } }) }) }) }) };
+    const { places, error } = await listCustomPlaces(db);
+    expect(places).toEqual([]);
+    expect(error).toContain('timeout');
+  });
+
+  it('updateCustomPlace edits name and coordinates together', async () => {
+    const db = fakeAdminDb();
+    const { error } = await updateCustomPlace(db, 7, { name: 'Renamed', lat: 25.2, lon: 84.3 });
+    expect(error).toBeNull();
+    expect(db.calls.update[0].filters).toEqual([['id', 7]]);
+    expect(db.calls.update[0].patch).toMatchObject({ name: 'Renamed', lat: 25.2, lon: 84.3 });
+  });
+
+  it('refuses to clear the name to empty', async () => {
+    const db = fakeAdminDb();
+    const { error } = await updateCustomPlace(db, 7, { name: '   ' });
+    expect(error).toMatch(/name is required/i);
+    expect(db.calls.update).toEqual([]);
+  });
+
+  it('refuses a lat with no matching lon -- a coordinate is a pair, not two independent fields', async () => {
+    const db = fakeAdminDb();
+    const { error } = await updateCustomPlace(db, 7, { lat: 25.2 });
+    expect(error).toMatch(/both be given/i);
+    expect(db.calls.update).toEqual([]);
+  });
+
+  it('refuses an out-of-range coordinate pair', async () => {
+    const db = fakeAdminDb();
+    const { error } = await updateCustomPlace(db, 7, { lat: 999, lon: 84.3 });
+    expect(error).toMatch(/in range/i);
+  });
+
+  it('a country/admin1-only edit needs no coordinate at all', async () => {
+    const db = fakeAdminDb();
+    const { error } = await updateCustomPlace(db, 7, { country: 'India', admin1: 'Bihar' });
+    expect(error).toBeNull();
+    expect(db.calls.update[0].patch).toEqual({ country: 'India', admin1: 'Bihar' });
+  });
+
+  it('surfaces an update failure from the database', async () => {
+    const db = fakeAdminDb({ updateResult: { error: { message: 'row not found' } } });
+    const { error } = await updateCustomPlace(db, 7, { name: 'X' });
+    expect(error).toContain('row not found');
+  });
+
+  it('deleteCustomPlace removes the row by id', async () => {
+    const db = fakeAdminDb();
+    const { error } = await deleteCustomPlace(db, 7);
+    expect(error).toBeNull();
+    expect(db.calls.delete[0].filters).toEqual([['id', 7]]);
+  });
+
+  it('surfaces a delete failure rather than reporting silent success', async () => {
+    const db = fakeAdminDb({ deleteResult: { error: { message: 'permission denied' } } });
+    const { error } = await deleteCustomPlace(db, 7);
+    expect(error).toContain('permission denied');
   });
 });
