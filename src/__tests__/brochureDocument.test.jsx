@@ -52,6 +52,16 @@ describe('cover page', () => {
     expect(html).toContain('data:image/png;base64,AAA');
   });
 
+  it('prints the company tagline beneath the logo, width-matched to it, only when a logo is present', () => {
+    const withLogo = brochureCoverHTML({ title:'T', logo:'data:image/png;base64,AAA' });
+    expect(withLogo).toContain('Your gateway to Incredible India, since 1999');
+    expect(withLogo).toContain('bro-cover-logo-tag');
+    // No logo, no tagline -- it is specifically the logo's caption, not a
+    // standalone element that should appear regardless.
+    const noLogo = brochureCoverHTML({ title:'T', brand:'Unitop Tours' });
+    expect(noLogo).not.toContain('Your gateway to Incredible India');
+  });
+
   it('falls back to the company name when no logo is available', () => {
     const html = brochureCoverHTML({ title:'T', brand:'Unitop Tours' });
     expect(html).toContain('Unitop Tours');

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -253,20 +253,48 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // badges are right-aligned within the content column rather than left-
   // stacked, so each day's block has a deliberate right edge instead of
   // trailing off wherever its shortest line happens to end.
-  const buildDayBlocks = (flavor) => itinDays.map((d, i) => {
+  // Each day used to be ONE combined HTML string -- a single atomic block
+  // to the paginator. Atomic blocks that do not fit in the space left on a
+  // page get moved WHOLE to the next one, which is exactly the reported
+  // bug: a day whose content overflows the remaining space leaves that
+  // space blank rather than the day's own content continuing there. This
+  // returns each day as several smaller blocks -- one for its header, one
+  // per item -- so the paginator's existing block-by-block placement can
+  // fill a page fully and carry the rest of a day onto the next one.
+  //
+  // The header block carries data-page-heading="1" so it gets the same
+  // stranding protection buildPaginatedLetterheadDocument already gives a
+  // real <h2>: it will never be placed alone at the bottom of a page with
+  // its content starting fresh on the next, which would read as a bare day
+  // number pointing at nothing.
+  const buildDayBlocks = (flavor) => itinDays.flatMap((d, i) => {
     const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
-    return `<div style="display:flex;align-items:flex-start;gap:12pt;margin-bottom:14pt;padding-bottom:11pt;border-bottom:0.5pt solid #eee">
-        <div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
-          <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
-          <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>
-        </div>
-        <div style="flex:0 0 1pt;align-self:stretch;background:#E5E7EB;min-height:20pt"></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:11pt;font-weight:bold;color:#1A3A52;margin-bottom:4pt">${d.dayLabel}${d.title?" | "+d.title:""}</div>
-          ${(d.items||[]).map(item => itineraryItemHTML(item, flavor)).join("")}
-          ${mealStr ? `<div style="margin-top:6pt;text-align:right">${mealStr}</div>` : ""}
-        </div>
+    const rail = `<div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
+        <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
+        <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>
+      </div>
+      <div style="flex:0 0 1pt;align-self:stretch;background:#E5E7EB;min-height:20pt"></div>`;
+
+    // Day number and title live in the header block. Individual items are
+    // indented to align under the header's content column (42.5pt = the
+    // rail's 30pt + its 1pt divider + the 12pt gap between them and the
+    // content column), so a day that continues onto a new page still reads
+    // as belonging to that day even without repeating the rail on every
+    // block.
+    const header = `<div data-page-heading="1" style="display:flex;align-items:flex-start;gap:12pt;margin-bottom:${d.title?4:0}pt">
+        ${rail}
+        ${d.title ? `<div style="flex:1;min-width:0;font-size:11pt;font-weight:bold;color:#1A3A52">${d.title}</div>` : `<div style="flex:1;min-width:0"></div>`}
       </div>`;
+
+    const items = (d.items || []).map(item => itineraryItemHTML(item, flavor)).filter(Boolean)
+      .map(html => `<div style="margin-left:42.5pt">${html}</div>`);
+
+    const isLastDay = i === itinDays.length - 1;
+    const closing = `<div style="margin-left:42.5pt;padding-bottom:11pt;${isLastDay ? "" : "border-bottom:0.5pt solid #eee;margin-bottom:14pt;"}">
+        ${mealStr ? `<div style="margin-top:6pt;text-align:right">${mealStr}</div>` : ""}
+      </div>`;
+
+    return [header, ...items, closing];
   });
 
   const buildClosingBlock = (tmpl, remarks, closing, stampHTML) => `
@@ -351,6 +379,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         cover: {
           title: tourTitle || query.groupName || "Itinerary",
           tagline, duration, route,
+          logo: LOGO_B64,
           heroImage: resolveDayImages(itinDays, photoLibrary, dayImageOverrides)[itinDays[0] && itinDays[0].id] || null,
         },
         days: itinDays,

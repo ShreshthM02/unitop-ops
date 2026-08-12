@@ -124,8 +124,18 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 14mm 18mm 10mm;
   }
-  .bro-cover-logo { margin-bottom: 11mm; }
+  /* display:inline-block makes this shrink to the image's own rendered
+     width, not the cover panel's full width -- so the tagline underneath,
+     given width:100% of THIS wrapper, always matches the logo's actual
+     width with no hardcoded value to fall out of sync if the logo image
+     ever changes. */
+  .bro-cover-logo { margin-bottom: 11mm; display: inline-block; }
   .bro-cover-logo img { height: 22mm; display: block; }
+  .bro-cover-logo-tag {
+    width: 100%; margin-top: 2mm; font-family: ${DISPLAY}; font-style: italic;
+    font-size: 7.5pt; color: ${BROCHURE_THEME.accent}; text-align: center;
+    line-height: 1.3; white-space: normal;
+  }
   .bro-cover-title {
     font-family: ${DISPLAY}; font-size: 36pt; line-height: 1.06;
     font-weight: 700; margin: 0; letter-spacing: -0.4px; color: ${theme.ink};
@@ -436,7 +446,9 @@ export function brochureCoverHTML({ title, tagline, duration, route, heroImage, 
   return `<div class="bro-page bro-page--notlast bro-cover${heroImage ? "" : " bro-cover--plain"}">
     <div class="bro-cover-top">
       ${logo
-        ? `<div class="bro-cover-logo"><img src="${esc(logo)}" alt=""/></div>`
+        ? `<div class="bro-cover-logo"><img src="${esc(logo)}" alt=""/>
+            <div class="bro-cover-logo-tag">Your gateway to Incredible India, since 1999</div>
+          </div>`
         : `<div class="bro-cover-logo" style="font-size:9pt;letter-spacing:3px;text-transform:uppercase;color:${BROCHURE_THEME.soft}">${esc(brand || "Unitop Tours & Travel (P) Ltd.")}</div>`}
       <h1 class="bro-cover-title">${esc(title || "Itinerary")}</h1>
       ${clientName ? `<div class="bro-cover-client">${esc(clientName)}</div>` : ""}

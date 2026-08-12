@@ -1820,7 +1820,11 @@ function icon(name, mode) {
 function noteLine(item, flavor) {
   const note = (itemNoteForFlavor(item, flavor) || "").trim();
   if (!note) return "";
-  return `<div style="font-size:8.5pt;color:#888;margin:1pt 0 3pt 14.5pt;white-space:pre-wrap;line-height:1.45">${note}</div>`;
+  // #555 to match remarks' established colour, not the #888 this started
+  // at -- too light on its own, and inconsistent with the darker, more
+  // legible tone already agreed for every other annotation-style text in
+  // this document (remarks, the document-level Notes field).
+  return `<div style="font-size:8.5pt;color:#555;margin:1pt 0 3pt 14.5pt;white-space:pre-wrap;line-height:1.45">${note}</div>`;
 }
 
 export function itineraryItemHTML(item, flavor = "brief") {

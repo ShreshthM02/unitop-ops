@@ -325,3 +325,44 @@ describe('gradient line thickness set to 1pt (explicit user request, both lines)
     expect(invoiceLetterheadCSS).toContain('.lh-rule-footer { height: 1pt;');
   });
 });
+
+describe('regression: a day whose content overflows the current page must continue flowing, not move wholesale', () => {
+  // Reproduces the reported bug directly: previously a whole day was one
+  // atomic block, so a day too big to fit in whatever space remained on a
+  // page got moved entirely to the next page, leaving that remaining space
+  // blank. Marking a day's header with data-page-heading="1" and splitting
+  // its items into individual blocks lets the SAME general-purpose
+  // placement logic already used for every other document flow a day's
+  // content across the boundary instead.
+  it('places as many of a day\u2019s item-blocks on the current page as fit, continuing the rest on the next -- no atomic whole-day move', () => {
+    const header = '<div data-page-heading="1">Day 1</div>';
+    const items = ['<div>item A</div>', '<div>item B</div>', '<div>item C</div>', '<div>item D</div>'];
+    const heights = { [header]: 30 };
+    items.forEach((it, i) => { heights[it] = 40; });
+    const measureFn = (html) => heights[html] ?? 40;
+    // Room for the header + 2 items on page 1 (30+40+40=110 of 120), the
+    // rest must continue on page 2 -- NOT the whole day jumping to page 2.
+    const pages = paginateBodyBlocks([header, ...items], { pageContentHeightPx: 120, containerWidthPx: 500, measureFn });
+    expect(pages[0]).toContain(header);
+    expect(pages[0]).toContain(items[0]);
+    expect(pages[0]).toContain(items[1]);
+    expect(pages[1]).toContain(items[2]);
+    expect(pages[1]).toContain(items[3]);
+  });
+
+  it('the data-page-heading marker still protects against a stranded day header with no room for even one item', () => {
+    const header = '<div data-page-heading="1">Day 1</div>';
+    const item = '<div>item A</div>';
+    const measureFn = (html) => (html === header ? 30 : 100);
+    // Only 40px left on the page -- room for the header alone, but not the
+    // header plus its first item, so both should defer to the next page
+    // together rather than stranding the header with nothing under it.
+    const pages = paginateBodyBlocks(['<div>filler</div>', header, item], {
+      pageContentHeightPx: 140, containerWidthPx: 500,
+      measureFn: (h) => (h === '<div>filler</div>' ? 100 : measureFn(h)),
+    });
+    expect(pages[0]).not.toContain(header);
+    expect(pages[1]).toContain(header);
+    expect(pages[1]).toContain(item);
+  });
+});

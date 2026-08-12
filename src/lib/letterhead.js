@@ -417,7 +417,13 @@ export function paginateBodyBlocks(bodyBlocks, { pageContentHeightPx, containerW
   // heading we look ahead and require room for the heading plus the smallest
   // meaningful piece of whatever follows (a table's header row + its first
   // data row, or a plain block in full).
-  const isHeadingHTML = (b) => typeof b === "string" && /^\s*<h2[\s>]/i.test(b);
+  //
+  // Recognises an actual <h2> OR a data-page-heading="1" marker on any
+  // element -- added so a visual heading that is not semantically an <h2>
+  // (a day-number rail, for instance) can opt into the identical
+  // stranding protection without being forced into heading markup it
+  // does not otherwise want.
+  const isHeadingHTML = (b) => typeof b === "string" && /^\s*<(h2[\s>]|[a-z][a-z0-9]*\s[^>]*data-page-heading="1")/i.test(b);
   const minHeightOfBlock = (b) => {
     if (!b) return 0;
     if (typeof b === "object" && b.type === "table") {
