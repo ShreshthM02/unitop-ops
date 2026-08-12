@@ -292,6 +292,25 @@ describe('buildMapDataFromResolvedDays: the itinerary\u2019s own places become m
     expect(buildMapDataFromResolvedDays(days).sectors[0].mode).toBe('flight');
   });
 
+  it('marks a sector as a train when the transport item\u2019s own mode says so -- regression: this used to always show as flight regardless', () => {
+    // Confirmed bug: mode was previously derived from whether ANY transport
+    // item existed at all, never from that item's own mode field, so a
+    // train-mode item on the map always rendered as a flight.
+    const days = [
+      { place: place('Delhi', 28.6, 77.2), items: [] },
+      { place: place('Agra', 27.2, 78.0), items: [{ id:'t', type:'transport', text:'12345', mode:'train' }] },
+    ];
+    expect(buildMapDataFromResolvedDays(days).sectors[0].mode).toBe('train');
+  });
+
+  it('an old transport item with no mode field at all still defaults to flight, not a crash', () => {
+    const days = [
+      { place: place('Bangkok', 13.75, 100.5), items: [] },
+      { place: place('Bodhgaya', 24.7, 85.0), items: [{ id:'t', type:'transport', text:'Old data' }] },
+    ];
+    expect(buildMapDataFromResolvedDays(days).sectors[0].mode).toBe('flight');
+  });
+
   it('skips a day with no resolved place, without breaking the chain around it', () => {
     const days = [
       { place: place('Bodhgaya', 24.7, 85.0), items: [] },

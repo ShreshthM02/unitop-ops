@@ -195,3 +195,49 @@ describe('remembering a manually-placed coordinate for next time', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat:1, lon:2 }));
   });
 });
+
+describe('a manually-placed coordinate now has its own editable name', () => {
+  it('defaults the name field to the day\u2019s auto-derived query text', () => {
+    setup({ query: 'Mahabodhi Temple, Bodhgaya' });
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.getByLabelText('Manual place name').value).toBe('Mahabodhi Temple, Bodhgaya');
+  });
+
+  it('the name is genuinely editable, not locked to the auto-derived text', () => {
+    const onChange = setup({ query: 'A whole sentence describing the day' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: 'Small Hamlet' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: 'Small Hamlet', lat: 25.1, lon: 84.2 }));
+  });
+
+  it('"Use these" is disabled when the name is cleared, even with valid coordinates', () => {
+    setup({ query: 'Something' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    expect(screen.getByText('Use these').disabled).toBe(true);
+  });
+
+  it('a name that is only whitespace is treated as empty, not saved as a blank place', () => {
+    const onChange = setup({ query: 'Something' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    expect(screen.getByText('Use these').disabled).toBe(true);
+  });
+
+  it('the saved place uses the trimmed manual name, not the raw query, even when they differ', () => {
+    const onChange = setup({ query: '  Untrimmed query  ' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: '  A Real Name  ' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: 'A Real Name' }));
+  });
+});

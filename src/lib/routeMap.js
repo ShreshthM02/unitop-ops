@@ -242,14 +242,17 @@ export function buildMapDataFromResolvedDays(days) {
     }
     stop.days.push(dayNo);
     if (prev && prev.name !== place.name) {
-      // A day carrying a transport-type item is treated as a flown leg; road
-      // is the default in the absence of any signal to the contrary, which
-      // matches how most inter-town movement in these itineraries happens.
-      const flew = (day.items || []).some(i => i.type === "transport");
+      // Uses the transport item's OWN mode (flight or train) rather than
+      // collapsing to a single "flew" boolean -- a day carrying a
+      // train-mode transport item was previously always drawn on the map
+      // as a flight, because only the item's TYPE was checked, never its
+      // mode. Road remains the default when no transport item is present,
+      // matching how most inter-town movement in these itineraries happens.
+      const transportItem = (day.items || []).find(i => i.type === "transport");
       const lead = (day.items || []).find(i => i.type === "route" && (i.distance || i.time));
       sectors.push({
         from: prev.name, to: place.name, day: dayNo,
-        mode: flew ? "flight" : "road",
+        mode: transportItem ? (transportItem.mode === "train" ? "train" : "flight") : "road",
         distance: lead ? lead.distance : "", time: lead ? lead.time : "",
       });
     }

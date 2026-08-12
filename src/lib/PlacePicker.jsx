@@ -59,6 +59,13 @@ export function PlacePicker({
   const [term, setTerm] = useState("");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
+  // The name typed for a hand-placed coordinate. Previously there was no
+  // field for this at all -- manual placement silently used `query` (the
+  // day's own auto-derived text) as the name, which is often a whole
+  // sentence, blank, or otherwise not what should actually be stored and
+  // shown for the place. Defaults to query when the manual section opens,
+  // as a sensible starting point, but is now genuinely editable.
+  const [manualName, setManualName] = useState("");
   const [dbResults, setDbResults] = useState([]);
   const [searching, setSearching] = useState(false);
   // Checked by default: remembering is the behaviour that actually helps
@@ -80,7 +87,7 @@ export function PlacePicker({
   const reason = value ? "Chosen manually." : (auto ? auto.reason : "");
   const alternatives = (auto && auto.candidates) || [];
 
-  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); setDbResults([]); } }, [open]);
+  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); setDbResults([]); } else { setManualName(query || ""); } }, [open]);
 
   // Query the real table as the user types. No debounce: this is an
   // internal tool used a few times per itinerary, not a public search box,
@@ -184,6 +191,10 @@ export function PlacePicker({
             Or place it yourself
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input style={{ ...inp, fontSize: 11.5, flex: 1 }} value={manualName}
+              onChange={e => setManualName(e.target.value)} placeholder="Name" aria-label="Manual place name"/>
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
             <input style={{ ...inp, fontSize: 11.5, width: 90 }} value={lat}
               onChange={e => setLat(e.target.value)} placeholder="Latitude" aria-label="Latitude"/>
             <input style={{ ...inp, fontSize: 11.5, width: 90 }} value={lon}
@@ -191,9 +202,9 @@ export function PlacePicker({
             <button
               className="btn btn-ghost"
               style={{ fontSize: 11 }}
-              disabled={!isValidCoordinate(lat, lon)}
+              disabled={!isValidCoordinate(lat, lon) || !manualName.trim()}
               onClick={() => {
-                const place = manualPlace(query, lat, lon);
+                const place = manualPlace(manualName.trim(), lat, lon);
                 if (onSaveCustomPlace && remember) onSaveCustomPlace(place);
                 pick(place);
               }}>
