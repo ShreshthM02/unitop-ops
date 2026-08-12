@@ -1600,7 +1600,7 @@ export const ITINERARY_ITEM_TYPES = [
   { id: "route",       label: "Route / Movement", icon: "route", fields: ["text", "distance", "time"] },
   { id: "sightseeing", label: "Sightseeing",      icon: "pin",   fields: ["text"] },
   { id: "transport",   label: "Flight / Train",   icon: "plane", fields: ["text"] },
-  { id: "stay",        label: "Overnight Stay",   icon: "moon",  fields: ["text"] },
+  { id: "stay",        label: "Overnight Stay",   icon: "bed",   fields: ["text"] },
   // No icon -- a remark is a note, not a movement or a stop, and an icon
   // here would imply it belongs to the same family of structural items as
   // the rest. The word itself is the clearest signal.
@@ -1802,9 +1802,17 @@ export function reorderItems(items, from, to) {
 export const ICON_PATHS = {
   route:  `<line x1="4" y1="12" x2="18" y2="12"/><polyline points="12 6 18 12 12 18"/>`,
   pin:    `<path d="M19 9.5c0 6-7 11-7 11s-7-5-7-11a7 7 0 0 1 14 0z"/><circle cx="12" cy="9.5" r="2.4"/>`,
-  plane:  `<line x1="20" y1="3" x2="10.5" y2="12.5"/><polygon points="20 3 14 20 10.5 12.5 3 9 20 3"/>`,
+  // A side-view fuselage-and-wing silhouette, not a diagonal dart -- the
+  // previous shape (a line plus a jagged polygon) was the same construction
+  // as the "send message" icon used across chat apps, which reads as a
+  // messaging glyph borrowed for flight rather than an aviation one.
+  plane:  `<line x1="2" y1="14" x2="22" y2="14"/><polygon points="9 14 15 7 17 7 13 14"/><polygon points="9 14 15 21 17 21 13 14"/><polygon points="2 14 6 12 6 16"/>`,
   train:  `<rect x="4.5" y="3" width="15" height="13" rx="2"/><line x1="4.5" y1="10.5" x2="19.5" y2="10.5"/><circle cx="8.5" cy="19.5" r="1.1"/><circle cx="15.5" cy="19.5" r="1.1"/>`,
-  moon:   `<path d="M20.5 13.7A8.5 8.5 0 1 1 10.3 3.5 6.7 6.7 0 0 0 20.5 13.7z"/>`,
+  // A bed, not a crescent moon -- moons read as bedtime/lifestyle iconography
+  // (sleep-tracking apps, nursery branding), not the hospitality-industry
+  // convention for "overnight stay" that a bed glyph already is everywhere
+  // from hotel booking sites to airline seat maps.
+  bed:    `<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18v2"/><path d="M21 18v2"/><path d="M3 12V8a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>`,
   pencil: `<path d="M11 20H4v-7L15.5 1.5a1.7 1.7 0 0 1 2.4 0l1.6 1.6a1.7 1.7 0 0 1 0 2.4L11 20z"/>`,
 };
 
@@ -1848,7 +1856,7 @@ export function itineraryItemHTML(item, flavor = "brief") {
       return row(item.mode === "train" ? "train" : "plane", item.mode, body) + noteLine(item, flavor);
     }
     case "stay":
-      return text ? row("moon", null, text) + noteLine(item, flavor) : "";
+      return text ? row("bed", null, text) + noteLine(item, flavor) : "";
     case "remarks":
       return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap;display:flex;align-items:flex-start">${icon("pencil")}<span>${text}</span></div>` : "";
     default:

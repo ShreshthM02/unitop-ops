@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ITINERARY_ITEM_TYPES, addableItemTypes, newItineraryItem, NOTABLE_ITEM_TYPES,
   migrateItineraryDay, migrateItineraryDays, reorderItems, itineraryItemHTML,
-  itemTextForFlavor, withItemTextForFlavor, itemNoteForFlavor, withItemNoteForFlavor,
+  itemTextForFlavor, withItemTextForFlavor, itemNoteForFlavor, withItemNoteForFlavor, ICON_PATHS,
 } from '../lib/utils.js';
 
 describe('itinerary item model', () => {
@@ -343,5 +343,30 @@ describe('regression: a second movement can no longer be mistaken for a Descript
     const migrated = migrateItineraryDay(day);
     expect(migrated.items[1].type).toBe('remarks');
     expect(migrated.items[1].text).toBe('this is also movement');
+  });
+});
+
+describe('icon redesign: bed replaces moon, a geometric flight silhouette replaces the paper-airplane dart', () => {
+  it('the stay type now points at "bed", not "moon"', () => {
+    expect(ITINERARY_ITEM_TYPES.find(t => t.id === 'stay').icon).toBe('bed');
+  });
+
+  it('there is no "moon" key left in the icon set at all', () => {
+    expect(ICON_PATHS.moon).toBeUndefined();
+    expect(ICON_PATHS.bed).toBeTruthy();
+  });
+
+  it('a stay item\u2019s export renders the bed icon\u2019s geometry, not the old moon path', () => {
+    const html = itineraryItemHTML({ type: 'stay', text: 'Hotel X' });
+    expect(html).toContain(ICON_PATHS.bed);
+    expect(html).not.toContain('M20.5 13.7'); // the old crescent-moon path
+  });
+
+  it('the flight icon no longer uses the old dart/send-icon polygon', () => {
+    const html = itineraryItemHTML({ type: 'transport', text: '6E 2134', mode: 'flight' });
+    // Old shape's distinguishing polygon point set -- confirms it is gone,
+    // not just that *a* polygon exists.
+    expect(html).not.toContain('20 3 14 20 10.5 12.5 3 9 20 3');
+    expect(html).toContain(ICON_PATHS.plane);
   });
 });

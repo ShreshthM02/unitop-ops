@@ -86,6 +86,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     setBriefRemarks(v.briefRemarks || "");
     setDetailedRemarks(v.detailedRemarks || "");
     setRouteMapImage(v.routeMapImage ?? null);
+    setCoverImageOverride(v.hasOwnProperty("coverImageOverride") ? v.coverImageOverride : undefined);
     setDayImageOverrides(v.dayImageOverrides || {});
     setPulledFromCostSheetVersion(v.pulledFromCostSheetVersion ?? null);
     setViewingVersion(v.version);
@@ -118,6 +119,13 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const [placeCandidates, setPlaceCandidates] = useState({});
   const [dayImageOverrides, setDayImageOverrides] = useState({});
   const [routeMapImage, setRouteMapImage] = useState(null);
+  // The cover photo used to be hardcoded to Day 1's resolved image with no
+  // way to choose anything else -- a cover often wants a wide, scenic shot
+  // that isn't necessarily tied to any single day. Same three-state
+  // convention as a per-day override: undefined -> auto (Day 1's image,
+  // the previous default, so nothing changes for a tour that never touches
+  // this), a string -> a chosen URL, null -> explicitly no cover photo.
+  const [coverImageOverride, setCoverImageOverride] = useState(undefined);
 
   // undefined -> remove the key entirely (back to auto-suggestion, and
   // resolveDayImages' hasOwnProperty check must see it truly absent, not
@@ -180,7 +188,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       // Recorded for anyone reading history, not filtered on any more.
       activeTab: docFlavor,
       days: [...itinDays], note: versionNote,
-      pulledFromCostSheetVersion, routeMapImage, dayImageOverrides,
+      pulledFromCostSheetVersion, routeMapImage, dayImageOverrides, coverImageOverride,
       briefClosingText, detailedClosingText, briefRemarks, detailedRemarks,
     };
     setSaving(true);
@@ -380,7 +388,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
           title: tourTitle || query.groupName || "Itinerary",
           tagline, duration, route,
           logo: LOGO_B64,
-          heroImage: resolveDayImages(itinDays, photoLibrary, dayImageOverrides)[itinDays[0] && itinDays[0].id] || null,
+          heroImage: resolvedCoverImage,
         },
         days: itinDays,
         dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
@@ -420,6 +428,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // Resolved once per render, not per day inside the loop below --
   // resolveDayImages already walks every day in one pass.
   const dayImages = resolveDayImages(itinDays, photoLibrary, dayImageOverrides);
+  const resolvedCoverImage = coverImageOverride !== undefined
+    ? coverImageOverride
+    : (dayImages[itinDays[0] && itinDays[0].id] || null);
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -514,6 +525,23 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                 <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Tagline (optional)</div>
                 <input style={inp} value={tagline} onChange={e=>setTagline(e.target.value)} placeholder={`"Embark on an unforgettable journey..."`}/>
               </div>
+              {docFlavor === "detailed" && (
+                <div style={{ marginTop:10 }}>
+                  <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3 }}>Cover Photo</div>
+                  <PhotoPicker
+                    day={{ items: [{ type: "sightseeing", text: route || tourTitle || "" }] }}
+                    resolvedUrl={resolvedCoverImage}
+                    overrideValue={coverImageOverride}
+                    library={photoLibrary}
+                    onChangeOverride={setCoverImageOverride}
+                    onUpload={uploadPhoto}
+                    onDeleteFromLibrary={deletePhotoFromLibrary}
+                    G={G}
+                    inp={inp}
+                    readOnly={readOnly}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Day cards -- shared structure; detailed-only extras (place

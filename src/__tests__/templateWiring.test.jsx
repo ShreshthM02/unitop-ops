@@ -229,3 +229,13 @@ describe('regression: a note attached under Detailed must not appear under Brief
     expect(screen.queryByText('Description')).toBeNull();
   });
 });
+
+describe('cover photo can be chosen independently of Day 1\u2019s auto-derived image', () => {
+  it('offers a Cover Photo picker for the Detailed flavor, not for Brief', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    expect(screen.getByText('Cover Photo')).toBeTruthy();
+    fireEvent.click(screen.getByText('Brief'));
+    expect(screen.queryByText('Cover Photo')).toBeNull();
+  });
+});
