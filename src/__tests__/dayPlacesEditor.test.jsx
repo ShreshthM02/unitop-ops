@@ -29,10 +29,10 @@ const setup = (props = {}) => {
 };
 
 describe('a day with just one place looks and behaves exactly as before', () => {
-  it('shows a single PlacePicker, no leg-mode toggle, and no remove button', () => {
+  it('shows a single PlacePicker with its own leg-mode toggle, and no remove button', () => {
     setup();
     expect(screen.getByText('Bodhgaya')).toBeTruthy();
-    expect(screen.queryByText('Road')).toBeNull();
+    expect(screen.getByText('Road')).toBeTruthy(); // governs the leg from the previous day
     expect(screen.queryByLabelText('Remove stop 1')).toBeNull();
   });
 
@@ -49,22 +49,22 @@ describe('adding and removing stops', () => {
     expect(onChange).toHaveBeenCalledWith([{ name: 'Bodhgaya', lat: 24.7, lon: 85.0 }, undefined]);
   });
 
-  it('a second stop shows a leg-mode toggle, defaulting to Road', () => {
+  it('every stop shows a leg-mode toggle, defaulting to Road', () => {
     setup({ places: [{ name: 'Bodhgaya', lat: 24.7, lon: 85.0 }, { name: 'Rajgir', lat: 25.03, lon: 85.42 }] });
-    expect(screen.getByText('Road')).toBeTruthy();
-    expect(screen.getByText('Flight')).toBeTruthy();
-    expect(screen.getByText('Train')).toBeTruthy();
+    expect(screen.getAllByText('Road')).toHaveLength(2);
+    expect(screen.getAllByText('Flight')).toHaveLength(2);
+    expect(screen.getAllByText('Train')).toHaveLength(2);
   });
 
-  it('the first stop never shows a leg-mode toggle -- there is no leg into it from within the same day', () => {
+  it('every stop shows its own leg-mode toggle, including the first -- it governs the leg connecting from the previous day, which the map builder already reads uniformly', () => {
     setup({ places: [{ name: 'A', lat: 1, lon: 1 }, { name: 'B', lat: 2, lon: 2 }] });
     const roadButtons = screen.getAllByText('Road');
-    expect(roadButtons).toHaveLength(1); // only for the second stop
+    expect(roadButtons).toHaveLength(2); // one per stop, not just the second
   });
 
-  it('clicking a mode button sets legMode on that specific place', () => {
+  it('clicking a mode button sets legMode on that specific place, not others', () => {
     const onChange = setup({ places: [{ name: 'A', lat: 1, lon: 1 }, { name: 'B', lat: 2, lon: 2 }] });
-    fireEvent.click(screen.getByText('Flight'));
+    fireEvent.click(screen.getAllByText('Flight')[1]); // the second stop's Flight button
     expect(onChange).toHaveBeenCalledWith([{ name: 'A', lat: 1, lon: 1 }, { name: 'B', lat: 2, lon: 2, legMode: 'flight' }]);
   });
 
@@ -115,9 +115,24 @@ describe('only the first slot gets pre-fetched candidates; later slots search li
 });
 
 describe('read-only mode', () => {
-  it('hides Add, Remove and the leg-mode toggles', () => {
+  it('hides Add and Remove, and disables (not hides) the leg-mode toggles', () => {
     setup({ places: [{ name: 'A', lat: 1, lon: 1 }, { name: 'B', lat: 2, lon: 2 }], readOnly: true });
     expect(screen.queryByText('+ Add another stop this day')).toBeNull();
     expect(screen.queryByLabelText('Remove stop 2')).toBeNull();
+    expect(screen.getAllByText('Road')[0].disabled).toBe(true);
+  });
+});
+
+describe('the FIRST stop\u2019s mode governs the inter-day leg -- item #2: every place gets a mode, not just legs after the first', () => {
+  it('clicking a mode on the first (and only) stop sets legMode there', () => {
+    const onChange = setup({ places: [{ name: 'Bodhgaya', lat: 24.7, lon: 85.0 }] });
+    fireEvent.click(screen.getByText('Flight'));
+    expect(onChange).toHaveBeenCalledWith([{ name: 'Bodhgaya', lat: 24.7, lon: 85.0, legMode: 'flight' }]);
+  });
+
+  it('defaults to Road when no legMode has ever been set', () => {
+    setup({ places: [{ name: 'Bodhgaya', lat: 24.7, lon: 85.0 }] });
+    const roadButton = screen.getByText('Road');
+    expect(roadButton.style.color).toBeTruthy(); // selected state applies some accent styling
   });
 });

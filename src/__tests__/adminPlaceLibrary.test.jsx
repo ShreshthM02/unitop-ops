@@ -107,3 +107,40 @@ describe('place_library permission: admin-only by default', () => {
     expect(PERM_LABELS.place_library).toBeTruthy();
   });
 });
+
+describe('adding a photo from the admin screen -- item #5\u2019s second half', () => {
+  it('shows an Add Photo button only on the Photos tab', async () => {
+    render(<AdminPlaceLibrary/>);
+    await waitFor(() => expect(screen.getByText('+ Add Photo')).toBeTruthy());
+    fireEvent.click(await screen.findByText('Places (1)'));
+    expect(screen.queryByText('+ Add Photo')).toBeNull();
+  });
+
+  it('opens an upload form with a file input, destination and caption', async () => {
+    render(<AdminPlaceLibrary/>);
+    await waitFor(() => expect(screen.getByText('+ Add Photo')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Photo'));
+    expect(screen.getByLabelText('Choose photo file')).toBeTruthy();
+    expect(screen.getByLabelText('Photo destination')).toBeTruthy();
+    expect(screen.getByLabelText('Photo caption')).toBeTruthy();
+  });
+
+  it('refuses to upload with no destination', async () => {
+    render(<AdminPlaceLibrary/>);
+    await waitFor(() => expect(screen.getByText('+ Add Photo')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Photo'));
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByLabelText('Choose photo file'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Upload'));
+    await waitFor(() => expect(screen.getByText(/destination is required/i)).toBeTruthy());
+  });
+
+  it('the Cancel toggle closes the form', async () => {
+    render(<AdminPlaceLibrary/>);
+    await waitFor(() => expect(screen.getByText('+ Add Photo')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Photo'));
+    expect(screen.getByLabelText('Photo destination')).toBeTruthy();
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(screen.queryByLabelText('Photo destination')).toBeNull();
+  });
+});

@@ -105,12 +105,12 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   // hidden.
   const queryDocs = [
     {icon:"📊",label:"Cost Sheet",    panel:"costsheet"},
-    {icon:"📖",label:"Itinerary",     panel:"itinerary"},
+    {icon:"🗺",label:"Itinerary",     panel:"itinerary"},
     {icon:"📋",label:"Quotation",     panel:"quotation"},
   ];
   const caseFileDocs = [
     {icon:"📊",label:"Cost Sheet",        panel:"costsheet"},
-    {icon:"📖",label:"Itinerary",         panel:"itinerary"},
+    {icon:"🗺",label:"Itinerary",         panel:"itinerary"},
     {icon:"📋",label:"Quotation",         panel:"quotation"},
     {icon:"🧾",label:"Proforma Inv.",     panel:"proforma"},
     {icon:"₹", label:"Payments",          panel:"payments"},

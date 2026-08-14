@@ -68,6 +68,10 @@ export function PlacePicker({
   const [manualName, setManualName] = useState("");
   const [dbResults, setDbResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  // Deliberately NOT reset when the panel closes -- pick() closes it
+  // immediately after a manual placement, and a failed remember-save needs
+  // to stay visible after that close, not vanish with the panel.
+  const [saveError, setSaveError] = useState(null);
   // Checked by default: remembering is the behaviour that actually helps
   // -- someone types Alchi once, places it once, and it is never a blank
   // search again for anyone. Unchecking is the exception, for a coordinate
@@ -87,7 +91,7 @@ export function PlacePicker({
   const reason = value ? "Chosen manually." : (auto ? auto.reason : "");
   const alternatives = (auto && auto.candidates) || [];
 
-  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); setDbResults([]); } else { setManualName(query || ""); } }, [open]);
+  useEffect(() => { if (!open) { setTerm(""); setLat(""); setLon(""); setDbResults([]); } else { setManualName(query || ""); setSaveError(null); } }, [open]);
 
   // Query the real table as the user types. No debounce: this is an
   // internal tool used a few times per itinerary, not a public search box,
@@ -132,6 +136,11 @@ export function PlacePicker({
       {reason && (
         <div style={{ fontSize: 10.5, color: G.gray400, marginTop: 2, marginLeft: 13 }}>
           {style.label} · {reason}
+        </div>
+      )}
+      {saveError && (
+        <div style={{ fontSize: 10.5, color: '#B91C1C', marginTop: 2, marginLeft: 13 }}>
+          Picked for this day, but could not be remembered for next time: {saveError}
         </div>
       )}
 
@@ -203,10 +212,25 @@ export function PlacePicker({
               className="btn btn-ghost"
               style={{ fontSize: 11 }}
               disabled={!isValidCoordinate(lat, lon) || !manualName.trim()}
-              onClick={() => {
+              onClick={async () => {
                 const place = manualPlace(manualName.trim(), lat, lon);
-                if (onSaveCustomPlace && remember) onSaveCustomPlace(place);
+                // The place is picked for THIS day regardless of whether
+                // remembering it for next time succeeds -- the two are
+                // separate outcomes, and a failure to save into
+                // custom_places should never block using the place today.
                 pick(place);
+                if (onSaveCustomPlace && remember) {
+                  try {
+                    const result = await onSaveCustomPlace(place);
+                    if (result && result.error) setSaveError(result.error);
+                  } catch (e) {
+                    // Previously fire-and-forget: a rejected promise here
+                    // produced an unhandled rejection in the console and
+                    // nothing else -- the place still looked picked, but
+                    // silently never made it into custom_places for reuse.
+                    setSaveError(e.message || String(e));
+                  }
+                }
               }}>
               Use these
             </button>

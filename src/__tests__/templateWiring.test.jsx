@@ -257,11 +257,30 @@ describe('multiple places per day, end to end through the real Itinerary compone
     expect(screen.getAllByText('Train').length).toBeGreaterThan(0);
   });
 
-  it('a removed extra stop takes its leg-mode toggle with it, back to a single-place day', () => {
+  it('removing an added stop reduces the leg-mode toggle count back down, not to zero -- the remaining single place still governs its own inter-day leg', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
+    const roadCountBefore = screen.getAllByText('Road').length;
     fireEvent.click(screen.getAllByText('+ Add another stop this day')[0]);
+    expect(screen.getAllByText('Road').length).toBeGreaterThan(roadCountBefore);
     fireEvent.click(screen.getAllByLabelText('Remove stop 2')[0]);
-    expect(screen.queryByText('Road')).toBeNull();
+    expect(screen.getAllByText('Road')).toHaveLength(roadCountBefore);
+  });
+});
+
+describe('regression: switching flavor while already on Preview must never show the other flavor\u2019s stale content', () => {
+  it('the preview is cleared immediately on flavor switch, not left showing the previous flavor until the new build resolves', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).not.toContain('Brief Itinerary');
+    });
+    fireEvent.click(screen.getByText('Detailed'));
+    // Checked BEFORE any awaiting -- this is exactly the moment that used
+    // to still show Brief's stale content while Detailed's build was still
+    // in flight.
+    const immediateDoc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+    expect(immediateDoc).not.toContain('Brief Itinerary');
   });
 });

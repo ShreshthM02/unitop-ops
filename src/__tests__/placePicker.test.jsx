@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PlacePicker } from '../lib/PlacePicker.jsx';
 import { G } from '../lib/constants.js';
 
@@ -239,5 +239,67 @@ describe('a manually-placed coordinate now has its own editable name', () => {
     fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '2' } });
     fireEvent.click(screen.getByText('Use these'));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: 'A Real Name' }));
+  });
+});
+
+describe('a failed "remember this place" save is surfaced, not silently swallowed', () => {
+  it('the place is still picked for this day even when the remember-save fails', async () => {
+    const onSaveCustomPlace = vi.fn(async () => ({ error: 'permission denied' }));
+    const onChange = setup({ query: 'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    // The local pick happens regardless of whether remembering succeeds --
+    // the two are separate outcomes.
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat: 25.1, lon: 84.2 }));
+  });
+
+  it('an error from the save is shown even after the panel closes', async () => {
+    const onSaveCustomPlace = vi.fn(async () => ({ error: 'permission denied' }));
+    setup({ query: 'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    // Panel closes immediately (pick() runs synchronously); the error only
+    // resolves after, and must still be visible once it does -- this is
+    // the actual regression this fix addresses.
+    expect(screen.queryByLabelText('Latitude')).toBeNull(); // confirms the panel really did close
+    await waitFor(() => expect(screen.getByText(/could not be remembered/)).toBeTruthy());
+    expect(screen.getByText(/permission denied/)).toBeTruthy();
+  });
+
+  it('a thrown rejection (not just a returned error) is also caught and shown', async () => {
+    const onSaveCustomPlace = vi.fn(async () => { throw new Error('network down'); });
+    setup({ query: 'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    await waitFor(() => expect(screen.getByText(/network down/)).toBeTruthy());
+  });
+
+  it('no error banner at all on a successful save', async () => {
+    const onSaveCustomPlace = vi.fn(async () => ({ error: null }));
+    setup({ query: 'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    await waitFor(() => expect(onSaveCustomPlace).toHaveBeenCalled());
+    expect(screen.queryByText(/could not be remembered/)).toBeNull();
+  });
+
+  it('opening the panel again clears a previous error, for a fresh attempt', async () => {
+    const onSaveCustomPlace = vi.fn(async () => ({ error: 'permission denied' }));
+    setup({ query: 'X', onSaveCustomPlace });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '25.1' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '84.2' } });
+    fireEvent.click(screen.getByText('Use these'));
+    await waitFor(() => expect(screen.getByText(/could not be remembered/)).toBeTruthy());
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.queryByText(/could not be remembered/)).toBeNull();
   });
 });

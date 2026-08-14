@@ -13,10 +13,16 @@ import { PlacePicker } from './PlacePicker.jsx';
 // are always searched by hand. That is why only slot 0 gets pre-fetched
 // candidates from the caller; every later slot searches live instead.
 //
-// Each leg AFTER the first carries its own explicit road/flight/train mode
-// on the place object itself (legMode) -- this is what actually makes a
-// mixed-mode day representable at all (drive to the airport, fly the rest
-// of the way), which a single day-level mode never could.
+// Each place carries its own explicit road/flight/train mode on the place
+// object itself (legMode), defaulting to road -- this is what actually
+// makes a mixed-mode day representable at all (drive to the airport, fly
+// the rest of the way). The first place's mode governs the INTER-day leg
+// connecting from wherever the previous day ended; buildMapDataFromResolvedDays
+// already reads legMode uniformly for every place in a day, first included,
+// so showing the toggle on every slot (not just legs after the first) is
+// what actually lets an operator control that inter-day leg's mode too --
+// previously invisible in the UI even though the map builder always
+// supported it.
 export function DayPlacesEditor({
   places,            // the day's places array, already normalised by the caller
   onChange,          // (places) => void
@@ -37,21 +43,19 @@ export function DayPlacesEditor({
     <div>
       {list.map((place, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 5 }}>
-          {i > 0 && (
-            <div style={{ display: 'flex', gap: 3, flexShrink: 0, paddingTop: 2 }}>
-              {['road', 'flight', 'train'].map(m => (
-                <button key={m} type="button" disabled={readOnly}
-                  onClick={() => update(i, place ? { ...place, legMode: m } : place)}
-                  style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600,
-                    cursor: readOnly ? 'default' : 'pointer',
-                    border: `1px solid ${(place && place.legMode || 'road') === m ? G.accent : G.gray200}`,
-                    background: (place && place.legMode || 'road') === m ? '#FDEDEC' : G.white,
-                    color: (place && place.legMode || 'road') === m ? G.accent : G.gray400 }}>
-                  {m === 'road' ? 'Road' : m === 'flight' ? 'Flight' : 'Train'}
-                </button>
-              ))}
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 3, flexShrink: 0, paddingTop: 2 }}>
+            {['road', 'flight', 'train'].map(m => (
+              <button key={m} type="button" disabled={readOnly}
+                onClick={() => update(i, place ? { ...place, legMode: m } : place)}
+                style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600,
+                  cursor: readOnly ? 'default' : 'pointer',
+                  border: `1px solid ${(place && place.legMode || 'road') === m ? G.accent : G.gray200}`,
+                  background: (place && place.legMode || 'road') === m ? '#FDEDEC' : G.white,
+                  color: (place && place.legMode || 'road') === m ? G.accent : G.gray400 }}>
+                {m === 'road' ? 'Road' : m === 'flight' ? 'Flight' : 'Train'}
+              </button>
+            ))}
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <PlacePicker
               query={queryFor(i)}

@@ -423,14 +423,21 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // Preview follows whichever flavor tab is active, so what you see is what
   // the matching export produces.
   const [previewHTML, setPreviewHTML] = useState("");
+  const [previewError, setPreviewError] = useState(null);
   useEffect(() => {
     if (viewMode !== "preview") return;
     let cancelled = false;
-    if (docFlavor === "brief") {
-      buildBriefPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
-    } else {
-      buildDetailedPrintHTML().then(html => { if (!cancelled) setPreviewHTML(html); });
-    }
+    // Cleared immediately, not left showing whatever flavor was previously
+    // built -- confirmed directly: switching flavor while already on
+    // Preview could show a moment of the OLD flavor's content before the
+    // new build resolved, and if that build ever failed outright there was
+    // no .catch() at all, so the stale content -- the wrong flavor -- was
+    // left on screen permanently with no error shown at all.
+    setPreviewHTML("");
+    setPreviewError(null);
+    const build = docFlavor === "brief" ? buildBriefPrintHTML() : buildDetailedPrintHTML();
+    build.then(html => { if (!cancelled) setPreviewHTML(html); })
+      .catch(e => { if (!cancelled) setPreviewError(e.message || String(e)); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, docFlavor, tourTitle, tagline, route, duration, itinDays, briefClosingText, detailedClosingText, briefRemarks, detailedRemarks, showStamp, headerFooterAllPages, printOnLetterhead, showPageNum]);
@@ -648,9 +655,15 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
           </div>
         ) : (
           <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-            <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
-              <DocPreviewFrame html={previewHTML}/>
-            </div>
+            {previewError ? (
+              <div style={{ padding:20, color:"#B91C1C", fontSize:12 }}>
+                Preview failed to build: {previewError}
+              </div>
+            ) : (
+              <div style={{flex:1,overflow:"hidden",background:G.gray100}}>
+                <DocPreviewFrame html={previewHTML}/>
+              </div>
+            )}
           </div>
         )}
 

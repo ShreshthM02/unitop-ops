@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
-  G, db,
-  loadPhotoLibrary, updateLibraryPhoto, deleteLibraryPhoto,
+  G, db, realtimeClient,
+  loadPhotoLibrary, updateLibraryPhoto, deleteLibraryPhoto, uploadLibraryPhoto,
   listCustomPlaces, updateCustomPlace, deleteCustomPlace,
   isValidCoordinate,
 } = Lib;
@@ -31,6 +31,17 @@ export default function AdminPlaceLibrary() {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState({});
   const [filter, setFilter] = useState('');
+  // Everyone already has add access to the photo library through the
+  // itinerary picker -- this is the same capability, just reachable from
+  // the review screen too, for the case where you are auditing the
+  // library and notice a gap right there rather than while editing a
+  // specific itinerary.
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadDestination, setUploadDestination] = useState('');
+  const [uploadLabel, setUploadLabel] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileRef = useRef(null);
 
   const reload = () => {
     setLoading(true);
@@ -52,6 +63,22 @@ export default function AdminPlaceLibrary() {
     cancelEdit();
     reload();
   };
+  const doUpload = async () => {
+    const file = fileRef.current && fileRef.current.files && fileRef.current.files[0];
+    if (!file) { setUploadError('Choose a file first.'); return; }
+    if (!uploadDestination.trim()) { setUploadError('A destination is required so the photo can be reused.'); return; }
+    setUploading(true);
+    setUploadError('');
+    const { error } = await uploadLibraryPhoto(realtimeClient, db, {
+      file, destination: uploadDestination.trim(), label: uploadLabel.trim(),
+    });
+    setUploading(false);
+    if (error) { setUploadError(error); return; }
+    setUploadDestination(''); setUploadLabel(''); setUploadOpen(false);
+    if (fileRef.current) fileRef.current.value = '';
+    reload();
+  };
+
   const removePhoto = async (id) => {
     if (!window.confirm('Remove this photo from the shared library? It stops appearing for every future suggestion and pick, everywhere.')) return;
     const { error } = await deleteLibraryPhoto(db, id);
@@ -90,8 +117,26 @@ export default function AdminPlaceLibrary() {
           </button>
         ))}
         <div style={{ flex:1 }}/>
+        {tab === 'photos' && (
+          <button onClick={() => setUploadOpen(o => !o)}
+            style={{ padding:'6px 14px', borderRadius:6, border:`1px solid ${G.navy}`, background:G.white, color:G.navy, cursor:'pointer', fontSize:12, fontWeight:600 }}>
+            {uploadOpen ? 'Cancel' : '+ Add Photo'}
+          </button>
+        )}
         <input style={{ ...input, width:220 }} value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter…"/>
       </div>
+
+      {tab === 'photos' && uploadOpen && (
+        <div style={{ background:G.white, border:`1px solid ${G.gray200}`, borderRadius:8, padding:14, marginBottom:14, maxWidth:420 }}>
+          <input ref={fileRef} type="file" accept="image/*" aria-label="Choose photo file" style={{ fontSize:12, marginBottom:8, width:'100%' }}/>
+          <input style={{ ...input, marginBottom:8 }} value={uploadDestination} onChange={e=>setUploadDestination(e.target.value)} placeholder="Destination (required)" aria-label="Photo destination"/>
+          <input style={{ ...input, marginBottom:8 }} value={uploadLabel} onChange={e=>setUploadLabel(e.target.value)} placeholder="Caption (optional)" aria-label="Photo caption"/>
+          {uploadError && <div style={{ fontSize:11, color:'#B91C1C', marginBottom:8 }}>{uploadError}</div>}
+          <button className="btn btn-primary" style={{ fontSize:12 }} disabled={uploading} onClick={doUpload}>
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+      )}
 
       {error && <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', color:'#B91C1C', padding:'8px 12px', borderRadius:6, fontSize:12, marginBottom:12 }}>{error}</div>}
       {loading && <div style={{ color:G.gray400, fontSize:12 }}>Loading…</div>}

@@ -1812,7 +1812,11 @@ export const ICON_PATHS = {
   // (sleep-tracking apps, nursery branding), not the hospitality-industry
   // convention for "overnight stay" that a bed glyph already is everywhere
   // from hotel booking sites to airline seat maps.
-  bed:    `<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18v2"/><path d="M21 18v2"/><path d="M3 12V8a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>`,
+  // A building, not a bed -- feedback was direct: the abstract bed frame
+  // was not reading clearly as "hotel" at a glance. A pediment-roofed
+  // building with a door and two windows is the literal, unambiguous
+  // convention.
+  bed:    `<path d="M3.5 10L12 3l8.5 7"/><rect x="5" y="10" width="14" height="11" rx="0.5"/><rect x="10" y="14.5" width="4" height="6.5"/><rect x="7" y="12.5" width="2" height="2"/><rect x="15" y="12.5" width="2" height="2"/>`,
   pencil: `<path d="M11 20H4v-7L15.5 1.5a1.7 1.7 0 0 1 2.4 0l1.6 1.6a1.7 1.7 0 0 1 0 2.4L11 20z"/>`,
 };
 
