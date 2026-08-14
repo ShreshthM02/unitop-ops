@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -217,6 +217,14 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const placeQueryFor = (day) =>
     (dayImageTextCandidates(day)[0]) || day.title || day.dayLabel || "";
 
+  // Normalises a day's place data to one shape everywhere it is read: the
+  // new places[] array when present, falling back to the old singular
+  // .place field wrapped in a one-element array, exactly matching what
+  // buildMapDataFromResolvedDays itself does. Never both -- places[] wins
+  // once it exists, which is what saving through DayPlacesEditor produces.
+  const placesFor = (day) =>
+    (day.places && day.places.length) ? day.places : (day.place ? [day.place] : []);
+
   // Rule-based day-title suggestion: the same "what is this day actually
   // about" question dayImageTextCandidates already answers for photo
   // search, reused here so a day title doesn't have to be typed from
@@ -232,13 +240,14 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   // Fetches a SMALL candidate set per day from the real gazetteer -- not
   // the whole table -- for the Detailed flavor's PlacePicker. Skips a day
-  // that already has an explicit choice, and re-fetches only when a day's
-  // derived query text actually changes.
-  const placeQuerySignature = itinDays.map(d => `${d.id}:${d.place ? "chosen" : placeQueryFor(d)}`).join("|");
+  // whose FIRST stop already has an explicit choice (only slot 0 ever
+  // auto-suggests -- see DayPlacesEditor), and re-fetches only when a
+  // day's derived query text actually changes.
+  const placeQuerySignature = itinDays.map(d => `${d.id}:${placesFor(d)[0] ? "chosen" : placeQueryFor(d)}`).join("|");
   useEffect(() => {
     let cancelled = false;
     itinDays.forEach(async (d) => {
-      if (d.place) return;
+      if (placesFor(d)[0]) return;
       const q = placeQueryFor(d);
       if (!q || q.trim().length < 2) return;
       const cached = placeCandidates[d.id];
@@ -249,6 +258,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeQuerySignature]);
+
 
   const inp = { padding:"6px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:12, fontFamily:"'Inter',sans-serif", width:"100%", outline:"none", color:G.gray800, background:G.white };
 
@@ -380,7 +390,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       const { ground, gateways } = partitionGateways(stops, sectors);
       const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors }) : "";
       const sectorTableHTML = stops.length
-        ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => ({ title: d.place ? d.place.name : d.title })))
+        ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => { const p = placesFor(d); return { title: p.length ? p[p.length - 1].name : d.title }; }))
         : "";
       const gatewayNote = gatewayNoteHTML(gateways);
       return buildBrochureDocument({
@@ -579,12 +589,12 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
                 {docFlavor === "detailed" && (
                   <div style={{ padding:"8px 14px 0" }}>
-                    <PlacePicker
-                      query={placeQueryFor(d)}
-                      value={d.place}
-                      gazetteer={(placeCandidates[d.id] && placeCandidates[d.id].rows) || []}
-                      context={itinDays.filter((x, xi) => xi !== i && x.place).map(x => x.place)}
-                      onChange={(place) => updateDay(i, "place", place)}
+                    <DayPlacesEditor
+                      places={placesFor(d)}
+                      onChange={(places) => updateDay(i, "places", places)}
+                      candidatesFor={(slot) => slot === 0 ? ((placeCandidates[d.id] && placeCandidates[d.id].rows) || []) : []}
+                      queryFor={(slot) => slot === 0 ? placeQueryFor(d) : ""}
+                      context={itinDays.flatMap((x, xi) => xi === i ? [] : placesFor(x)).filter(Boolean)}
                       onSearch={(term) => searchGazetteerDb(db, term)}
                       onSaveCustomPlace={(place) => saveCustomPlace(db, place)}
                       G={G}

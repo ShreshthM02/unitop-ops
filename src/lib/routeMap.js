@@ -228,37 +228,66 @@ export function buildMapDataFromResolvedDays(days) {
   const stops = [];
   const byName = new Map();
   const sectors = [];
-  let prev = null;
+  // A stop is drawn as "overnight" if it is ever the LAST place of any day
+  // it appears in -- where the group actually sleeps, as opposed to a
+  // place passed through earlier the same day on the way somewhere else.
+  // With the old one-place-per-day model every stop trivially WAS its
+  // day's last place, so this is the exact same behaviour for any day that
+  // still only carries one place -- nothing regresses for existing data.
+  const overnightNames = new Set();
+  let prevStop = null; // the previous day's last stop, for inter-day chaining
 
   list.forEach((day, idx) => {
-    const place = day && day.place;
-    if (!place || !place.name) { prev = null; return; }
     const dayNo = idx + 1;
-    let stop = byName.get(place.name);
-    if (!stop) {
-      stop = { name: place.name, lat: place.lat, lon: place.lon, country: place.country, days: [] };
-      byName.set(place.name, stop);
-      stops.push(stop);
-    }
-    stop.days.push(dayNo);
-    if (prev && prev.name !== place.name) {
-      // Uses the transport item's OWN mode (flight or train) rather than
-      // collapsing to a single "flew" boolean -- a day carrying a
-      // train-mode transport item was previously always drawn on the map
-      // as a flight, because only the item's TYPE was checked, never its
-      // mode. Road remains the default when no transport item is present,
-      // matching how most inter-town movement in these itineraries happens.
-      const transportItem = (day.items || []).find(i => i.type === "transport");
-      const lead = (day.items || []).find(i => i.type === "route" && (i.distance || i.time));
-      sectors.push({
-        from: prev.name, to: place.name, day: dayNo,
-        mode: transportItem ? (transportItem.mode === "train" ? "train" : "flight") : "road",
-        distance: lead ? lead.distance : "", time: lead ? lead.time : "",
-      });
-    }
-    prev = stop;
+    // Backward compatible: a day using the old singular `place` field
+    // (nothing has migrated it to `places` yet) is read as a single-stop
+    // day, exactly as before. `places` wins when both are present.
+    const places = (day && day.places && day.places.length) ? day.places
+      : (day && day.place ? [day.place] : []);
+    if (!places.length) { prevStop = null; return; }
+
+    let dayPrev = prevStop; // chains the previous day's end into this day's first stop
+    places.forEach((place, i) => {
+      if (!place || !place.name) return;
+      let stop = byName.get(place.name);
+      if (!stop) {
+        stop = { name: place.name, lat: place.lat, lon: place.lon, country: place.country, days: [] };
+        byName.set(place.name, stop);
+        stops.push(stop);
+      }
+      // Guards against double-counting a day where the SAME place appears
+      // twice in one day's own sequence (a loop back to where it started).
+      if (stop.days[stop.days.length - 1] !== dayNo) stop.days.push(dayNo);
+
+      if (dayPrev && dayPrev.name !== place.name) {
+        // A multi-stop day gives each leg its OWN explicit mode
+        // (place.legMode) -- this is what actually makes "choose road vs
+        // air vs rail per leg" possible, since a day can now have more
+        // than one leg to choose a mode for. Falls back to the day-level
+        // transport-item inference only when no explicit leg mode is set,
+        // which is exactly the old single-place behaviour for data that
+        // has not been given per-leg modes.
+        let mode = place.legMode;
+        if (!mode) {
+          const transportItem = (day.items || []).find(it => it.type === "transport");
+          mode = transportItem ? (transportItem.mode === "train" ? "train" : "flight") : "road";
+        }
+        const lead = (day.items || []).find(it => it.type === "route" && (it.distance || it.time));
+        sectors.push({
+          from: dayPrev.name, to: place.name, day: dayNo, mode,
+          distance: place.legDistance || (lead ? lead.distance : ""),
+          time: place.legTime || (lead ? lead.time : ""),
+        });
+      }
+      dayPrev = stop;
+    });
+
+    const lastPlace = places[places.length - 1];
+    if (lastPlace && lastPlace.name) overnightNames.add(lastPlace.name);
+    prevStop = dayPrev;
   });
 
+  stops.forEach(s => { s.overnight = overnightNames.has(s.name); });
   return { stops, sectors };
 }
 

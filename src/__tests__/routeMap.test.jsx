@@ -348,3 +348,116 @@ describe('buildMapDataFromResolvedDays: the itinerary\u2019s own places become m
     expect(table).toContain('255 km');
   });
 });
+
+describe('multiple places per day: A -> B -> C within a single day', () => {
+  const p = (name, lat, lon, extra = {}) => ({ name, lat, lon, ...extra });
+
+  it('generates an intra-day sector for every consecutive pair of places', () => {
+    const days = [{
+      items: [],
+      places: [p('Bodhgaya', 24.7, 85.0), p('Rajgir', 25.03, 85.42, { legMode: 'road' }), p('Nalanda', 25.14, 85.44, { legMode: 'road' })],
+    }];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors).toEqual([
+      { from: 'Bodhgaya', to: 'Rajgir', day: 1, mode: 'road', distance: '', time: '' },
+      { from: 'Rajgir', to: 'Nalanda', day: 1, mode: 'road', distance: '', time: '' },
+    ]);
+  });
+
+  it('tags every intra-day sector with the SAME day number -- this is what lets the sector table group them as one day', () => {
+    const days = [{ items: [], places: [p('A', 1, 1), p('B', 2, 2, { legMode: 'road' }), p('C', 3, 3, { legMode: 'road' })] }];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors.every(s => s.day === 1)).toBe(true);
+  });
+
+  it('each leg carries its OWN explicit mode -- a day can mix road and flight legs', () => {
+    const days = [{
+      items: [],
+      places: [p('Delhi', 28.6, 77.2), p('Agra', 27.2, 78.0, { legMode: 'road' }), p('Leh', 34.15, 77.58, { legMode: 'flight' })],
+    }];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors[0].mode).toBe('road');
+    expect(sectors[1].mode).toBe('flight');
+  });
+
+  it('falls back to the day-level transport-item inference when a leg has no explicit mode -- old-data compatible', () => {
+    const days = [{
+      items: [{ type: 'transport', text: '12345', mode: 'train' }],
+      places: [p('A', 1, 1), p('B', 2, 2)], // no legMode set
+    }];
+    expect(buildMapDataFromResolvedDays(days).sectors[0].mode).toBe('train');
+  });
+
+  it('only the LAST place of a day is marked overnight -- earlier same-day stops are pass-through', () => {
+    const days = [{ items: [], places: [p('Bodhgaya', 24.7, 85.0), p('Rajgir', 25.03, 85.42, { legMode: 'road' }), p('Nalanda', 25.14, 85.44, { legMode: 'road' })] }];
+    const { stops } = buildMapDataFromResolvedDays(days);
+    expect(stops.find(s => s.name === 'Bodhgaya').overnight).toBe(false);
+    expect(stops.find(s => s.name === 'Rajgir').overnight).toBe(false);
+    expect(stops.find(s => s.name === 'Nalanda').overnight).toBe(true);
+  });
+
+  it('a day trip that loops back to its own start still counts the day once, not twice, for that place', () => {
+    // "Bodhgaya -> Rajgir -> Nalanda -> Bodhgaya" -- a same-day return.
+    const days = [{
+      items: [],
+      places: [p('Bodhgaya', 24.7, 85.0), p('Rajgir', 25.03, 85.42, { legMode: 'road' }), p('Nalanda', 25.14, 85.44, { legMode: 'road' }), p('Bodhgaya', 24.7, 85.0, { legMode: 'road' })],
+    }];
+    const { stops, sectors } = buildMapDataFromResolvedDays(days);
+    const bodhgaya = stops.find(s => s.name === 'Bodhgaya');
+    expect(bodhgaya.days).toEqual([1]); // not [1, 1]
+    expect(sectors).toHaveLength(3); // Bodhgaya-Rajgir, Rajgir-Nalanda, Nalanda-Bodhgaya
+    // Returning to the start of the day still marks it overnight -- it IS
+    // where the day actually ends.
+    expect(bodhgaya.overnight).toBe(true);
+  });
+
+  it('the day AFTER a multi-stop day connects from that day\u2019s LAST place, not its first', () => {
+    const days = [
+      { items: [], places: [p('Bodhgaya', 24.7, 85.0), p('Rajgir', 25.03, 85.42, { legMode: 'road' }), p('Nalanda', 25.14, 85.44, { legMode: 'road' })] },
+      { items: [{ type: 'transport', mode: 'flight' }], places: [p('Varanasi', 25.32, 82.97)] },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    const interDay = sectors.find(s => s.day === 2);
+    expect(interDay).toMatchObject({ from: 'Nalanda', to: 'Varanasi' });
+  });
+
+  it('a day with an old-style singular place still works exactly as before -- no places array at all', () => {
+    const days = [
+      { items: [], place: p('Bodhgaya', 24.7, 85.0) },
+      { items: [{ type: 'transport', mode: 'flight' }], place: p('Varanasi', 25.32, 82.97) },
+    ];
+    const { stops, sectors } = buildMapDataFromResolvedDays(days);
+    expect(stops.map(s => s.name)).toEqual(['Bodhgaya', 'Varanasi']);
+    expect(sectors[0]).toMatchObject({ from: 'Bodhgaya', to: 'Varanasi', mode: 'flight' });
+    // Every single-place day trivially has that ONE place as its last --
+    // so it is overnight, exactly the old implicit default behaviour.
+    expect(stops[0].overnight).toBe(true);
+    expect(stops[1].overnight).toBe(true);
+  });
+
+  it('a day mixing the old singular place with a later multi-place day still chains correctly', () => {
+    const days = [
+      { items: [], place: p('Delhi', 28.6, 77.2) },
+      { items: [], places: [p('Delhi', 28.6, 77.2), p('Agra', 27.2, 78.0, { legMode: 'road' })] },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    // Same place both days -- no inter-day sector needed, only the
+    // explicit intra-day Delhi->Agra leg on day 2.
+    expect(sectors).toEqual([{ from: 'Delhi', to: 'Agra', day: 2, mode: 'road', distance: '', time: '' }]);
+  });
+
+  it('per-leg distance/time override the day-level route item when both are present', () => {
+    const days = [{
+      items: [{ type: 'route', text: 'x', distance: '999 km', time: '99 hrs' }],
+      places: [p('A', 1, 1), p('B', 2, 2, { legMode: 'road', legDistance: '65 km', legTime: '1.5 hrs' })],
+    }];
+    expect(buildMapDataFromResolvedDays(days).sectors[0]).toMatchObject({ distance: '65 km', time: '1.5 hrs' });
+  });
+
+  it('handles an empty places array the same as no place at all', () => {
+    const days = [{ items: [], places: [] }, { items: [], place: p('A', 1, 1) }];
+    const { stops, sectors } = buildMapDataFromResolvedDays(days);
+    expect(stops).toHaveLength(1);
+    expect(sectors).toEqual([]);
+  });
+});

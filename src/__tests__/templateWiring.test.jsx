@@ -239,3 +239,29 @@ describe('cover photo can be chosen independently of Day 1\u2019s auto-derived i
     expect(screen.queryByText('Cover Photo')).toBeNull();
   });
 });
+
+describe('multiple places per day, end to end through the real Itinerary component', () => {
+  it('a day starts with one place slot, and "+ Add another stop" is available in Detailed', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    expect(screen.getAllByText('+ Add another stop this day').length).toBeGreaterThan(0);
+  });
+
+  it('adding a stop reveals a leg-mode toggle for the new slot', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    const addButtons = screen.getAllByText('+ Add another stop this day');
+    fireEvent.click(addButtons[0]);
+    expect(screen.getAllByText('Road').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Flight').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Train').length).toBeGreaterThan(0);
+  });
+
+  it('a removed extra stop takes its leg-mode toggle with it, back to a single-place day', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getAllByText('+ Add another stop this day')[0]);
+    fireEvent.click(screen.getAllByLabelText('Remove stop 2')[0]);
+    expect(screen.queryByText('Road')).toBeNull();
+  });
+});
