@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { resolvePlace, searchGazetteer, manualPlace, isValidCoordinate } from './placeResolver.js';
 
 // Picking the coordinate behind a place name.
@@ -56,6 +57,56 @@ export function PlacePicker({
   readOnly = false,
 }) {
   const [open, setOpen] = useState(false);
+  const toggleBtnRef = useRef(null);
+  const panelRef = useRef(null);
+  // The panel used to render inline, positioned by ordinary document flow
+  // right after the toggle button. That is exactly what let it get clipped
+  // to invisible: it sits inside a day card rendered with overflow:hidden
+  // (for the card's own rounded corners), and a card too short to contain
+  // the panel's full height -- easy to hit, since the panel can hold
+  // search results, the manual-name/lat/lon row, and the remember
+  // checkbox all at once -- clipped the bottom of it, "Use these" included.
+  // This is the exact bug class already found and fixed once in this
+  // codebase for DayItemsEditor's Add Item dropdown; the fix is the same:
+  // render through a portal onto document.body, positioned from the
+  // toggle button's real screen coordinates, so no ancestor's overflow can
+  // clip it regardless of where in the page this picker is used.
+  const [panelPos, setPanelPos] = useState(null);
+  useEffect(() => {
+    if (!open || !toggleBtnRef.current) { setPanelPos(null); return; }
+    const place = () => {
+      const r = toggleBtnRef.current.getBoundingClientRect();
+      setPanelPos({ top: r.bottom + 4, left: r.left });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
+  // Dismissal for a portal-rendered panel: it is no longer visually
+  // attached to its trigger in the DOM tree, so clicking elsewhere on the
+  // page needs to close it explicitly rather than relying on it being
+  // "outside" some natural container.
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)
+        && toggleBtnRef.current && !toggleBtnRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [open]);
   const [term, setTerm] = useState("");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
@@ -123,6 +174,7 @@ export function PlacePicker({
         </span>
         {!readOnly && (
           <button
+            ref={toggleBtnRef}
             onClick={() => setOpen(o => !o)}
             style={{ border: "none", background: "none", cursor: "pointer", color: G.accent, fontSize: 11, fontWeight: 600, padding: 0 }}>
             {open ? "Close" : "Change"}
@@ -144,10 +196,11 @@ export function PlacePicker({
         </div>
       )}
 
-      {open && !readOnly && (
-        <div style={{
-          marginTop: 6, marginLeft: 13, padding: 10, borderRadius: 8,
-          border: `1px solid ${G.gray200}`, background: G.white,
+      {open && !readOnly && panelPos && createPortal(
+        <div ref={panelRef} style={{
+          position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 1000,
+          width: 280, padding: 10, borderRadius: 8,
+          border: `1px solid ${G.gray200}`, background: G.white, boxShadow: "0 6px 20px rgba(0,0,0,0.14)",
         }}>
           {alternatives.length > 1 && (
             <>
@@ -242,7 +295,8 @@ export function PlacePicker({
               Remember this place for future searches
             </label>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

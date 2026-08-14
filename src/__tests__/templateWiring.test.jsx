@@ -302,3 +302,32 @@ describe('regression: an untouched itinerary must not print its closing sentence
     });
   });
 });
+
+describe('regression: Brief and Detailed must be visually distinguishable even with NO flavor-specific content at all', () => {
+  // The real, confirmed root cause of "Detailed shows Brief's preview":
+  // route/sightseeing/stay item TEXT is deliberately shared between
+  // flavors (only per-item notes fork), and the document title passed to
+  // buildPaginatedLetterheadDocument only ever set the invisible HTML
+  // <title> tag, never anything rendered in the body. For an itinerary
+  // that has not yet had any notes, remarks or closing text entered --
+  // which is every itinerary the moment it is created -- the two
+  // documents' visible bodies were genuinely, byte-for-byte identical.
+  // This was never a flavor-selection bug; the correct flavor's content
+  // was always being built. There was simply nothing on the page to show
+  // it.
+  it('a brand new itinerary (no notes, no remarks, no closing text touched) still shows a different heading per flavor', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('BRIEF ITINERARY');
+      expect(doc).not.toContain('DETAILED ITINERARY');
+    });
+    fireEvent.click(screen.getByText('Detailed'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('DETAILED ITINERARY');
+      expect(doc).not.toContain('BRIEF ITINERARY');
+    });
+  });
+});

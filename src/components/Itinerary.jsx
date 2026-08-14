@@ -330,7 +330,18 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     </div>
     ${stampHTML}`;
 
-  const titleBlockFor = () => `
+  // The visible heading, not just the invisible <title> tag metadata
+  // passed separately to buildPaginatedLetterheadDocument -- confirmed
+  // this was the real cause of "Detailed shows Brief's preview": for an
+  // itinerary with no flavor-specific notes or remarks yet entered, the
+  // two documents' visible bodies were byte-for-byte identical. Tour
+  // title, duration, route, tagline and this heading were all shared,
+  // unlabelled text -- there was nothing on the page to actually
+  // distinguish which flavor was being looked at, regardless of whether
+  // the correct flavor's content was genuinely being built underneath
+  // (it was). This makes the two visually distinguishable unconditionally,
+  // not only once something flavor-specific has been added.
+  const titleBlockFor = (flavor) => `
     <div style="text-align:center;margin-bottom:16pt">
       <div class="inv-title" style="margin-bottom:2pt">${tourTitle||"Tour Itinerary"}</div>
       <div style="font-size:11pt;font-weight:600;color:#1A3A52">${duration}</div>
@@ -338,7 +349,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       ${tagline?`<div style="font-size:9.5pt;font-style:italic;color:#666;margin-top:4pt">"${tagline}"</div>`:''}
     </div>
     <div style="height:2pt;background:linear-gradient(90deg,#cb0f0f,#061bb0);border-radius:2pt;margin-bottom:14pt"></div>
-    <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">ITINERARY</div>`;
+    <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">${flavor === "detailed" ? "DETAILED ITINERARY" : "BRIEF ITINERARY"}</div>`;
 
   // ─── BRIEF: plain paginated letterhead, no photos ─────────────────────
   const buildBriefPrintHTML = (asBlocks) => {
@@ -346,7 +357,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
       title: `${tourTitle} — Brief Itinerary`,
-      bodyBlocks: [titleBlockFor(), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
+      bodyBlocks: [titleBlockFor("brief"), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
     if (asBlocks) return docArgs;
@@ -372,7 +383,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
       title: `${tourTitle} — Itinerary`,
-      bodyBlocks: [titleBlockFor(), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
+      bodyBlocks: [titleBlockFor("detailed"), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
     if (asBlocks) return docArgs;
