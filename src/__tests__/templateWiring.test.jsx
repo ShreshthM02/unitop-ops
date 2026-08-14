@@ -152,26 +152,32 @@ describe('Documents actually apply their template prop', () => {
     });
   });
 
-  it('Detailed offers its own editable closing line, no longer a hard-coded sentence', () => {
-    // Regression: closingText was previously hard-coded into buildBrochureHTML
-    // with no field to change it -- every itinerary got the identical
-    // sign-off regardless of destination or client.
+  it('Detailed offers its own editable closing line, empty by default -- not pre-filled with text that duplicates the template\u2019s own sign-off', () => {
+    // Regression (two-part): closingText was originally hard-coded with no
+    // field to change it at all; once a field was added, its default value
+    // was accidentally the SAME sentence as the template's own
+    // closingTagline default, so an itinerary that never touched this
+    // field printed that sentence twice -- once as this field, once again
+    // as the template's bold sign-off just below it. Confirmed against a
+    // real exported PDF. Empty is the only default that cannot collide.
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
-    const field = screen.getByDisplayValue('Tour ends as you leave footprints and take memories.');
+    const field = screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.');
+    expect(field.value).toBe('');
     fireEvent.change(field, { target: { value: 'Safe travels, and see you again soon.' } });
     expect(screen.getByDisplayValue('Safe travels, and see you again soon.')).toBeTruthy();
   });
 
-  it('Brief now offers its own closing line too, independent of Detailed\u2019s', () => {
+  it('Brief now offers its own closing line too, independent of Detailed\u2019s, also empty by default', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     // Starts on Brief by default -- its closing field is right there too.
-    const briefField = screen.getByDisplayValue('Tour ends as you leave footprints and take memories.');
+    const briefField = screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.');
+    expect(briefField.value).toBe('');
     fireEvent.change(briefField, { target: { value: 'Brief-only sign-off.' } });
     fireEvent.click(screen.getByText('Detailed'));
-    // Detailed still shows the untouched default -- editing Brief's did not
-    // leak into Detailed's.
-    expect(screen.getByDisplayValue('Tour ends as you leave footprints and take memories.')).toBeTruthy();
+    // Detailed still shows its own untouched (empty) default -- editing
+    // Brief's did not leak into Detailed's.
+    expect(screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.').value).toBe('');
     expect(screen.queryByDisplayValue('Brief-only sign-off.')).toBeNull();
   });
 
@@ -282,5 +288,17 @@ describe('regression: switching flavor while already on Preview must never show 
     // in flight.
     const immediateDoc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
     expect(immediateDoc).not.toContain('Brief Itinerary');
+  });
+});
+
+describe('regression: an untouched itinerary must not print its closing sentence twice', () => {
+  it('a fresh itinerary\u2019s plain-letterhead output shows the template tagline exactly once, not the closing-line text duplicating it', async () => {
+    render(<Itinerary query={fakeQuery} briefTemplate={{ closingTagline: 'TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES' }} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = document.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      const occurrences = (doc.match(/leave footprints and take memories/gi) || []).length;
+      expect(occurrences).toBe(1);
+    });
   });
 });

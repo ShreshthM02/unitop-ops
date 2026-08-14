@@ -47,7 +47,14 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // before. A short internal remark for Brief has no reason to be a long
   // client-facing paragraph, and vice versa, so each flavor gets its own
   // independent field rather than one shared text box.
-  const DEFAULT_CLOSING = "Tour ends as you leave footprints and take memories.";
+  // Empty by default, deliberately -- NOT the template's own closing
+  // tagline sentence. The two used to share the same default text, which
+  // meant any itinerary that never touched this field printed the same
+  // sentence twice: once as this "personal note" line, once again as the
+  // template's own bold sign-off just below it. This field exists for a
+  // genuinely tour-specific note ("Thank you for choosing us for your
+  // Ladakh adventure!"), not to restate the standing tagline.
+  const DEFAULT_CLOSING = "";
   const [briefClosingText, setBriefClosingText] = useState(DEFAULT_CLOSING);
   const [detailedClosingText, setDetailedClosingText] = useState(DEFAULT_CLOSING);
   const [briefRemarks, setBriefRemarks] = useState("");
