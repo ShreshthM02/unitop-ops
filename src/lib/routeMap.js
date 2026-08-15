@@ -247,6 +247,27 @@ export function buildMapDataFromResolvedDays(days) {
     if (!places.length) { prevStop = null; return; }
 
     let dayPrev = prevStop; // chains the previous day's end into this day's first stop
+
+    // Confirmed real bug, found by rendering an actual multi-stop day and
+    // looking at the result: this fallback used to run once per leg
+    // lacking its own explicit legDistance/legTime, and each time it just
+    // grabbed the FIRST route-type item in the day with any distance/time
+    // set -- with no regard for which leg that item was actually
+    // describing. A day with two legs and only one route item meant BOTH
+    // legs showed that one route item's numbers, one of them wrong. Single
+    // possible route items were what saved this in the old one-place-per-day
+    // model: WHICH item was the fallback FOR was never ambiguous, because
+    // there was only ever one leg it could be. Fine for that case. Not
+    // fine now that a day can carry more than one leg to guess for.
+    const daySequence = [prevStop, ...places].filter(p => p && p.name);
+    let transitionsThisDay = 0;
+    for (let k = 1; k < daySequence.length; k++) {
+      if (daySequence[k - 1].name !== daySequence[k].name) transitionsThisDay++;
+    }
+    const fallbackLead = transitionsThisDay === 1
+      ? (day.items || []).find(it => it.type === "route" && (it.distance || it.time))
+      : null;
+
     places.forEach((place, i) => {
       if (!place || !place.name) return;
       let stop = byName.get(place.name);
@@ -272,7 +293,7 @@ export function buildMapDataFromResolvedDays(days) {
           const transportItem = (day.items || []).find(it => it.type === "transport");
           mode = transportItem ? (transportItem.mode === "train" ? "train" : "flight") : "road";
         }
-        const lead = (day.items || []).find(it => it.type === "route" && (it.distance || it.time));
+        const lead = fallbackLead;
         sectors.push({
           from: dayPrev.name, to: place.name, day: dayNo, mode,
           distance: place.legDistance || (lead ? lead.distance : ""),

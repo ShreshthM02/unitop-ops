@@ -461,3 +461,50 @@ describe('multiple places per day: A -> B -> C within a single day', () => {
     expect(sectors).toEqual([]);
   });
 });
+
+describe('regression: a day\u2019s fallback distance/time must not leak from one leg onto another', () => {
+  const p = (name, lat, lon, extra = {}) => ({ name, lat, lon, ...extra });
+
+  it('found by rendering an actual multi-stop itinerary: an inter-day leg with no explicit distance must NOT borrow a route item meant for a different, later leg the same day', () => {
+    const days = [
+      { items: [], places: [p('Bodhgaya', 24.7, 85.0), p('Nalanda', 25.14, 85.44, { legMode: 'road' })] },
+      // Day 2: arrives from Nalanda (no explicit legDistance on Rajgir),
+      // then has its OWN leg to Varanasi with an explicit 280km/6hrs. The
+      // day's only route item ALSO says 280km/6hrs -- but that item
+      // describes the Rajgir->Varanasi leg, not the Nalanda->Rajgir one.
+      {
+        items: [{ type: 'route', text: 'Rajgir - Varanasi', distance: '280 km', time: '6 hrs' }],
+        places: [p('Rajgir', 25.03, 85.42), p('Varanasi', 25.32, 82.97, { legMode: 'road', legDistance: '280 km', legTime: '6 hrs' })],
+      },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    const nalandaToRajgir = sectors.find(s => s.from === 'Nalanda' && s.to === 'Rajgir');
+    const rajgirToVaranasi = sectors.find(s => s.from === 'Rajgir' && s.to === 'Varanasi');
+    // The real bug: both of these showed "280 km / 6 hrs" before the fix,
+    // because the fallback grabbed the day's one route item regardless of
+    // which leg needed it.
+    expect(nalandaToRajgir.distance).toBe('');
+    expect(nalandaToRajgir.time).toBe('');
+    expect(rajgirToVaranasi.distance).toBe('280 km');
+    expect(rajgirToVaranasi.time).toBe('6 hrs');
+  });
+
+  it('the fallback still works exactly as before for a day with only one leg -- no ambiguity, no regression', () => {
+    const days = [
+      { items: [], place: p('Bodhgaya', 24.7, 85.0) },
+      { items: [{ type: 'route', text: 'Bodhgaya - Varanasi', distance: '250 km', time: '5 hrs' }], place: p('Varanasi', 25.32, 82.97) },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors[0]).toMatchObject({ distance: '250 km', time: '5 hrs' });
+  });
+
+  it('a leg with its OWN explicit legDistance/legTime never uses the fallback at all, single-leg or not', () => {
+    const days = [
+      { items: [{ type: 'route', text: 'Wrong data', distance: '999 km', time: '99 hrs' }],
+        place: p('A', 1, 1) },
+      { items: [], place: p('B', 2, 2, { legDistance: '10 km', legTime: '20 min' }) },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors[0]).toMatchObject({ distance: '10 km', time: '20 min' });
+  });
+});

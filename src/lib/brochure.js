@@ -36,7 +36,7 @@
 //      an itinerary worth reading. Optional everywhere, so a hurried entry
 //      still renders cleanly.
 
-import { itineraryItemHTML } from "./utils.js";
+import { itemNoteForFlavor } from "./utils.js";
 
 export const BROCHURE_PAGE = { widthMm: 210, heightMm: 297 };
 export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 40) * (96 / 25.4));
@@ -377,8 +377,27 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
 function timelineItemHTML(item) {
   if (!item) return "";
   const text = (item.text || "").trim();
-  const note = (item.note || "").trim();
-  const meta = [item.distance, item.time].filter(Boolean).join(" · ");
+  // The brochure IS the Detailed document -- flavor is not a parameter
+  // here, it is always "detailed". Reading item.note directly (Brief's own
+  // field) instead of itemNoteForFlavor(item, "detailed") meant the
+  // brochure never showed a note written specifically for it: an operator
+  // could write a short Brief-facing line and a longer, richer
+  // Detailed-facing one exactly as the picker intends, and the brochure
+  // would silently print the short Brief one anyway, or nothing at all if
+  // Brief's note was left empty while Detailed's was carefully written.
+  // This defeated the entire reason the per-flavor split exists, for the
+  // one document that is most the point of having it.
+  const note = itemNoteForFlavor(item, "detailed").trim();
+  // Route items carry distance/time; transport items carry depTime/arrTime
+  // instead -- two different item types' own fields, not one field the
+  // other happens to also use. The brochure's meta line only ever read
+  // distance/time, so a flight or train's departure and arrival times
+  // never appeared anywhere in the brochure at all, even though the exact
+  // same item correctly shows "(Dep 08:45 · Arr 10:55)" in the plain
+  // letterhead documents.
+  const meta = item.type === "transport"
+    ? [item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ")
+    : [item.distance, item.time].filter(Boolean).join(" · ");
   const soft = item.type !== "sightseeing";
   const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;
 
@@ -633,7 +652,6 @@ export function buildBrochureDocument({
   mapHTML = "",
   sectorTableHTML = "",
   gatewayNote = "",
-  logo = null,
   remarksText = "",
   closingText = "",
   contact = null,
@@ -744,7 +762,7 @@ export function buildBrochureDocument({
     <title>${esc(cover.title || "Itinerary")}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
-  </head><body>${brochureCoverHTML({ ...cover, logo })}${pagesHTML}</body></html>`;
+  </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }
 
 // Screen-only preview styling. Deliberately does NOT pad the sheet -- a

@@ -52,6 +52,24 @@ describe('cover page', () => {
     expect(html).toContain('data:image/png;base64,AAA');
   });
 
+  it('regression: a logo nested inside cover.logo actually reaches the page through buildBrochureDocument, not just the isolated brochureCoverHTML call', () => {
+    // Confirmed real bug: buildBrochureDocument had its OWN redundant
+    // top-level `logo` parameter (defaulting to null), used nowhere except
+    // one line that did `brochureCoverHTML({ ...cover, logo })` -- the
+    // bare `logo` after the spread is buildBrochureDocument's own
+    // (unset) top-level value, which silently overwrote whatever
+    // cover.logo actually held. title/tagline/duration/route/heroImage all
+    // flow through `cover` correctly; logo was the one field secretly
+    // discarded on the only path a real caller actually uses. The test
+    // above passed the whole time because it calls brochureCoverHTML
+    // directly, bypassing the broken wrapper entirely.
+    const html = buildBrochureDocument({
+      cover: { title:'T', logo:'data:image/png;base64,REALLOGO' },
+      days: [],
+    });
+    expect(html).toContain('data:image/png;base64,REALLOGO');
+  });
+
   it('prints the company tagline beneath the logo, width-matched to it, only when a logo is present', () => {
     const withLogo = brochureCoverHTML({ title:'T', logo:'data:image/png;base64,AAA' });
     expect(withLogo).toContain('Your gateway to Incredible India, since 1999');
@@ -124,6 +142,46 @@ describe('day cards', () => {
     const html = brochureDayHTML(d, 0, null);
     expect(html).toContain('Sarnath');
     expect(html).toContain('Where the Buddha gave his first sermon.');
+  });
+
+  it('regression: shows the DETAILED note when one has been written, not Brief\u2019s -- the brochure IS the Detailed document', () => {
+    // Confirmed real bug: brochure.js read item.note directly, which is
+    // Brief's own field, completely bypassing item.detailedNote. The
+    // brochure -- the entire reason the per-flavor note split exists --
+    // was silently showing whichever short line Brief had, or nothing, if
+    // Brief's own note was left empty while Detailed's was carefully
+    // written.
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Sarnath', note:'Brief\u2019s short line.', detailedNote:'A far richer, client-facing paragraph about Sarnath written specifically for the brochure.' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('A far richer, client-facing paragraph about Sarnath written specifically for the brochure.');
+    expect(html).not.toContain('Brief\u2019s short line.');
+  });
+
+  it('regression: shows Detailed\u2019s note even when Brief\u2019s own note was left completely empty', () => {
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Sarnath', note:'', detailedNote:'Written only for the brochure, Brief never touched this item\u2019s note at all.' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('Written only for the brochure, Brief never touched this item\u2019s note at all.');
+  });
+
+  it('regression: a flight\u2019s departure and arrival times must appear in the brochure, not just the plain letterhead documents', () => {
+    // Found by rendering an actual day with a real transport item: the
+    // brochure's meta line only ever read item.distance/item.time, which
+    // are route's own fields -- a transport item uses depTime/arrTime
+    // instead, and those never appeared anywhere in the brochure at all,
+    // even though the same item correctly prints "(Dep 08:45 \u00b7 Arr
+    // 10:55)" in the plain documents.
+    const d = { id:'x', items:[{ id:'a', type:'transport', text:'Hanoi - Bodhgaya (VN9771)', mode:'flight', depTime:'08:45', arrTime:'10:55' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('Dep 08:45');
+    expect(html).toContain('Arr 10:55');
+  });
+
+  it('a transport item with no times at all still renders cleanly, no stray separator', () => {
+    const d = { id:'x', items:[{ id:'a', type:'transport', text:'6E 2134', mode:'flight' }] };
+    expect(() => brochureDayHTML(d, 0, null)).not.toThrow();
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('6E 2134');
+    expect(html).not.toContain('Dep');
   });
 
   it('renders cleanly when a place has no note, so a hurried entry still looks right', () => {
