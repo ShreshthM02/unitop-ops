@@ -62,15 +62,20 @@ export const BROCHURE_THEME = {
 // elegant transitional serif, a neutral humanist sans) when they don't.
 // ONE superfamily for everything textual, varying only size and weight.
 // Playfair was tried and rejected: it is a high-contrast Didone whose DNA is
-// fashion branding, so it reads stylish rather than serious, and its thin
-// strokes get fragile small. Garamond was considered and rejected too --
-// scholarly is right for a pilgrimage and wrong for a beach. Source Serif is
-// contemporary with no period accent, which is what a container serving
-// every sector has to be. A grotesque appears ONLY on micro-labels; using it
-// for body text made the page feel like a dashboard.
-const DISPLAY = `'Source Serif 4', 'Source Serif Pro', 'Bitstream Charter', Georgia, serif`;
-const BODY = `'Source Serif 4', 'Source Serif Pro', 'Bitstream Charter', Georgia, serif`;
-const LABEL = `'Inter', Carlito, 'DejaVu Sans', -apple-system, Arial, sans-serif`;
+// Fraunces for display, Karla for everything else -- replacing an earlier
+// Source Serif 4 + Inter pairing on direct request after reviewing real
+// exported documents. Fraunces has warmth and character without tipping
+// into the high-contrast drama of something like Playfair Display, which
+// reads closer to fashion branding than travel; Karla is a quiet,
+// consistent humanist sans that carries both body prose and the smallest
+// micro-labels without needing a third typeface in the mix. Same
+// contemporary-with-no-period-accent requirement as before still holds --
+// this is a container serving every sector, not only heritage/pilgrimage
+// content, so nothing here should read as narrowly themed to one kind of
+// trip.
+const DISPLAY = `'Fraunces', Georgia, serif`;
+const BODY = `'Karla', -apple-system, Arial, sans-serif`;
+const LABEL = `'Karla', -apple-system, Arial, sans-serif`;
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -92,7 +97,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      their own shared CSS text. Keeping the outer <link> tag too, for the
      real render -- redundant with this, but harmless; browsers dedupe an
      identical font request. */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;0,700;1,500&display=swap');
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -809,7 +814,7 @@ export function buildBrochureDocument({
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;0,700;1,500&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }
