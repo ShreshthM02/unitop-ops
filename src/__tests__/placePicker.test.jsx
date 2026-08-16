@@ -365,3 +365,66 @@ describe('regression: the panel must escape an overflow:hidden ancestor, exactly
     expect(screen.getByLabelText('Search places')).toBeTruthy();
   });
 });
+
+describe('regression: item #1, "Use these" reported as truly silent -- a disabled button never fires its click handler at all', () => {
+  it('a coordinate pair pasted (comma-separated) into the Latitude field auto-splits into both fields', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '24.6958, 85.0035' } });
+    expect(screen.getByLabelText('Latitude').value).toBe('24.6958');
+    expect(screen.getByLabelText('Longitude').value).toBe('85.0035');
+  });
+
+  it('the same pasted pair works when it lands in the Longitude field instead', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '24.6958, 85.0035' } });
+    expect(screen.getByLabelText('Latitude').value).toBe('24.6958');
+    expect(screen.getByLabelText('Longitude').value).toBe('85.0035');
+  });
+
+  it('a space-separated pair (no comma) also auto-splits -- another common paste format', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '24.6958 85.0035' } });
+    expect(screen.getByLabelText('Latitude').value).toBe('24.6958');
+    expect(screen.getByLabelText('Longitude').value).toBe('85.0035');
+  });
+
+  it('after auto-splitting a pasted pair, "Use these" is genuinely enabled, not just visually correct', () => {
+    const onChange = setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: 'A Hamlet' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '24.6958, 85.0035' } });
+    expect(screen.getByText('Use these').disabled).toBe(false);
+    fireEvent.click(screen.getByText('Use these'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat: 24.6958, lon: 85.0035 }));
+  });
+
+  it('a genuinely plain single number in one field is left alone, not mistaken for a pair', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '24.6958' } });
+    expect(screen.getByLabelText('Latitude').value).toBe('24.6958');
+    expect(screen.getByLabelText('Longitude').value).toBe('');
+  });
+
+  it('shows a visible reason once the disabled button has actually been engaged with, not on the pristine empty panel', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    expect(screen.queryByText(/name is needed|must be/)).toBeNull(); // untouched, no premature warning
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '999' } });
+    expect(screen.getByText(/must be/)).toBeTruthy();
+  });
+
+  it('the hint clears once the input becomes valid', () => {
+    setup({ query: 'X' });
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.change(screen.getByLabelText('Manual place name'), { target: { value: 'X' } });
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '999' } });
+    expect(screen.getByText(/must be/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Latitude'), { target: { value: '24.6958' } });
+    fireEvent.change(screen.getByLabelText('Longitude'), { target: { value: '85.0035' } });
+    expect(screen.queryByText(/must be/)).toBeNull();
+  });
+});

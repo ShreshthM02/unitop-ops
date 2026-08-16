@@ -258,9 +258,21 @@ export function PlacePicker({
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
             <input style={{ ...inp, fontSize: 11.5, width: 90 }} value={lat}
-              onChange={e => setLat(e.target.value)} placeholder="Latitude" aria-label="Latitude"/>
+              onChange={e => {
+                // Google Maps (and most map apps) copy a coordinate as one
+                // "lat, lon" string -- pasting that whole thing into
+                // whichever field happens to be focused is a completely
+                // natural thing to do, and Number() cannot parse a
+                // comma-containing string at all, which silently kept
+                // "Use these" disabled forever with no explanation of why.
+                const m = e.target.value.match(/^\s*(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)\s*$/);
+                if (m) { setLat(m[1]); setLon(m[2]); } else { setLat(e.target.value); }
+              }} placeholder="Latitude" aria-label="Latitude"/>
             <input style={{ ...inp, fontSize: 11.5, width: 90 }} value={lon}
-              onChange={e => setLon(e.target.value)} placeholder="Longitude" aria-label="Longitude"/>
+              onChange={e => {
+                const m = e.target.value.match(/^\s*(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)\s*$/);
+                if (m) { setLat(m[1]); setLon(m[2]); } else { setLon(e.target.value); }
+              }} placeholder="Longitude" aria-label="Longitude"/>
             <button
               className="btn btn-ghost"
               style={{ fontSize: 11 }}
@@ -288,6 +300,12 @@ export function PlacePicker({
               Use these
             </button>
           </div>
+          {(!isValidCoordinate(lat, lon) || !manualName.trim()) && (lat || lon || manualName) && (
+            <div style={{ fontSize: 10, color: G.gray400, marginTop: 4 }}>
+              {!manualName.trim() && 'A name is needed. '}
+              {!isValidCoordinate(lat, lon) && 'Latitude must be \u201390 to 90, longitude \u2212180 to 180.'}
+            </div>
+          )}
           {onSaveCustomPlace && (
             <label style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, fontSize: 10.5, color: G.gray400, cursor: "pointer" }}>
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
