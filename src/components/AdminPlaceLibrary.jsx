@@ -234,6 +234,20 @@ export default function AdminPlaceLibrary() {
           </tbody>
         </table>
       )}
+
+      {tab === 'places' && (
+        // GeoNames is CC-BY 4.0, which requires attribution wherever the
+        // data is used. Moved here from a persistent sidebar footer
+        // visible to every user on every page -- this screen is where
+        // GeoNames-sourced place data is actually reviewed, which is a
+        // more relevant home for the credit than a page nobody was
+        // looking at it on. The obligation is ours regardless of where it
+        // lives; a brochure is not the place to discharge it either way.
+        <div style={{ textAlign:'center', marginTop:16, fontSize:10, color:G.gray400, lineHeight:1.5 }}>
+          Place data © <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer"
+            style={{ color:G.gray400, textDecoration:'underline' }}>GeoNames</a>, CC BY 4.0
+        </div>
+      )}
     </div>
   );
 }

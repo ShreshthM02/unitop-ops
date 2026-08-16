@@ -144,3 +144,18 @@ describe('adding a photo from the admin screen -- item #5\u2019s second half', (
     expect(screen.queryByLabelText('Photo destination')).toBeNull();
   });
 });
+
+describe('GeoNames attribution: moved from a persistent sidebar footer into the Places tab', () => {
+  it('shows the CC BY 4.0 credit on the Places tab', async () => {
+    render(<AdminPlaceLibrary/>);
+    fireEvent.click(await screen.findByText('Places (1)'));
+    expect(screen.getByText(/CC BY 4.0/)).toBeTruthy();
+    expect(screen.getByText('GeoNames').closest('a')).toHaveProperty('href', 'https://www.geonames.org/');
+  });
+
+  it('does not show it on the Photos tab -- it is specifically about place data', async () => {
+    render(<AdminPlaceLibrary/>);
+    await waitFor(() => expect(screen.getByText('Photos (1)')).toBeTruthy());
+    expect(screen.queryByText(/CC BY 4.0/)).toBeNull();
+  });
+});
