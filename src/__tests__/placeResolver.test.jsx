@@ -143,3 +143,31 @@ describe('ranking mechanics', () => {
     expect(resolvePlace('Bodhgaya', null).status).toBe('unmatched');
   });
 });
+
+describe('regression: coordinates with a degree symbol and cardinal direction, confirmed as the real cause of "Use these" appearing silent', () => {
+  it('"25.3762° N" and "83.0227° E" parse and validate correctly', () => {
+    expect(isValidCoordinate('25.3762° N', '83.0227° E')).toBe(true);
+    const m = manualPlace('X', '25.3762° N', '83.0227° E');
+    expect(m.lat).toBeCloseTo(25.3762);
+    expect(m.lon).toBeCloseTo(83.0227);
+  });
+
+  it('S and W flip the sign correctly', () => {
+    const m = manualPlace('X', '25.3762° S', '83.0227° W');
+    expect(m.lat).toBeCloseTo(-25.3762);
+    expect(m.lon).toBeCloseTo(-83.0227);
+  });
+
+  it('works without the degree symbol too -- "25.3762 N"', () => {
+    expect(isValidCoordinate('25.3762 N', '83.0227 E')).toBe(true);
+  });
+
+  it('a plain bare number still works exactly as before', () => {
+    expect(isValidCoordinate('25.3762', '83.0227')).toBe(true);
+    expect(manualPlace('X', '25.3762', '83.0227').lat).toBeCloseTo(25.3762);
+  });
+
+  it('genuine garbage is still rejected', () => {
+    expect(isValidCoordinate('not a number', '83.0227')).toBe(false);
+  });
+});

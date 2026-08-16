@@ -5,6 +5,7 @@ import {
   brochureGlanceHTML,
 } from '../lib/brochure.js';
 import { ICON_PATHS } from '../lib/utils.js';
+import { LOGO_B64, LOGO_TRANSPARENT_B64 } from '../lib/images.js';
 
 const day = (over = {}) => ({
   id: 'd1', dayLabel: 'DAY-1', title: 'Arrival at Bodhgaya', meals: ['B','D'],
@@ -525,5 +526,22 @@ describe('regression: real icons replace the generic bullet dots, per direct req
 
   it('the old ::before circle-bullet rule on .bro-tl-item is gone entirely', () => {
     expect(brochureCSS()).not.toContain('.bro-tl-item::before');
+  });
+});
+
+describe('regression: the splash screen and every other app UI use kept the original opaque logo; only the brochure cover uses the transparent one', () => {
+  it('LOGO_B64 and LOGO_TRANSPARENT_B64 are different image data -- the app-wide logo was NOT silently made transparent everywhere', () => {
+    expect(LOGO_B64).not.toBe(LOGO_TRANSPARENT_B64);
+  });
+
+  it('LOGO_B64 is opaque (PNG color type 2 or 3, no alpha channel)', () => {
+    const bytes = Buffer.from(LOGO_B64.split(',')[1], 'base64');
+    const colorType = bytes[25];
+    expect([2, 3]).toContain(colorType);
+  });
+
+  it('LOGO_TRANSPARENT_B64 genuinely has an alpha channel (PNG color type 6)', () => {
+    const bytes = Buffer.from(LOGO_TRANSPARENT_B64.split(',')[1], 'base64');
+    expect(bytes[25]).toBe(6);
   });
 });

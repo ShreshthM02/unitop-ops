@@ -195,11 +195,28 @@ export function searchGazetteer(query, gazetteer, { limit = 20, country = null }
 // A coordinate the user placed or typed themselves. Always available, and
 // always wins -- this is the escape hatch that guarantees nobody is ever
 // stuck with a match they know is wrong.
+// Real-world coordinates rarely arrive as a bare "25.3762" -- copying one
+// off a phone's GPS app, Google Maps' own "25.3762° N" display, or a GPX
+// file commonly includes a degree symbol and a cardinal direction letter,
+// none of which Number() can parse (Number("25.3762° N") is NaN). This is
+// the confirmed real cause of "Use these" appearing to do nothing: the
+// button was correctly disabled because the coordinate genuinely could not
+// be parsed, just with no indication that WAS the problem.
+export function parseCoordinateInput(raw) {
+  if (raw == null) return NaN;
+  const s = String(raw).trim();
+  const m = s.match(/^(-?\d+\.?\d*)\s*°?\s*([NSEWnsew])?$/);
+  if (!m) return Number(s);
+  const value = Number(m[1]);
+  const dir = m[2] ? m[2].toUpperCase() : null;
+  return (dir === "S" || dir === "W") ? -Math.abs(value) : value;
+}
+
 export function manualPlace(name, lat, lon, extra = {}) {
-  return { name, lat: Number(lat), lon: Number(lon), source: "manual", ...extra };
+  return { name, lat: parseCoordinateInput(lat), lon: parseCoordinateInput(lon), source: "manual", ...extra };
 }
 
 export function isValidCoordinate(lat, lon) {
-  const a = Number(lat), b = Number(lon);
+  const a = parseCoordinateInput(lat), b = parseCoordinateInput(lon);
   return Number.isFinite(a) && Number.isFinite(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180;
 }
