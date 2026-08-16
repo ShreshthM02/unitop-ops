@@ -36,7 +36,7 @@
 //      an itinerary worth reading. Optional everywhere, so a hurried entry
 //      still renders cleanly.
 
-import { itemNoteForFlavor } from "./utils.js";
+import { itemNoteForFlavor, ICON_PATHS } from "./utils.js";
 
 export const BROCHURE_PAGE = { widthMm: 210, heightMm: 297 };
 export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 40) * (96 / 25.4));
@@ -78,6 +78,21 @@ const esc = (s) => String(s == null ? "" : s)
 const MEAL_LABEL = { B: "Breakfast", L: "Lunch", D: "Dinner" };
 
 export const brochureCSS = (theme = BROCHURE_THEME) => `
+  /* @import, not just the <link> tag in the final document's <head> --
+     that link is added separately, outside this returned string, and
+     createMeasurementContext only ever receives what this function
+     returns. Without the fonts loading INSIDE the measurement iframe too,
+     pagination measured every block using a browser-default fallback
+     font instead of the real Source Serif 4 / Playfair Display, and a
+     fallback font with different metrics produced systematically wrong
+     height estimates -- confirmed as the explanation for entire days
+     landing alone on mostly-blank pages regardless of how little content
+     they actually held. The plain letterhead documents never had this
+     problem because they load their fonts this same way already, inside
+     their own shared CSS text. Keeping the outer <link> tag too, for the
+     real render -- redundant with this, but harmless; browsers dedupe an
+     identical font request. */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap');
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -124,13 +139,19 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 14mm 18mm 10mm;
   }
-  /* display:inline-block makes this shrink to the image's own rendered
-     width, not the cover panel's full width -- so the tagline underneath,
-     given width:100% of THIS wrapper, always matches the logo's actual
-     width with no hardcoded value to fall out of sync if the logo image
-     ever changes. */
-  .bro-cover-logo { margin-bottom: 11mm; display: inline-block; }
-  .bro-cover-logo img { height: 22mm; display: block; }
+  /* 47.4mm = 22mm (this logo's fixed render height) * (418/194), the real
+     PNG's own pixel aspect ratio -- confirmed by decoding its PNG header
+     directly. The earlier approach (display:inline-block, letting the
+     wrapper shrink-wrap to the image's width) looked correct on paper but
+     is a real CSS trap: inline-block sizes to whichever CHILD is widest,
+     not specifically the image, and the tagline text at 7.5pt turned out
+     to be close enough to the image's own width that the wrapper sized
+     to the TEXT instead, breaking the width match this was supposed to
+     guarantee. Confirmed by actually rendering it. If the logo image ever
+     changes, recalculate this from its real pixel dimensions rather than
+     assume the ratio still holds. */
+  .bro-cover-logo { margin-bottom: 11mm; width: 47.4mm; margin-left: auto; margin-right: auto; }
+  .bro-cover-logo img { height: 22mm; width: 100%; display: block; }
   .bro-cover-logo-tag {
     width: 100%; margin-top: 2mm; font-family: ${DISPLAY}; font-style: italic;
     font-size: 7.5pt; color: ${BROCHURE_THEME.accent}; text-align: center;
@@ -282,17 +303,16 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   /* The day's plan as a timeline. Markers give the eye a spine to run
      down, so a day reads as a sequence rather than a paragraph. */
   .bro-tl { list-style: none; margin: 0; padding: 0; }
-  .bro-tl-item { position: relative; padding-left: 5.5mm; margin-bottom: 3.2mm; }
-  .bro-tl-item::before {
-    content: ""; position: absolute; left: 0; top: 1.5mm;
-    width: 1.8mm; height: 1.8mm; border-radius: 50%;
-    background: ${theme.accent};
+  .bro-tl-item { position: relative; padding-left: 6.5mm; margin-bottom: 3.2mm; }
+  .bro-tl-icon {
+    position: absolute; left: 0; top: 1.8mm; width: 4mm; height: 4mm;
   }
-  .bro-tl-item--soft::before { background: ${theme.paper}; border: 0.5pt solid ${theme.soft}; }
+  .bro-tl-item--soft .bro-tl-icon { color: ${theme.soft}; }
+  .bro-tl-item:not(.bro-tl-item--soft) .bro-tl-icon { color: ${theme.accent}; }
   .bro-tl-name { font-size: 10.5pt; font-weight: 600; line-height: 1.5; }
   /* The one line about a place -- what turns a list of names into
      something a client actually learns from. */
-  .bro-tl-note { font-size: 10pt; line-height: 1.6; color: ${theme.body}; margin-top: 1.2mm; }
+  .bro-tl-note { font-size: 10pt; line-height: 1.6; color: ${theme.body}; margin-top: 1.2mm; white-space: pre-wrap; }
   .bro-tl-prose { font-size: 10.5pt; line-height: 1.65; margin: 0; }
 
   .bro-day-foot {
@@ -357,6 +377,11 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     font-family: ${DISPLAY}; font-style: italic; font-size: 12.5pt;
     line-height: 1.5; color: ${theme.ink}; margin-bottom: 5mm;
   }
+  .bro-signoff-tagline {
+    text-align: center; font-family: ${LABEL}; font-weight: 700;
+    font-size: 8.5pt; letter-spacing: 1.5pt; text-transform: uppercase;
+    color: ${theme.accent}; margin: 4mm 0 5mm;
+  }
   .bro-signoff-contact { font-size: 7.5pt; line-height: 1.6; color: ${theme.soft}; }
   .bro-signoff-contact strong { color: ${theme.ink}; font-weight: 600; display: block; margin-bottom: 1.5mm; font-size: 8.5pt; }
 
@@ -401,11 +426,24 @@ function timelineItemHTML(item) {
   const soft = item.type !== "sightseeing";
   const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;
 
+  // Same icon selection as the plain letterhead documents: pin for
+  // sightseeing, the transport item's own mode (not a generic transport
+  // glyph -- flight and train need to read as different at a glance),
+  // pencil for a remark. Route and stay never reach this function (routes
+  // are promoted to their own headline line above the day title; stay is
+  // deliberately left out of the client-facing brochure entirely -- see
+  // the note on that below), so this only ever needs to cover the types
+  // that actually arrive here.
+  const iconName = item.type === "sightseeing" ? "pin"
+    : item.type === "transport" ? (item.mode === "train" ? "train" : "plane")
+    : "pencil";
+  const iconSVG = `<svg class="bro-tl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[iconName]}</svg>`;
+
   if (item.type === "description") {
-    return text ? `<li class="${cls}"><p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "";
+    return text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "";
   }
   if (!text && !meta) return "";
-  return `<li class="${cls}">
+  return `<li class="${cls}">${iconSVG}
     <div class="bro-tl-name">${esc(text)}${meta ? ` <span class="bro-meta">— ${esc(meta)}</span>` : ""}</div>
     ${note ? `<div class="bro-tl-note">${esc(note)}</div>` : ""}
   </li>`;
@@ -654,6 +692,7 @@ export function buildBrochureDocument({
   gatewayNote = "",
   remarksText = "",
   closingText = "",
+  closingTagline = "",
   contact = null,
   notes = "",
   notesHeading = "Notes",
@@ -738,13 +777,23 @@ export function buildBrochureDocument({
   // Remarks sits above the closing line, on the same fold -- a short
   // operational note (a special request, a payment reminder) that belongs
   // at the end of the document but is not itself the sign-off.
-  if ((remarksText || closingText || contact) && bodies.length) {
+  //
+  // closingTagline is the template's own standing default (e.g. "TOUR ENDS
+  // AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES"), rendered unconditionally --
+  // not gated on remarksText/closingText being set, the same way the plain
+  // letterhead documents always show it regardless of what else an
+  // operator has typed. This was missing from the brochure entirely: Brief
+  // (and the plain Detailed document) always show the template's own
+  // sign-off; the brochure had no representation of it at all, only the
+  // per-instance closingText field, which is optional and often empty.
+  if ((remarksText || closingText || closingTagline || contact) && bodies.length) {
     const last = bodies.length - 1;
     bodies[last] = bodies[last].replace(/<\/div>\s*$/, `
       <div class="bro-signoff">
         <div class="bro-signoff-rule"></div>
         ${remarksText ? `<div class="bro-signoff-text" style="white-space:pre-wrap"><strong>Notes</strong><br/>${esc(remarksText)}</div>` : ""}
         ${closingText ? `<div class="bro-signoff-text">${esc(closingText)}</div>` : ""}
+        ${closingTagline ? `<div class="bro-signoff-tagline">${esc(closingTagline)}</div>` : ""}
         ${contact ? `<div class="bro-signoff-contact"><strong>${esc(contact.name || "")}</strong>${(contact.lines || []).map(l => `<div>${esc(l)}</div>`).join("")}</div>` : ""}
       </div></div>`);
   }

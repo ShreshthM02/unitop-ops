@@ -401,9 +401,19 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const printDetailedInternal = async () => printHTML(await buildDetailedPrintHTML());
 
   // ─── DETAILED: client-facing brochure, with photos and generated map ──
-  const buildBrochureHTML = () => {
+  const buildBrochureHTML = async () => {
     const ctx = createMeasurementContext(brochureCSS());
     try {
+      // The @import above starts the font fetch, but on a cold cache it
+      // still needs to actually finish downloading before layout done
+      // with it is accurate -- paginateBrochureDays' own loop is fully
+      // synchronous once it starts, so this has to be awaited before
+      // buildBrochureDocument is even called, not partway through.
+      // Guarded: document.fonts is not guaranteed to exist in every
+      // environment (older browsers, some test contexts).
+      if (ctx.doc.fonts && ctx.doc.fonts.ready) {
+        await ctx.doc.fonts.ready;
+      }
       const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
       const { ground, gateways } = partitionGateways(stops, sectors);
       const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors }) : "";
@@ -429,6 +439,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         // for the editor fields, which correctly follow the active tab).
         remarksText: detailedRemarks,
         closingText: detailedClosingText,
+        closingTagline: { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) }.closingTagline,
         footerLabel: tourTitle || query.groupName || "",
         measureFn: (html, width) => domMeasureHeightPx(html, width, ctx.doc),
       });
@@ -436,7 +447,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       ctx.cleanup();
     }
   };
-  const printBrochure = () => printHTML(buildBrochureHTML());
+  const printBrochure = async () => printHTML(await buildBrochureHTML());
 
   // Preview follows whichever flavor tab is active, so what you see is what
   // the matching export produces.

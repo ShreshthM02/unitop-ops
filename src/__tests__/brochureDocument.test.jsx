@@ -4,6 +4,7 @@ import {
   paginateBrochureDays, withBrochurePreviewStyles, BROCHURE_PREVIEW_CSS, brochureCSS,
   brochureGlanceHTML,
 } from '../lib/brochure.js';
+import { ICON_PATHS } from '../lib/utils.js';
 
 const day = (over = {}) => ({
   id: 'd1', dayLabel: 'DAY-1', title: 'Arrival at Bodhgaya', meals: ['B','D'],
@@ -144,6 +145,23 @@ describe('day cards', () => {
     expect(html).toContain('Where the Buddha gave his first sermon.');
   });
 
+  it('regression: a multi-line note (bullet points on their own lines) must not collapse into one run-on paragraph', () => {
+    // Confirmed from a real exported PDF: an operator-typed bullet list
+    // with each point on its own line rendered as "\u25cf Point one. \u25cf
+    // Point two. \u25cf Point three." all joined into a single paragraph,
+    // because .bro-tl-note had no white-space treatment at all and the
+    // note text was inserted with no newline-to-<br/> conversion either --
+    // ordinary HTML whitespace collapsing swallowed every line break.
+    const note = '\u25cf Paying homage to the Three Jewels.\n\u25cf Offering flowers to the Buddha.\n\u25cf Walking meditation and spiritual practice.';
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Mahabodhi Mahavihara', detailedNote: note }] };
+    const html = brochureDayHTML(d, 0, null);
+    // The newlines themselves must survive verbatim in the markup...
+    expect(html).toContain(note);
+    // ...and the stylesheet actually applied to .bro-tl-note must be what
+    // makes the browser respect them, not just their presence in the HTML.
+    expect(brochureCSS()).toMatch(/\.bro-tl-note\s*\{[^}]*white-space:\s*pre-wrap/);
+  });
+
   it('regression: shows the DETAILED note when one has been written, not Brief\u2019s -- the brochure IS the Detailed document', () => {
     // Confirmed real bug: brochure.js read item.note directly, which is
     // Brief's own field, completely bypassing item.detailedNote. The
@@ -266,6 +284,29 @@ describe('whole document', () => {
     const body = (html) => html.split('<body>')[1];
     expect(body(buildBrochureDocument({ ...base, closingText:'Tour ends.' }))).toContain('Tour ends.');
     expect(body(buildBrochureDocument(base))).not.toContain('bro-closing');
+  });
+
+  it('regression: the template\u2019s standing closing tagline shows unconditionally, matching Brief -- the brochure had no representation of it at all before', () => {
+    // Confirmed real gap: Brief (and the plain Detailed document) always
+    // show tmpl.closingTagline regardless of what an operator has typed
+    // elsewhere. The brochure only ever had the per-instance closingText
+    // field, which is optional and often empty -- so the standing tagline
+    // that appears reliably in Brief simply never appeared in the
+    // brochure at all.
+    const html = buildBrochureDocument({ ...base, closingTagline: 'TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES' });
+    expect(html.split('<body>')[1]).toContain('TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES');
+  });
+
+  it('the tagline shows even when closingText, remarksText and contact are all empty -- it must not depend on any of them', () => {
+    const html = buildBrochureDocument({ ...base, closingTagline: 'STANDING TAGLINE' });
+    expect(html.split('<body>')[1]).toContain('STANDING TAGLINE');
+  });
+
+  it('the tagline and the operator\u2019s own closing text can both appear together, tagline below', () => {
+    const html = buildBrochureDocument({ ...base, closingText: 'Safe travels.', closingTagline: 'STANDING TAGLINE' });
+    const body = html.split('<body>')[1];
+    expect(body.indexOf('Safe travels.')).toBeGreaterThan(-1);
+    expect(body.indexOf('STANDING TAGLINE')).toBeGreaterThan(body.indexOf('Safe travels.'));
   });
 
   it('marks every page but the last as page-break-after, so nothing prints blank at the end', () => {
@@ -434,5 +475,55 @@ describe('remarksText folds into the last page above the closing line', () => {
   it('still folds in when only remarks is given, with no closing text', () => {
     const html = buildBrochureDocument({ cover:{ title:'T' }, days, remarksText: 'Just a note.' });
     expect(html).toContain('Just a note.');
+  });
+});
+
+describe('regression: brochureCSS must load its own fonts, not rely only on an external <link> tag', () => {
+  it('includes an @import for the same fonts the document uses', () => {
+    // Confirmed real cause of entire days landing alone on mostly-blank
+    // pages: createMeasurementContext only ever receives what brochureCSS()
+    // returns -- a <link> tag added separately in the final document's
+    // <head> never reaches the measurement iframe, so pagination measured
+    // every block with a browser-default fallback font instead of the
+    // real Source Serif 4 / Playfair Display, and a fallback font with
+    // different metrics produced systematically wrong height estimates.
+    // The plain letterhead documents never had this problem because they
+    // already load fonts this same way, inside their own shared CSS text.
+    const css = brochureCSS();
+    expect(css).toContain('@import');
+    expect(css).toContain('fonts.googleapis.com');
+    expect(css).toContain('Playfair+Display');
+    expect(css).toContain('Inter');
+  });
+
+  it('the @import is the very first rule, as CSS requires for it to take effect at all', () => {
+    const css = brochureCSS().trim();
+    expect(css.indexOf('@import')).toBeLessThan(css.indexOf('@page'));
+  });
+});
+
+describe('regression: real icons replace the generic bullet dots, per direct request to match Brief\u2019s icon system', () => {
+  it('a sightseeing item gets the pin icon', () => {
+    const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Sarnath' }] };
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain(ICON_PATHS.pin);
+  });
+
+  it('a flight gets the plane icon, a train gets the train icon -- different glyphs, not one generic transport icon', () => {
+    const flight = brochureDayHTML({ id:'x', items:[{ id:'a', type:'transport', text:'6E 2134', mode:'flight' }] }, 0, null);
+    const train = brochureDayHTML({ id:'y', items:[{ id:'b', type:'transport', text:'12345', mode:'train' }] }, 0, null);
+    expect(flight).toContain(ICON_PATHS.plane);
+    expect(train).toContain(ICON_PATHS.train);
+    expect(flight).not.toContain(ICON_PATHS.train);
+    expect(train).not.toContain(ICON_PATHS.plane);
+  });
+
+  it('a remark gets the pencil icon', () => {
+    const d = { id:'x', items:[{ id:'a', type:'remarks', text:'Meeting with Venerable Thich Minh Quang.' }] };
+    expect(brochureDayHTML(d, 0, null)).toContain(ICON_PATHS.pencil);
+  });
+
+  it('the old ::before circle-bullet rule on .bro-tl-item is gone entirely', () => {
+    expect(brochureCSS()).not.toContain('.bro-tl-item::before');
   });
 });
