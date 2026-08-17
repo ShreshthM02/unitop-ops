@@ -336,14 +336,14 @@ describe('regression: Brief and Detailed must be visually distinguishable even w
 });
 
 describe('itinerary font pairing: scoped to Brief/Detailed only, not the shared .inv-title other document types rely on', () => {
-  it('the Brief preview loads Fraunces/Karla and overrides the title font, scoped via extraHeadCSS', async () => {
+  it('the Brief preview loads Lora/Inter and overrides the title font, scoped via extraHeadCSS', async () => {
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('Fraunces');
-      expect(doc).toContain('Karla');
-      expect(doc).toMatch(/\.inv-title\s*\{\s*font-family:\s*'Fraunces'/);
+      expect(doc).toContain('Lora');
+      expect(doc).toContain('Inter');
+      expect(doc).toMatch(/\.inv-title\s*\{\s*font-family:\s*'Lora'/);
     });
   });
 
@@ -353,7 +353,7 @@ describe('itinerary font pairing: scoped to Brief/Detailed only, not the shared 
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('Fraunces');
+      expect(doc).toContain('Lora');
     });
   });
 });

@@ -576,8 +576,8 @@ describe('regression: brochureCSS must load its own fonts, not rely only on an e
     const css = brochureCSS();
     expect(css).toContain('@import');
     expect(css).toContain('fonts.googleapis.com');
-    expect(css).toContain('Fraunces');
-    expect(css).toContain('Karla');
+    expect(css).toContain('Lora');
+    expect(css).toContain('Inter');
   });
 
   it('the @import is the very first rule, as CSS requires for it to take effect at all', () => {

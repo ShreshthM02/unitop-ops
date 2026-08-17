@@ -295,7 +295,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const buildDayBlocks = (flavor) => itinDays.flatMap((d, i) => {
     const mealStr = d.meals.map(m => `<span style="background:#F2EEE6;color:#1A3A52;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
     const rail = `<div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
-        <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Fraunces',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
+        <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Lora',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
         <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>
       </div>
       <div style="flex:0 0 1pt;align-self:stretch;background:#E5E7EB;min-height:20pt"></div>`;
@@ -387,9 +387,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // fixed for the brochure -- confirmed by reading how extraHeadCSS flows
   // through buildPaginatedLetterheadDocument before relying on it here.
   const ITINERARY_FONT_CSS = `
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;1,500&family=Karla:wght@400;500;600;700&display=swap');
-    .inv-title { font-family: 'Fraunces', Georgia, serif !important; }
-    .party-name { font-family: 'Fraunces', Georgia, serif !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+    .inv-title { font-family: 'Lora', Georgia, serif !important; }
+    .party-name { font-family: 'Lora', Georgia, serif !important; }
   `;
 
   const buildBriefPrintHTML = (asBlocks) => {

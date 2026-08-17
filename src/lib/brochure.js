@@ -58,24 +58,17 @@ export const BROCHURE_THEME = {
   panel: "#F2EEE6",   // quiet fill for pills
 };
 
-// Real fonts load in the browser; the fallbacks preserve the character (an
-// elegant transitional serif, a neutral humanist sans) when they don't.
-// ONE superfamily for everything textual, varying only size and weight.
-// Playfair was tried and rejected: it is a high-contrast Didone whose DNA is
-// Fraunces for display, Karla for everything else -- replacing an earlier
-// Source Serif 4 + Inter pairing on direct request after reviewing real
-// exported documents. Fraunces has warmth and character without tipping
-// into the high-contrast drama of something like Playfair Display, which
-// reads closer to fashion branding than travel; Karla is a quiet,
-// consistent humanist sans that carries both body prose and the smallest
-// micro-labels without needing a third typeface in the mix. Same
-// contemporary-with-no-period-accent requirement as before still holds --
-// this is a container serving every sector, not only heritage/pilgrimage
-// content, so nothing here should read as narrowly themed to one kind of
-// trip.
-const DISPLAY = `'Fraunces', Georgia, serif`;
-const BODY = `'Karla', -apple-system, Arial, sans-serif`;
-const LABEL = `'Karla', -apple-system, Arial, sans-serif`;
+// One superfamily for both display and body, Inter kept for the smallest
+// micro-labels -- replacing an earlier Fraunces + Karla pairing on direct
+// instruction. Lora is a warm, moderately-contrasted serif built
+// specifically for comfortable reading rather than only display headlines,
+// so the same family can carry a cover title at 30pt and a paragraph of
+// body prose at 10pt without feeling like two different documents stitched
+// together -- different weights of one face read as more cohesive than
+// pairing a display serif with an unrelated sans for everything else.
+const DISPLAY = `'Lora', Georgia, serif`;
+const BODY = `'Lora', Georgia, serif`;
+const LABEL = `'Inter', -apple-system, Arial, sans-serif`;
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -97,7 +90,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      their own shared CSS text. Keeping the outer <link> tag too, for the
      real render -- redundant with this, but harmless; browsers dedupe an
      identical font request. */
-  @import url('https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;0,700;1,500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -892,7 +885,7 @@ export function buildBrochureDocument({
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Karla:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;0,700;1,500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }
