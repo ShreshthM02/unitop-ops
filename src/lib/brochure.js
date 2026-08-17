@@ -315,8 +315,20 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-day-route-meta { color: ${theme.soft}; font-weight: 500; }
   .bro-day-route {
     font-family: ${LABEL};
-    font-size: 8.5pt; letter-spacing: 0.9px; color: ${theme.accent};
-    font-weight: 600; margin-bottom: 1.6mm; text-transform: uppercase; line-height: 1.4;
+    font-size: 9.5pt; letter-spacing: 0.7px; color: ${theme.accent};
+    font-weight: 600; margin-bottom: 1.8mm; text-transform: uppercase; line-height: 1.4;
+  }
+  /* Same visual authority as a real title (matches .bro-day-title's own
+     size/weight) when a day has no title and its first route has to stand
+     in as the effective headline -- but deliberately NOT disguised as one:
+     stays the accent red rather than the title's navy, and drops the
+     all-caps treatment, which reads fine as a small label but starts to
+     shout at title size. The red is an honest, low-cost signal (looks
+     like a normal accent to a client; tells the operator at a glance
+     which days still have no authored title) rather than a flaw to hide. */
+  .bro-day-route--lead {
+    font-family: ${DISPLAY}; font-size: 14.5pt; font-weight: 700;
+    letter-spacing: 0; text-transform: none; margin-bottom: 2.5mm; line-height: 1.25;
   }
   /* Each item/photo block carries its own indent directly -- deliberately
      NOT wrapped in a shared container with its own clearfix, which would
@@ -492,9 +504,21 @@ export function brochureDayBlocks(day, index, image) {
   const timelineItems = items.filter(i => !routes.includes(i) && i.type !== "stay");
 
   const num = String(index + 1).padStart(2, "0");
-  const routeLines = routes.map(r => {
+  const hasTitle = !!(day.title && day.title.trim());
+  const routeLines = routes.map((r, i) => {
     const meta = [r.distance, r.time].filter(Boolean).join(" · ");
-    return `<div class="bro-day-route">${esc((r.text || "").trim())}${meta ? `<span class="bro-day-route-meta"> — ${esc(meta)}</span>` : ""}</div>`;
+    // Only the FIRST route on an untitled day is promoted -- a real
+    // itinerary day often has more than one leg (see the file-level note
+    // on routesOf/leadRouteOf above), and giving every one of them
+    // headline treatment would read as several headlines stacked on top
+    // of each other rather than one strong one.
+    const isLead = !hasTitle && i === 0;
+    const text = esc((r.text || "").trim());
+    // A real arrow, not a hyphen -- unmistakably a journey rather than a
+    // range, and only worth doing at headline size where it's actually
+    // read as a sentence rather than a compact label.
+    const displayText = isLead ? text.replace(/\s+[-–—]\s+/g, " \u2192 ") : text;
+    return `<div class="bro-day-route${isLead ? " bro-day-route--lead" : ""}">${displayText}${meta ? `<span class="bro-day-route-meta"> — ${esc(meta)}</span>` : ""}</div>`;
   }).join("");
   const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
   const caption = (day.imageCaption || "").trim();

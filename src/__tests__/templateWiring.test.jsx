@@ -449,3 +449,37 @@ describe('regression: Brief\u2019s meal pills match the brochure\u2019s quiet cr
     });
   });
 });
+
+describe('regression: an untitled day\u2019s first route stands in as its headline, matching the brochure\u2019s own established pattern -- both flavors follow the same design now', () => {
+  it('promotes the route to headline size/position when the day has no title, in the Brief preview', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    // Day 2, not Day 1 -- Day 1 has a default "Arrival" title pre-filled,
+    // Day 2 starts genuinely empty.
+    fireEvent.click(screen.getAllByText('+ Add Item \u25be')[1]);
+    fireEvent.click(screen.getByText('Route / Movement'));
+    const routeInputs = screen.getAllByPlaceholderText(/Leh.*Alchi.*Leh/);
+    fireEvent.change(routeInputs[routeInputs.length - 1], { target: { value: 'Bodhgaya - Rajgir' } });
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('Bodhgaya \u2192 Rajgir'); // arrow, headline-promoted
+      expect(doc).toContain('#8B1A1A'); // the route red
+    });
+  });
+
+  it('does NOT promote the route when the day already has a title -- stays a small label with its own text as typed', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    const titleField = screen.getAllByPlaceholderText('Day title e.g. Arrival at Delhi')[0];
+    fireEvent.change(titleField, { target: { value: 'Arrival at Bodhgaya' } });
+    fireEvent.click(screen.getAllByText('+ Add Item \u25be')[0]);
+    fireEvent.click(screen.getByText('Route / Movement'));
+    const routeInputs = screen.getAllByPlaceholderText(/Leh.*Alchi.*Leh/);
+    fireEvent.change(routeInputs[routeInputs.length - 1], { target: { value: 'Bodhgaya - Rajgir' } });
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('Bodhgaya - Rajgir'); // untouched, plain hyphen
+      expect(doc).not.toContain('Bodhgaya \u2192 Rajgir');
+    });
+  });
+});

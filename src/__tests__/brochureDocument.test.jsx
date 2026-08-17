@@ -663,3 +663,55 @@ describe('regression: the tagline is now sans-serif, non-italic, and sized to fi
     expect(rule).toMatch(/margin-top:\s*1mm/);
   });
 });
+
+describe('an untitled day\u2019s first route stands in as its headline, honestly (same size, still the accent colour, arrow not hyphen)', () => {
+  const untitledDay = { id:'d1', items:[{ id:'r', type:'route', text:'Bodhgaya - Rajgir', distance:'100 km', time:'3 hrs' }] };
+  const titledDay = { id:'d2', title:'Arrival at Bodhgaya', items:[{ id:'r', type:'route', text:'Bodhgaya - Rajgir', distance:'100 km', time:'3 hrs' }] };
+
+  it('promotes the route to headline size when the day has no title', () => {
+    const html = brochureDayHTML(untitledDay, 0, null);
+    expect(html).toContain('bro-day-route--lead');
+  });
+
+  it('does NOT promote it when the day has a real title', () => {
+    const html = brochureDayHTML(titledDay, 0, null);
+    expect(html).not.toContain('bro-day-route--lead');
+  });
+
+  it('converts the hyphen separator to an arrow only for the promoted route', () => {
+    const untitled = brochureDayHTML(untitledDay, 0, null);
+    expect(untitled).toContain('Bodhgaya \u2192 Rajgir');
+    expect(untitled).not.toContain('Bodhgaya - Rajgir');
+
+    const titled = brochureDayHTML(titledDay, 0, null);
+    expect(titled).toContain('Bodhgaya - Rajgir'); // small label route keeps its own text as typed
+  });
+
+  it('only the FIRST route is promoted when an untitled day has more than one leg', () => {
+    const multiLegDay = { id:'d3', items:[
+      { id:'r1', type:'route', text:'Bodhgaya - Nalanda', distance:'100 km' },
+      { id:'r2', type:'route', text:'Nalanda - Rajgir', distance:'20 km' },
+    ] };
+    const html = brochureDayHTML(multiLegDay, 0, null);
+    const leadCount = (html.match(/bro-day-route--lead/g) || []).length;
+    expect(leadCount).toBe(1);
+    expect(html).toContain('Bodhgaya \u2192 Nalanda'); // the promoted one
+    expect(html).toContain('Nalanda - Rajgir'); // the second leg stays a plain label, untouched
+  });
+
+  it('the distance/time metadata stays small and muted regardless of promotion', () => {
+    const css = brochureCSS();
+    expect(css).toMatch(/\.bro-day-route-meta\s*\{[^}]*color:/);
+    // Confirm the lead style itself never touches the meta span's colour.
+    const leadRule = css.match(/\.bro-day-route--lead\s*\{([^}]*)\}/)?.[1] || '';
+    expect(leadRule).not.toContain('bro-day-route-meta');
+  });
+
+  it('the promoted route still uses the accent red, not the title\u2019s navy -- an honest signal, not a disguise', () => {
+    const css = brochureCSS();
+    const leadRule = css.match(/\.bro-day-route--lead\s*\{([^}]*)\}/)?.[1] || '';
+    // --lead deliberately omits its own colour so it inherits .bro-day-route's
+    // accent red rather than restating theme.ink (the title's navy).
+    expect(leadRule).not.toContain('color:');
+  });
+});
