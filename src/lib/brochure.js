@@ -278,7 +278,25 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   }
 
   /* ── Day block ───────────────────────────────────────────────────── */
-  .bro-day { display: flex; gap: 6mm; break-inside: avoid; margin-bottom: 11mm; }
+  /* Redesigned so a day can flow across a page break instead of being
+     forced to move wholesale when it does not fit -- confirmed as a real,
+     reported problem: an atomic per-day block meant a day too tall for
+     the remaining page space always jumped entirely to the next page,
+     leaving the remainder of the current one blank and costing pages
+     unnecessarily. The header (rail + title + routes) stays one atomic
+     flex row -- it is short and belongs together -- but the photo and
+     every timeline item are now independent siblings, each indented to
+     align under the header's content column (21mm = the rail's 15mm +
+     the content column's 6mm padding) rather than flex children of it.
+     This is deliberate: flex containers trap floats inside themselves, so
+     keeping the photo as a flex child would have stopped its float from
+     reaching later item blocks once pagination made them siblings instead
+     of nested content. As plain floated/margin-indented siblings, the
+     photo's float continues naturally across as many item blocks as fit
+     on the page it started on, and later items past a page break simply
+     render at full width once the float's height is behind them, exactly
+     like ordinary text flowing past an image. */
+  .bro-day-head { display: flex; gap: 6mm; clear: both; }
   .bro-day-rail { flex: 0 0 15mm; text-align: right; padding-top: 1mm; }
   .bro-day-num {
     font-family: ${DISPLAY}; font-size: 27pt; font-weight: 700;
@@ -300,9 +318,11 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     font-size: 8.5pt; letter-spacing: 0.9px; color: ${theme.accent};
     font-weight: 600; margin-bottom: 1.6mm; text-transform: uppercase; line-height: 1.4;
   }
-  /* The float needs clearing, or a short day's photo overlaps the next day. */
-  .bro-day-cols { }
-  .bro-day-cols::after { content: ""; display: block; clear: both; }
+  /* Each item/photo block carries its own indent directly -- deliberately
+     NOT wrapped in a shared container with its own clearfix, which would
+     clear the float after every single block and defeat the point of it
+     persisting across several of them. */
+  .bro-day-body { border-left: 0.5pt solid ${theme.rule}; margin-left: 15mm; padding-left: 6mm; margin-bottom: 1mm; }
   .bro-day-text { }
 
   /* The day's plan as a timeline. Markers give the eye a spine to run
@@ -322,6 +342,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-day-foot {
     display: flex; align-items: center; gap: 2.5mm; flex-wrap: wrap;
     margin-top: 4.5mm; padding-top: 3mm; border-top: 0.5pt solid ${theme.rule};
+    clear: both; margin-bottom: 11mm;
   }
   .bro-pill {
     font-family: ${LABEL};
@@ -464,11 +485,11 @@ const stayOf = (day) => ((day.items || []).find(i => i.type === "stay" && (i.tex
 const routesOf = (day) => (day.items || []).filter(i => i.type === "route" && ((i.text || "").trim() || i.distance || i.time));
 const leadRouteOf = (day) => routesOf(day)[0] || null;
 
-export function brochureDayHTML(day, index, image) {
+export function brochureDayBlocks(day, index, image) {
   const items = day.items || [];
   const routes = routesOf(day);
   const stay = stayOf(day);
-  const timeline = items.filter(i => !routes.includes(i) && i.type !== "stay").map(timelineItemHTML).join("");
+  const timelineItems = items.filter(i => !routes.includes(i) && i.type !== "stay");
 
   const num = String(index + 1).padStart(2, "0");
   const routeLines = routes.map(r => {
@@ -476,17 +497,9 @@ export function brochureDayHTML(day, index, image) {
     return `<div class="bro-day-route">${esc((r.text || "").trim())}${meta ? `<span class="bro-day-route-meta"> — ${esc(meta)}</span>` : ""}</div>`;
   }).join("");
   const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
-  // Every day carries its own photograph at the same size, which is what
-  // removes the earlier unfairness: no day is visibly favoured because they
-  // are all treated identically. A day with no photograph available shows a
-  // quiet empty frame rather than collapsing the column, so the grid holds.
   const caption = (day.imageCaption || "").trim();
-  const photo = `<figure class="bro-day-photo">
-      ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
-      ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
-    </figure>`;
 
-  return `<div class="bro-day">
+  const head = `<div class="bro-day-head">
     <div class="bro-day-rail">
       <div class="bro-day-num">${num}</div>
       <div class="bro-day-word">Day</div>
@@ -494,13 +507,42 @@ export function brochureDayHTML(day, index, image) {
     <div class="bro-day-main">
       ${day.title ? `<h3 class="bro-day-title">${esc(day.title)}</h3>` : ""}
       ${routeLines ? `<div class="bro-day-routes">${routeLines}</div>` : ""}
-      <div class="bro-day-cols">
-        ${photo}
-        <div class="bro-day-text">${timeline ? `<ul class="bro-tl">${timeline}</ul>` : ""}</div>
-      </div>
-      ${(meals || stay) ? `<div class="bro-day-foot">${meals}${stay ? `<span class="bro-stay">Overnight: <strong>${esc(stay)}</strong></span>` : ""}</div>` : ""}
     </div>
   </div>`;
+
+  const blocks = [head];
+
+  // Every day carries its own photograph at the same size, which is what
+  // removes the earlier unfairness: no day is visibly favoured because they
+  // are all treated identically. A day with no photograph available shows a
+  // quiet empty frame rather than collapsing the column, so the grid holds.
+  // Floated, not flexed, and NOT wrapped together with the head above --
+  // this is what lets its float keep influencing the item blocks that
+  // follow, even once those are independent pagination units that can land
+  // on a later page than this one.
+  blocks.push(`<div class="bro-day-body"><figure class="bro-day-photo">
+      ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
+      ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
+    </figure></div>`);
+
+  timelineItems.forEach(item => {
+    const html = timelineItemHTML(item);
+    if (html) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${html}</ul></div>`);
+  });
+
+  if (meals || stay) {
+    blocks.push(`<div class="bro-day-body"><div class="bro-day-foot">${meals}${stay ? `<span class="bro-stay">Overnight: <strong>${esc(stay)}</strong></span>` : ""}</div></div>`);
+  }
+
+  return blocks;
+}
+
+// Thin wrapper for any caller that still wants one whole-day string (not
+// yet updated to work with independently-paginated blocks) -- identical
+// output to the old monolithic function, just built from the same blocks
+// brochureDayBlocks now produces.
+export function brochureDayHTML(day, index, image) {
+  return brochureDayBlocks(day, index, image).join("");
 }
 
 export function brochureCoverHTML({ title, tagline, duration, route, heroImage, brand, logo, clientName } = {}) {
@@ -713,10 +755,17 @@ export function buildBrochureDocument({
   footerLabel = "",
   companyName = "Unitop Tours & Travel Pvt. Ltd.",
 } = {}) {
-  const dayHTMLs = days.map((d, i) => brochureDayHTML(d, i, dayImages[d.id] || dayImages[i] || null));
+  const dayBlockGroups = days.map((d, i) => brochureDayBlocks(d, i, dayImages[d.id] || dayImages[i] || null));
+  const allBlocks = dayBlockGroups.flat();
   const dayPages = measureFn
-    // ~26mm of heading sits above the first day block.
-    ? paginateBrochureDays(dayHTMLs, {
+    // ~26mm of heading sits above the first day block. Packing at BLOCK
+    // granularity (head/photo/each item/footer independently) rather than
+    // one string per day is what actually lets a day flow across a page
+    // break -- confirmed as a real, reported problem: packing whole days
+    // meant one too tall for the remaining space always jumped entirely
+    // to the next page, wasting whatever room was left on the current one
+    // and costing pages unnecessarily.
+    ? paginateBrochureDays(allBlocks, {
         measureFn,
         firstPageReservePx: 98,
         // ~40mm band + caption + margin, reserved when any photography
@@ -727,9 +776,15 @@ export function buildBrochureDocument({
         // so the height is already inside the measured day block.
         reservePerPagePx: 0,
       })
-    // No measurer (no DOM): two per page is a predictable fallback that
-    // never overflows. Not producing a broken file matters more than density.
-    : dayHTMLs.reduce((acc, h, i) => { if (i % 2 === 0) acc.push([h]); else acc[acc.length - 1].push(h); return acc; }, []);
+    // No measurer (no DOM): whole days, two per page, is a predictable
+    // fallback that never overflows -- block-level packing needs real
+    // measured heights to be safe at all, so this deliberately stays at
+    // day granularity rather than guessing at the finer blocks.
+    : dayBlockGroups.reduce((acc, blocks, i) => {
+        const html = blocks.join("");
+        if (i % 2 === 0) acc.push([html]); else acc[acc.length - 1].push(html);
+        return acc;
+      }, []);
 
   const bodies = [];
   if (showGlance && days.length) bodies.push(brochureGlanceHTML(days, facts, mapHTML, sectorTableHTML, gatewayNote));

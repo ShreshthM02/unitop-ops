@@ -267,6 +267,73 @@ describe('pagination', () => {
   });
 });
 
+describe('regression: a day\u2019s own content now flows across a page break, instead of the whole day jumping to the next page when it does not fit', () => {
+  // Confirmed real, reported problem: the day was previously one atomic
+  // HTML string, so paginateBrochureDays could only ever move it wholesale
+  // -- a day too tall for whatever space remained on a page always started
+  // completely fresh on the next one, wasting the remainder of the current
+  // page and costing pages unnecessarily. brochureDayHTML/brochureDayBlocks
+  // were redesigned so the head (rail+title+routes) stays one atomic flex
+  // row, but the photo and every item are now independent siblings that
+  // can be packed onto different pages, exactly like the plain letterhead
+  // documents already do for their own per-item blocks.
+  const manyItemsDay = {
+    id: 'd1',
+    items: [
+      { id:'a', type:'sightseeing', text:'MARKER_ONE' },
+      { id:'b', type:'sightseeing', text:'MARKER_TWO' },
+      { id:'c', type:'sightseeing', text:'MARKER_THREE' },
+      { id:'d', type:'sightseeing', text:'MARKER_FOUR' },
+    ],
+  };
+
+  it('splits a single day\u2019s items across two pages when they collectively do not fit on one', () => {
+    // Each item block reports a large height; the page budget only fits
+    // a couple of them plus the head before rolling over.
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 100;
+      if (html.includes('bro-day-body')) return 400;
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [manyItemsDay],
+      measureFn: measure,
+    });
+    // Scoped to bro-day-body chunks specifically -- MARKER_ONE also
+    // legitimately appears on the earlier glance page (as the day's
+    // fallback highlight text, since this day has no title), which is not
+    // what this test is about.
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('bro-day-body'));
+    const withMarkerOne = dayContentChunks.findIndex(p => p.includes('MARKER_ONE'));
+    const withMarkerFour = dayContentChunks.findIndex(p => p.includes('MARKER_FOUR'));
+    // The real proof: these two items from the SAME day land on DIFFERENT
+    // page chunks, not both stuck together on whichever page the day
+    // happened to fit on (or both bumped to a later page as one unit).
+    expect(withMarkerOne).toBeGreaterThan(-1);
+    expect(withMarkerFour).toBeGreaterThan(-1);
+    expect(withMarkerOne).not.toBe(withMarkerFour);
+  });
+
+  it('a day that DOES fit on one page is never needlessly split -- confirms this is genuine flow, not fragmentation for its own sake', () => {
+    const measure = () => 50; // everything trivially fits
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [manyItemsDay],
+      measureFn: measure,
+    });
+    const pageChunks = html.split('class="bro-page');
+    // Scoped to actual day-content blocks (bro-day-body), not just any
+    // occurrence of the marker text -- the glance table legitimately
+    // reuses a day's first sightseeing item as a fallback "highlight"
+    // summary when the day has no title, which is a separate, earlier
+    // page and correctly also contains the marker text without that
+    // meaning the day's own content was split.
+    const pagesWithDayContent = pageChunks.filter(p => p.includes('bro-day-body') && /MARKER_(ONE|TWO|THREE|FOUR)/.test(p));
+    expect(pagesWithDayContent).toHaveLength(1);
+  });
+});
+
 describe('whole document', () => {
   const base = {
     cover: { title:'Footsteps of Buddha', duration:'9 Days', heroImage:'hero.jpg' },
