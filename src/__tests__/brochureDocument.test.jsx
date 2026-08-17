@@ -581,3 +581,18 @@ describe('regression: every brochure icon uses the accent colour now, not just s
     expect(css).toMatch(/\.bro-tl-icon\s*\{[^}]*color:\s*#8B0000/);
   });
 });
+
+describe('regression: the tagline is now sans-serif, non-italic, and sized to fit within the logo\u2019s own width -- a tighter, single lockup rather than a separately-styled caption', () => {
+  it('uses the sans-serif label font, not the italic serif display font', () => {
+    const css = brochureCSS();
+    const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).toMatch(/font-style:\s*normal/);
+    expect(rule).not.toContain('italic');
+  });
+
+  it('sits close to the logo -- a small margin-top, not the earlier looser gap', () => {
+    const css = brochureCSS();
+    const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).toMatch(/margin-top:\s*1mm/);
+  });
+});

@@ -393,3 +393,16 @@ describe('regression: every icon uses the same brand red as sightseeing, not a m
     expect(html).toContain('stroke="#8B0000"');
   });
 });
+
+describe('regression: remarks icon is now an info glyph, not a pencil -- a remark is a note, not something being edited', () => {
+  it('renders the info-style circle/stem/dot geometry, not the old pencil path', () => {
+    const html = itineraryItemHTML({ type: 'remarks', text: 'A note.' });
+    expect(html).not.toContain('M11 20H4V-7'); // old pencil shape, distinctive segment
+    expect(html).toContain(ICON_PATHS.pencil);
+  });
+
+  it('the icon key is still called "pencil" internally -- only its geometry changed, not its identity elsewhere in the codebase', () => {
+    expect(ICON_PATHS.pencil).toContain('circle');
+    expect(ICON_PATHS.pencil).toContain('cx="12" cy="7.5"'); // the info dot
+  });
+});

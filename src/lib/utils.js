@@ -1817,7 +1817,11 @@ export const ICON_PATHS = {
   // building with a door and two windows is the literal, unambiguous
   // convention.
   bed:    `<path d="M3.5 10L12 3l8.5 7"/><rect x="5" y="10" width="14" height="11" rx="0.5"/><rect x="10" y="14.5" width="4" height="6.5"/><rect x="7" y="12.5" width="2" height="2"/><rect x="15" y="12.5" width="2" height="2"/>`,
-  pencil: `<path d="M11 20H4v-7L15.5 1.5a1.7 1.7 0 0 1 2.4 0l1.6 1.6a1.7 1.7 0 0 1 0 2.4L11 20z"/>`,
+  // A remark is a freeform aside about the day, not something being
+  // edited -- a pencil suggested writing/editing, which was the wrong
+  // metaphor. This is the standard "info" glyph: a circle with a stem and
+  // a dot, reading as "additional note" rather than "edit this".
+  pencil: `<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.8" fill="currentColor" stroke="none"/>`,
 };
 
 const ICON_COLOR = "#8B0000"; // lotus red, from the logo -- matches the brochure's own accent, per direct request that every icon should read like sightseeing's did, not a muted grey

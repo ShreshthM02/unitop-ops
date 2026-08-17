@@ -158,9 +158,9 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-cover-logo { margin-bottom: 11mm; width: 47.4mm; margin-left: auto; margin-right: auto; }
   .bro-cover-logo img { height: 22mm; width: 100%; display: block; }
   .bro-cover-logo-tag {
-    width: 100%; margin-top: 2mm; font-family: ${DISPLAY}; font-style: italic;
-    font-size: 7.5pt; color: ${BROCHURE_THEME.accent}; text-align: center;
-    line-height: 1.3; white-space: normal;
+    width: 100%; margin-top: 1mm; font-family: ${LABEL}; font-style: normal;
+    font-size: 5.5pt; letter-spacing: 0.15pt; color: ${BROCHURE_THEME.accent}; text-align: center;
+    line-height: 1.25; white-space: normal;
   }
   .bro-cover-title {
     font-family: ${DISPLAY}; font-size: 36pt; line-height: 1.06;
