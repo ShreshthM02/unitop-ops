@@ -312,8 +312,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-tl-icon {
     position: absolute; left: 0; top: 1.8mm; width: 4mm; height: 4mm;
   }
-  .bro-tl-item--soft .bro-tl-icon { color: ${theme.soft}; }
-  .bro-tl-item:not(.bro-tl-item--soft) .bro-tl-icon { color: ${theme.accent}; }
+  .bro-tl-icon { color: ${theme.accent}; }
   .bro-tl-name { font-size: 10.5pt; font-weight: 600; line-height: 1.5; }
   /* The one line about a place -- what turns a list of names into
      something a client actually learns from. */
@@ -380,7 +379,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-signoff-rule { width: 16mm; height: 1.4pt; background: ${theme.accent}; margin: 0 auto 5mm; }
   .bro-signoff-text {
     font-family: ${DISPLAY}; font-style: italic; font-size: 12.5pt;
-    line-height: 1.5; color: ${theme.ink}; margin-bottom: 5mm;
+    line-height: 1.5; color: ${theme.ink}; margin-bottom: 5mm; text-align: left;
   }
   .bro-signoff-tagline {
     text-align: center; font-family: ${LABEL}; font-weight: 700;

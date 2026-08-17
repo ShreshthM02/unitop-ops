@@ -1820,7 +1820,7 @@ export const ICON_PATHS = {
   pencil: `<path d="M11 20H4v-7L15.5 1.5a1.7 1.7 0 0 1 2.4 0l1.6 1.6a1.7 1.7 0 0 1 0 2.4L11 20z"/>`,
 };
 
-const ICON_COLOR = "#6B7280";
+const ICON_COLOR = "#8B0000"; // lotus red, from the logo -- matches the brochure's own accent, per direct request that every icon should read like sightseeing's did, not a muted grey
 function icon(name, mode) {
   return `<svg viewBox="0 0 24 24" width="9.5" height="9.5" fill="none" stroke="${ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5pt;margin-right:5pt;flex-shrink:0">${ICON_PATHS[name] || ""}</svg>`;
 }

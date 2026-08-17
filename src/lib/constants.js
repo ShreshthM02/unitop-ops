@@ -629,7 +629,15 @@ export const DEFAULT_TOURBRIEFING_TEMPLATE = {
 };
 
 export const DEFAULT_ITINERARY_TEMPLATE = {
-  closingTagline: "TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES",
+  closingTagline: "",
+  // Previously hardcoded per flavor ("BRIEF ITINERARY" / "DETAILED
+  // ITINERARY") specifically so the two were never visually
+  // indistinguishable when nothing else in the document differed between
+  // them -- now editable, defaulting to the plain "ITINERARY" per direct
+  // request. Detailed's own heading stays hardcoded "DETAILED ITINERARY"
+  // (not yet asked to change), so the two remain distinct strings either
+  // way; this field only ever governs Brief's.
+  docHeading: "ITINERARY",
 };
 
 // ─── EXCHANGE ORDER / VOUCHER GENERATOR ──────────────────────────────────────
@@ -707,6 +715,7 @@ export const TEMPLATE_FIELD_SCHEMAS = {
     { key: "footerText", label: "Footer Signature Block", type: "textarea" },
   ],
   brief_itin: [
+    { key: "docHeading", label: "Document Heading", type: "text" },
     { key: "closingTagline", label: "Closing Tagline", type: "text" },
   ],
   detail_itin: [

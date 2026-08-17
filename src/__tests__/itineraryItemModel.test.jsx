@@ -370,3 +370,26 @@ describe('icon redesign: bed replaces moon, a geometric flight silhouette replac
     expect(html).toContain(ICON_PATHS.plane);
   });
 });
+
+describe('regression: every icon uses the same brand red as sightseeing, not a muted grey -- and Brief\u2019s meal pills match the brochure\u2019s quiet style, not yellow', () => {
+  it('a route icon renders in the brand red, not grey', () => {
+    const html = itineraryItemHTML({ type: 'route', text: 'A - B', distance: '10 km' });
+    expect(html).toContain('stroke="#8B0000"');
+    expect(html).not.toContain('stroke="#6B7280"');
+  });
+
+  it('a transport icon also renders in the brand red', () => {
+    const html = itineraryItemHTML({ type: 'transport', text: '6E 2134', mode: 'flight' });
+    expect(html).toContain('stroke="#8B0000"');
+  });
+
+  it('a stay icon also renders in the brand red', () => {
+    const html = itineraryItemHTML({ type: 'stay', text: 'Hotel X' });
+    expect(html).toContain('stroke="#8B0000"');
+  });
+
+  it('a remarks icon also renders in the brand red', () => {
+    const html = itineraryItemHTML({ type: 'remarks', text: 'A note.' });
+    expect(html).toContain('stroke="#8B0000"');
+  });
+});

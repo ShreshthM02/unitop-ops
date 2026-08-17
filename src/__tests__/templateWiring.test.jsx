@@ -316,18 +316,21 @@ describe('regression: Brief and Detailed must be visually distinguishable even w
   // was always being built. There was simply nothing on the page to show
   // it.
   it('a brand new itinerary (no notes, no remarks, no closing text touched) still shows a different heading per flavor', async () => {
+    // Brief's heading default changed from the hardcoded "BRIEF ITINERARY"
+    // to the plain, now-editable "ITINERARY" -- still a different string
+    // from Detailed's own "DETAILED ITINERARY", so the two stay
+    // distinguishable exactly as this test was built to confirm.
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('BRIEF ITINERARY');
+      expect(doc).toContain('ITINERARY');
       expect(doc).not.toContain('DETAILED ITINERARY');
     });
     fireEvent.click(screen.getByText('Detailed'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
       expect(doc).toContain('DETAILED ITINERARY');
-      expect(doc).not.toContain('BRIEF ITINERARY');
     });
   });
 });
@@ -381,5 +384,68 @@ describe('regression: the day-title Suggest button must stay available after a t
   it('hidden entirely in read-only mode, title present or not', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}} readOnly={true}/>);
     expect(screen.queryByText('\u2728 Suggest')).toBeNull();
+  });
+});
+
+describe('regression: no default closing tagline text -- "TOUR ENDS AS YOU LEAVE FOOTPRINTS AND TAKE MEMORIES" was a pretext operators never asked for', () => {
+  it('a fresh itinerary with no template override shows no tagline at all', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).not.toContain('TOUR ENDS AS YOU LEAVE FOOTPRINTS');
+    });
+  });
+
+  it('an operator can still set their own tagline via Template Content -- the field itself was not removed', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} briefTemplate={{ closingTagline: 'A custom sign-off chosen by the operator' }} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('A custom sign-off chosen by the operator');
+    });
+  });
+});
+
+describe('regression: Brief\u2019s document heading is now editable via Template Content, defaulting to plain "ITINERARY"', () => {
+  it('defaults to ITINERARY with no template override', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('ITINERARY');
+    });
+  });
+
+  it('an operator-set docHeading overrides the default', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} briefTemplate={{ docHeading: 'YOUR JOURNEY' }} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('YOUR JOURNEY');
+    });
+  });
+
+  it('Detailed\u2019s own heading is unaffected by Brief\u2019s docHeading override', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} briefTemplate={{ docHeading: 'YOUR JOURNEY' }} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('DETAILED ITINERARY');
+      expect(doc).not.toContain('YOUR JOURNEY');
+    });
+  });
+});
+
+describe('regression: Brief\u2019s meal pills match the brochure\u2019s quiet cream/navy style, not the old yellow/amber', () => {
+  it('a day with meals shows the new quiet colours, not the old yellow', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('#F2EEE6');
+      expect(doc).not.toContain('#FEF3C7');
+    });
   });
 });

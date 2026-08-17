@@ -561,3 +561,23 @@ describe('regression: the splash screen and every other app UI use kept the orig
     expect(bytes[25]).toBe(6);
   });
 });
+
+describe('regression: closing/remarks text must be left-aligned, not inherit centering from .bro-signoff', () => {
+  it('.bro-signoff-text is explicitly left-aligned', () => {
+    expect(brochureCSS()).toMatch(/\.bro-signoff-text\s*\{[^}]*text-align:\s*left/);
+  });
+
+  it('the tagline and divider rule stay centered -- only the text itself moved', () => {
+    const css = brochureCSS();
+    expect(css).toMatch(/\.bro-signoff-tagline\s*\{[^}]*text-align:\s*center/);
+    expect(css).toMatch(/\.bro-signoff\s*\{[^}]*text-align:\s*center/); // parent still centers the rule/tagline by default
+  });
+});
+
+describe('regression: every brochure icon uses the accent colour now, not just sightseeing\u2019s -- the soft/muted split is gone', () => {
+  it('there is no separate soft-icon colour rule left in the stylesheet', () => {
+    const css = brochureCSS();
+    expect(css).not.toMatch(/bro-tl-item--soft \.bro-tl-icon/);
+    expect(css).toMatch(/\.bro-tl-icon\s*\{[^}]*color:\s*#8B0000/);
+  });
+});

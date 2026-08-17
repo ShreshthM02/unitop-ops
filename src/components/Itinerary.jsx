@@ -293,7 +293,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // its content starting fresh on the next, which would read as a bare day
   // number pointing at nothing.
   const buildDayBlocks = (flavor) => itinDays.flatMap((d, i) => {
-    const mealStr = d.meals.map(m => `<span style="background:#FEF3C7;color:#92400E;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
+    const mealStr = d.meals.map(m => `<span style="background:#F2EEE6;color:#1A3A52;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
     const rail = `<div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
         <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Fraunces',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
         <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>
@@ -325,9 +325,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const buildClosingBlock = (tmpl, remarks, closing, stampHTML) => `
     ${remarks ? `<div style="margin-top:16pt;font-size:9.5pt;color:#333;white-space:pre-wrap"><strong style="color:#1A3A52">Notes</strong><br/>${remarks}</div>` : ""}
     ${closing ? `<div style="margin-top:${remarks?"8pt":"16pt"};font-size:9.5pt;color:#333;white-space:pre-wrap">${closing}</div>` : ""}
-    <div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
+    ${tmpl.closingTagline ? `<div style="text-align:center;margin-top:18pt;font-size:9.5pt;color:#8B1A1A;font-weight:bold;letter-spacing:1pt">
       ${tmpl.closingTagline}
-    </div>
+    </div>` : ""}
     ${stampHTML}`;
 
   // The visible heading, not just the invisible <title> tag metadata
@@ -341,7 +341,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // the correct flavor's content was genuinely being built underneath
   // (it was). This makes the two visually distinguishable unconditionally,
   // not only once something flavor-specific has been added.
-  const titleBlockFor = (flavor) => `
+  const titleBlockFor = (flavor, headingText) => `
     <div style="text-align:center;margin-bottom:16pt">
       <div class="inv-title" style="margin-bottom:2pt">${tourTitle||"Tour Itinerary"}</div>
       <div style="font-size:11pt;font-weight:600;color:#1A3A52">${duration}</div>
@@ -349,7 +349,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       ${tagline?`<div style="font-size:9.5pt;font-style:italic;color:#666;margin-top:4pt">"${tagline}"</div>`:''}
     </div>
     <div style="height:2pt;background:linear-gradient(90deg,#cb0f0f,#061bb0);border-radius:2pt;margin-bottom:14pt"></div>
-    <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">${flavor === "detailed" ? "DETAILED ITINERARY" : "BRIEF ITINERARY"}</div>`;
+    <div style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:2pt;color:#1A3A52;margin-bottom:14pt">${headingText || (flavor === "detailed" ? "DETAILED ITINERARY" : "BRIEF ITINERARY")}</div>`;
 
   // ─── BRIEF: plain paginated letterhead, no photos ─────────────────────
   // Scoped to the itinerary documents only, via extraHeadCSS -- NOT a
@@ -372,7 +372,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
       title: `${tourTitle} — Brief Itinerary`,
-      bodyBlocks: [titleBlockFor("brief"), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
+      bodyBlocks: [titleBlockFor("brief", tmpl.docHeading), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
       extraHeadCSS: ITINERARY_FONT_CSS,
     };
