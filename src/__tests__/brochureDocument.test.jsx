@@ -130,13 +130,29 @@ describe('day cards', () => {
     expect(html).not.toContain('bro-day-figure');
   });
 
-  it('keeps the overnight hotel out of the client brochure entirely, while the field stays in the data', () => {
-    // Hotels are frequently not final at itinerary stage, and naming them
-    // here duplicates the Quotation. The stay item is still stored and
-    // editable; it just isn't printed on a client-facing page.
+  it('shows the overnight hotel in the day footer -- reversed from an earlier decision, per direct current instruction', () => {
+    // This used to deliberately omit the hotel (hotels are frequently not
+    // final at itinerary stage, and naming them here duplicates the
+    // Quotation) -- that was a real, considered decision, documented right
+    // here. It was overridden by a direct, explicit instruction after
+    // reviewing a real exported brochure that showed no overnight
+    // information anywhere at all. The stay item was always in the data;
+    // only whether it printed has changed.
     const html = brochureDayHTML(day(), 0, null);
-    expect(html).not.toContain('Hotel Bodhgaya Regency');
-    expect(day().items.some(i => i.type === 'stay')).toBe(true);
+    expect(html).toContain('Hotel Bodhgaya Regency');
+  });
+
+  it('shows the stay even on a day with no meals at all -- the footer must not depend on meals existing', () => {
+    const d = day({ meals: [], items: [{ id:'c', type:'stay', text:'Hotel Bodhgaya Regency' }] });
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).toContain('Hotel Bodhgaya Regency');
+  });
+
+  it('a day with no stay item shows no stay line, no crash', () => {
+    const d = day({ items: [{ id:'b', type:'sightseeing', text:'Mahabodhi Temple' }] });
+    expect(() => brochureDayHTML(d, 0, null)).not.toThrow();
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).not.toContain('bro-stay');
   });
 
   it('shows the one-line note that says what a place actually is', () => {

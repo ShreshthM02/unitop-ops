@@ -267,6 +267,25 @@ export function buildMapDataFromResolvedDays(days) {
     const fallbackLead = transitionsThisDay === 1
       ? (day.items || []).find(it => it.type === "route" && (it.distance || it.time))
       : null;
+    // A route item is only trusted as a fallback for a specific arrival if
+    // its own text actually ends with (arrives at) that place -- "Rajgir -
+    // Varanasi" describes leaving Rajgir, not arriving at it, and must
+    // never be used as the distance/time for some OTHER, unrelated leg
+    // that happens to end at Rajgir. Confirmed as the real, reproduced
+    // cause of a reported map bug: an inter-day connection (arriving at
+    // Rajgir from the previous day) wrongly showed the distance/time
+    // belonging to Rajgir's OWN later departure toward Varanasi, because
+    // "only one route item exists this day" was trusted as enough on its
+    // own with no check that the item was actually about the arrival being
+    // computed.
+    const routeTextArrivesAt = (routeText, placeName) => {
+      if (!routeText || !placeName) return false;
+      const segments = String(routeText).split(/[-–—]|(?:\bto\b)/i).map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (!segments.length) return false;
+      const last = segments[segments.length - 1];
+      const name = String(placeName).trim().toLowerCase();
+      return last.includes(name) || name.includes(last);
+    };
 
     places.forEach((place, i) => {
       if (!place || !place.name) return;
@@ -293,7 +312,7 @@ export function buildMapDataFromResolvedDays(days) {
           const transportItem = (day.items || []).find(it => it.type === "transport");
           mode = transportItem ? (transportItem.mode === "train" ? "train" : "flight") : "road";
         }
-        const lead = fallbackLead;
+        const lead = (fallbackLead && routeTextArrivesAt(fallbackLead.text, place.name)) ? fallbackLead : null;
         sectors.push({
           from: dayPrev.name, to: place.name, day: dayNo, mode,
           distance: place.legDistance || (lead ? lead.distance : ""),

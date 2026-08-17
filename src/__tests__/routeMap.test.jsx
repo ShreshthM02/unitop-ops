@@ -338,7 +338,7 @@ describe('buildMapDataFromResolvedDays: the itinerary\u2019s own places become m
   it('feeds straight into the real map builders without adaptation', () => {
     const days = [
       { place: place('Bodhgaya', 24.696, 84.991, 'India'), items: [] },
-      { place: place('Varanasi', 25.318, 82.974, 'India'), items: [{ id:'r', type:'route', text:'x', distance:'255 km', time:'6 hrs' }] },
+      { place: place('Varanasi', 25.318, 82.974, 'India'), items: [{ id:'r', type:'route', text:'Bodhgaya - Varanasi', distance:'255 km', time:'6 hrs' }] },
     ];
     const { stops, sectors } = buildMapDataFromResolvedDays(days);
     const svg = buildRouteMapSVG({ stops, sectors });
@@ -506,5 +506,63 @@ describe('regression: a day\u2019s fallback distance/time must not leak from one
     ];
     const { sectors } = buildMapDataFromResolvedDays(days);
     expect(sectors[0]).toMatchObject({ distance: '10 km', time: '20 min' });
+  });
+});
+
+describe('regression: a day\u2019s route item must only fill in distance/time for the arrival it actually describes', () => {
+  const p = (name, lat, lon) => ({ name, lat, lon });
+
+  it('found from a real exported PDF: an inter-day arrival at Rajgir must NOT borrow the distance/time from Rajgir\u2019s own later route item describing its departure toward Varanasi', () => {
+    const days = [
+      { items: [], place: p('Bodhgaya', 24.696, 84.991) },
+      {
+        items: [
+          { type: 'route', text: 'Bodhgaya - Nalanda', distance: '100 km', time: '3 hrs' },
+          { type: 'route', text: 'Nalanda - Rajgir', distance: '20 km', time: '30 min' },
+        ],
+        place: p('Bodhgaya', 24.696, 84.991),
+      },
+      {
+        items: [{ type: 'route', text: 'Rajgir - Varanasi', distance: '280 km', time: '6 hrs' }],
+        place: p('Rajgir', 25.03, 85.42),
+      },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    const arrival = sectors.find(s => s.from === 'Bodhgaya' && s.to === 'Rajgir');
+    // The real bug: this showed "280 km / 6 hrs", which is Rajgir's OWN
+    // later leg toward Varanasi -- nothing to do with how the group got
+    // TO Rajgir in the first place. Left blank is correct: there is no
+    // reliable way to guess it from what's available.
+    expect(arrival.distance).toBe('');
+    expect(arrival.time).toBe('');
+  });
+
+  it('the simple, common case still works: one route item that genuinely describes the arrival', () => {
+    const days = [
+      { items: [], place: p('Bodhgaya', 24.696, 84.991) },
+      { items: [{ type: 'route', text: 'Bodhgaya - Varanasi', distance: '255 km', time: '6 hrs' }], place: p('Varanasi', 25.318, 82.974) },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors[0]).toMatchObject({ distance: '255 km', time: '6 hrs' });
+  });
+
+  it('still matches with different separators and casing -- "Bodhgaya to VARANASI", "Bodhgaya \u2013 varanasi"', () => {
+    for (const text of ['Bodhgaya to Varanasi', 'Bodhgaya \u2013 varanasi', 'BODHGAYA-Varanasi']) {
+      const days = [
+        { items: [], place: p('Bodhgaya', 24.696, 84.991) },
+        { items: [{ type: 'route', text, distance: '255 km', time: '6 hrs' }], place: p('Varanasi', 25.318, 82.974) },
+      ];
+      const { sectors } = buildMapDataFromResolvedDays(days);
+      expect(sectors[0].distance).toBe('255 km');
+    }
+  });
+
+  it('an explicit legDistance/legTime on the place itself always wins, text-matching never even runs', () => {
+    const days = [
+      { items: [], place: p('Bodhgaya', 24.696, 84.991) },
+      { items: [{ type: 'route', text: 'Totally unrelated text', distance: '999 km', time: '99 hrs' }], place: { ...p('Varanasi', 25.318, 82.974), legDistance: '255 km', legTime: '6 hrs' } },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    expect(sectors[0]).toMatchObject({ distance: '255 km', time: '6 hrs' });
   });
 });

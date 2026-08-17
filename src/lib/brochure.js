@@ -499,7 +499,7 @@ export function brochureDayHTML(day, index, image) {
         ${photo}
         <div class="bro-day-text">${timeline ? `<ul class="bro-tl">${timeline}</ul>` : ""}</div>
       </div>
-      ${meals ? `<div class="bro-day-foot">${meals}</div>` : ""}
+      ${(meals || stay) ? `<div class="bro-day-foot">${meals}${stay ? `<span class="bro-stay">Overnight: <strong>${esc(stay)}</strong></span>` : ""}</div>` : ""}
     </div>
   </div>`;
 }
