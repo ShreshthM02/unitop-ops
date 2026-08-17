@@ -616,10 +616,19 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                   <div style={{ flex:1, display:"flex", gap:8 }}>
                     <input style={{...inp, width:70, textAlign:"center", fontWeight:600}} value={d.dayLabel} onChange={e=>updateDay(i,"dayLabel",e.target.value)}/>
                     <input style={{...inp, flex:1, fontWeight:600}} value={d.title} onChange={e=>updateDay(i,"title",e.target.value)} placeholder="Day title e.g. Arrival at Delhi"/>
-                    {!readOnly && !d.title && (
-                      // Rule-based suggestion from the day's own text -- see
-                      // suggestDayTitle above for why this is not an AI call
-                      // yet, and what would change if it became one.
+                    {!readOnly && (
+                      // Always available, not just while the title is
+                      // empty -- confirmed this was the actual cause of
+                      // "the Suggest button disappeared": it was gated on
+                      // !d.title from day one, so a day whose title had
+                      // ALREADY been filled (even with something like "23
+                      // Sep 2026", which several real days here use) hid
+                      // it permanently. An operator should be able to
+                      // re-suggest or overwrite a title at any point, not
+                      // only on the day's very first fill -- especially
+                      // since the day's own items (what the suggestion is
+                      // actually built from) can keep changing after the
+                      // title was first set.
                       <button type="button" className="btn btn-ghost" style={{ fontSize:10, flexShrink:0 }}
                         title="Suggest a title from this day's own text"
                         onClick={() => { const s = suggestDayTitle(d); if (s) updateDay(i, "title", s); }}>

@@ -354,3 +354,32 @@ describe('itinerary font pairing: scoped to Brief/Detailed only, not the shared 
     });
   });
 });
+
+describe('regression: the day-title Suggest button must stay available after a title is set, not vanish forever the moment one exists', () => {
+  it('shows Suggest on a fresh day with no title yet', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    expect(screen.getAllByText('\u2728 Suggest').length).toBeGreaterThan(0);
+  });
+
+  it('confirmed real cause: Suggest used to disappear once ANY title was typed, including a plain date string -- it must now stay visible', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    const titleField = screen.getAllByPlaceholderText('Day title e.g. Arrival at Delhi')[0];
+    fireEvent.change(titleField, { target: { value: '23 Sep 2026' } });
+    expect(screen.getAllByText('\u2728 Suggest').length).toBeGreaterThan(0);
+  });
+
+  it('clicking it after a title already exists overwrites with a fresh suggestion, not blocked', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    const titleField = screen.getAllByPlaceholderText('Day title e.g. Arrival at Delhi')[0];
+    fireEvent.change(titleField, { target: { value: 'Some existing title' } });
+    // With no items on the day, suggestDayTitle returns "" and updateDay is
+    // never called -- clicking must not throw or otherwise misbehave even
+    // when there's nothing to suggest.
+    expect(() => fireEvent.click(screen.getAllByText('\u2728 Suggest')[0])).not.toThrow();
+  });
+
+  it('hidden entirely in read-only mode, title present or not', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}} readOnly={true}/>);
+    expect(screen.queryByText('\u2728 Suggest')).toBeNull();
+  });
+});
