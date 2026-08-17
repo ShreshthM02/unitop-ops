@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildBrochureDocument, brochureDayHTML, brochureCoverHTML,
+  buildBrochureDocument, brochureDayHTML, brochureDayBlocks, brochureCoverHTML,
   paginateBrochureDays, withBrochurePreviewStyles, BROCHURE_PREVIEW_CSS, brochureCSS,
   brochureGlanceHTML,
 } from '../lib/brochure.js';
@@ -576,8 +576,8 @@ describe('regression: brochureCSS must load its own fonts, not rely only on an e
     const css = brochureCSS();
     expect(css).toContain('@import');
     expect(css).toContain('fonts.googleapis.com');
-    expect(css).toContain('Lora');
-    expect(css).toContain('Inter');
+    expect(css).toContain('Cormorant+Garamond');
+    expect(css).toContain('Work+Sans');
   });
 
   it('the @import is the very first rule, as CSS requires for it to take effect at all', () => {
@@ -649,18 +649,17 @@ describe('regression: every brochure icon uses the accent colour now, not just s
   });
 });
 
-describe('regression: the tagline is now sans-serif, non-italic, and sized to fit within the logo\u2019s own width -- a tighter, single lockup rather than a separately-styled caption', () => {
-  it('uses the sans-serif label font, not the italic serif display font', () => {
+describe('regression: the tagline uses the sans-serif label font (matching the logo\u2019s own typeface) and sits as close to the logo as reasonably possible, in italic', () => {
+  it('is styled italic, reversing an earlier non-italic choice per direct instruction', () => {
     const css = brochureCSS();
     const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
-    expect(rule).toMatch(/font-style:\s*normal/);
-    expect(rule).not.toContain('italic');
+    expect(rule).toMatch(/font-style:\s*italic/);
   });
 
-  it('sits close to the logo -- a small margin-top, not the earlier looser gap', () => {
+  it('sits closer to the logo than the earlier looser gap', () => {
     const css = brochureCSS();
     const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
-    expect(rule).toMatch(/margin-top:\s*1mm/);
+    expect(rule).toMatch(/margin-top:\s*0\.3mm/);
   });
 });
 
@@ -713,5 +712,77 @@ describe('an untitled day\u2019s first route stands in as its headline, honestly
     // --lead deliberately omits its own colour so it inherits .bro-day-route's
     // accent red rather than restating theme.ink (the title's navy).
     expect(leadRule).not.toContain('color:');
+  });
+});
+
+describe('regression: a day\u2019s photo is merged with its first item into one block, so a tall photo never needlessly defers items that would genuinely fit', () => {
+  // Confirmed the real cause of a reported bug by rendering realistic
+  // content: the photo used to be its own separate pagination block,
+  // placed before every item. If IT alone didn't fit in whatever space
+  // remained on a page, everything after it -- including items that would
+  // have fit on their own -- was deferred right along with it, since
+  // pagination processes blocks strictly in order. The visible result was
+  // a day's header landing with a large blank gap following it, no
+  // visible reason for the rest of that day's content to have moved.
+  const manyItemsDay = {
+    id: 'd1',
+    items: [
+      { id:'a', type:'sightseeing', text:'MARKER_FIRST' },
+      { id:'b', type:'sightseeing', text:'MARKER_SECOND' },
+    ],
+  };
+
+  it('the photo and the first item always land on the same page -- never split from each other', () => {
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 100;
+      if (html.includes('bro-day-photo') || html.includes('bro-day-photo-empty')) return 600;
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [manyItemsDay],
+      dayImages: { d1: 'data:image/png;base64,X' },
+      measureFn: measure,
+    });
+    // Checking for the rendered opening tag specifically, not a bare
+    // class-name substring -- .bro-day-photo-empty and .bro-day-body also
+    // legitimately appear as CSS selectors in the embedded stylesheet,
+    // which a plain substring check would mistake for real page content.
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
+    const withFirst = dayContentChunks.findIndex(p => p.includes('MARKER_FIRST'));
+    const withPhoto = dayContentChunks.findIndex(p => p.includes('<figure class="bro-day-photo">'));
+    expect(withFirst).toBeGreaterThan(-1);
+    expect(withPhoto).toBeGreaterThan(-1);
+    expect(withFirst).toBe(withPhoto);
+  });
+
+  it('a photo too tall for the remaining space defers itself AND the first item together, not the first item alone stranded without its photo', () => {
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 900; // consumes almost the whole first page
+      if (html.includes('bro-day-photo')) return 600;
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [manyItemsDay],
+      dayImages: { d1: 'data:image/png;base64,X' },
+      measureFn: measure,
+    });
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
+    const photoChunk = dayContentChunks.find(p => p.includes('<figure class="bro-day-photo">'));
+    expect(photoChunk).toContain('MARKER_FIRST');
+  });
+
+  it('later items remain independently flowable -- the merge only ever applies to the photo and the FIRST item', () => {
+    const blocks = brochureDayBlocks(manyItemsDay, 0, 'data:image/png;base64,X');
+    const photoBlock = blocks.find(b => b.includes('<figure class="bro-day-photo">'));
+    // The photo's own block carries the first item alongside it...
+    expect(photoBlock).toContain('MARKER_FIRST');
+    // ...but the second item is never folded into that same block -- it
+    // gets its own, independently-flowable one.
+    expect(photoBlock).not.toContain('MARKER_SECOND');
+    const secondBlock = blocks.find(b => b.includes('MARKER_SECOND'));
+    expect(secondBlock).toBeTruthy();
+    expect(secondBlock).not.toBe(photoBlock);
   });
 });

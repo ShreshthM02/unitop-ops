@@ -69,6 +69,16 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   const [versions, setVersions] = useState([]);
   const [viewingVersion, setViewingVersion] = useState(null);
+  // Confirmed real bug: this used to stay set across a flavor switch, so
+  // the dropdown could highlight a version NUMBER left over from the
+  // other flavor -- each flavor numbers its own versions independently
+  // (both can have their own "v3"), so a stale viewingVersion from Brief
+  // could wrongly highlight an entirely different save under Detailed's
+  // own v3. Resetting on flavor change falls back to that flavor's own
+  // latest (via VersionDropdown's shownVersion = viewingVersion ||
+  // displayVersion) until the user explicitly views a specific version
+  // within the flavor they are actually looking at.
+  useEffect(() => { setViewingVersion(null); }, [docFlavor]);
   const [versionNote, setVersionNote] = useState("");
 
   // Separate save-history per flavor, restored per your call: it should be
@@ -341,7 +351,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
     const isLastDay = i === itinDays.length - 1;
     const closing = `<div style="margin-left:42.5pt;padding-bottom:11pt;${isLastDay ? "" : "border-bottom:0.5pt solid #eee;margin-bottom:14pt;"}">
-        ${mealStr ? `<div style="margin-top:6pt;text-align:right">${mealStr}</div>` : ""}
+        ${mealStr ? `<div style="margin-top:6pt;text-align:${flavor === "brief" ? "left" : "right"}">${mealStr}</div>` : ""}
       </div>`;
 
     return [header, ...routeBlock, ...items, closing];
@@ -587,7 +597,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         </div>
 
         <DocTabBar activeTab={viewMode} setActiveTab={setViewMode} G={G}/>
-        {docFlavor === "detailed" && <LetterheadToggleBar toggles={toggles} G={G}/>}
+        <LetterheadToggleBar toggles={toggles} G={G}/>
 
         {viewMode === "content" ? (
           <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>

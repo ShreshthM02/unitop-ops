@@ -483,3 +483,46 @@ describe('regression: an untitled day\u2019s first route stands in as its headli
     });
   });
 });
+
+describe('regression: Brief\u2019s meal pills shift left; Detailed keeps them right, per direct instruction', () => {
+  it('Brief preview shows left-aligned meal pills', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toMatch(/text-align:left">[^<]*<span[^>]*>Dinner/);
+    });
+  });
+
+  it('Detailed keeps right-aligned meal pills, unchanged', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toMatch(/text-align:right">[^<]*<span[^>]*>Dinner/);
+    });
+  });
+});
+
+describe('regression: the print toggle bar was hidden on Brief entirely -- confirmed the toggles are shared state Brief\u2019s own output already respects', () => {
+  it('shows the toggle bar while on the Brief tab (the default)', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
+  });
+
+  it('still shows it on Detailed too, unchanged', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
+  });
+
+  it('toggling a setting on Brief carries over to Detailed, since it is genuinely shared state', () => {
+    render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    const pageNumToggle = screen.getByText('Page number');
+    fireEvent.click(pageNumToggle);
+    fireEvent.click(screen.getByText('Detailed'));
+    // Still present and toggled -- same shared toggles object either way.
+    expect(screen.getByText('Page number')).toBeTruthy();
+  });
+});

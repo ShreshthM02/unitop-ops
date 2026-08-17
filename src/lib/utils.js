@@ -1824,9 +1824,10 @@ export const ICON_PATHS = {
   pencil: `<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.8" fill="currentColor" stroke="none"/>`,
 };
 
-const ICON_COLOR = "#8B0000"; // lotus red, from the logo -- matches the brochure's own accent, per direct request that every icon should read like sightseeing's did, not a muted grey
-function icon(name, mode) {
-  return `<svg viewBox="0 0 24 24" width="9.5" height="9.5" fill="none" stroke="${ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5pt;margin-right:5pt;flex-shrink:0">${ICON_PATHS[name] || ""}</svg>`;
+const ICON_COLOR = "#8B0000"; // lotus red, from the logo -- Detailed's own accent
+const ICON_COLOR_BRIEF = "#6B7280"; // reverted to the original muted grey per direct instruction -- red stays for Detailed only, not both flavors
+function icon(name, mode, color) {
+  return `<svg viewBox="0 0 24 24" width="9.5" height="9.5" fill="none" stroke="${color || ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5pt;margin-right:5pt;flex-shrink:0">${ICON_PATHS[name] || ""}</svg>`;
 }
 
 // The sub-line for an item's attached note (see itemNoteForFlavor in the
@@ -1848,7 +1849,7 @@ export function itineraryItemHTML(item, flavor = "brief") {
   const text = (itemTextForFlavor(item, flavor) || "").trim();
   const meta = [item.distance, item.time].filter(Boolean).join(" / ");
   const row = (iconName, mode, body) =>
-    `<div style="font-size:9.5pt;color:#333;margin:2.5pt 0;display:flex;align-items:flex-start">${icon(iconName, mode)}<span>${body}</span></div>`;
+    `<div style="font-size:9.5pt;color:#333;margin:2.5pt 0;display:flex;align-items:flex-start">${icon(iconName, mode, flavor === "brief" ? ICON_COLOR_BRIEF : ICON_COLOR)}<span>${body}</span></div>`;
   switch (item.type) {
     case "route": {
       if (!text && !meta) return "";
@@ -1866,7 +1867,7 @@ export function itineraryItemHTML(item, flavor = "brief") {
     case "stay":
       return text ? row("bed", null, text) + noteLine(item, flavor) : "";
     case "remarks":
-      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap;display:flex;align-items:flex-start">${icon("pencil")}<span>${text}</span></div>` : "";
+      return text ? `<div style="font-size:9pt;color:#555;margin:3pt 0;white-space:pre-wrap;display:flex;align-items:flex-start">${icon("pencil", null, flavor === "brief" ? ICON_COLOR_BRIEF : ICON_COLOR)}<span>${text}</span></div>` : "";
     default:
       return text ? `<div style="font-size:9.5pt;color:#333;margin:2pt 0">${text}</div>` : "";
   }

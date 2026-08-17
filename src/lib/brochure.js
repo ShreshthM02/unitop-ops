@@ -58,17 +58,18 @@ export const BROCHURE_THEME = {
   panel: "#F2EEE6",   // quiet fill for pills
 };
 
-// One superfamily for both display and body, Inter kept for the smallest
-// micro-labels -- replacing an earlier Fraunces + Karla pairing on direct
-// instruction. Lora is a warm, moderately-contrasted serif built
-// specifically for comfortable reading rather than only display headlines,
-// so the same family can carry a cover title at 30pt and a paragraph of
-// body prose at 10pt without feeling like two different documents stitched
-// together -- different weights of one face read as more cohesive than
-// pairing a display serif with an unrelated sans for everything else.
-const DISPLAY = `'Lora', Georgia, serif`;
-const BODY = `'Lora', Georgia, serif`;
-const LABEL = `'Inter', -apple-system, Arial, sans-serif`;
+// Cormorant Garamond for display and body, Work Sans for the smallest
+// micro-labels -- the "Garamond pair" from the original three candidates
+// offered (Fraunces+Karla, Cormorant Garamond+Work Sans, Lora+Inter),
+// applied to the brochure specifically this time rather than both
+// flavors. Cormorant Garamond is delicate and classical -- lighter
+// strokes, closer to a traditional heritage-travel document than Lora's
+// own warmer, more contemporary reading-serif character. Work Sans is a
+// quiet, functional sans for labels, distinct from Inter (which stays the
+// choice for Brief/Detailed's own plain documents, unchanged by this).
+const DISPLAY = `'Cormorant Garamond', Georgia, serif`;
+const BODY = `'Cormorant Garamond', Georgia, serif`;
+const LABEL = `'Work Sans', -apple-system, Arial, sans-serif`;
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -90,7 +91,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      their own shared CSS text. Keeping the outer <link> tag too, for the
      real render -- redundant with this, but harmless; browsers dedupe an
      identical font request. */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap');
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -151,7 +152,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-cover-logo { margin-bottom: 11mm; width: 47.4mm; margin-left: auto; margin-right: auto; }
   .bro-cover-logo img { height: 22mm; width: 100%; display: block; }
   .bro-cover-logo-tag {
-    width: 100%; margin-top: 1mm; font-family: ${LABEL}; font-style: normal;
+    width: 100%; margin-top: 0.3mm; font-family: ${LABEL}; font-style: italic;
     font-size: 5.5pt; letter-spacing: 0.15pt; color: ${BROCHURE_THEME.accent}; text-align: center;
     line-height: 1.25; white-space: normal;
   }
@@ -529,20 +530,29 @@ export function brochureDayBlocks(day, index, image) {
 
   const blocks = [head];
 
-  // Every day carries its own photograph at the same size, which is what
-  // removes the earlier unfairness: no day is visibly favoured because they
-  // are all treated identically. A day with no photograph available shows a
-  // quiet empty frame rather than collapsing the column, so the grid holds.
-  // Floated, not flexed, and NOT wrapped together with the head above --
-  // this is what lets its float keep influencing the item blocks that
-  // follow, even once those are independent pagination units that can land
-  // on a later page than this one.
+  // Merged with the FIRST timeline item below, not left as its own block.
+  // Confirmed as the real cause of a reported bug by rendering realistic
+  // content: a photo alone as its own block meant that if IT didn't fit in
+  // whatever space remained on a page, EVERYTHING after it in the day
+  // (every item, even ones that would genuinely have fit on their own)
+  // was deferred right along with it, since the pagination algorithm
+  // processes blocks strictly in order and cannot skip ahead to place a
+  // later, smaller block before an earlier, larger one. The result looked
+  // exactly like the report: a day's header landing with a large blank gap
+  // following it, its actual content pushed entirely to the next page for
+  // no visible reason. A photo genuinely alone (nothing beside it) would
+  // also look wrong regardless, so binding it to the first item -- which
+  // is what a reader's eye actually pairs it with -- is the correct fix,
+  // not just a pagination workaround.
+  const firstItem = timelineItems[0];
+  const restItems = timelineItems.slice(1);
+  const firstItemHTML = firstItem ? timelineItemHTML(firstItem) : "";
   blocks.push(`<div class="bro-day-body"><figure class="bro-day-photo">
       ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
       ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
-    </figure></div>`);
+    </figure>${firstItemHTML ? `<ul class="bro-tl">${firstItemHTML}</ul>` : ""}</div>`);
 
-  timelineItems.forEach(item => {
+  restItems.forEach(item => {
     const html = timelineItemHTML(item);
     if (html) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${html}</ul></div>`);
   });
@@ -885,7 +895,7 @@ export function buildBrochureDocument({
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }

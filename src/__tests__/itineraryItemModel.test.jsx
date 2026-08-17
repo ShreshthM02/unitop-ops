@@ -371,26 +371,32 @@ describe('icon redesign: bed replaces moon, a geometric flight silhouette replac
   });
 });
 
-describe('regression: every icon uses the same brand red as sightseeing, not a muted grey -- and Brief\u2019s meal pills match the brochure\u2019s quiet style, not yellow', () => {
-  it('a route icon renders in the brand red, not grey', () => {
-    const html = itineraryItemHTML({ type: 'route', text: 'A - B', distance: '10 km' });
-    expect(html).toContain('stroke="#8B0000"');
-    expect(html).not.toContain('stroke="#6B7280"');
+describe('regression: Brief\u2019s icons reverted to the original muted grey per direct instruction; Detailed keeps the brand red', () => {
+  // The red-for-every-icon change was itself a direct request, applied to
+  // both flavors -- then reversed for Brief specifically, keeping Detailed
+  // as it was. Every type needs checking in both directions since row()
+  // and the remarks case both branch on flavor independently.
+  const types = [
+    { type: 'route', text: 'A - B', distance: '10 km' },
+    { type: 'transport', text: '6E 2134', mode: 'flight' },
+    { type: 'stay', text: 'Hotel X' },
+    { type: 'remarks', text: 'A note.' },
+  ];
+
+  types.forEach(item => {
+    it(`${item.type} icon: grey in Brief, red in Detailed`, () => {
+      const brief = itineraryItemHTML(item, 'brief');
+      const detailed = itineraryItemHTML(item, 'detailed');
+      expect(brief).toContain('stroke="#6B7280"');
+      expect(brief).not.toContain('stroke="#8B0000"');
+      expect(detailed).toContain('stroke="#8B0000"');
+      expect(detailed).not.toContain('stroke="#6B7280"');
+    });
   });
 
-  it('a transport icon also renders in the brand red', () => {
-    const html = itineraryItemHTML({ type: 'transport', text: '6E 2134', mode: 'flight' });
-    expect(html).toContain('stroke="#8B0000"');
-  });
-
-  it('a stay icon also renders in the brand red', () => {
-    const html = itineraryItemHTML({ type: 'stay', text: 'Hotel X' });
-    expect(html).toContain('stroke="#8B0000"');
-  });
-
-  it('a remarks icon also renders in the brand red', () => {
-    const html = itineraryItemHTML({ type: 'remarks', text: 'A note.' });
-    expect(html).toContain('stroke="#8B0000"');
+  it('defaults to Brief\u2019s grey when no flavor is passed at all', () => {
+    const html = itineraryItemHTML({ type: 'sightseeing', text: 'A Temple' });
+    expect(html).toContain('stroke="#6B7280"');
   });
 });
 
