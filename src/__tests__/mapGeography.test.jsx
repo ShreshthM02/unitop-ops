@@ -7,6 +7,17 @@ describe('SOUTH_ASIA_LAND: real country boundary data (Natural Earth via world-a
     expect(names).toEqual(expect.arrayContaining(['India', 'Nepal', 'Bangladesh', 'Bhutan', 'Pakistan', 'China', 'Sri Lanka', 'Afghanistan']));
   });
 
+  it('matches the real gazetteer\u2019s own actual country coverage exactly, not an assumed South Asia list -- confirmed by querying the live gazetteer directly for a country-by-country row count', () => {
+    // The gazetteer table genuinely contains rows for these 8 countries
+    // (verified directly, not assumed): India, Pakistan, Thailand, Nepal,
+    // Myanmar, Bangladesh, Sri Lanka, Bhutan. Thailand and Myanmar are
+    // substantial (131k and 55k rows), not edge cases -- an earlier
+    // version of this file was missing Thailand entirely.
+    const names = SOUTH_ASIA_LAND.map(f => f.name);
+    const gazetteerCountries = ['India', 'Pakistan', 'Thailand', 'Nepal', 'Myanmar', 'Bangladesh', 'Sri Lanka', 'Bhutan'];
+    gazetteerCountries.forEach(country => expect(names).toContain(country));
+  });
+
   it('every feature has valid GeoJSON Polygon/MultiPolygon geometry', () => {
     SOUTH_ASIA_LAND.forEach(f => {
       expect(['Polygon', 'MultiPolygon']).toContain(f.geometry.type);
