@@ -401,23 +401,6 @@ export function buildRouteMapSVG({
   const groundStops = split.ground.length ? split.ground : stops;
   const gateways = split.gateways;
   const bbox = computeBBox(groundStops);
-  // Auto-select passive towns from the gazetteer when one is supplied, so the
-  // map fills in appropriately whatever region the itinerary covers -- rather
-  // than relying on a hand-typed list that only suits one tour.
-  let passive = reference;
-  if (gazetteer && gazetteer.length) {
-    const span = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
-    const maxRank = rankThresholdForSpan(span);
-    const named = new Set(stops.map(x => (x.name || "").toLowerCase()));
-    passive = gazetteer
-      .filter(g => g.lon >= bbox[0] && g.lon <= bbox[2] && g.lat >= bbox[1] && g.lat <= bbox[3])
-      .filter(g => (g.rank ?? 10) <= maxRank)
-      // Never draw a passive dot where the tour already has a stop -- the
-      // duplicate label is the most obvious way a generated map looks wrong.
-      .filter(g => !named.has((g.name || "").toLowerCase()))
-      .sort((a, b) => (a.rank ?? 10) - (b.rank ?? 10))
-      .slice(0, maxReference);
-  }
   const project = makeProjection(bbox, width, height, pad);
   const pts = groundStops.map(s => ({
     ...s,
@@ -427,6 +410,48 @@ export function buildRouteMapSVG({
   const cx = pts.reduce((a, p) => a + p.xy[0], 0) / pts.length;
   const cy = pts.reduce((a, p) => a + p.xy[1], 0) / pts.length;
   const byName = new Map(pts.map(p => [p.name, p]));
+
+  // Auto-select passive towns from the gazetteer when one is supplied, so the
+  // map fills in appropriately whatever region the itinerary covers -- rather
+  // than relying on a hand-typed list that only suits one tour.
+  //
+  // Selection is now GREEDY IN PIXEL SPACE, not just by rank: a candidate is
+  // only accepted if its projected position is far enough (in actual
+  // rendered pixels) from every already-accepted town AND every real
+  // itinerary stop. Confirmed as the real cause of a reported bug -- real
+  // gazetteer data is dense enough, especially in a populous region, that
+  // many geographically nearby towns' labels genuinely collided with no
+  // check for it at all. Working in projected pixels rather than raw
+  // lat/lon is what makes this actually correct: degrees of longitude and
+  // latitude don't correspond to a fixed pixel distance once a bbox has
+  // been projected to a specific width/height, so a lat/lon-only distance
+  // check would systematically over- or under-space labels depending on
+  // the projection's own scale.
+  let passive = reference;
+  if (gazetteer && gazetteer.length) {
+    const span = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+    const maxRank = rankThresholdForSpan(span);
+    const named = new Set(stops.map(x => (x.name || "").toLowerCase()));
+    const candidates = gazetteer
+      .filter(g => g.lon >= bbox[0] && g.lon <= bbox[2] && g.lat >= bbox[1] && g.lat <= bbox[3])
+      .filter(g => (g.rank ?? 10) <= maxRank)
+      // Never draw a passive dot where the tour already has a stop -- the
+      // duplicate label is the most obvious way a generated map looks wrong.
+      .filter(g => !named.has((g.name || "").toLowerCase()))
+      .sort((a, b) => (a.rank ?? 10) - (b.rank ?? 10));
+
+    const minGapPx = 26; // roughly one label's own height plus a little air
+    const accepted = [];
+    const occupied = pts.map(p => p.xy); // real stops always claim their space first
+    candidates.forEach(g => {
+      const xy = project(g.lon, g.lat);
+      const tooClose = occupied.some(([ox, oy]) => Math.hypot(xy[0] - ox, xy[1] - oy) < minGapPx);
+      if (tooClose) return;
+      accepted.push(g);
+      occupied.push(xy);
+    });
+    passive = accepted.slice(0, maxReference);
+  }
 
   const landSource = land.length ? land : features;
   const landPaths = landSource.map(f =>

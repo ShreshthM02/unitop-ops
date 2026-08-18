@@ -566,3 +566,53 @@ describe('regression: a day\u2019s route item must only fill in distance/time fo
     expect(sectors[0]).toMatchObject({ distance: '255 km', time: '6 hrs' });
   });
 });
+
+describe('regression: passive reference towns never overlap -- confirmed real bug from real gazetteer data being dense enough that nearby towns\u2019 labels genuinely collided', () => {
+  // Confirmed real cause: two gazetteer rows for what is essentially the
+  // same real place, "Dinapur Nizamat" and "Dinapore", sit only ~0.003
+  // degrees apart -- selection previously worked purely on rank/importance
+  // with no check for whether a candidate's label would visually collide
+  // with one already chosen.
+  const nearbyStops = [
+    { name: 'Bodhgaya', lon: 84.991, lat: 24.696 },
+    { name: 'Rajgir', lon: 85.42, lat: 25.03 },
+  ];
+  const closeGazetteer = [
+    { name: 'Dinapur Nizamat', lon: 85.05118, lat: 25.63847, population: 182429, rank: 5 },
+    { name: 'Dinapore', lon: 85.04794, lat: 25.63705, population: 152940, rank: 5 },
+  ];
+
+  it('two gazetteer rows for essentially the same place: only the higher-ranked one is kept, not both', () => {
+    const svg = buildRouteMapSVG({ stops: nearbyStops, sectors: [], gazetteer: closeGazetteer, maxReference: 45 });
+    const hasNizamat = svg.includes('Dinapur Nizamat');
+    const hasDinapore = svg.includes('>Dinapore<');
+    // Exactly one should survive -- never both (that's the collision),
+    // and never neither (real data shouldn't just vanish).
+    expect(hasNizamat !== hasDinapore).toBe(true);
+  });
+
+  it('the higher-ranked (lower rank number) candidate wins when two are too close together', () => {
+    const svg = buildRouteMapSVG({ stops: nearbyStops, sectors: [], gazetteer: closeGazetteer, maxReference: 45 });
+    // Dinapur Nizamat has the higher population/importance of the two.
+    expect(svg).toContain('Dinapur Nizamat');
+  });
+
+  it('two genuinely distant towns are NOT filtered out by the collision check -- this only suppresses real close-proximity collisions', () => {
+    const farApartGazetteer = [
+      { name: 'TownA', lon: 84.2, lat: 23.9, population: 200000, rank: 5 },
+      { name: 'TownB', lon: 86.1, lat: 25.8, population: 150000, rank: 5 },
+    ];
+    const svg = buildRouteMapSVG({ stops: nearbyStops, sectors: [], gazetteer: farApartGazetteer, maxReference: 45 });
+    expect(svg).toContain('TownA');
+    expect(svg).toContain('TownB');
+  });
+
+  it('a passive town is never placed at the same position as a real itinerary stop', () => {
+    const stopNamedGazetteer = [
+      // Deliberately very close to Bodhgaya's own coordinates.
+      { name: 'SomeNearbyPlace', lon: 84.992, lat: 24.697, population: 300000, rank: 3 },
+    ];
+    const svg = buildRouteMapSVG({ stops: nearbyStops, sectors: [], gazetteer: stopNamedGazetteer, maxReference: 45 });
+    expect(svg).not.toContain('SomeNearbyPlace');
+  });
+});

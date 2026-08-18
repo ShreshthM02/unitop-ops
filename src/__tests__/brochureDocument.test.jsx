@@ -641,6 +641,23 @@ describe('regression: the splash screen and every other app UI use kept the orig
     expect(width).toBeLessThan(418);
     expect(height).toBeLessThan(194);
   });
+
+  it('the cover logo container\u2019s own CSS aspect ratio matches the actual cropped image\u2019s real pixel aspect ratio -- confirmed real cause of a reported "stretched/out of proportion" logo: the crop above changed the image\u2019s real ratio (2.155 -> 2.604) but the container\u2019s fixed width was never updated to match, forcing the image into a box shaped for its old proportions', () => {
+    const bytes = Buffer.from(LOGO_TRANSPARENT_B64.split(',')[1], 'base64');
+    const imgWidth = bytes.readUInt32BE(16);
+    const imgHeight = bytes.readUInt32BE(20);
+    const imgRatio = imgWidth / imgHeight;
+
+    const css = brochureCSS();
+    const rule = css.match(/\.bro-cover-logo\s*\{([^}]*)\}/)?.[1] || '';
+    const cssWidthMm = parseFloat(rule.match(/width:\s*([\d.]+)mm/)?.[1] || '0');
+    const cssHeightMm = 22; // .bro-cover-logo img's own fixed height, unchanged
+    const cssRatio = cssWidthMm / cssHeightMm;
+
+    // Within half a percent -- exact floating-point equality isn't the
+    // point, avoiding a visibly stretched/squeezed logo is.
+    expect(Math.abs(cssRatio - imgRatio) / imgRatio).toBeLessThan(0.005);
+  });
 });
 
 describe('regression: closing/remarks text must be left-aligned, not inherit centering from .bro-signoff', () => {
@@ -954,5 +971,66 @@ describe('regression: an item\u2019s title and note are now separate, independen
     const html = brochureDayHTML(longNoteDay, 0, 'data:image/png;base64,X');
     expect(html).toContain('MARKER_TITLE');
     expect(html).toContain('MARKER_NOTE');
+  });
+});
+
+describe('regression: a title is never placed alone at the bottom of a page with its entire note starting fresh on the next -- confirmed real bug from direct feedback after removing this constraint', () => {
+  const longNoteDay = {
+    id: 'd1',
+    items: [
+      { id:'a', type:'sightseeing', text:'MARKER_TITLE', detailedNote:'MARKER_NOTE, a long paragraph of descriptive text.' },
+    ],
+  };
+
+  it('the title block is marked to require its note fits alongside it', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const titleBlock = blocks.find(b => b.includes('MARKER_TITLE'));
+    expect(titleBlock).toContain('data-keep-with-next="1"');
+  });
+
+  it('when the title+full note do not fit together, BOTH move to the next page -- never just the note, leaving a bare title behind', () => {
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 900; // consumes almost the whole first page
+      if (html.includes('MARKER_TITLE')) return 100;
+      if (html.includes('MARKER_NOTE')) return 100;
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [longNoteDay],
+      dayImages: { d1: 'data:image/png;base64,X' },
+      measureFn: measure,
+    });
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
+    const titleChunkIdx = dayContentChunks.findIndex(p => p.includes('MARKER_TITLE'));
+    const noteChunkIdx = dayContentChunks.findIndex(p => p.includes('MARKER_NOTE'));
+    // The real assertion: never separated onto different pages.
+    expect(titleChunkIdx).toBe(noteChunkIdx);
+  });
+
+  it('when the title+full note genuinely both fit, they stay together on the same page as normal', () => {
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 50;
+      if (html.includes('MARKER_TITLE')) return 50;
+      if (html.includes('MARKER_NOTE')) return 50;
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [longNoteDay],
+      dayImages: { d1: 'data:image/png;base64,X' },
+      measureFn: measure,
+    });
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
+    const titleChunkIdx = dayContentChunks.findIndex(p => p.includes('MARKER_TITLE'));
+    const noteChunkIdx = dayContentChunks.findIndex(p => p.includes('MARKER_NOTE'));
+    expect(titleChunkIdx).toBe(noteChunkIdx);
+  });
+
+  it('an item with no note has no keep-with-next marker -- nothing to keep it together with', () => {
+    const noNoteDay = { id: 'd2', items: [{ id:'a', type:'sightseeing', text:'MARKER_ALONE' }] };
+    const blocks = brochureDayBlocks(noNoteDay, 0, null);
+    const titleBlock = blocks.find(b => b.includes('MARKER_ALONE'));
+    expect(titleBlock).not.toContain('data-keep-with-next');
   });
 });

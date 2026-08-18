@@ -151,7 +151,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      guarantee. Confirmed by actually rendering it. If the logo image ever
      changes, recalculate this from its real pixel dimensions rather than
      assume the ratio still holds. */
-  .bro-cover-logo { margin-bottom: 15mm; width: 47.4mm; margin-left: auto; margin-right: auto; position: relative; }
+  .bro-cover-logo { margin-bottom: 15mm; width: 57.29mm; margin-left: auto; margin-right: auto; position: relative; }
   .bro-cover-logo img { height: 22mm; width: 100%; display: block; }
   .bro-cover-logo-tag {
     position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
@@ -461,9 +461,9 @@ function timelineItemParts(item) {
   const iconSVG = `<svg class="bro-tl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[iconName]}</svg>`;
 
   if (item.type === "description") {
-    return { titleHTML: text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "", noteHTML: "" };
+    return { titleHTML: text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "", noteHTML: "", hasNote: false };
   }
-  if (!text && !meta) return { titleHTML: "", noteHTML: "" };
+  if (!text && !meta) return { titleHTML: "", noteHTML: "", hasNote: false };
   const titleHTML = `<li class="${cls}"${note ? ' style="margin-bottom:0"' : ""}>${iconSVG}
     <div class="bro-tl-name">${esc(text)}${meta ? ` <span class="bro-meta">— ${esc(meta)}</span>` : ""}</div>
   </li>`;
@@ -546,7 +546,7 @@ export function brochureDayBlocks(day, index, image) {
   const firstItem = timelineItems[0];
   const restItems = timelineItems.slice(1);
   const firstParts = firstItem ? timelineItemParts(firstItem) : { titleHTML: "", noteHTML: "", hasNote: false };
-  blocks.push(`<div class="bro-day-body"><figure class="bro-day-photo">
+  blocks.push(`<div class="bro-day-body"${firstParts.hasNote ? ' data-keep-with-next="1"' : ""}><figure class="bro-day-photo">
       ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
       ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
     </figure>${firstParts.titleHTML ? `<ul class="bro-tl">${firstParts.titleHTML}</ul>` : ""}</div>`);
@@ -555,8 +555,8 @@ export function brochureDayBlocks(day, index, image) {
   }
 
   restItems.forEach(item => {
-    const { titleHTML, noteHTML } = timelineItemParts(item);
-    if (titleHTML) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${titleHTML}</ul></div>`);
+    const { titleHTML, noteHTML, hasNote } = timelineItemParts(item);
+    if (titleHTML) blocks.push(`<div class="bro-day-body"${hasNote ? ' data-keep-with-next="1"' : ""}><ul class="bro-tl">${titleHTML}</ul></div>`);
     if (noteHTML) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${noteHTML}</ul></div>`);
   });
 
@@ -810,11 +810,20 @@ export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT
   const budget = () => pageHeightPx
     - (pages.length < bandPageCount ? reservePerPagePx : 0)
     - (pages.length === 0 ? firstPageReservePx : 0);
-  (dayHTMLs || []).forEach((html, index) => {
+  // Recognises a block marked as introducing the one immediately after it
+  // (a photo+title or a bare title, both ahead of a note that follows as
+  // its own separate block) -- same detection shape as isHeadingHTML in
+  // letterhead.js, checking the outermost tag's own attribute.
+  const isKeepWithNextHTML = (b) => typeof b === "string" && /^\s*<[a-z][a-z0-9]*\s[^>]*data-keep-with-next="1"/i.test(b);
+  const list = dayHTMLs || [];
+  list.forEach((html, index) => {
     const h = measureFn(html, contentWidthPx, index);
+    const needed = isKeepWithNextHTML(html)
+      ? h + (list[index + 1] != null ? measureFn(list[index + 1], contentWidthPx, index + 1) : 0)
+      : h;
     // A block taller than a page still has to go somewhere: give it its own
     // page rather than dropping it or looping forever.
-    if (used + h > budget() && current.length > 0) { pages.push(current); current = []; used = 0; }
+    if (used + needed > budget() && current.length > 0) { pages.push(current); current = []; used = 0; }
     current.push(html);
     used += h;
   });
