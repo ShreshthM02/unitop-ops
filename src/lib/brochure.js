@@ -58,18 +58,20 @@ export const BROCHURE_THEME = {
   panel: "#F2EEE6",   // quiet fill for pills
 };
 
-// Cormorant Garamond for display and body, Work Sans for the smallest
-// micro-labels -- the "Garamond pair" from the original three candidates
-// offered (Fraunces+Karla, Cormorant Garamond+Work Sans, Lora+Inter),
-// applied to the brochure specifically this time rather than both
-// flavors. Cormorant Garamond is delicate and classical -- lighter
-// strokes, closer to a traditional heritage-travel document than Lora's
-// own warmer, more contemporary reading-serif character. Work Sans is a
-// quiet, functional sans for labels, distinct from Inter (which stays the
-// choice for Brief/Detailed's own plain documents, unchanged by this).
-const DISPLAY = `'Cormorant Garamond', Georgia, serif`;
-const BODY = `'Cormorant Garamond', Georgia, serif`;
-const LABEL = `'Work Sans', -apple-system, Arial, sans-serif`;
+// Libre Caslon Text for display and body, Public Sans for the smallest
+// micro-labels -- replacing Cormorant Garamond + Work Sans, which read as
+// too delicate/dainty at body size, per direct feedback that every pairing
+// tried so far felt stale. Libre Caslon Text carries real historical
+// weight without tipping into a decorative, invitation-card register --
+// sturdier strokes than Cormorant Garamond, built specifically for text
+// setting rather than display-only use. Public Sans is the U.S. federal
+// government's own typeface (designed for exactly this kind of clean,
+// confident, unfussy labelling work) -- distinct from both Work Sans
+// (the previous brochure choice) and Inter (Brief/Detailed's own plain
+// documents, unchanged by this).
+const DISPLAY = `'Libre Caslon Text', Georgia, serif`;
+const BODY = `'Libre Caslon Text', Georgia, serif`;
+const LABEL = `'Public Sans', -apple-system, Arial, sans-serif`;
 
 const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -91,7 +93,7 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      their own shared CSS text. Keeping the outer <link> tag too, for the
      real render -- redundant with this, but harmless; browsers dedupe an
      identical font request. */
-  @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap');
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -431,54 +433,50 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
 // ── Item rendering ───────────────────────────────────────────────────
 // Items may carry a `note`: one line explaining what the place is.
 // Everything degrades to just the name when it's absent.
-function timelineItemHTML(item) {
-  if (!item) return "";
+// Returns { titleHTML, noteHTML } instead of one combined string --
+// letting a pagination caller treat an item's title and its note as
+// separate, independently-flowable pieces. Confirmed as necessary by
+// rendering realistic reported content: a single oversized combined
+// block (a photo plus a long note) could exceed whatever space remained
+// on a page and defer everything after it, even when the title alone,
+// or the title plus a partial note, would genuinely have fit. Splitting
+// stays visually seamless -- the note fragment omits its own icon and
+// carries no margin-bottom of its own (the title fragment keeps it when
+// there is no note to follow; the note fragment carries it when there
+// is), so the two still read as one continuous item, not two separate
+// list entries.
+function timelineItemParts(item) {
+  if (!item) return { titleHTML: "", noteHTML: "" };
   const text = (item.text || "").trim();
-  // The brochure IS the Detailed document -- flavor is not a parameter
-  // here, it is always "detailed". Reading item.note directly (Brief's own
-  // field) instead of itemNoteForFlavor(item, "detailed") meant the
-  // brochure never showed a note written specifically for it: an operator
-  // could write a short Brief-facing line and a longer, richer
-  // Detailed-facing one exactly as the picker intends, and the brochure
-  // would silently print the short Brief one anyway, or nothing at all if
-  // Brief's note was left empty while Detailed's was carefully written.
-  // This defeated the entire reason the per-flavor split exists, for the
-  // one document that is most the point of having it.
   const note = itemNoteForFlavor(item, "detailed").trim();
-  // Route items carry distance/time; transport items carry depTime/arrTime
-  // instead -- two different item types' own fields, not one field the
-  // other happens to also use. The brochure's meta line only ever read
-  // distance/time, so a flight or train's departure and arrival times
-  // never appeared anywhere in the brochure at all, even though the exact
-  // same item correctly shows "(Dep 08:45 · Arr 10:55)" in the plain
-  // letterhead documents.
   const meta = item.type === "transport"
     ? [item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ")
     : [item.distance, item.time].filter(Boolean).join(" · ");
   const soft = item.type !== "sightseeing";
   const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;
 
-  // Same icon selection as the plain letterhead documents: pin for
-  // sightseeing, the transport item's own mode (not a generic transport
-  // glyph -- flight and train need to read as different at a glance),
-  // pencil for a remark. Route and stay never reach this function (routes
-  // are promoted to their own headline line above the day title; stay is
-  // deliberately left out of the client-facing brochure entirely -- see
-  // the note on that below), so this only ever needs to cover the types
-  // that actually arrive here.
   const iconName = item.type === "sightseeing" ? "pin"
     : item.type === "transport" ? (item.mode === "train" ? "train" : "plane")
     : "pencil";
   const iconSVG = `<svg class="bro-tl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[iconName]}</svg>`;
 
   if (item.type === "description") {
-    return text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "";
+    return { titleHTML: text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "", noteHTML: "" };
   }
-  if (!text && !meta) return "";
-  return `<li class="${cls}">${iconSVG}
+  if (!text && !meta) return { titleHTML: "", noteHTML: "" };
+  const titleHTML = `<li class="${cls}"${note ? ' style="margin-bottom:0"' : ""}>${iconSVG}
     <div class="bro-tl-name">${esc(text)}${meta ? ` <span class="bro-meta">— ${esc(meta)}</span>` : ""}</div>
-    ${note ? `<div class="bro-tl-note">${esc(note)}</div>` : ""}
   </li>`;
+  const noteHTML = note ? `<li class="${cls} bro-tl-item--continuation">
+    <div class="bro-tl-note">${esc(note)}</div>
+  </li>` : "";
+  return { titleHTML, noteHTML, hasNote: !!note };
+}
+
+function timelineItemHTML(item) {
+  const { titleHTML, noteHTML } = timelineItemParts(item);
+  // Thin wrapper for any caller still wanting one combined string.
+  return titleHTML + noteHTML;
 }
 
 // The overnight stay is lifted OUT of the timeline into the day's footer:
@@ -547,15 +545,19 @@ export function brochureDayBlocks(day, index, image) {
   // not just a pagination workaround.
   const firstItem = timelineItems[0];
   const restItems = timelineItems.slice(1);
-  const firstItemHTML = firstItem ? timelineItemHTML(firstItem) : "";
+  const firstParts = firstItem ? timelineItemParts(firstItem) : { titleHTML: "", noteHTML: "", hasNote: false };
   blocks.push(`<div class="bro-day-body"><figure class="bro-day-photo">
       ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
       ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
-    </figure>${firstItemHTML ? `<ul class="bro-tl">${firstItemHTML}</ul>` : ""}</div>`);
+    </figure>${firstParts.titleHTML ? `<ul class="bro-tl">${firstParts.titleHTML}</ul>` : ""}</div>`);
+  if (firstParts.noteHTML) {
+    blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${firstParts.noteHTML}</ul></div>`);
+  }
 
   restItems.forEach(item => {
-    const html = timelineItemHTML(item);
-    if (html) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${html}</ul></div>`);
+    const { titleHTML, noteHTML } = timelineItemParts(item);
+    if (titleHTML) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${titleHTML}</ul></div>`);
+    if (noteHTML) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${noteHTML}</ul></div>`);
   });
 
   if (meals || stay) {
@@ -964,7 +966,7 @@ export function buildBrochureDocument({
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }

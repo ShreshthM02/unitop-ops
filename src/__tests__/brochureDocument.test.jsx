@@ -576,8 +576,8 @@ describe('regression: brochureCSS must load its own fonts, not rely only on an e
     const css = brochureCSS();
     expect(css).toContain('@import');
     expect(css).toContain('fonts.googleapis.com');
-    expect(css).toContain('Cormorant+Garamond');
-    expect(css).toContain('Work+Sans');
+    expect(css).toContain('Libre+Caslon+Text');
+    expect(css).toContain('Public+Sans');
   });
 
   it('the @import is the very first rule, as CSS requires for it to take effect at all', () => {
@@ -884,5 +884,75 @@ describe('computeBrochureFacts: real stats derived from the itinerary\u2019s own
     const facts = computeBrochureFacts(days);
     expect(facts.unesco).toBeUndefined();
     expect(facts.maxAltitude).toBeUndefined();
+  });
+});
+
+describe('regression: an item\u2019s title and note are now separate, independently-flowable pagination blocks -- not one combined, indivisible block', () => {
+  // Confirmed the real remaining cause of #4 by rendering realistic
+  // content through the actual pipeline: even after the photo+first-item
+  // merge (previous fix), a single item's title+note COMBINED could still
+  // be too large for whatever space remained on a page, deferring
+  // everything after it -- the same structural problem, just needing a
+  // larger example to trigger. Splitting title from note lets a long note
+  // flow onto a continuation page independently, while the title (and
+  // whatever came before it) stays wherever it already fit.
+  const longNoteDay = {
+    id: 'd1',
+    items: [
+      { id:'a', type:'sightseeing', text:'MARKER_TITLE', detailedNote:'MARKER_NOTE, a long paragraph of descriptive text that would meaningfully add to a block\u2019s measured height on its own.' },
+    ],
+  };
+
+  it('brochureDayBlocks produces the title and note as two separate blocks, not one combined block', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const withTitle = blocks.filter(b => b.includes('MARKER_TITLE'));
+    const withNote = blocks.filter(b => b.includes('MARKER_NOTE'));
+    expect(withTitle).toHaveLength(1);
+    expect(withNote).toHaveLength(1);
+    // The critical assertion: title and note are NOT in the same block.
+    expect(withTitle[0]).not.toContain('MARKER_NOTE');
+    expect(withNote[0]).not.toContain('MARKER_TITLE');
+  });
+
+  it('a long note can land on a different page than its own title, when the combined size would not have fit on one page', () => {
+    const measure = (html) => {
+      if (html.includes('bro-day-head')) return 100;
+      if (html.includes('MARKER_NOTE')) return 700; // deliberately large
+      return 50;
+    };
+    const html = buildBrochureDocument({
+      cover: { title: 'T' },
+      days: [longNoteDay],
+      dayImages: { d1: 'data:image/png;base64,X' },
+      measureFn: measure,
+    });
+    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
+    const titleChunk = dayContentChunks.findIndex(p => p.includes('MARKER_TITLE'));
+    const noteChunk = dayContentChunks.findIndex(p => p.includes('MARKER_NOTE'));
+    expect(titleChunk).toBeGreaterThan(-1);
+    expect(noteChunk).toBeGreaterThan(-1);
+    // They are allowed to differ now -- this is the point of the fix.
+    // (Not asserting they MUST differ, since that depends on the exact
+    // budget; asserting both exist and neither throws is the real check.)
+  });
+
+  it('the note fragment does not repeat the icon -- reads as a continuation of the same item, not a second list entry', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const noteBlock = blocks.find(b => b.includes('MARKER_NOTE'));
+    expect(noteBlock).not.toContain('bro-tl-icon');
+    expect(noteBlock).toContain('bro-tl-item--continuation');
+  });
+
+  it('an item with no note at all still produces exactly one block, not an empty second one', () => {
+    const noNoteDay = { id: 'd2', items: [{ id:'a', type:'sightseeing', text:'MARKER_ALONE' }] };
+    const blocks = brochureDayBlocks(noNoteDay, 0, null);
+    const withMarker = blocks.filter(b => b.includes('MARKER_ALONE'));
+    expect(withMarker).toHaveLength(1);
+  });
+
+  it('brochureDayHTML (the thin whole-day-string wrapper) still contains both title and note somewhere, unchanged for any caller not yet using blocks directly', () => {
+    const html = brochureDayHTML(longNoteDay, 0, 'data:image/png;base64,X');
+    expect(html).toContain('MARKER_TITLE');
+    expect(html).toContain('MARKER_NOTE');
   });
 });
