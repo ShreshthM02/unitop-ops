@@ -149,11 +149,12 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
      guarantee. Confirmed by actually rendering it. If the logo image ever
      changes, recalculate this from its real pixel dimensions rather than
      assume the ratio still holds. */
-  .bro-cover-logo { margin-bottom: 11mm; width: 47.4mm; margin-left: auto; margin-right: auto; }
+  .bro-cover-logo { margin-bottom: 15mm; width: 47.4mm; margin-left: auto; margin-right: auto; position: relative; }
   .bro-cover-logo img { height: 22mm; width: 100%; display: block; }
   .bro-cover-logo-tag {
-    width: 100%; margin-top: 0.3mm; font-family: ${LABEL}; font-style: italic;
-    font-size: 5.5pt; letter-spacing: 0.15pt; color: ${BROCHURE_THEME.accent}; text-align: center;
+    position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    width: 110mm; margin-top: 0.3mm; font-family: ${LABEL}; font-style: italic;
+    font-size: 7pt; letter-spacing: 0.15pt; color: ${BROCHURE_THEME.accent}; text-align: center;
     line-height: 1.25; white-space: normal;
   }
   .bro-cover-title {
@@ -630,6 +631,74 @@ export function countDestinations(days, knownCountries = COUNTRY_WORDS) {
     });
   });
   return seen.size;
+}
+
+// Parses "100 km", "45km", "1,240 km" -> a plain number of km. Returns null
+// (not 0) for anything that doesn't look like a distance, so a genuinely
+// unset field stays unset rather than silently summing to 0.
+function parseKm(text) {
+  const m = String(text || "").match(/([\d,]+(?:\.\d+)?)\s*km/i);
+  return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+}
+
+// Parses "3 hrs", "3.5 hrs", "45 min", "1 hr 30 min" -> total minutes.
+// Same null-for-unset reasoning as parseKm.
+function parseMinutes(text) {
+  const s = String(text || "");
+  let total = 0, matched = false;
+  const hrMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)/i);
+  if (hrMatch) { total += parseFloat(hrMatch[1]) * 60; matched = true; }
+  const minMatch = s.match(/(\d+)\s*min/i);
+  if (minMatch) { total += parseInt(minMatch[1], 10); matched = true; }
+  return matched ? total : null;
+}
+
+// Derives as many glance-strip stats as genuinely possible from data the
+// itinerary already holds. unesco and maxAltitude are deliberately absent
+// -- no such data exists anywhere in this app (the gazetteer schema has no
+// elevation field, and there is no UNESCO-site reference list), so they
+// are left for an operator to fill in manually via Template Content
+// rather than guessed at or silently omitted without explanation.
+export function computeBrochureFacts(days) {
+  const list = days || [];
+  const facts = {};
+
+  if (list.length) {
+    facts.days = String(list.length);
+    facts.nights = String(Math.max(0, list.length - 1));
+  }
+
+  let kmTotal = 0, kmSeen = false;
+  let minTotal = 0, minSeen = false;
+  let flights = 0, trains = 0;
+  const hotelNames = new Set();
+
+  list.forEach(d => {
+    (d.items || []).forEach(it => {
+      if (it.type === "route") {
+        const km = it.distance != null ? parseKm(it.distance) : null;
+        if (km != null) { kmTotal += km; kmSeen = true; }
+        const mins = it.time != null ? parseMinutes(it.time) : null;
+        if (mins != null) { minTotal += mins; minSeen = true; }
+      } else if (it.type === "transport") {
+        if (it.mode === "train") trains += 1; else flights += 1;
+      } else if (it.type === "stay") {
+        const name = (it.text || "").trim();
+        if (name) hotelNames.add(name.toLowerCase());
+      }
+    });
+  });
+
+  if (kmSeen) facts.distance = `${Math.round(kmTotal).toLocaleString()} km`;
+  if (minSeen) {
+    const h = Math.floor(minTotal / 60), m = Math.round(minTotal % 60);
+    facts.driveTime = h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+  }
+  if (flights > 0) facts.flights = String(flights);
+  if (trains > 0) facts.trains = String(trains);
+  if (hotelNames.size > 0) facts.hotels = String(hotelNames.size);
+
+  return facts;
 }
 
 export const STAT_FIELDS = [

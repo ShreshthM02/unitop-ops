@@ -51,6 +51,15 @@ export const _supa = (() => {
     const builder = {
       select: (cols="*") => { _query = `?select=${cols}`; return builder; },
       eq: (col, val) => { _filters.push(`${col}=eq.${val}`); return builder; },
+      // Range filters -- added for the itinerary map's gazetteer bounding-box
+      // query (fetchGazetteerInBBox). Root cause of a real bug: that
+      // function called .gte()/.lte() assuming the real supabase-js
+      // client's interface, but this wrapper never implemented either,
+      // so the call threw in production and was silently swallowed by
+      // the caller's own try/catch, degrading to no passive towns at
+      // all. Same PostgREST operator syntax eq() already uses.
+      gte: (col, val) => { _filters.push(`${col}=gte.${val}`); return builder; },
+      lte: (col, val) => { _filters.push(`${col}=lte.${val}`); return builder; },
       // Added for gazetteer lookups (place name search). PostgREST treats a
       // bare `*` in an ilike value as the SQL `%` wildcard, so callers pass
       // patterns like `*varanasi*` or `varanasi*` directly.

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -484,6 +484,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => { const p = placesFor(d); return { title: p.length ? p[p.length - 1].name : d.title }; }))
         : "";
       const gatewayNote = gatewayNoteHTML(gateways);
+      const facts = { ...computeBrochureFacts(itinDays) };
+      const paxValue = query.paxDisplay || query.pax;
+      if (paxValue) facts.pax = String(paxValue);
       return buildBrochureDocument({
         cover: {
           title: tourTitle || query.groupName || "Itinerary",
@@ -493,7 +496,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         },
         days: itinDays,
         dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
-        mapHTML, sectorTableHTML, gatewayNote,
+        mapHTML, sectorTableHTML, gatewayNote, facts,
         routeMapImage,
         // The brochure is always Detailed's own document regardless of
         // which tab happens to be open when Export is clicked -- it must

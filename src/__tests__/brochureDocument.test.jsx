@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildBrochureDocument, brochureDayHTML, brochureDayBlocks, brochureCoverHTML,
   paginateBrochureDays, withBrochurePreviewStyles, BROCHURE_PREVIEW_CSS, brochureCSS,
-  brochureGlanceHTML,
+  brochureGlanceHTML, computeBrochureFacts,
 } from '../lib/brochure.js';
 import { ICON_PATHS } from '../lib/utils.js';
 import { LOGO_B64, LOGO_TRANSPARENT_B64 } from '../lib/images.js';
@@ -627,6 +627,20 @@ describe('regression: the splash screen and every other app UI use kept the orig
     const bytes = Buffer.from(LOGO_TRANSPARENT_B64.split(',')[1], 'base64');
     expect(bytes[25]).toBe(6);
   });
+
+  it('LOGO_TRANSPARENT_B64 was cropped to remove baked-in blank space below the visible content -- confirmed real cause of the tagline "looking far away" that no CSS margin alone could fix', () => {
+    // PNG IHDR: width and height are the first two 4-byte big-endian
+    // integers starting at byte 16, right after the 8-byte signature and
+    // the 4-byte chunk length + "IHDR" tag.
+    const bytes = Buffer.from(LOGO_TRANSPARENT_B64.split(',')[1], 'base64');
+    const width = bytes.readUInt32BE(16);
+    const height = bytes.readUInt32BE(20);
+    // The original, uncropped image was 418x194 -- confirmed by reading
+    // its own header the same way before this fix. A genuinely tighter
+    // crop must be smaller on both axes.
+    expect(width).toBeLessThan(418);
+    expect(height).toBeLessThan(194);
+  });
 });
 
 describe('regression: closing/remarks text must be left-aligned, not inherit centering from .bro-signoff', () => {
@@ -649,17 +663,33 @@ describe('regression: every brochure icon uses the accent colour now, not just s
   });
 });
 
-describe('regression: the tagline uses the sans-serif label font (matching the logo\u2019s own typeface) and sits as close to the logo as reasonably possible, in italic', () => {
-  it('is styled italic, reversing an earlier non-italic choice per direct instruction', () => {
+describe('regression: the tagline is no longer constrained to the logo\u2019s own width (explicit permission given), sized up for readability, centered independently, and the real gap-to-logo cause (baked-in blank space in the image itself) was fixed at the image level, not just CSS', () => {
+  it('is styled italic', () => {
     const css = brochureCSS();
     const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
     expect(rule).toMatch(/font-style:\s*italic/);
   });
 
-  it('sits closer to the logo than the earlier looser gap', () => {
+  it('font size increased for readability, no longer constrained to fit the logo\u2019s own narrow width', () => {
     const css = brochureCSS();
     const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
-    expect(rule).toMatch(/margin-top:\s*0\.3mm/);
+    expect(rule).toMatch(/font-size:\s*7pt/);
+    expect(rule).not.toMatch(/width:\s*100%/);
+  });
+
+  it('centered independently via absolute positioning, not tied to the logo container\u2019s own narrower box', () => {
+    const css = brochureCSS();
+    const rule = css.match(/\.bro-cover-logo-tag\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).toMatch(/position:\s*absolute/);
+    expect(rule).toMatch(/left:\s*50%/);
+    expect(rule).toMatch(/transform:\s*translateX\(-50%\)/);
+  });
+
+  it('the logo container reserves extra space below it, since the absolutely-positioned tagline no longer contributes to its own parent\u2019s height', () => {
+    const css = brochureCSS();
+    const rule = css.match(/\.bro-cover-logo\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).toMatch(/margin-bottom:\s*15mm/);
+    expect(rule).toMatch(/position:\s*relative/);
   });
 });
 
@@ -784,5 +814,75 @@ describe('regression: a day\u2019s photo is merged with its first item into one 
     const secondBlock = blocks.find(b => b.includes('MARKER_SECOND'));
     expect(secondBlock).toBeTruthy();
     expect(secondBlock).not.toBe(photoBlock);
+  });
+});
+
+describe('computeBrochureFacts: real stats derived from the itinerary\u2019s own data -- previously never computed or passed at all', () => {
+  // Confirmed real root cause: buildBrochureDocument was always called
+  // with no facts key whatsoever, so only "destinations" (the one
+  // self-contained auto-computation inside brochureGlanceHTML) ever
+  // populated the glance strip, regardless of how much distance/route
+  // data an operator had actually entered.
+  const days = [
+    { items: [
+      { type: 'route', text: 'Bodhgaya - Nalanda', distance: '100 km', time: '3 hrs' },
+    ] },
+    { items: [
+      { type: 'route', text: 'Nalanda - Rajgir', distance: '20 km', time: '30 min' },
+      { type: 'transport', text: '6E 2134', mode: 'flight' },
+      { type: 'stay', text: 'Hotel Rajgir' },
+    ] },
+    { items: [
+      { type: 'route', text: 'Rajgir - Varanasi', distance: '280 km', time: '6 hrs' },
+      { type: 'transport', text: '12345', mode: 'train' },
+      { type: 'stay', text: 'Hotel Rajgir' }, // same hotel repeated -- must not double-count
+    ] },
+  ];
+
+  it('computes days and nights from the actual day count', () => {
+    const facts = computeBrochureFacts(days);
+    expect(facts.days).toBe('3');
+    expect(facts.nights).toBe('2');
+  });
+
+  it('sums real distance across every route item, formatted with a thousands separator', () => {
+    const facts = computeBrochureFacts(days);
+    expect(facts.distance).toBe('400 km'); // 100 + 20 + 280
+  });
+
+  it('sums real drive time across every route item, converting to hours and minutes', () => {
+    const facts = computeBrochureFacts(days);
+    // 3hrs + 30min + 6hrs = 9h30m
+    expect(facts.driveTime).toBe('9h 30m');
+  });
+
+  it('counts flights and trains separately by transport mode', () => {
+    const facts = computeBrochureFacts(days);
+    expect(facts.flights).toBe('1');
+    expect(facts.trains).toBe('1');
+  });
+
+  it('counts distinct hotel names, not double-counting a repeated stay', () => {
+    const facts = computeBrochureFacts(days);
+    expect(facts.hotels).toBe('1'); // "Hotel Rajgir" appears twice, counts once
+  });
+
+  it('a field with no underlying data is genuinely absent, not zero -- an itinerary with no route distances shows no distance stat at all', () => {
+    const noDistanceDays = [{ items: [{ type: 'sightseeing', text: 'A Temple' }] }];
+    const facts = computeBrochureFacts(noDistanceDays);
+    expect(facts.distance).toBeUndefined();
+    expect(facts.driveTime).toBeUndefined();
+    expect(facts.flights).toBeUndefined();
+  });
+
+  it('handles a genuinely empty itinerary without throwing', () => {
+    expect(() => computeBrochureFacts([])).not.toThrow();
+    expect(() => computeBrochureFacts(undefined)).not.toThrow();
+  });
+
+  it('deliberately does NOT compute unesco or maxAltitude -- no such data exists anywhere in this app to derive them from', () => {
+    const facts = computeBrochureFacts(days);
+    expect(facts.unesco).toBeUndefined();
+    expect(facts.maxAltitude).toBeUndefined();
   });
 });
