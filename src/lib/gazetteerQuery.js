@@ -256,7 +256,44 @@ export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
   return viaCustomPlaces(db, raw, limit);
 }
 
-// Typeahead for the picker's search box.
+// Population-tiered importance ranking, matching the same 1-14 scale
+// rankThresholdForSpan already expects (Natural Earth's own scalerank
+// convention: lower number = more important, shown at wider zoom levels).
+// GeoNames rows carry no scalerank of their own, so this derives an
+// equivalent from population -- the same signal a real cartographic rank
+// would be built from in the first place.
+function populationToRank(pop) {
+  const p = pop || 0;
+  if (p > 1000000) return 1;
+  if (p > 500000) return 3;
+  if (p > 100000) return 5;
+  if (p > 50000) return 7;
+  if (p > 10000) return 9;
+  if (p > 1000) return 11;
+  return 13;
+}
+
+// Passive reference towns for the itinerary map's geographic backdrop --
+// restores real infrastructure that existed before (confirmed: real
+// land/border geodata with gazetteer-driven passive towns like Patna,
+// Lucknow, Gorakhpur drawn under the route, reviewed and liked), but was
+// only ever exercised in sample renders -- never actually queried from a
+// live gazetteer in the deployed app. buildRouteMapSVG already supports a
+// `gazetteer` param for exactly this; this is what populates it for real.
+export async function fetchGazetteerInBBox(db, bbox, { limit = 200 } = {}) {
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+  try {
+    const { data, error } = await db.from("gazetteer").select(COLUMNS)
+      .gte("lon", minLon).lte("lon", maxLon)
+      .gte("lat", minLat).lte("lat", maxLat)
+      .order("population", { ascending: false })
+      .limit(limit);
+    if (error || !data) return [];
+    return data.map(r => ({ ...mapRow(r), rank: populationToRank(r.population) }));
+  } catch (e) {
+    return [];
+  }
+}
 export async function searchGazetteerDb(db, term, { limit = 15, country = null } = {}) {
   const q = normalizePlaceName(term);
   if (q.length < 2) return [];

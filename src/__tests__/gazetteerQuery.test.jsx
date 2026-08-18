@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, listCustomPlaces, updateCustomPlace, deleteCustomPlace } from '../lib/gazetteerQuery.js';
+import { fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, listCustomPlaces, updateCustomPlace, deleteCustomPlace, fetchGazetteerInBBox } from '../lib/gazetteerQuery.js';
 
 // A fake db with working search_gazetteer() and search_gazetteer_alt_names()
 // RPCs -- the normal case once the SQL migration has been run. `fast` is
@@ -322,5 +322,68 @@ describe('custom_places admin CRUD: list, update, delete', () => {
     const db = fakeAdminDb({ deleteResult: { error: { message: 'permission denied' } } });
     const { error } = await deleteCustomPlace(db, 7);
     expect(error).toContain('permission denied');
+  });
+});
+
+function fakeDbForBBox(rows, { throwError = false } = {}) {
+  const calls = [];
+  return {
+    calls,
+    from: (table) => {
+      const rec = { table, filters: [] };
+      calls.push(rec);
+      const builder = {
+        select: (cols) => { rec.select = cols; return builder; },
+        gte: (col, val) => { rec.filters.push(['gte', col, val]); return builder; },
+        lte: (col, val) => { rec.filters.push(['lte', col, val]); return builder; },
+        order: (col, opts) => { rec.order = [col, opts]; return builder; },
+        limit: (n) => {
+          rec.limitN = n;
+          return throwError
+            ? { then: () => { throw new Error('network error'); } }
+            : { then: (res) => res({ data: rows, error: null }) };
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+describe('fetchGazetteerInBBox: passive reference towns for the itinerary map -- real infrastructure restored, not new', () => {
+  it('queries the gazetteer table with the bbox as gte/lte filters on lat and lon', async () => {
+    const db = fakeDbForBBox([]);
+    await fetchGazetteerInBBox(db, [83.0, 24.5, 86.0, 26.0]);
+    const rec = db.calls[0];
+    expect(rec.table).toBe('gazetteer');
+    expect(rec.filters).toEqual(expect.arrayContaining([
+      ['gte', 'lon', 83.0], ['lte', 'lon', 86.0],
+      ['gte', 'lat', 24.5], ['lte', 'lat', 26.0],
+    ]));
+  });
+
+  it('maps rows into the shape buildRouteMapSVG expects, with a derived rank from population', async () => {
+    const db = fakeDbForBBox([
+      { name: 'Patna', ascii_name: 'Patna', alt_names: [], lat: 25.6, lon: 85.1, country: 'India', admin1: 'Bihar', population: 1684000 },
+      { name: 'Gorakhpur', ascii_name: 'Gorakhpur', alt_names: [], lat: 26.76, lon: 83.37, country: 'India', admin1: 'Uttar Pradesh', population: 673000 },
+    ]);
+    const result = await fetchGazetteerInBBox(db, [80, 20, 90, 30]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ name: 'Patna', lat: 25.6, lon: 85.1, country: 'India', admin1: 'Bihar' });
+    // A million-plus city gets the most important (lowest number) rank.
+    expect(result[0].rank).toBe(1);
+    // A smaller but still substantial city ranks a bit lower in importance.
+    expect(result[1].rank).toBeGreaterThan(result[0].rank);
+  });
+
+  it('degrades to an empty array on a query failure -- the map still renders, just without passive towns', async () => {
+    const db = fakeDbForBBox([], { throwError: true });
+    const result = await fetchGazetteerInBBox(db, [80, 20, 90, 30]);
+    expect(result).toEqual([]);
+  });
+
+  it('a genuinely empty result also returns an empty array cleanly', async () => {
+    const db = fakeDbForBBox([]);
+    const result = await fetchGazetteerInBBox(db, [80, 20, 90, 30]);
+    expect(result).toEqual([]);
   });
 });

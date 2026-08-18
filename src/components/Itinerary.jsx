@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -468,7 +468,18 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       }
       const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
       const { ground, gateways } = partitionGateways(stops, sectors);
-      const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors }) : "";
+      let gazetteerContext = [];
+      if (ground.length) {
+        try {
+          const bbox = computeBBox(ground);
+          gazetteerContext = await fetchGazetteerInBBox(db, bbox);
+        } catch (e) {
+          // A failed gazetteer query degrades to no passive towns, not a
+          // broken export -- the map still works, just plainer, exactly
+          // like it did before this was wired up at all.
+        }
+      }
+      const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors, land: SOUTH_ASIA_LAND, gazetteer: gazetteerContext }) : "";
       const sectorTableHTML = stops.length
         ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => { const p = placesFor(d); return { title: p.length ? p[p.length - 1].name : d.title }; }))
         : "";
