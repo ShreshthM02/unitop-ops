@@ -37,6 +37,7 @@
 //      still renders cleanly.
 
 import { itemNoteForFlavor, ICON_PATHS } from "./utils.js";
+import { BROCHURE_FONT_FACES } from "./brochureFonts.js";
 
 export const BROCHURE_PAGE = { widthMm: 210, heightMm: 297 };
 export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 40) * (96 / 25.4));
@@ -79,21 +80,23 @@ const esc = (s) => String(s == null ? "" : s)
 const MEAL_LABEL = { B: "Breakfast", L: "Lunch", D: "Dinner" };
 
 export const brochureCSS = (theme = BROCHURE_THEME) => `
-  /* @import, not just the <link> tag in the final document's <head> --
-     that link is added separately, outside this returned string, and
-     createMeasurementContext only ever receives what this function
-     returns. Without the fonts loading INSIDE the measurement iframe too,
-     pagination measured every block using a browser-default fallback
-     font instead of the real Source Serif 4 / Playfair Display, and a
-     fallback font with different metrics produced systematically wrong
-     height estimates -- confirmed as the explanation for entire days
-     landing alone on mostly-blank pages regardless of how little content
-     they actually held. The plain letterhead documents never had this
-     problem because they load their fonts this same way already, inside
-     their own shared CSS text. Keeping the outer <link> tag too, for the
-     real render -- redundant with this, but harmless; browsers dedupe an
-     identical font request. */
-  @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap');
+  /* Self-hosted, not @import -- confirmed the more complete fix for the
+     bug the original comment here described (pagination measuring
+     against fallback-font metrics because createMeasurementContext only
+     ever receives what this function returns). An @import still requires
+     a real network fetch to complete before the font is actually
+     available, which is a genuine, if usually brief, timing gap between
+     "CSS parsed" and "font ready" -- an embedded font has no such gap at
+     all, since the font's own bytes are already part of the document.
+     This also removes the same dependency from the final printed
+     document itself: a brochure PDF no longer depends on
+     fonts.googleapis.com being reachable at the moment it's generated,
+     which was a real point of failure (a slow network, a corporate
+     firewall, Google Fonts itself being briefly unavailable) outside
+     this app's own control. Real font files (Public Sans, Libre Caslon
+     Text), same official SIL Open Font License Google Fonts itself uses
+     -- see brochureFonts.js for sourcing detail. */
+  ${BROCHURE_FONT_FACES}
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -1026,7 +1029,6 @@ export function buildBrochureDocument({
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${esc(cover.title || "Itinerary")}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>${fontFaceCSS}${brochureCSS(theme)}</style>
   </head><body>${brochureCoverHTML(cover)}${pagesHTML}</body></html>`;
 }

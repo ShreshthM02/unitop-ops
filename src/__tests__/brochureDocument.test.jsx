@@ -569,27 +569,35 @@ describe('remarksText folds into the last page above the closing line', () => {
   });
 });
 
-describe('regression: brochureCSS must load its own fonts, not rely only on an external <link> tag', () => {
-  it('includes an @import for the same fonts the document uses', () => {
+describe('regression: brochureCSS must load its own fonts, not rely only on an external <link> tag -- now self-hosted, a stronger fix than the @import it replaces', () => {
+  it('includes real @font-face rules with actual embedded font data for the fonts the document uses, not a network reference to them', () => {
     // Confirmed real cause of entire days landing alone on mostly-blank
     // pages: createMeasurementContext only ever receives what brochureCSS()
     // returns -- a <link> tag added separately in the final document's
     // <head> never reaches the measurement iframe, so pagination measured
     // every block with a browser-default fallback font instead of the
-    // real Source Serif 4 / Playfair Display, and a fallback font with
-    // different metrics produced systematically wrong height estimates.
-    // The plain letterhead documents never had this problem because they
-    // already load fonts this same way, inside their own shared CSS text.
+    // real fonts, and a fallback font with different metrics produced
+    // systematically wrong height estimates. An @import fixed that gap,
+    // but still required a real network fetch to complete before the
+    // font was actually available -- self-hosting removes that dependency
+    // entirely, for both the measurement pass and the final printed
+    // document, which no longer needs fonts.googleapis.com reachable at
+    // all to generate correctly.
     const css = brochureCSS();
-    expect(css).toContain('@import');
-    expect(css).toContain('fonts.googleapis.com');
-    expect(css).toContain('Libre+Caslon+Text');
-    expect(css).toContain('Public+Sans');
+    expect(css).not.toMatch(/@import\s+url\(/);
+    expect(css).not.toMatch(/url\([^)]*fonts\.googleapis\.com/);
+    expect(css).toContain('@font-face');
+    expect(css).toContain("font-family: 'Libre Caslon Text'");
+    expect(css).toContain("font-family: 'Public Sans'");
+    // Real embedded font data, not a placeholder -- base64 woff2 payloads
+    // are large; a genuine one is unmistakably longer than any plausible
+    // accidental/placeholder string.
+    expect(css).toMatch(/data:font\/woff2;base64,[A-Za-z0-9+/]{1000,}/);
   });
 
-  it('the @import is the very first rule, as CSS requires for it to take effect at all', () => {
+  it('the font-face rules are present before any other rule relying on them, same requirement an @import used to satisfy', () => {
     const css = brochureCSS().trim();
-    expect(css.indexOf('@import')).toBeLessThan(css.indexOf('@page'));
+    expect(css.indexOf('@font-face')).toBeLessThan(css.indexOf('@page'));
   });
 });
 
