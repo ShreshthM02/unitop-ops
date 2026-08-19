@@ -445,8 +445,38 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
 // there is no note to follow; the note fragment carries it when there
 // is), so the two still read as one continuous item, not two separate
 // list entries.
+function splitNoteIntoChunks(note) {
+  if (!note) return [];
+  const rawSentences = note.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || [note];
+
+  // Defensive secondary split: a single "sentence" with no internal
+  // period (e.g. a long comma-separated list of clauses, or a note with
+  // no terminal punctuation at all) would otherwise stay as one large,
+  // indivisible chunk with nothing further to split on. Only activates
+  // above a length where a sentence could plausibly not fit in the
+  // remaining space on a page -- an ordinary sentence is left untouched.
+  const sentences = rawSentences.flatMap(s => {
+    if (s.length <= 220) return [s];
+    const clauses = s.match(/[^,]+,(?:\s+|$)|[^,]+$/g);
+    return clauses && clauses.length > 1 ? clauses : [s];
+  });
+
+  if (sentences.length <= 1) return [note];
+
+  // Grouped a couple of sentences per chunk, not one sentence per chunk --
+  // avoids turning a long note into an excessive number of tiny
+  // pagination blocks, while still being small enough that keep-with-next
+  // (title + first chunk only) stays cheap.
+  const chunks = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    const chunk = sentences.slice(i, i + 2).join("").trim();
+    if (chunk) chunks.push(chunk);
+  }
+  return chunks.length ? chunks : [note];
+}
+
 function timelineItemParts(item) {
-  if (!item) return { titleHTML: "", noteHTML: "" };
+  if (!item) return { titleHTML: "", noteChunksHTML: [] };
   const text = (item.text || "").trim();
   const note = itemNoteForFlavor(item, "detailed").trim();
   const meta = item.type === "transport"
@@ -461,22 +491,34 @@ function timelineItemParts(item) {
   const iconSVG = `<svg class="bro-tl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[iconName]}</svg>`;
 
   if (item.type === "description") {
-    return { titleHTML: text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "", noteHTML: "", hasNote: false };
+    return { titleHTML: text ? `<li class="${cls}">${iconSVG}<p class="bro-tl-prose">${esc(text).replace(/\n/g, "<br/>")}</p></li>` : "", noteChunksHTML: [], hasNote: false };
   }
-  if (!text && !meta) return { titleHTML: "", noteHTML: "", hasNote: false };
+  if (!text && !meta) return { titleHTML: "", noteChunksHTML: [], hasNote: false };
   const titleHTML = `<li class="${cls}"${note ? ' style="margin-bottom:0"' : ""}>${iconSVG}
     <div class="bro-tl-name">${esc(text)}${meta ? ` <span class="bro-meta">— ${esc(meta)}</span>` : ""}</div>
   </li>`;
-  const noteHTML = note ? `<li class="${cls} bro-tl-item--continuation">
-    <div class="bro-tl-note">${esc(note)}</div>
-  </li>` : "";
-  return { titleHTML, noteHTML, hasNote: !!note };
+  const chunks = splitNoteIntoChunks(note);
+  const noteChunksHTML = chunks.map((chunk, i) => {
+    const isFirst = i === 0;
+    const isLast = i === chunks.length - 1;
+    // First chunk carries the gap after the title (matching .bro-tl-note's
+    // own default margin-top); later chunks have none, so consecutive
+    // chunks of the same note read as one continuous paragraph, not
+    // several. Only the LAST chunk carries the item's own closing
+    // margin-bottom, for the same reason -- earlier chunks must not leave
+    // a visible gap before the next chunk of their own note.
+    const style = `margin-top:${isFirst ? "1.2mm" : "0"}`;
+    return `<li class="${cls} bro-tl-item--continuation"${isLast ? "" : ' style="margin-bottom:0"'}>
+    <div class="bro-tl-note" style="${style}">${esc(chunk)}</div>
+  </li>`;
+  });
+  return { titleHTML, noteChunksHTML, hasNote: chunks.length > 0 };
 }
 
 function timelineItemHTML(item) {
-  const { titleHTML, noteHTML } = timelineItemParts(item);
+  const { titleHTML, noteChunksHTML } = timelineItemParts(item);
   // Thin wrapper for any caller still wanting one combined string.
-  return titleHTML + noteHTML;
+  return titleHTML + noteChunksHTML.join("");
 }
 
 // The overnight stay is lifted OUT of the timeline into the day's footer:
@@ -545,19 +587,21 @@ export function brochureDayBlocks(day, index, image) {
   // not just a pagination workaround.
   const firstItem = timelineItems[0];
   const restItems = timelineItems.slice(1);
-  const firstParts = firstItem ? timelineItemParts(firstItem) : { titleHTML: "", noteHTML: "", hasNote: false };
+  const firstParts = firstItem ? timelineItemParts(firstItem) : { titleHTML: "", noteChunksHTML: [], hasNote: false };
   blocks.push(`<div class="bro-day-body"${firstParts.hasNote ? ' data-keep-with-next="1"' : ""}><figure class="bro-day-photo">
       ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
       ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
     </figure>${firstParts.titleHTML ? `<ul class="bro-tl">${firstParts.titleHTML}</ul>` : ""}</div>`);
-  if (firstParts.noteHTML) {
-    blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${firstParts.noteHTML}</ul></div>`);
-  }
+  firstParts.noteChunksHTML.forEach(chunkHTML => {
+    blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${chunkHTML}</ul></div>`);
+  });
 
   restItems.forEach(item => {
-    const { titleHTML, noteHTML, hasNote } = timelineItemParts(item);
+    const { titleHTML, noteChunksHTML, hasNote } = timelineItemParts(item);
     if (titleHTML) blocks.push(`<div class="bro-day-body"${hasNote ? ' data-keep-with-next="1"' : ""}><ul class="bro-tl">${titleHTML}</ul></div>`);
-    if (noteHTML) blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${noteHTML}</ul></div>`);
+    noteChunksHTML.forEach(chunkHTML => {
+      blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${chunkHTML}</ul></div>`);
+    });
   });
 
   if (meals || stay) {
@@ -803,11 +847,18 @@ export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT
   const pages = [];
   let current = [];
   let used = 0;
+  // A small safety margin against the page's own overflow:hidden -- any
+  // measurement discrepancy (even a small one; measurement is never
+  // perfectly exact) previously had zero buffer before silently clipping
+  // content instead of gracefully deferring it to the next page. ~1.5% of
+  // a page's own height absorbs that without meaningfully reducing how
+  // much content actually fits per page.
+  const SAFETY_MARGIN_PX = Math.round(pageHeightPx * 0.015);
   // Reserve band space only on pages that will actually carry one. Bands are
   // assigned in order and run out when the photographs do, so reserving on
   // every page starved the tail -- which showed up as a final page holding
   // one short day and reading as padding.
-  const budget = () => pageHeightPx
+  const budget = () => pageHeightPx - SAFETY_MARGIN_PX
     - (pages.length < bandPageCount ? reservePerPagePx : 0)
     - (pages.length === 0 ? firstPageReservePx : 0);
   // Recognises a block marked as introducing the one immediately after it

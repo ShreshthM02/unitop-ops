@@ -599,19 +599,30 @@ export function buildSectorTableHTML(sectors, theme = MAP_THEME, days = null) {
   const list = sectors || [];
   if (!list.length && !(days && days.length)) return "";
 
-  // Group legs by day. Days with no leg still get a row, labelled with
-  // whatever the day is actually about.
+  // Rows are built from each day's own ROUTE ITEMS directly -- not from
+  // sectors (which come from geocoded, resolved places) -- confirmed as
+  // the right fix after a real, reported mismatch: a day's route items
+  // can describe movement through places (e.g. an intermediate stop)
+  // that were never individually resolved via the picker, so the
+  // geocoded sequence and the day-by-day narrative could show a
+  // different sequence, different distances, or a different day number
+  // entirely. Matches the file's own existing design principle -- "the
+  // map gives geography, the table gives sequence" -- taken to its
+  // actual conclusion: the table's sequence never needed geography at
+  // all, only the map does. A route item's own text/distance/time are
+  // used exactly as typed, so this table can never again disagree with
+  // what the day-by-day pages themselves show for the same day.
   const rows = [];
   if (days && days.length) {
     days.forEach((d, idx) => {
       const dayNo = idx + 1;
-      const legs = list.filter(sec => sec.day === dayNo);
-      if (legs.length) {
-        legs.forEach((leg, k) => rows.push({
+      const routeItems = (d.items || []).filter(it => it.type === "route" && ((it.text || "").trim() || it.distance || it.time));
+      if (routeItems.length) {
+        routeItems.forEach((r, k) => rows.push({
           label: k === 0 ? String(dayNo).padStart(2, "0") : "",
-          text: `${leg.from} – ${leg.to}`,
-          meta: [leg.distance, leg.time].filter(Boolean).join(" · "),
-          last: k === legs.length - 1,
+          text: (r.text || "").trim() || "—",
+          meta: [r.distance, r.time].filter(Boolean).join(" · "),
+          last: k === routeItems.length - 1,
         }));
       } else {
         rows.push({

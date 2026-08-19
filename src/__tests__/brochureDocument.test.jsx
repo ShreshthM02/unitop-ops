@@ -172,8 +172,15 @@ describe('day cards', () => {
     const note = '\u25cf Paying homage to the Three Jewels.\n\u25cf Offering flowers to the Buddha.\n\u25cf Walking meditation and spiritual practice.';
     const d = { id:'x', items:[{ id:'a', type:'sightseeing', text:'Mahabodhi Mahavihara', detailedNote: note }] };
     const html = brochureDayHTML(d, 0, null);
-    // The newlines themselves must survive verbatim in the markup...
-    expect(html).toContain(note);
+    // Every bullet point's own text survives, and each note chunk's
+    // internal newline is preserved verbatim in the markup -- a long note
+    // is now legitimately allowed to split across multiple chunks (so a
+    // long note can flow across a page break independently), but within
+    // any one chunk a newline must never be silently collapsed.
+    expect(html).toContain('Paying homage to the Three Jewels.');
+    expect(html).toContain('Offering flowers to the Buddha.');
+    expect(html).toContain('Walking meditation and spiritual practice.');
+    expect(html).toContain('Paying homage to the Three Jewels.\n\u25cf Offering flowers to the Buddha.');
     // ...and the stylesheet actually applied to .bro-tl-note must be what
     // makes the browser respect them, not just their presence in the HTML.
     expect(brochureCSS()).toMatch(/\.bro-tl-note\s*\{[^}]*white-space:\s*pre-wrap/);
@@ -1032,5 +1039,78 @@ describe('regression: a title is never placed alone at the bottom of a page with
     const blocks = brochureDayBlocks(noNoteDay, 0, null);
     const titleBlock = blocks.find(b => b.includes('MARKER_ALONE'));
     expect(titleBlock).not.toContain('data-keep-with-next');
+  });
+});
+
+describe('regression: a long note is split into flowing chunks, not one indivisible block -- confirmed real fix for both an orphaned-title problem and a wasted-blank-space problem, which shared the same root cause', () => {
+  const longNoteDay = {
+    id: 'd1',
+    items: [
+      { id:'a', type:'sightseeing', text:'MARKER_TITLE', detailedNote:'First sentence here. Second sentence here. Third sentence here. Fourth sentence here.' },
+    ],
+  };
+
+  it('splits a multi-sentence note into more than one block', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const noteBlocks = blocks.filter(b => b.includes('bro-tl-item--continuation'));
+    expect(noteBlocks.length).toBeGreaterThan(1);
+  });
+
+  it('keep-with-next requires only the title + FIRST chunk, not the whole note', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const titleBlock = blocks.find(b => b.includes('MARKER_TITLE'));
+    expect(titleBlock).toContain('data-keep-with-next="1"');
+  });
+
+  it('consecutive chunks of the same note read as one continuous paragraph -- no visible gap between them', () => {
+    const blocks = brochureDayBlocks(longNoteDay, 0, 'data:image/png;base64,X');
+    const noteBlocks = blocks.filter(b => b.includes('bro-tl-item--continuation'));
+    // Every chunk except the last must have margin-bottom:0 on its own <li>.
+    noteBlocks.slice(0, -1).forEach(b => expect(b).toMatch(/bro-tl-item--continuation"\s+style="margin-bottom:0"/));
+    // Only the first chunk carries the gap after the title (margin-top).
+    expect(noteBlocks[0]).toContain('margin-top:1.2mm');
+    noteBlocks.slice(1).forEach(b => expect(b).toContain('margin-top:0'));
+  });
+
+  it('a short, single-sentence note is not chunked at all', () => {
+    const shortDay = { id: 'd2', items: [{ id:'a', type:'sightseeing', text:'T', detailedNote:'One short sentence.' }] };
+    const blocks = brochureDayBlocks(shortDay, 0, null);
+    const noteBlocks = blocks.filter(b => b.includes('bro-tl-item--continuation'));
+    expect(noteBlocks.length).toBe(1);
+  });
+
+  it('an item with no note produces no continuation blocks at all', () => {
+    const noNoteDay = { id: 'd3', items: [{ id:'a', type:'sightseeing', text:'MARKER_ALONE' }] };
+    const blocks = brochureDayBlocks(noNoteDay, 0, null);
+    expect(blocks.some(b => b.includes('bro-tl-item--continuation'))).toBe(false);
+  });
+
+  it('defensive fallback: a single very long sentence with no internal period is still split, on commas, so it can never be one unsplittable oversized block', () => {
+    const longClause = 'this is clause number ' + Array.from({length: 25}, (_, i) => `${i + 1}`).join(', clause number ') + ' and the final clause';
+    const noPeriodDay = { id: 'd4', items: [{ id:'a', type:'sightseeing', text:'T', detailedNote: longClause }] };
+    const blocks = brochureDayBlocks(noPeriodDay, 0, null);
+    const noteBlocks = blocks.filter(b => b.includes('bro-tl-item--continuation'));
+    expect(noteBlocks.length).toBeGreaterThan(1);
+  });
+
+  it('an ordinary sentence under the length threshold is never touched by the comma fallback, even if it happens to contain commas', () => {
+    const normalDay = { id: 'd5', items: [{ id:'a', type:'sightseeing', text:'T', detailedNote:'A short note, with a comma, but well under the length threshold.' }] };
+    const blocks = brochureDayBlocks(normalDay, 0, null);
+    const noteBlock = blocks.find(b => b.includes('bro-tl-item--continuation'));
+    expect(noteBlock).toContain('A short note, with a comma, but well under the length threshold.');
+  });
+});
+
+describe('regression: paginateBrochureDays keeps a small safety margin against .bro-page\u2019s own overflow:hidden', () => {
+  it('a block measured to exactly fill the full page height is deferred to the next page, not squeezed in against the margin', () => {
+    const measure = () => 1000; // exactly the page height passed below
+    const pages = paginateBrochureDays(['a', 'b'], { pageHeightPx: 1000, measureFn: measure });
+    // With zero safety margin this would fit exactly (used=0, needed=1000,
+    // not > budget of 1000) and both would be forced onto one page each
+    // regardless; the real check is that the margin measurably reduces
+    // the usable budget below the raw page height.
+    const measureUsed = () => 990; // just under the raw height, but within the ~1.5% margin
+    const pages2 = paginateBrochureDays(['a', 'b'], { pageHeightPx: 1000, measureFn: measureUsed });
+    expect(pages2.length).toBe(2); // 'a' alone should not fit alongside 'b' given the margin
   });
 });

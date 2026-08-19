@@ -344,7 +344,7 @@ describe('buildMapDataFromResolvedDays: the itinerary\u2019s own places become m
     const svg = buildRouteMapSVG({ stops, sectors });
     expect(svg).toContain('Bodhgaya');
     expect(svg).toContain('Varanasi');
-    const table = buildSectorTableHTML(sectors, undefined, days.map(d => ({ title: d.place && d.place.name })));
+    const table = buildSectorTableHTML(sectors, undefined, days);
     expect(table).toContain('255 km');
   });
 });
@@ -614,5 +614,66 @@ describe('regression: passive reference towns never overlap -- confirmed real bu
     ];
     const svg = buildRouteMapSVG({ stops: nearbyStops, sectors: [], gazetteer: stopNamedGazetteer, maxReference: 45 });
     expect(svg).not.toContain('SomeNearbyPlace');
+  });
+});
+
+describe('regression: the glance table\u2019s day-by-day rows come from each day\u2019s own route items directly, never from geocoded/resolved places -- confirmed real fix after a reported mismatch between the table and the actual day-by-day pages', () => {
+  it('reproduces and fixes the exact reported case: a day\u2019s route text describes movement through an intermediate place never individually resolved', () => {
+    // Confirmed real reported shape: Day 2's route items describe
+    // Bodhgaya -> Nalanda -> Rajgir, but only ONE place (Bodhgaya) was
+    // ever resolved via the picker for that day -- the geocoded sectors
+    // therefore showed a completely different sequence/day numbering
+    // than the day-by-day pages themselves.
+    const days = [
+      { title: 'Arrival', items: [], place: { name: 'Bodh Gaya', lat: 24.696, lon: 84.991 } },
+      { items: [
+          { type: 'route', text: 'Bodhgaya - Nalanda', distance: '100 km', time: '3 hrs' },
+          { type: 'route', text: 'Nalanda - Rajgir', distance: '20 km', time: '30 min' },
+        ], place: { name: 'Bodh Gaya', lat: 24.696, lon: 84.991 } },
+    ];
+    const { sectors } = buildMapDataFromResolvedDays(days);
+    const table = buildSectorTableHTML(sectors, undefined, days);
+    // The real, direct proof: both of Day 2's own route items appear,
+    // under Day 2's own label -- exactly matching the day-by-day pages,
+    // regardless of what the geocoded sectors (built from resolved
+    // places alone) would have shown.
+    expect(table).toContain('Bodhgaya - Nalanda');
+    expect(table).toContain('100 km');
+    expect(table).toContain('Nalanda - Rajgir');
+    expect(table).toContain('20 km');
+    expect(table).toMatch(/>02</); // Day 2's own label
+  });
+
+  it('a day\u2019s route text is used exactly as typed -- not reformatted or re-derived', () => {
+    const days = [{ items: [{ type: 'route', text: 'Custom phrasing, not A - B format', distance: '5 km' }] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('Custom phrasing, not A - B format');
+  });
+
+  it('a day with no route items falls back to its own title only -- no dependency on a resolved place\u2019s name', () => {
+    const days = [{ title: 'Arrival at Bodhgaya', items: [] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('Arrival at Bodhgaya');
+  });
+
+  it('a day with neither route items nor a title falls back to "At leisure"', () => {
+    const days = [{ items: [] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('At leisure');
+  });
+
+  it('multiple route items on the same day all appear, only the first carries the day label', () => {
+    const days = [{ items: [
+      { type: 'route', text: 'Leg One', distance: '10 km' },
+      { type: 'route', text: 'Leg Two', distance: '20 km' },
+      { type: 'route', text: 'Leg Three', distance: '30 km' },
+    ] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('Leg One');
+    expect(table).toContain('Leg Two');
+    expect(table).toContain('Leg Three');
+    // Exactly one "01" label -- the other two legs share the same day
+    // number visually but do not repeat the label.
+    expect((table.match(/>01</g) || []).length).toBe(1);
   });
 });

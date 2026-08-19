@@ -481,7 +481,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       }
       const mapHTML = ground.length ? buildRouteMapSVG({ stops: ground, sectors, land: SOUTH_ASIA_LAND, borders: INDIA_STATE_BORDERS, regions: INDIA_STATE_LABELS, gazetteer: gazetteerContext }) : "";
       const sectorTableHTML = stops.length
-        ? buildSectorTableHTML(sectors, undefined, itinDays.map(d => { const p = placesFor(d); return { title: p.length ? p[p.length - 1].name : d.title }; }))
+        ? buildSectorTableHTML(sectors, undefined, itinDays)
         : "";
       const gatewayNote = gatewayNoteHTML(gateways);
       const facts = { ...computeBrochureFacts(itinDays) };
