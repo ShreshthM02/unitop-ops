@@ -131,6 +131,22 @@ describe('Itinerary offers distinct Brief and Detailed exports, not the generic 
     expect(screen.getByText('📄 Detailed Word')).toBeTruthy();
     expect(screen.getByText('🖨 Print')).toBeTruthy();
   });
+
+  it('clicking Detailed Word completes without throwing -- confirms the new "Journey at a Glance" section (reusing the brochure\u2019s own stats/route-table data) is wired correctly, not just that the menu item exists', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: makeDb(), realtimeClient: null }));
+    vi.resetModules();
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    render(<Itinerary query={fakeQuery} onClose={()=>{}} currentUser={{id:'x',name:'T'}}/>);
+    const toggle = await screen.findByText('\u2b07 Export \u25be');
+    fireEvent.click(toggle);
+    const detailedWord = await screen.findByText('📄 Detailed Word');
+    // The real risk this guards against: a reference error or similar
+    // thrown synchronously or in the resulting rejected promise, not
+    // asserting on the exact generated docx content (no existing test
+    // infrastructure captures that for this export path).
+    expect(() => fireEvent.click(detailedWord)).not.toThrow();
+    await new Promise(r => setTimeout(r, 50));
+  });
 });
 
 describe('buildPrintHTML(asBlocks) returns content instead of built HTML', () => {

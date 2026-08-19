@@ -315,22 +315,25 @@ describe('regression: Brief and Detailed must be visually distinguishable even w
   // This was never a flavor-selection bug; the correct flavor's content
   // was always being built. There was simply nothing on the page to show
   // it.
-  it('a brand new itinerary (no notes, no remarks, no closing text touched) still shows a different heading per flavor', async () => {
+  it('a brand new itinerary (no notes, no remarks, no closing text touched) still shows a different document per flavor', async () => {
     // Brief's heading default changed from the hardcoded "BRIEF ITINERARY"
-    // to the plain, now-editable "ITINERARY" -- still a different string
-    // from Detailed's own "DETAILED ITINERARY", so the two stay
-    // distinguishable exactly as this test was built to confirm.
+    // to the plain, now-editable "ITINERARY". Detailed's preview now
+    // shows the brochure (a genuinely different document -- photos, a
+    // generated map, its own cover layout -- not a plain letterhead
+    // document with a "DETAILED ITINERARY" heading), confirmed by direct
+    // instruction: the brochure is what "Detailed" actually means, and
+    // Export's own "Detailed PDF" already correctly produces it.
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
       expect(doc).toContain('ITINERARY');
-      expect(doc).not.toContain('DETAILED ITINERARY');
+      expect(doc).not.toContain('bro-cover');
     });
     fireEvent.click(screen.getByText('Detailed'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('DETAILED ITINERARY');
+      expect(doc).toContain('bro-cover');
     });
   });
 });
@@ -347,13 +350,13 @@ describe('itinerary font pairing: scoped to Brief/Detailed only, not the shared 
     });
   });
 
-  it('the Detailed plain document gets the same scoped override', async () => {
+  it('Detailed\u2019s preview (the brochure) uses the brochure\u2019s own fonts, distinct from Brief\u2019s Lora', async () => {
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('Lora');
+      expect(doc).toContain('Libre Caslon Text');
     });
   });
 });
@@ -426,13 +429,13 @@ describe('regression: Brief\u2019s document heading is now editable via Template
     });
   });
 
-  it('Detailed\u2019s own heading is unaffected by Brief\u2019s docHeading override', async () => {
+  it('Detailed\u2019s preview (the brochure) is unaffected by Brief\u2019s docHeading override', async () => {
     const { container } = render(<Itinerary query={fakeQuery} briefTemplate={{ docHeading: 'YOUR JOURNEY' }} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('DETAILED ITINERARY');
+      expect(doc).toContain('bro-cover');
       expect(doc).not.toContain('YOUR JOURNEY');
     });
   });
@@ -494,13 +497,13 @@ describe('regression: Brief\u2019s meal pills shift left; Detailed keeps them ri
     });
   });
 
-  it('Detailed keeps right-aligned meal pills, unchanged', async () => {
+  it('Detailed’s preview (the brochure) shows its own meal pill structure', async () => {
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
       const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toMatch(/text-align:right">[^<]*<span[^>]*>Dinner/);
+      expect(doc).toContain('bro-pill');
     });
   });
 });

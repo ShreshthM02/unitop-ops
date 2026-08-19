@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -429,12 +429,28 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // Uses the same paginated/asBlocks builder as Brief now, which is what
   // makes a Detailed Word export possible -- the old buildLetterheadDocument
   // path never produced bodyBlocks, only finished HTML.
+  const buildDetailedGlanceBlock = () => {
+    const facts = { ...computeBrochureFacts(itinDays) };
+    const paxValue = query.paxDisplay || query.pax;
+    if (paxValue) facts.pax = String(paxValue);
+    const statLines = STAT_FIELDS
+      .filter(f => facts[f.key])
+      .map(f => `<div style="display:inline-block;margin:0 18pt 4pt 0"><strong style="color:#1A3A52">${f.label}:</strong> ${facts[f.key]}</div>`)
+      .join("");
+    const routeTable = buildSectorTableHTML([], undefined, itinDays);
+    if (!statLines && !routeTable) return [];
+    return [
+      `<div data-page-heading="1" style="text-align:center;font-size:12pt;font-weight:700;letter-spacing:1pt;color:#1A3A52;margin:16pt 0 10pt">JOURNEY AT A GLANCE</div>`,
+      ...(statLines ? [`<div style="margin-bottom:10pt">${statLines}</div>`] : []),
+      ...(routeTable ? [routeTable] : []),
+    ];
+  };
   const buildDetailedPrintHTML = (asBlocks) => {
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
       title: `${tourTitle} — Itinerary`,
-      bodyBlocks: [titleBlockFor("detailed"), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
+      bodyBlocks: [titleBlockFor("detailed"), ...buildDetailedGlanceBlock(), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
       extraHeadCSS: ITINERARY_FONT_CSS,
     };
@@ -530,7 +546,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     // left on screen permanently with no error shown at all.
     setPreviewHTML("");
     setPreviewError(null);
-    const build = docFlavor === "brief" ? buildBriefPrintHTML() : buildDetailedPrintHTML();
+    const build = docFlavor === "brief" ? buildBriefPrintHTML() : buildBrochureHTML();
     build.then(html => { if (!cancelled) setPreviewHTML(html); })
       .catch(e => { if (!cancelled) setPreviewError(e.message || String(e)); });
     return () => { cancelled = true; };
