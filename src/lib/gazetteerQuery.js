@@ -92,10 +92,10 @@ async function viaRpc(db, term) {
   return [];
 }
 
-const CUSTOM_COLUMNS = "name,lat,lon,country,admin1";
+const CUSTOM_COLUMNS = "id,name,lat,lon,country,admin1";
 
 function mapCustomRow(r) {
-  return { name: r.name, lat: r.lat, lon: r.lon, country: r.country, admin1: r.admin1, population: 0, alt: [], source: "custom" };
+  return { id: r.id, name: r.name, lat: r.lat, lon: r.lon, country: r.country, admin1: r.admin1, population: 0, alt: [], source: "custom" };
 }
 
 // RUN ONCE, alongside the search_gazetteer migration above:
@@ -239,21 +239,23 @@ async function viaNameFilter(db, query, { limit = 60 } = {}) {
 export async function fetchPlaceCandidates(db, query, { limit = 60 } = {}) {
   const raw = normalizePlaceName(query);
   if (!raw) return [];
+  const customPromise = viaCustomPlaces(db, raw, limit).catch(() => []);
+  let gazetteerResult = [];
   try {
     const rpcResult = await viaRpc(db, raw);
     // rpcResult is null only when the RPC itself is unavailable (not yet
     // migrated); an empty array means it ran fine and genuinely found
-    // nothing, in which case re-running the same search client-side would
-    // be pure waste -- go straight to the one place left to check.
+    // nothing.
     if (rpcResult !== null) {
-      return rpcResult.length ? rpcResult.slice(0, limit) : viaCustomPlaces(db, raw, limit);
+      gazetteerResult = rpcResult;
+    } else {
+      gazetteerResult = await viaNameFilter(db, query, { limit });
     }
   } catch (e) {
-    // fall through to the degraded path below
+    // fall through with whatever gazetteerResult already holds (likely [])
   }
-  const nameResult = await viaNameFilter(db, query, { limit });
-  if (nameResult.length) return nameResult;
-  return viaCustomPlaces(db, raw, limit);
+  const custom = await customPromise;
+  return [...custom, ...gazetteerResult].slice(0, limit);
 }
 
 // Population-tiered importance ranking, matching the same 1-14 scale
@@ -297,25 +299,27 @@ export async function fetchGazetteerInBBox(db, bbox, { limit = 200 } = {}) {
 export async function searchGazetteerDb(db, term, { limit = 15, country = null } = {}) {
   const q = normalizePlaceName(term);
   if (q.length < 2) return [];
+  const customPromise = viaCustomPlaces(db, q, limit).catch(() => []);
+  let gazetteerResult = [];
   try {
     const rpcResult = await viaRpc(db, q);
     if (rpcResult !== null) {
-      const filtered = country ? rpcResult.filter(r => r.country === country) : rpcResult;
-      if (filtered.length) return filtered.slice(0, limit);
-      const custom = await viaCustomPlaces(db, q, limit);
-      return country ? custom.filter(r => r.country === country) : custom;
+      gazetteerResult = rpcResult;
+    } else {
+      const { data, error } = await (() => {
+        let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `${q}*`);
+        if (country) builder = builder.eq("country", country);
+        return builder.order("population", { ascending: false }).limit(limit);
+      })();
+      if (!error && data) gazetteerResult = data.map(mapRow);
     }
   } catch (e) {
-    // fall through
+    // fall through with whatever gazetteerResult already holds
   }
-  try {
-    let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `${q}*`);
-    if (country) builder = builder.eq("country", country);
-    const { data, error } = await builder.order("population", { ascending: false }).limit(limit);
-    if (!error && data && data.length) return data.map(mapRow);
-  } catch (e) {
-    // fall through
+  let custom = await customPromise;
+  if (country) {
+    gazetteerResult = gazetteerResult.filter(r => r.country === country);
+    custom = custom.filter(r => r.country === country);
   }
-  const custom = await viaCustomPlaces(db, q, limit);
-  return country ? custom.filter(r => r.country === country) : custom;
+  return [...custom, ...gazetteerResult].slice(0, limit);
 }

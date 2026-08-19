@@ -87,7 +87,7 @@ describe('fetchPlaceCandidates: fast search first, alt_names only as a fallback'
   it('falls back to the name-only filter when neither RPC is yet installed', async () => {
     const db = fakeDbNoRpc([{ name: 'Varanasi', lat: 25.3, lon: 83.0, country: 'India', admin1: 'UP', population: 1200000, alt_names: ['Benares'] }]);
     const out = await fetchPlaceCandidates(db, 'Benares');
-    const rec = db.calls[0];
+    const rec = db.calls.find(c => c.table === 'gazetteer');
     const orFilter = rec.filters.find(f => f[0] === 'or');
     expect(orFilter[1]).toContain('varanasi'); // canonical alias still reaches the fallback query
     expect(out[0]).toMatchObject({ name: 'Varanasi' });
@@ -96,7 +96,7 @@ describe('fetchPlaceCandidates: fast search first, alt_names only as a fallback'
   it('the client-side fallback also checks ascii_name, not just name -- GeoNames often records the canonical name with diacritics', async () => {
     const db = fakeDbNoRpc([]);
     await fetchPlaceCandidates(db, 'Rajgir');
-    const orFilter = db.calls[0].filters.find(f => f[0] === 'or');
+    const orFilter = db.calls.find(c => c.table === 'gazetteer').filters.find(f => f[0] === 'or');
     expect(orFilter[1]).toContain('ascii_name.ilike.*rajgir*');
   });
 
@@ -145,7 +145,7 @@ describe('searchGazetteerDb: typeahead', () => {
   it('falls back to a prefix ilike on name when neither RPC is available', async () => {
     const db = fakeDbNoRpc([]);
     await searchGazetteerDb(db, 'vara');
-    const ilike = db.calls[0].filters.find(f => f[0] === 'ilike');
+    const ilike = db.calls.find(c => c.table === 'gazetteer').filters.find(f => f[0] === 'ilike');
     expect(ilike[1]).toBe('name');
     expect(ilike[2]).toBe('vara*');
   });
@@ -153,7 +153,7 @@ describe('searchGazetteerDb: typeahead', () => {
   it('scopes the client-side fallback path to a country too', async () => {
     const db = fakeDbNoRpc([]);
     await searchGazetteerDb(db, 'lum', { country: 'Nepal' });
-    expect(db.calls[0].filters.find(f => f[0] === 'eq')).toEqual(['eq', 'country', 'Nepal']);
+    expect(db.calls.find(c => c.table === 'gazetteer').filters.find(f => f[0] === 'eq')).toEqual(['eq', 'country', 'Nepal']);
   });
 });
 
@@ -216,13 +216,15 @@ describe('custom_places: what a manually-placed coordinate teaches the app for n
     expect(out[0]).toMatchObject({ name: 'A Hamlet', source: 'custom' });
   });
 
-  it('does NOT check custom_places when the fast gazetteer search already found something', async () => {
-    // A real GeoNames match should never be shadowed by an unnecessary
-    // extra query, let alone by a hand-entered one if both somehow exist.
-    const db = fakeDbWithCustom({ fast: [rajgir], custom: [{ name: 'Should not appear', lat: 0, lon: 0 }] });
+  it('still checks custom_places even when the fast gazetteer search already found something -- confirmed real fix for a reported bug: a custom place was invisible in search any time the 1M+ row gazetteer coincidentally matched anything else for the same term', async () => {
+    const db = fakeDbWithCustom({ fast: [rajgir], custom: [{ id: 7, name: 'My Custom Rajgir Annex', lat: 25.1, lon: 85.4 }] });
     const out = await fetchPlaceCandidates(db, 'Rajgir');
-    expect(db.customQueried).toBe(false);
-    expect(out[0].name).toBe('Rājgīr');
+    expect(db.customQueried).toBe(true);
+    // Custom places are listed first -- a deliberate operator addition or
+    // correction should not lose a tie-break against a coincidental
+    // gazetteer match.
+    expect(out[0]).toMatchObject({ name: 'My Custom Rajgir Annex', id: 7 });
+    expect(out.some(r => r.name === 'Rājgīr')).toBe(true);
   });
 
   it('searchGazetteerDb (the typeahead) falls back to custom_places the same way', async () => {
@@ -256,11 +258,11 @@ describe('custom_places admin CRUD: list, update, delete', () => {
     };
   }
 
-  it('listCustomPlaces returns every saved place, newest first', async () => {
+  it('listCustomPlaces returns every saved place, newest first, WITH its real id -- confirmed real cause of a reported bug: mapCustomRow previously dropped id entirely, so every later edit/delete call sent undefined for it', async () => {
     const db = fakeAdminDb({ rows: [{ id: 1, name: 'A Hamlet', lat: 25.1, lon: 84.2, country: 'India' }] });
     const { places, error } = await listCustomPlaces(db);
     expect(error).toBeNull();
-    expect(places[0]).toMatchObject({ name: 'A Hamlet', source: 'custom' });
+    expect(places[0]).toMatchObject({ id: 1, name: 'A Hamlet', source: 'custom' });
   });
 
   it('listCustomPlaces reports a load failure rather than silently returning empty', async () => {
