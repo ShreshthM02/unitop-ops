@@ -1599,7 +1599,7 @@ export function mergeDocTemplates(defaults, saved) {
 export const ITINERARY_ITEM_TYPES = [
   { id: "route",       label: "Route / Movement", icon: "route", fields: ["text", "distance", "time"] },
   { id: "sightseeing", label: "Sightseeing",      icon: "pin",   fields: ["text"] },
-  { id: "transport",   label: "Flight / Train",   icon: "plane", fields: ["text"] },
+  { id: "transport",   label: "Flight / Train",   icon: "plane", fields: ["text", "number"] },
   { id: "stay",        label: "Overnight Stay",   icon: "bed",   fields: ["text"] },
   // No icon -- a remark is a note, not a movement or a stop, and an icon
   // here would imply it belongs to the same family of structural items as

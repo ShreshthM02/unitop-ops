@@ -616,14 +616,28 @@ export function buildSectorTableHTML(sectors, theme = MAP_THEME, days = null) {
   if (days && days.length) {
     days.forEach((d, idx) => {
       const dayNo = idx + 1;
-      const routeItems = (d.items || []).filter(it => it.type === "route" && ((it.text || "").trim() || it.distance || it.time));
-      if (routeItems.length) {
-        routeItems.forEach((r, k) => rows.push({
-          label: k === 0 ? String(dayNo).padStart(2, "0") : "",
-          text: (r.text || "").trim() || "—",
-          meta: [r.distance, r.time].filter(Boolean).join(" · "),
-          last: k === routeItems.length - 1,
-        }));
+      const legItems = (d.items || []).filter(it =>
+        (it.type === "route" && ((it.text || "").trim() || it.distance || it.time)) ||
+        (it.type === "transport" && ((it.text || "").trim() || it.number || it.depTime || it.arrTime))
+      );
+      if (legItems.length) {
+        legItems.forEach((r, k) => {
+          const isTransport = r.type === "transport";
+          const identifier = isTransport
+            ? ((r.number || "").trim() || (r.mode === "train" ? "By Train" : "By Air"))
+            : null;
+          const times = isTransport
+            ? [r.depTime && `Dep ${r.depTime}`, r.arrTime && `Arr ${r.arrTime}`].filter(Boolean).join(" · ")
+            : null;
+          rows.push({
+            label: k === 0 ? String(dayNo).padStart(2, "0") : "",
+            text: (r.text || "").trim() || "—",
+            meta: isTransport
+              ? [identifier, times].filter(Boolean).join(" · ")
+              : [r.distance, r.time].filter(Boolean).join(" · "),
+            last: k === legItems.length - 1,
+          });
+        });
       } else {
         rows.push({
           label: String(dayNo).padStart(2, "0"),

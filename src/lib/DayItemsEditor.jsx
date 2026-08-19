@@ -167,7 +167,7 @@ export function DayItemsEditor({ items, onChange, style: flavor = "brief", G, in
                     placeholder={
                       item.type === "route" ? "e.g. Leh – Alchi – Leh"
                       : item.type === "sightseeing" ? "e.g. Mahabodhi Temple"
-                      : item.type === "transport" ? (item.mode === "train" ? "e.g. 12345" : "e.g. 6E 2134")
+                      : item.type === "transport" ? "e.g. Hanoi - Bodhgaya"
                       : "e.g. Hotel Leh Palace / Similar"
                     }
                   />
@@ -179,6 +179,12 @@ export function DayItemsEditor({ items, onChange, style: flavor = "brief", G, in
                 {meta.fields.includes("time") && (
                   <input style={{ ...inp, width:90 }} value={item.time || ""} disabled={readOnly}
                     onChange={(e) => update(i, { time: e.target.value })} placeholder="1.5 hrs"/>
+                )}
+                {meta.fields.includes("number") && (
+                  <input style={{ ...inp, width:90 }} value={item.number || ""} disabled={readOnly}
+                    onChange={(e) => update(i, { number: e.target.value })}
+                    placeholder={item.mode === "train" ? "Train No." : "Flight No."}
+                    aria-label={item.mode === "train" ? "Train number" : "Flight number"}/>
                 )}
                 {item.type === "transport" && (
                   <>

@@ -1114,3 +1114,21 @@ describe('regression: paginateBrochureDays keeps a small safety margin against .
     expect(pages2.length).toBe(2); // 'a' alone should not fit alongside 'b' given the margin
   });
 });
+
+describe('regression: a transport item\u2019s dedicated number field shows in the day-by-day content too, not just the glance table -- same shared rendering function used by Brief, Detailed, and the brochure', () => {
+  it('the number appears in the meta line, before the departure/arrival times, matching the same field order in the editor', () => {
+    const day = { id: 'x', items: [{ id:'a', type:'transport', text:'Hanoi - Bodhgaya', mode:'flight', number:'VN9771', depTime:'08:45', arrTime:'10:55' }] };
+    const html = brochureDayHTML(day, 0, null);
+    expect(html).toContain('VN9771');
+    // Order: number, then Dep, then Arr.
+    expect(html.indexOf('VN9771')).toBeLessThan(html.indexOf('Dep 08:45'));
+    expect(html.indexOf('Dep 08:45')).toBeLessThan(html.indexOf('Arr 10:55'));
+  });
+
+  it('an empty number field is simply omitted from the meta line -- no fallback label here (that\u2019s specific to the glance table)', () => {
+    const day = { id: 'x', items: [{ id:'a', type:'transport', text:'Nalanda - Delhi', mode:'flight', depTime:'18:00', arrTime:'19:30' }] };
+    const html = brochureDayHTML(day, 0, null);
+    expect(html).toContain('Dep 18:00');
+    expect(html).not.toContain('By Air');
+  });
+});

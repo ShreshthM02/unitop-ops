@@ -480,7 +480,7 @@ function timelineItemParts(item) {
   const text = (item.text || "").trim();
   const note = itemNoteForFlavor(item, "detailed").trim();
   const meta = item.type === "transport"
-    ? [item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ")
+    ? [item.number && item.number.trim(), item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ")
     : [item.distance, item.time].filter(Boolean).join(" · ");
   const soft = item.type !== "sightseeing";
   const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;

@@ -677,3 +677,51 @@ describe('regression: the glance table\u2019s day-by-day rows come from each day
     expect((table.match(/>01</g) || []).length).toBe(1);
   });
 });
+
+describe('regression: the glance table now includes transport (flight/train) legs, not just road routes -- per direct decision after discussion, uses the item\u2019s own dedicated number field, never parsed from free text', () => {
+  it('a filled-in flight number appears directly, alongside real departure/arrival times', () => {
+    const days = [{ items: [
+      { type: 'transport', text: 'Hanoi - Bodhgaya', mode: 'flight', number: 'VN9771', depTime: '08:45', arrTime: '10:55' },
+    ] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('Hanoi - Bodhgaya');
+    expect(table).toContain('VN9771 · Dep 08:45 · Arr 10:55');
+  });
+
+  it('an empty number field falls back to a generic "By Air" label for a flight, not a blank or a guessed value', () => {
+    const days = [{ items: [
+      { type: 'transport', text: 'Nalanda - Delhi', mode: 'flight', depTime: '18:00', arrTime: '19:30' },
+    ] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('By Air · Dep 18:00 · Arr 19:30');
+  });
+
+  it('an empty number field falls back to "By Train" for a train leg, distinct from the flight fallback', () => {
+    const days = [{ items: [
+      { type: 'transport', text: 'Delhi - Agra', mode: 'train', depTime: '06:00', arrTime: '08:15' },
+    ] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('By Train · Dep 06:00 · Arr 08:15');
+  });
+
+  it('a day with both a road route and a transport leg shows both, in their own actual order', () => {
+    const days = [{ items: [
+      { type: 'route', text: 'Bodhgaya - Nalanda', distance: '100 km', time: '3 hrs' },
+      { type: 'transport', text: 'Nalanda - Delhi', mode: 'flight', number: 'AI401', depTime: '18:00', arrTime: '19:30' },
+    ] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('Bodhgaya - Nalanda');
+    expect(table).toContain('100 km · 3 hrs');
+    expect(table).toContain('Nalanda - Delhi');
+    expect(table).toContain('AI401 · Dep 18:00 · Arr 19:30');
+    // Route appears before the transport leg -- matching the day's own
+    // item order, not grouped separately by type.
+    expect(table.indexOf('Bodhgaya - Nalanda')).toBeLessThan(table.indexOf('Nalanda - Delhi'));
+  });
+
+  it('a transport item with no text, no number, and no times at all is not shown as an empty row', () => {
+    const days = [{ items: [{ type: 'transport', mode: 'flight' }] }];
+    const table = buildSectorTableHTML([], undefined, days);
+    expect(table).toContain('At leisure');
+  });
+});
