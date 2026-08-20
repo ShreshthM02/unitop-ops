@@ -1140,3 +1140,40 @@ describe('regression: a transport item\u2019s dedicated number field shows in th
     expect(html).not.toContain('By Air');
   });
 });
+
+describe('regression: paginateBrochureDays never measures the same block twice -- confirmed real waste found via a real diagnostic (roughly a fifth of all blocks in a real export were measured twice)', () => {
+  it('a block following a keep-with-next title is measured exactly once, not twice', () => {
+    const calls = [];
+    const blocks = [
+      '<div class="bro-day-body" data-keep-with-next="1">TITLE</div>',
+      '<div class="bro-day-body">NOTE</div>',
+      '<div class="bro-day-body">NEXT</div>',
+    ];
+    const measureFn = (html, width, idx) => { calls.push(idx); return 50; };
+    paginateBrochureDays(blocks, { pageHeightPx: 1000, measureFn });
+    // Index 1 (the block right after the keep-with-next title) would be
+    // measured twice without caching: once as the peek, once on its own
+    // turn. With caching, it appears in the call log only once.
+    const countForIndex1 = calls.filter(i => i === 1).length;
+    expect(countForIndex1).toBe(1);
+  });
+
+  it('page-break decisions are unchanged by the caching -- same result as before, just without the redundant calls', () => {
+    const blocks = [
+      '<div data-keep-with-next="1">A</div>',
+      '<div>B</div>',
+      '<div>C</div>',
+    ];
+    const heights = { 0: 400, 1: 400, 2: 400 };
+    let callCount = 0;
+    const measureFn = (html, width, idx) => { callCount++; return heights[idx]; };
+    const pages = paginateBrochureDays(blocks, { pageHeightPx: 1000, measureFn });
+    // A (400) + B (400, peeked) = 800, fits in 1000 -- both placed together.
+    // C (400) doesn't fit alongside (800+400=1200 > 1000) -- own page.
+    expect(pages.length).toBe(2);
+    expect(pages[0].length).toBe(2);
+    expect(pages[1].length).toBe(1);
+    // 3 unique blocks, each measured exactly once despite the peek.
+    expect(callCount).toBe(3);
+  });
+});

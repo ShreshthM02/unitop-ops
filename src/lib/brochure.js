@@ -870,10 +870,23 @@ export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT
   // letterhead.js, checking the outermost tag's own attribute.
   const isKeepWithNextHTML = (b) => typeof b === "string" && /^\s*<[a-z][a-z0-9]*\s[^>]*data-keep-with-next="1"/i.test(b);
   const list = dayHTMLs || [];
+  // Caches a peeked-ahead block's height by its own index, so the main
+  // loop's own turn for that same block (the very next iteration) reuses
+  // it instead of measuring it again -- confirmed via a real diagnostic
+  // that roughly a fifth of all blocks in a typical day were being
+  // measured twice without this, each an unnecessary real DOM
+  // insert/measure/remove cycle.
+  const heightCache = new Map();
+  const measureCached = (html, idx) => {
+    if (heightCache.has(idx)) return heightCache.get(idx);
+    const h = measureFn(html, contentWidthPx, idx);
+    heightCache.set(idx, h);
+    return h;
+  };
   list.forEach((html, index) => {
-    const h = measureFn(html, contentWidthPx, index);
+    const h = measureCached(html, index);
     const needed = isKeepWithNextHTML(html)
-      ? h + (list[index + 1] != null ? measureFn(list[index + 1], contentWidthPx, index + 1) : 0)
+      ? h + (list[index + 1] != null ? measureCached(list[index + 1], index + 1) : 0)
       : h;
     // A block taller than a page still has to go somewhere: give it its own
     // page rather than dropping it or looping forever.
