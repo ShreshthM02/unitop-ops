@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -471,6 +471,8 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // ─── DETAILED: client-facing brochure, with photos and generated map ──
   const buildBrochureHTML = async () => {
     const ctx = await createMeasurementContext(brochureCSS());
+    const debugMode = typeof window !== "undefined" && window.location && window.location.search.includes("brochureDebug");
+    const debugLog = [];
     try {
       const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
       const { ground, gateways } = partitionGateways(stops, sectors);
@@ -493,7 +495,15 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       const facts = { ...computeBrochureFacts(itinDays) };
       const paxValue = query.paxDisplay || query.pax;
       if (paxValue) facts.pax = String(paxValue);
-      return buildBrochureDocument({
+      const realMeasureFn = (html, width) => {
+        const h = domMeasureHeightPx(html, width, ctx.doc);
+        if (debugMode) {
+          const preview = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 70);
+          debugLog.push({ index: debugLog.length, height: h, preview });
+        }
+        return h;
+      };
+      let out = buildBrochureDocument({
         cover: {
           title: tourTitle || query.groupName || "Itinerary",
           tagline, duration, route,
@@ -513,8 +523,19 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         closingText: detailedClosingText,
         closingTagline: { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) }.closingTagline,
         footerLabel: tourTitle || query.groupName || "",
-        measureFn: (html, width) => domMeasureHeightPx(html, width, ctx.doc),
+        measureFn: realMeasureFn,
       });
+      if (debugMode) {
+        const rows = debugLog.map(r => `${String(r.index).padStart(3, " ")}  ${String(r.height).padStart(5, " ")}px  ${r.preview}`).join("\n");
+        const totalHeight = debugLog.reduce((sum, r) => sum + r.height, 0);
+        const diagPage = `<div class="bro-page"><div style="padding:15mm;font-family:monospace;font-size:9pt;color:#000;background:#fff;">
+          <h2 style="font-family:sans-serif;margin:0 0 4mm">Brochure measurement diagnostic</h2>
+          <p style="font-family:sans-serif;margin:0 0 4mm">${debugLog.length} blocks measured, total ${totalHeight}px. Content width used: ${BROCHURE_CONTENT_WIDTH_PX}px.</p>
+          <pre style="white-space:pre-wrap;word-break:break-word;line-height:1.5;">${rows.replace(/</g, "&lt;")}</pre>
+        </div></div>`;
+        out = out.replace("</body></html>", `${diagPage}</body></html>`);
+      }
+      return out;
     } finally {
       ctx.cleanup();
     }

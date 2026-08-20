@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TemplatesHub from '../components/TemplatesHub.jsx';
 import ProformaInvoice from '../components/ProformaInvoice.jsx';
@@ -527,5 +527,35 @@ describe('regression: the print toggle bar was hidden on Brief entirely -- confi
     fireEvent.click(screen.getByText('Detailed'));
     // Still present and toggled -- same shared toggles object either way.
     expect(screen.getByText('Page number')).toBeTruthy();
+  });
+});
+
+describe('regression: an optional brochure measurement diagnostic, added to help resolve a stuck page-count investigation directly from real browser data instead of continued guessing', () => {
+  afterEach(() => {
+    window.history.pushState(null, '', '/');
+  });
+
+  it('with ?brochureDebug=1 in the URL, Detailed\u2019s preview includes a diagnostic page listing every block\u2019s real measured height', async () => {
+    window.history.pushState(null, '', '/?brochureDebug=1');
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('Brochure measurement diagnostic');
+      expect(doc).toContain('blocks measured');
+    });
+  });
+
+  it('without the URL flag, no diagnostic page is added -- the normal export stays exactly as before', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Detailed'));
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+      expect(doc).toContain('bro-cover');
+    });
+    const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+    expect(doc).not.toContain('Brochure measurement diagnostic');
   });
 });
