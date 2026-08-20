@@ -41,8 +41,8 @@ describe('brochure export: the real (unstubbed) measurement path', () => {
       items: [ { id: 't2', type: 'transport', text: 'Flight to Patna' } ] },
   ];
 
-  it('builds the full brochure document without throwing, using the real DOM measurer', () => {
-    const ctx = createMeasurementContext('body{margin:0}');
+  it('builds the full brochure document without throwing, using the real DOM measurer', async () => {
+    const ctx = await createMeasurementContext('body{margin:0}');
     try {
       const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
       const { ground, gateways } = partitionGateways(stops, sectors);
@@ -69,13 +69,13 @@ describe('brochure export: the real (unstubbed) measurement path', () => {
     }
   });
 
-  it('a day with no resolved place and only a stay/transport item does not break pagination', () => {
+  it('a day with no resolved place and only a stay/transport item does not break pagination', async () => {
     const day = { id: 1, dayLabel: "Day 1", title: "", meals: ["L", "D"], place: null,
       items: [
         { id: 't1', type: 'transport', text: 'BKK-CCU-PAT-GAY' },
         { id: 's1', type: 'stay', text: 'THE IMPERIAL' },
       ] };
-    const ctx = createMeasurementContext('body{margin:0}');
+    const ctx = await createMeasurementContext('body{margin:0}');
     try {
       const dayImages = resolveDayImages([day], [], {});
       expect(() => buildBrochureDocument({

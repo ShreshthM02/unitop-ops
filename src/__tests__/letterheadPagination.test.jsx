@@ -173,9 +173,9 @@ describe('paginateBodyBlocks: table-splitting (a {type:"table"} block splits its
 });
 
 describe('createMeasurementContext: the root-cause fix -- measurement must happen with the real print CSS applied, not the main app document', () => {
-  it('injects the given CSS into an isolated iframe document, not the main document', () => {
+  it('injects the given CSS into an isolated iframe document, not the main document', async () => {
     const cssText = '.test-marker-class { color: rgb(1, 2, 3); }';
-    const { doc, cleanup } = createMeasurementContext(cssText);
+    const { doc, cleanup } = await createMeasurementContext(cssText);
     try {
       expect(doc).not.toBe(document); // isolated, not the main app document
       const styleTag = doc.querySelector('style');
@@ -190,8 +190,8 @@ describe('createMeasurementContext: the root-cause fix -- measurement must happe
     }
   });
 
-  it('the isolated document has its own body that elements can be appended to and measured against', () => {
-    const { doc, cleanup } = createMeasurementContext('');
+  it('the isolated document has its own body that elements can be appended to and measured against', async () => {
+    const { doc, cleanup } = await createMeasurementContext('');
     try {
       expect(doc.body).toBeTruthy();
       const el = doc.createElement('div');
@@ -203,9 +203,9 @@ describe('createMeasurementContext: the root-cause fix -- measurement must happe
     }
   });
 
-  it('cleanup removes the iframe from the main document, leaving nothing behind', () => {
+  it('cleanup removes the iframe from the main document, leaving nothing behind', async () => {
     const before = document.querySelectorAll('iframe').length;
-    const { cleanup } = createMeasurementContext('');
+    const { cleanup } = await createMeasurementContext('');
     expect(document.querySelectorAll('iframe').length).toBe(before + 1);
     cleanup();
     expect(document.querySelectorAll('iframe').length).toBe(before);

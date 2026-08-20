@@ -470,18 +470,8 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   // ─── DETAILED: client-facing brochure, with photos and generated map ──
   const buildBrochureHTML = async () => {
-    const ctx = createMeasurementContext(brochureCSS());
+    const ctx = await createMeasurementContext(brochureCSS());
     try {
-      // The @import above starts the font fetch, but on a cold cache it
-      // still needs to actually finish downloading before layout done
-      // with it is accurate -- paginateBrochureDays' own loop is fully
-      // synchronous once it starts, so this has to be awaited before
-      // buildBrochureDocument is even called, not partway through.
-      // Guarded: document.fonts is not guaranteed to exist in every
-      // environment (older browsers, some test contexts).
-      if (ctx.doc.fonts && ctx.doc.fonts.ready) {
-        await ctx.doc.fonts.ready;
-      }
       const { stops, sectors } = buildMapDataFromResolvedDays(itinDays);
       const { ground, gateways } = partitionGateways(stops, sectors);
       let gazetteerContext = [];

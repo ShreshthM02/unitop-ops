@@ -295,7 +295,7 @@ export const PAGE_CONTENT_WIDTH_MM = A4_WIDTH_MM - mmToNumber(PRINT_MARGIN.left)
 // overflow and missing-content bugs in production even though the
 // packing algorithm itself was correct: it was packing based on heights
 // that didn't match what would actually render.
-export function createMeasurementContext(cssText) {
+export async function createMeasurementContext(cssText) {
   const iframe = document.createElement("iframe");
   iframe.style.position = "absolute";
   iframe.style.visibility = "hidden";
@@ -308,6 +308,16 @@ export function createMeasurementContext(cssText) {
   doc.open();
   doc.write(`<!DOCTYPE html><html><head><style>${cssText}</style></head><body></body></html>`);
   doc.close();
+  // Parsing/decoding @font-face data -- even fully embedded, self-hosted
+  // data, not just a network fetch -- is asynchronous in real browsers.
+  // Without this wait, measurement could run against a fallback font in
+  // the brief window before the real font actually finished becoming
+  // available, producing systematically wrong height estimates. Guarded
+  // for environments where the Font Loading API isn't available, rather
+  // than assumed to always exist.
+  if (doc.fonts && doc.fonts.ready) {
+    try { await doc.fonts.ready; } catch (e) { /* proceed with whatever's ready */ }
+  }
   return { doc, cleanup: () => document.body.removeChild(iframe) };
 }
 
@@ -584,7 +594,7 @@ export async function buildPaginatedLetterheadDocument({
   // root cause of real overflow/missing-content bugs: content measured
   // shorter than it would actually render, so the packer fit more onto
   // each page than truly fit.
-  const measureCtx = createMeasurementContext(`${invoiceLetterheadCSS}\n${extraHeadCSS}`);
+  const measureCtx = await createMeasurementContext(`${invoiceLetterheadCSS}\n${extraHeadCSS}`);
   try {
     const containerWidthPx = mmToPx(PAGE_CONTENT_WIDTH_MM, measureCtx.doc);
     const pageContentHeightPx = mmToPx(PAGE_CONTENT_HEIGHT_MM, measureCtx.doc);
