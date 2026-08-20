@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   SERVICE_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G, WatermarkSVG, LOGO_B64,
-  loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo,
+  loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo, groupExchangeOrderVersions,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
-  loadFinalCostSheetVersion, extractExchangeOrderDraftsFromCostSheet,
   DEFAULT_DOC_SETTINGS, logAudit, db,
 } = Lib;
 
@@ -46,11 +45,12 @@ function RichTextEditor({ value, onChange, readOnly }) {
   );
 }
 
-export default function ExchangeOrderGenerator({ query, template, onClose, currentUser, readOnly }) {
+export default function ExchangeOrderGenerator({ query, template, vendors, onClose, currentUser, readOnly, initialOpenOrderNo }) {
   const tmpl = { ...DEFAULT_EXCHANGE_TEMPLATE, ...(template || {}) };
   const eoPrefix = (DEFAULT_DOC_SETTINGS.exchange && DEFAULT_DOC_SETTINGS.exchange.prefix) || "EO";
+  const vendorList = vendors || [];
 
-  const [tab, setTab] = useState("new"); // "new" | "repository"
+  const [tab, setTab] = useState(initialOpenOrderNo ? "repository" : "new"); // "new" | "repository"
 
   // Repository tab: every EO for this tour file, grouped by its stable
   // order_no into one card each (showing the latest version).
@@ -67,6 +67,7 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     serviceType: "restaurant",
     otherServiceType: "",
     issueDate: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" }),
+    drawnOnVendorId: "",
     drawnOn: "",
     tourNo: query.tourFileId || query.id,
     pax: query.paxDisplay || "",
@@ -77,73 +78,50 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     departureDate: "", departureTo: "", departureBy: "FLIGHT", departureTime: "",
     notes: "",
     confirmed: false,
+    // Whether the vendor's bill for this service has been paid -- a
+    // status flag only, deliberately carries no amount (see 2026-08-20
+    // discussion: the EO is a service voucher, not a financial
+    // transaction; actual payment is entered separately in Payments,
+    // with no structural link back to the EO).
+    settled: false,
   });
 
   const [form, setForm] = useState(emptyOrder());
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const setVendor = (vendorId) => {
+    const v = vendorList.find(x => x.id === vendorId);
+    setForm(p => ({ ...p, drawnOnVendorId: vendorId, drawnOn: v ? v.name : "" }));
+  };
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
 
-  // Drafts staged from "Pull from Cost Sheet" -- not yet saved as real EOs
-  // (order_no is only assigned at actual save). Reviewed/completed one at a
-  // time via the same form, same as any other new order.
-  const [draftQueue, setDraftQueue] = useState([]);
-  const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
-  const [pulling, setPulling] = useState(false);
-  const [pullMessage, setPullMessage] = useState("");
-
   const refreshList = () => {
     setLoadingList(true);
-    loadExchangeOrdersForTourFile(db, query.id).then(rows => {
-      const byOrderNo = new Map();
-      rows.forEach(r => {
-        if (!byOrderNo.has(r.orderNo)) byOrderNo.set(r.orderNo, []);
-        byOrderNo.get(r.orderNo).push(r);
-      });
-      const groups = [...byOrderNo.entries()].map(([orderNo, versions]) => {
-        const finalRow = versions.find(v => v.isFinal);
-        const latest = finalRow || versions[versions.length - 1];
-        return { orderNo, versions, latest, finalVersion: finalRow ? finalRow.version : null };
-      }).sort((a, b) => (a.latest.createdAt || "").localeCompare(b.latest.createdAt || ""));
+    return loadExchangeOrdersForTourFile(db, query.id).then(rows => {
+      const groups = groupExchangeOrderVersions(rows);
       setEoGroups(groups);
       setLoadingList(false);
+      return groups;
     });
   };
 
   useEffect(() => {
-    refreshList();
-    loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
-  }, [query.id]);
-
-  const pullFromCostSheet = async () => {
-    setPulling(true);
-    setPullMessage("");
-    try {
-      if (!finalCostSheetVersion) { setPullMessage("No final Cost Sheet found for this tour yet."); setPulling(false); return; }
-      const drafts = extractExchangeOrderDraftsFromCostSheet(finalCostSheetVersion.transports, finalCostSheetVersion.localHandlers);
-      if (drafts.length > 0) {
-        setDraftQueue(p => [...p, ...drafts.map(d => ({ ...emptyOrder(), ...d }))]);
+    refreshList().then(groups => {
+      if (initialOpenOrderNo) {
+        const match = groups.find(g => g.orderNo === initialOpenOrderNo);
+        if (match) openOrder(match);
       }
-      setPullMessage(`Pulled ${drafts.length} draft order${drafts.length === 1 ? "" : "s"} from Cost Sheet v${finalCostSheetVersion.version}. Review each below before saving.`);
-    } catch (e) {
-      setPullMessage("Failed to pull from Cost Sheet.");
-    }
-    setPulling(false);
-  };
-
-  const loadDraftIntoForm = (idx) => {
-    setForm(draftQueue[idx]);
-    setDraftQueue(p => p.filter((_, i) => i !== idx));
-  };
+    });
+  }, [query.id]);
 
   // ─── Save a brand-new EO: version 1, order_no assigned now from the
   // global sequence (per 1.7 -- universally auto-incremental across every
   // tour file, not just this one). ──────────────────────────────────────
   const saveNewOrder = async () => {
-    if (!form.drawnOn) return;
+    if (!form.drawnOnVendorId) return;
     setSaving(true);
     const orderNo = await nextExchangeOrderNo(db, eoPrefix);
-    const { error } = await saveExchangeOrderVersion(db, orderNo, query.id, { version: 1, order: form }, currentUser?.id);
+    const { error } = await saveExchangeOrderVersion(db, orderNo, query.id, form.drawnOnVendorId, { version: 1, order: form }, currentUser?.id);
     if (error) {
       setToast(`Failed to save: ${error}`);
     } else {
@@ -166,7 +144,7 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     setOpenFinalVersion(finalV ? finalV.version : null);
     const shown = finalV || versions[versions.length - 1];
     setOpenViewingVersion(shown.version);
-    setForm(shown.order);
+    setForm({ ...emptyOrder(), ...shown.order });
   };
 
   const closeOpenOrder = () => {
@@ -176,13 +154,13 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     refreshList();
   };
 
-  const selectOpenVersion = (v) => { setOpenViewingVersion(v.version); setForm(v.order); };
+  const selectOpenVersion = (v) => { setOpenViewingVersion(v.version); setForm({ ...emptyOrder(), ...v.order }); };
 
   const saveNewVersionOfOpenOrder = async () => {
     if (!openOrderNo) return;
     setSaving(true);
     const nextV = Math.max(...openVersions.map(v => v.version)) + 1;
-    const { error } = await saveExchangeOrderVersion(db, openOrderNo, query.id, { version: nextV, order: form }, currentUser?.id);
+    const { error } = await saveExchangeOrderVersion(db, openOrderNo, query.id, form.drawnOnVendorId, { version: nextV, order: form }, currentUser?.id);
     if (error) {
       setToast(`Failed to save: ${error}`);
     } else {
@@ -208,6 +186,17 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     if (readOnly) return;
     const row = group.latest;
     const nextOrder = { ...row.order, confirmed: !row.order.confirmed };
+    await updateExchangeOrderRowContent(db, row.id, nextOrder);
+    refreshList();
+  };
+
+  // Settled/Unsettled: whether the vendor's bill for this service has been
+  // paid. Same lightweight in-place update as Confirmed -- no amount, no
+  // link to a payment record (see emptyOrder() note above).
+  const toggleGroupSettled = async (group) => {
+    if (readOnly) return;
+    const row = group.latest;
+    const nextOrder = { ...row.order, settled: !row.order.settled };
     await updateExchangeOrderRowContent(db, row.id, nextOrder);
     refreshList();
   };
@@ -390,7 +379,12 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
           </select>
           {form.serviceType === "others" && <OtherInput value={form.otherServiceType} onChange={v => setF("otherServiceType", v)} placeholder="Specify service type..." />}
         </div>
-        <div>{label("Drawn on (Vendor / Service Provider)")}<input style={inp} value={form.drawnOn} onChange={e => setF("drawnOn", e.target.value)} placeholder="e.g. Nanking Restaurant" /></div>
+        <div>{label("Drawn on (Vendor)")}
+          <select style={inp} value={form.drawnOnVendorId} onChange={e => setVendor(e.target.value)} disabled={readOnly}>
+            <option value="">Select vendor...</option>
+            {vendorList.filter(v => v.active !== false).map(v => <option key={v.id} value={v.id}>{v.name} ({v.type})</option>)}
+          </select>
+        </div>
         <div>{label("Tour No.")}<input style={inp} value={form.tourNo} onChange={e => setF("tourNo", e.target.value)} /></div>
         <div>{label("No. of Pax")}<input style={inp} value={form.pax} onChange={e => setF("pax", e.target.value)} /></div>
         <div>{label("Nationality")}<input style={inp} value={form.nationality} onChange={e => setF("nationality", e.target.value)} /></div>
@@ -473,34 +467,7 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
 
-          {tab === "new" && (
-            <>
-              {finalCostSheetVersion && (
-                <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "#1E40AF", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ flex: 1 }}>{pullMessage || `Cost Sheet v${finalCostSheetVersion.version} (final) has transport/handler data that can seed draft orders.`}</span>
-                  <button onClick={pullFromCostSheet} disabled={pulling} className="btn btn-primary" style={{ fontSize: 10.5, padding: "3px 8px", flexShrink: 0 }}>
-                    {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
-                  </button>
-                </div>
-              )}
-              {draftQueue.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: G.navy, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                    Pending Drafts — click to complete
-                  </div>
-                  {draftQueue.map((d, i) => {
-                    const svc = SERVICE_TYPES.find(s => s.id === d.serviceType);
-                    return (
-                      <div key={i} onClick={() => loadDraftIntoForm(i)} style={{ background: G.white, border: `1px dashed ${G.gray200}`, borderRadius: 8, padding: "8px 14px", marginBottom: 6, cursor: "pointer", fontSize: 12 }}>
-                        {svc?.icon} {svc?.label} — {d.serviceDetailsHtml.replace(/<[^>]+>/g, "") || "(no details yet)"}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {orderForm(saveNewOrder, "✓ Save Exchange Order")}
-            </>
-          )}
+          {tab === "new" && orderForm(saveNewOrder, "✓ Save Exchange Order")}
 
           {tab === "repository" && !openOrderNo && (
             <>
@@ -520,6 +487,9 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
                         <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 10, background: order.confirmed ? "#EAFAF1" : "#FEF9E7", color: order.confirmed ? "#0E6655" : "#784212", fontWeight: 600 }}>
                           {order.confirmed ? "✓ Confirmed" : "Pending"}
                         </span>
+                        <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 10, background: order.settled ? "#EAFAF1" : "#FDEDEC", color: order.settled ? "#0E6655" : "#943126", fontWeight: 600 }}>
+                          {order.settled ? "✓ Settled" : "Unsettled"}
+                        </span>
                         <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 10, background: "#EBF5FB", color: "#154360", fontWeight: 500 }}>{svc?.label}</span>
                         <span style={{ fontSize: 10, color: G.gray400 }}>v{group.latest.version}{group.finalVersion && " ★"}</span>
                       </div>
@@ -528,6 +498,9 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
                     </div>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleGroupConfirmed(group)}>
                       {order.confirmed ? "✗ Unconfirm" : "✓ Confirm"}
+                    </button>
+                    <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleGroupSettled(group)}>
+                      {order.settled ? "✗ Unsettle" : "✓ Settle"}
                     </button>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => openOrder(group)}>✏ Open</button>
                     <ExportMenu G={G} label="Print" actions={printActions(order, group.orderNo)} />

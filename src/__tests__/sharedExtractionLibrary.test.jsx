@@ -3,7 +3,7 @@ import {
   parseMealPlanFlags, extractItineraryFromCostSheetDays,
   extractHotelsFromCostSheetDays, extractItineraryBuilderDaysFromCostSheet,
   extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays,
-  extractTourBriefingTransportSummary, extractExchangeOrderDraftsFromCostSheet,
+  extractTourBriefingTransportSummary,
 } from '../lib/utils.js';
 
 describe('parseMealPlanFlags: the one true source every other extractor builds on', () => {
@@ -116,23 +116,5 @@ describe('extractTourBriefingTransportSummary: a free-text summary line, not a t
   it('returns an empty string for no transports', () => {
     expect(extractTourBriefingTransportSummary([])).toBe('');
     expect(extractTourBriefingTransportSummary(undefined)).toBe('');
-  });
-});
-
-describe('extractExchangeOrderDraftsFromCostSheet: partial drafts only -- serviceType + a starter Service Details line, never fabricated vendor contact info', () => {
-  it('creates one transport draft per transport row and one handler draft per local handler row', () => {
-    const result = extractExchangeOrderDraftsFromCostSheet(
-      [{ sector: 'DELHI', vehicleType: 'Large Coach' }],
-      [{ sector: 'KASHMIR' }],
-    );
-    expect(result).toEqual([
-      { serviceType: 'transport', serviceDetailsHtml: '<p>Large Coach for DELHI</p>' },
-      { serviceType: 'handler', serviceDetailsHtml: '<p>KASHMIR</p>' },
-    ]);
-  });
-  it('never includes vendor name, contact, or tour facilitator fields -- those have no Cost Sheet source', () => {
-    const result = extractExchangeOrderDraftsFromCostSheet([{ sector: 'X', vehicleType: 'Y' }], []);
-    expect(result[0]).not.toHaveProperty('drawnOn');
-    expect(result[0]).not.toHaveProperty('tourFacilitatorDetails');
   });
 });

@@ -790,14 +790,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} docSettings={docSettings} onClose={()=>setShowTaxInv(null)} currentUser={currentUser} readOnly={showTaxInv.cancelled}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
-        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
+        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
         {showMealPlan   && <MealPlanDocument query={showMealPlan} template={docTemplates.mealplan} onClose={()=>setShowMealPlan(null)} currentUser={currentUser} readOnly={showMealPlan.cancelled}/>}
         {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
-        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
+        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
 
         {/* Cancel modal */}
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}

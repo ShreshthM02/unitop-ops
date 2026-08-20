@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory } = Lib;
+import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, db } = Lib;
 
-export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, onSaveVendor, onClose }) {
+export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose }) {
   const [selected,setSelected]=useState(null);
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
@@ -11,8 +12,33 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [showInactive,setShowInactive]=useState(false);
   const [tab,setTab]=useState("profile");
   const [rates,setRates]=useState([]);
+
+  // Exchange Orders tab: every EO issued against the selected vendor,
+  // across every tour file, grouped by its stable order_no. Unsettled
+  // ones surface first -- those are the ones that matter day to day.
+  const [eoGroups,setEoGroups]=useState([]);
+  const [eoLoading,setEoLoading]=useState(false);
+  const [openEO,setOpenEO]=useState(null); // { query, orderNo } | null
+
+  const refreshEO=useCallback(()=>{
+    if(!selected) return;
+    setEoLoading(true);
+    loadExchangeOrdersForVendor(db,selected.id).then(rows=>{
+      setEoGroups(groupExchangeOrderVersions(rows));
+      setEoLoading(false);
+    });
+  },[selected]);
+
+  useEffect(()=>{ if(tab==="eo"&&selected) refreshEO(); },[tab,selected,refreshEO]);
+
+  const toggleEOSettled=async(group)=>{
+    const row=group.latest;
+    await updateExchangeOrderRowContent(db,row.id,{...row.order,settled:!row.order.settled});
+    refreshEO();
+  };
+
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
-  const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"}];
+  const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"},{id:"eo",label:"Exchange Orders"}];
   const filtered=vendors.filter(v=>(showInactive||v.active!==false)&&(filterType==="All"||v.type===filterType)&&(!search||v.name?.toLowerCase().includes(search.toLowerCase())||v.city?.toLowerCase().includes(search.toLowerCase())));
   const getLedger=v=>{const entries=[];Object.entries(payments||{}).forEach(([qId,pt])=>{(pt.outgoing||[]).forEach(e=>{if((e.vendor||"").toLowerCase().includes((v.name||"").toLowerCase())){const q=queries.find(q=>q.id===qId);entries.push({...e,queryId:qId,tourFileId:q?.tourFileId,clientName:q?.groupName||q?.clientName,sector:q?.destination||q?.sector});}});});return entries.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));};
   const ROLE_STYLE={"Tour Facilitator":{bg:"#EAFAF1",color:"#0E6655"},"Local Handler":{bg:"#EBF5FB",color:"#1A5276"},"Transporter":{bg:"#F5EEF8",color:"#6C3483"}};
@@ -126,12 +152,42 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   })()}
                   {tab==="rates"&&<div><div style={{fontSize:12,color:G.gray600,marginBottom:10}}>Contracted rates for this vendor. Fields adapt to vendor type.</div>{rates.map((r,i)=>{const vtype=selected.type||"Hotel";const upd=(k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));const FIELDS={Hotel:[["Season","season","text"],["Room Type","roomType","text"],["Meal Plan","mealPlan","mealsel"],["Rate (₹)","ratePP","number"],["Single Supp (₹)","singleSupp","number"],["Tax %","taxPct","number"]],Restaurant:[["Season","season","text"],["Meal Type","mealType","mealtype"],["Price Per Head (₹)","ratePP","number"],["Tax %","taxPct","number"]],Transport:[["Season","season","text"],["Vehicle Type","vehicleType","vehsel"],["Rate/Day (₹)","ratePerDay","number"],["Rate/KM (₹)","ratePerKm","number"],["Capacity","capacity","number"]],"Tour Facilitator":[["Season","season","text"],["Language","language","text"],["Rate/Day (₹)","ratePP","number"],["Half Day (₹)","halfDay","number"]],"Activity Provider":[["Activity","activity","text"],["Rate PP (₹)","ratePP","number"],["Group Rate (₹)","groupRate","number"],["Min Pax","minPax","number"]],"Monument / Museum":[["Monument","activity","text"],["Foreign Rate (₹)","ratePP","number"],["Indian Rate (₹)","rateIndian","number"]]};const fields=FIELDS[vtype]||FIELDS.Hotel;return<div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:6,marginBottom:6}}>{fields.map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div>{t==="mealsel"?<select style={{...inp,fontSize:11}} value={r[k]||"CP"} onChange={e=>upd(k,e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>:t==="mealtype"?<select style={{...inp,fontSize:11}} value={r[k]||"Lunch"} onChange={e=>upd(k,e.target.value)}>{["Breakfast","Lunch","Dinner","All Meals"].map(m=><option key={m}>{m}</option>)}</select>:t==="vehsel"?<select style={{...inp,fontSize:11}} value={r[k]||"Innova/SUV"} onChange={e=>upd(k,e.target.value)}>{["Sedan","Innova/SUV","Tempo Traveller","Mini Coach","Coach","Luxury Van"].map(v=><option key={v}>{v}</option>)}</select>:<input style={{...inp,textAlign:t==="number"?"right":"left",fontSize:11}} type={t} value={r[k]||""} onChange={e=>upd(k,e.target.value)}/>}</div>)}<span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"flex-end",paddingBottom:2}} onClick={()=>setRates(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div><input style={{...inp,fontSize:11}} value={r.notes||""} onChange={e=>upd("notes",e.target.value)} placeholder="Notes..."/></div>;})} <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setRates(p=>[...p,{id:Date.now(),season:"Oct–Mar",notes:""}])}>+ Add Rate</button></div>}
                   {tab==="ledger"&&(()=>{const ledger=getLedger(selected);const committed=ledger.filter(e=>["voucher","cash"].includes(e.paymentType||"cash")).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);const paid=ledger.filter(e=>e.paymentType==="cash"||e.paymentType==="settle").reduce((s,e)=>s+(parseFloat(e.amount)||0),0);const payable=ledger.filter(e=>e.paymentType==="voucher"&&!e.settled).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return<div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>{[["Total Committed","₹ "+Math.round(committed).toLocaleString(),G.navy],["Total Paid","₹ "+Math.round(paid).toLocaleString(),"#059669"],["Outstanding","₹ "+Math.round(payable).toLocaleString(),payable>0?G.accent:"#059669"]].map(([l,v,c])=><div key={l} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>{l}</div><div style={{fontSize:16,fontWeight:700,color:c}}>{v}</div></div>)}</div>{ledger.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8}}>No transactions yet.</div>:ledger.map((e,i)=>{const ts=PT_STYLE[e.paymentType||"cash"]||PT_STYLE.cash;return<div key={i} style={{background:G.white,border:`1px solid ${e.paymentType==="voucher"&&!e.settled?"#FDE68A":G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:ts.bg,color:ts.color,fontWeight:600}}>{ts.label}</span>{e.paymentType==="voucher"&&!e.settled&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>⚠ Payable</span>}{e.tourFileId&&<span style={{fontSize:10,color:G.navy,fontWeight:600,background:"#EBF5FB",padding:"2px 7px",borderRadius:10}}>📁 {e.tourFileId}</span>}<span style={{marginLeft:"auto",fontSize:13,fontWeight:700,color:G.navy}}>₹ {parseFloat(e.amount||0).toLocaleString()}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>{[["Tour File",e.tourFileId||"—"],["Client",e.clientName||"—"],["Sector",e.sector||"—"],["Date",e.date||"—"],["Mode",e.mode||"—"],["Reference",e.ref||"—"]].map(([l,v])=><div key={l}><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>{l}</div><div style={{fontSize:11,fontWeight:500}}>{v}</div></div>)}</div></div>;})}</div>;})()}
+                  {tab==="eo"&&(()=>{
+                    const sorted=[...eoGroups].sort((a,b)=>(a.latest.order.settled===b.latest.order.settled)?0:(a.latest.order.settled?1:-1));
+                    const unsettledCount=eoGroups.filter(g=>!g.latest.order.settled).length;
+                    return(
+                      <div>
+                        <div style={{fontSize:11,color:G.gray600,marginBottom:10}}>Every service voucher (Exchange Order) issued against this vendor, across every tour file. {unsettledCount>0 && <span style={{color:G.accent,fontWeight:600}}>{unsettledCount} unsettled.</span>}</div>
+                        {eoLoading?<div style={{fontSize:12,color:G.gray600}}>Loading…</div>:sorted.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8}}>No Exchange Orders issued to this vendor yet.</div>:sorted.map(group=>{
+                          const order=group.latest.order;
+                          const svc=SERVICE_TYPES.find(s=>s.id===order.serviceType);
+                          const q=queries.find(qq=>qq.id===group.latest.queryId);
+                          return (
+                            <div key={group.orderNo} style={{background:G.white,border:`1px solid ${order.settled?G.gray200:"#FDE68A"}`,borderRadius:8,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                              <div style={{fontSize:18}}>{svc?.icon}</div>
+                              <div style={{flex:1}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                                  <span style={{fontSize:12,fontWeight:700,color:G.navy}}>{group.orderNo}</span>
+                                  <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:order.settled?"#EAFAF1":"#FEF9E7",color:order.settled?"#0E6655":"#784212",fontWeight:600}}>{order.settled?"✓ Settled":"Unsettled"}</span>
+                                  <span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:"#EBF5FB",color:"#154360",fontWeight:500}}>{svc?.label}</span>
+                                </div>
+                                <div style={{fontSize:11,color:G.gray600}}>{q?<>📁 {q.tourFileId||q.id} · {q.groupName||q.clientName}</>:"Tour file"} · {order.issueDate}</div>
+                              </div>
+                              <button className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>toggleEOSettled(group)}>{order.settled?"✗ Unsettle":"✓ Settle"}</button>
+                              <button className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}} disabled={!q} onClick={()=>q&&setOpenEO({query:q,orderNo:group.orderNo})}>✏ Open</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </>
             ):<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,color:G.gray400}}><div style={{fontSize:24,marginBottom:8}}>🏢</div><div style={{fontSize:13}}>Select a vendor</div></div>}
           </div>
         </div>
       </div>
+      {openEO && <ExchangeOrderGenerator query={openEO.query} template={docTemplates?.exchange} vendors={vendors} initialOpenOrderNo={openEO.orderNo} currentUser={currentUser} onClose={()=>{setOpenEO(null);refreshEO();}}/>}
     </div>
   );
 }

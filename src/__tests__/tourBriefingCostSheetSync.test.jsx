@@ -1,9 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+// Split out from exchangeOrderTourBriefingCostSheetSync.test.jsx on
+// 2026-08-20 (Phase D): Exchange Order no longer pulls from Cost Sheet at
+// all (see exchangeOrderPersistence.test.jsx for what replaced it), so
+// this file now covers only Tour Briefing Sheet's Cost Sheet auto-pull,
+// which is unaffected by that change.
+
 const fakeQuery = { id: 'UTQ-2026-1800', groupName: 'Phase 5 Sync Test', nights: 3, tourFileId: 'TF-1800' };
 
-function makeDb({ costSheetRows = [], exchangeOrderRows = [], tourBriefingRows = [] } = {}) {
+function makeDb({ costSheetRows = [], tourBriefingRows = [] } = {}) {
   return {
     from: vi.fn((t) => {
       const builder = {
@@ -11,7 +17,7 @@ function makeDb({ costSheetRows = [], exchangeOrderRows = [], tourBriefingRows =
         insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
         update: vi.fn(async () => ({ data: [], error: null })),
         then: (resolve) => resolve({
-          data: t === 'cost_sheets' ? costSheetRows : (t === 'exchange_orders' ? exchangeOrderRows : (t === 'tour_briefings' ? tourBriefingRows : [])),
+          data: t === 'cost_sheets' ? costSheetRows : (t === 'tour_briefings' ? tourBriefingRows : []),
           error: null,
         }),
       };
@@ -19,36 +25,6 @@ function makeDb({ costSheetRows = [], exchangeOrderRows = [], tourBriefingRows =
     }),
   };
 }
-
-describe('ExchangeOrderGenerator: Cost Sheet draft pull (restructured 2026-08-20 -- now manual, staged as a review queue rather than auto-saved)', () => {
-  it('shows a banner offering to pull from the star-marked final Cost Sheet, without auto-pulling', async () => {
-    const finalCS = { id: 'cs-1', version: 2, is_final: true, days: [], transports: [{ sector:'DELHI', vehicleType:'Large Coach' }], local_handlers: [{ sector:'KASHMIR' }] };
-    const db = makeDb({ costSheetRows: [finalCS] });
-    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
-    vi.resetModules();
-    const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
-    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByText(/Cost Sheet v2 \(final\) has transport\/handler data/)).toBeTruthy());
-    expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy();
-  });
-
-  it('pulling stages drafts for review instead of saving them, and never fabricates vendor/facilitator fields', async () => {
-    const finalCS = { id: 'cs-2', version: 1, is_final: true, days: [], transports: [{ sector:'DELHI', vehicleType:'Mini Bus' }], local_handlers: [] };
-    const db = makeDb({ costSheetRows: [finalCS] });
-    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
-    vi.resetModules();
-    const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
-    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
-    await waitFor(() => expect(screen.getByText(/Pulled 1 draft order from Cost Sheet v1/)).toBeTruthy());
-    expect(screen.getByText('Pending Drafts — click to complete')).toBeTruthy();
-    // Nothing was inserted -- the draft is staged locally, not saved as a real Exchange Order yet
-    const insertCalls = db.from.mock.results
-      .filter((r,i)=>db.from.mock.calls[i][0]==='exchange_orders')
-      .map(r=>r.value.insert.mock.calls).flat();
-    expect(insertCalls.length).toBe(0);
-  });
-});
 
 describe('TourBriefingSheet Phase 5: auto-pulls hotels/programme/transport summary from the star-marked Cost Sheet', () => {
   it('a brand-new Tour Briefing Sheet (zero saved versions) pulls hotels and programme automatically', async () => {
