@@ -576,7 +576,7 @@ export const DEFAULT_DOC_SETTINGS = {
   monument:     { serial:1, prefix:"ML",  pattern:"{prefix}-{seq}-{group}",        label:"Monument List",       formats:["PDF","DOCX"] },
   mealplan:     { serial:1, prefix:"MP",  pattern:"{prefix}-{seq}-{group}-{date}", label:"Meal Plan",           formats:["PDF","DOCX"] },
   tourbriefing: { serial:1, prefix:"TB",  pattern:"{prefix}-{seq}-{tourfile}",     label:"Tour Briefing Sheet", formats:["PDF","DOCX"] },
-  exchange:     { serial:1, prefix:"EO",  pattern:"{prefix}-{year}-{seq}",         label:"Exchange Order",      formats:["PDF (Shareable)","PDF (Plain)"] },
+  exchange:     { serial:1, prefix:"EO",  pattern:"{prefix}-{year}-{seq}",         label:"Exchange Order",      formats:["PDF (Shareable)","PDF (Printable)"] },
   proforma:     { serial:1, prefix:"PI",  pattern:"{prefix}-{year}-{seq}-{group}", label:"Proforma Invoice",    formats:["PDF","DOCX"] },
   taxinvoice:   { serial:1, prefix:"TI",  pattern:"{prefix}-{year}-{seq}-{group}", label:"Tax Invoice",         formats:["PDF","DOCX"] },
   receipt:      { serial:1, prefix:"RCP", pattern:"{prefix}-{seq}-{group}-{date}", label:"Payment Receipt",     formats:["PDF","DOCX"] },

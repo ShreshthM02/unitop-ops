@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
-  SERVICE_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, G, WatermarkSVG, LOGO_B64,
+  SERVICE_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G, WatermarkSVG, LOGO_B64,
   loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
   loadFinalCostSheetVersion, extractExchangeOrderDraftsFromCostSheet,
@@ -212,117 +212,165 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
     refreshList();
   };
 
-  // ─── Print (Phase A: field structure only -- the 8"x5" Shareable /
-  // Printable letterhead redesign per your two templates is Phase B). ────
-  const buildPrintHTML = (order, orderNo) => {
+  // ─── Print (Phase B): true 8"x5" landscape, two flavors per direct spec.
+  // Shareable replicates the branded template as-is (logo, company info,
+  // watermark, footer, digital stamp). Printable keeps only the field
+  // values -- no logo/footer/stamp/watermark, since those are already on
+  // the pre-printed stationery -- confined inside the specified margins
+  // (top 1.45in / bottom 1.45in / left 0.25in / right 0.25in) so it lines
+  // up with what's already on the paper. Both use the same two-column
+  // Service Details / Arrival-Departure layout to fit the compact 5in
+  // page height, and share the same field content and ordering so the
+  // two stay visually consistent with each other. ─────────────────────────
+  const buildPrintHTML = (order, orderNo, flavor = "shareable") => {
+    const printable = flavor === "printable";
     const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
     const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
     const wmDataUrl = `data:image/svg+xml,${encodeURIComponent(WatermarkSVG())}`;
     const hasArrDep = order.arrivalDate || order.departureDate;
+    const accent = printable ? "#1a1a1a" : "#C0392B";
+    const navy = printable ? "#1a1a1a" : "#0D1B2A";
 
-    return `<!DOCTYPE html><html><head><title>Exchange Order ${orderNo}</title>
-    <style>
-      @page { size: A5 landscape; margin: 8mm; }
-      * { box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 0; padding: 0;
-        background: white; width: 200mm; min-height: 138mm; position: relative; overflow: hidden; }
-      .watermark { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
-        background-image: url("${wmDataUrl}"); background-repeat: repeat; opacity: 1; pointer-events: none; }
-      .content { position: relative; z-index: 1; padding: 8px 12px; }
-      .header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #C0392B; padding-bottom: 6px; margin-bottom: 8px; }
-      .co-info { text-align: right; }
-      .co-name { font-size: 13px; font-weight: 900; color: #0D1B2A; }
-      .co-addr { font-size: 9px; color: #555; line-height: 1.4; }
-      .eo-title { font-size: 14px; font-weight: 900; color: #C0392B; text-align: center; letter-spacing: 1px; margin-bottom: 2px; }
-      .svc-type { font-size: 11px; font-weight: 700; text-align: center; color: #0D1B2A; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
-      .order-details { width: 100%; font-size: 12px; margin-bottom: 8px; }
-      .order-details td { padding: 2px 4px; }
-      .order-details td.k { width: 160px; font-weight: 700; color: #C0392B; }
-      .divider { border: none; border-top: 1px solid #ddd; margin: 6px 0; }
-      .body-area { font-size: 12px; }
-      .body-area p { margin: 0 0 6px; }
-      .body-area ul { margin: 0 0 6px 18px; padding: 0; }
-      .arr-dep { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; border-top: 1px dashed #ccc; padding-top: 8px; }
-      .arr-dep-box h4 { font-size: 11px; font-weight: 900; text-decoration: underline; margin: 0 0 4px; color: #0D1B2A; }
-      .arr-dep-box table td { padding: 1px 4px; font-size: 11px; }
-      .footer-area { margin-top: 8px; border-top: 2px solid #C0392B; padding-top: 6px; display: flex; justify-content: space-between; align-items: flex-end; }
-      .footer-text { font-size: 9px; color: #555; }
-      .footer-text .bold { font-weight: 700; color: #C0392B; font-size: 10px; text-decoration: underline; }
-      .stamp { width: 64px; height: 64px; border-radius: 50%; border: 2.5px solid #C0392B; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-      .stamp-inner { font-size: 6px; font-weight: 700; color: #C0392B; line-height: 1.3; letter-spacing: 0.3px; }
-      .stamp-label { font-size: 6.5px; font-weight: 700; color: #C0392B; margin-bottom: 1px; }
-      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-    </style></head><body>
-    <div class="watermark"></div>
-    <div class="content">
-      <div class="header">
-        <div>
-          <img src="${LOGO_B64}" alt="Unitop" style="height:40px;width:auto;display:block;margin-bottom:2px;mix-blend-mode:multiply"/>
-          <div style="font-size:8px;color:#C0392B;font-weight:700;letter-spacing:1px">EXCHANGE ORDER</div>
-        </div>
-        <div class="co-info">
-          <div class="co-name">UNITOP TOURS &amp; TRAVEL PVT. LTD</div>
-          <div class="co-addr">506, DDA-2, District Centre, Janakpuri, New Delhi-110058<br/>
-          Ph: +91-11-25550991, 25550992, 41589897, 45503106<br/>
-          Email: unitoptours@gmail.com, Web: www.unitoptours.com</div>
-        </div>
-      </div>
-      <div class="eo-title">EXCHANGE ORDER</div>
-      <div class="svc-type">${svcLabel.toUpperCase()}</div>
-      <table class="order-details"><tbody>
-        <tr><td class="k">Exchange Order No.:</td><td>${orderNo}</td><td class="k">Issue Date:</td><td>${order.issueDate}</td></tr>
-        <tr><td class="k">Drawn on:</td><td>${order.drawnOn}</td><td class="k">Tour No.:</td><td>${order.tourNo}</td></tr>
-        <tr><td class="k">No. of Pax:</td><td>${order.pax}</td><td class="k">Nationality:</td><td>${order.nationality}</td></tr>
-        <tr><td class="k">Tour Facilitator Details:</td><td colspan="3">${order.tourFacilitatorDetails || "—"}</td></tr>
-      </tbody></table>
-      <div style="font-size:11px;margin-bottom:4px">${tmpl.instructionLine}</div>
-      <hr class="divider"/>
-      <div class="body-area">${order.serviceDetailsHtml || ""}</div>
-      ${hasArrDep ? `<div class="arr-dep">
+    // Printable reserves the physical stationery's own margins; Shareable
+    // just needs enough padding to keep the design off the page edge.
+    const padTop = printable ? "1.45in" : "0.22in";
+    const padBottom = printable ? "1.45in" : "0.18in";
+    const padSide = printable ? "0.25in" : "0.24in";
+
+    // Printable's usable box is only ~2.1in tall (top+bottom margins eat
+    // 2.9in of the 5in page), against Shareable's ~4.4in for the same
+    // content -- confirmed by rendering both to real PDFs and rasterizing
+    // them: at Shareable's type scale, Printable's Arrival/Departure and
+    // Service Details clipped mid-content. Printable also drops the
+    // logo/company block AND the "EXCHANGE ORDER" title (per 1.16 --
+    // that's already printed on the stationery), which claws back some
+    // room, but still needs a meaningfully smaller scale to reliably fit
+    // a normal amount of Service Details text. Even so, this is a hard
+    // physical limit, not something typography alone fully solves --
+    // unusually long Service Details can still run past the margin on
+    // paper, since there's no pagination for a single 8x5in card.
+    const sz = printable
+      ? { svcType: 8, orderDet: 8, orderK: 100, instruction: 7, body: 8, arrH4: 7.5, arrTd: 7 }
+      : { svcType: 9.5, orderDet: 9.5, orderK: 130, instruction: 8.5, body: 9.5, arrH4: 9, arrTd: 8.5 };
+
+    const arrDepBlock = hasArrDep ? `<div class="arr-dep">
         <div class="arr-dep-box">
           <h4>ARRIVAL</h4>
           <table><tbody>
-            <tr><td><strong>Date:</strong></td><td>${order.arrivalDate}</td></tr>
-            <tr><td><strong>From:</strong></td><td>${order.arrivalFrom}</td></tr>
-            <tr><td><strong>By:</strong></td><td>${order.arrivalBy}</td></tr>
-            <tr><td><strong>Time:</strong></td><td>${order.arrivalTime}</td></tr>
+            <tr><td>Date:</td><td>${order.arrivalDate}</td></tr>
+            <tr><td>From:</td><td>${order.arrivalFrom}</td></tr>
+            <tr><td>By:</td><td>${order.arrivalBy}</td></tr>
+            <tr><td>Time:</td><td>${order.arrivalTime}</td></tr>
           </tbody></table>
         </div>
         <div class="arr-dep-box">
           <h4>DEPARTURE</h4>
           <table><tbody>
-            <tr><td><strong>Date:</strong></td><td>${order.departureDate}</td></tr>
-            <tr><td><strong>To:</strong></td><td>${order.departureTo}</td></tr>
-            <tr><td><strong>By:</strong></td><td>${order.departureBy}</td></tr>
-            <tr><td><strong>Time:</strong></td><td>${order.departureTime}</td></tr>
+            <tr><td>Date:</td><td>${order.departureDate}</td></tr>
+            <tr><td>To:</td><td>${order.departureTo}</td></tr>
+            <tr><td>By:</td><td>${order.departureBy}</td></tr>
+            <tr><td>Time:</td><td>${order.departureTime}</td></tr>
           </tbody></table>
         </div>
-      </div>` : ""}
-      <div class="footer-area">
-        <div class="footer-text">
-          <div class="bold">${tmpl.footerBold}</div>
-          <div>${tmpl.footerLine1}</div>
-          <div>${tmpl.footerLine2}</div>
-          <div style="margin-top:6px;font-weight:700">Authorised Signatory</div>
+      </div>` : "";
+
+    return `<!DOCTYPE html><html><head><title>Exchange Order ${orderNo}</title>
+    <style>
+      @page { size: 8in 5in; margin: 0; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; font-size: 10px; color: #1a1a1a; margin: 0; padding: 0;
+        background: white; width: 8in; height: 5in; position: relative; overflow: hidden; }
+      .page { position: relative; width: 100%; height: 100%; padding: ${padTop} ${padSide} ${padBottom}; }
+      ${printable ? "" : `.watermark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
+        background-image: url("${wmDataUrl}"); background-repeat: repeat; opacity: 1; pointer-events: none; }`}
+      .content { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
+      .header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1.5px solid ${accent}; padding-bottom: 4px; margin-bottom: 5px; }
+      .co-info { text-align: right; }
+      .co-name { font-size: 11px; font-weight: 900; color: ${navy}; }
+      .co-addr { font-size: 7.5px; color: #555; line-height: 1.3; }
+      .eo-title { font-size: 12px; font-weight: 900; color: ${accent}; text-align: center; letter-spacing: 1px; margin-bottom: 1px; }
+      .svc-type { font-size: ${sz.svcType}px; font-weight: 700; text-align: center; color: ${navy}; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: ${printable ? 2 : 4}px; }
+      .order-details { width: 100%; font-size: ${sz.orderDet}px; margin-bottom: ${printable ? 2 : 4}px; }
+      .order-details td { padding: ${printable ? 0.5 : 1}px 3px; }
+      .order-details td.k { width: ${sz.orderK}px; font-weight: 700; color: ${accent}; white-space: nowrap; }
+      .instruction { font-size: ${sz.instruction}px; margin-bottom: ${printable ? 2 : 3}px; }
+      .divider { border: none; border-top: 1px solid #ccc; margin: ${printable ? 2 : 3}px 0; flex-shrink: 0; }
+      .two-col { display: flex; gap: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+      .body-area { flex: 1.3 1 0; font-size: ${sz.body}px; overflow: hidden; min-width: 0; }
+      .body-area p { margin: 0 0 ${printable ? 2 : 4}px; }
+      .body-area ul { margin: 0 0 ${printable ? 2 : 4}px 14px; padding: 0; }
+      .arr-dep { flex: 1 1 0; display: flex; gap: 8px; min-width: 0; }
+      .arr-dep-box { flex: 1 1 0; min-width: 0; }
+      .arr-dep-box h4 { font-size: ${sz.arrH4}px; font-weight: 900; text-decoration: underline; margin: 0 0 ${printable ? 2 : 3}px; color: ${navy}; }
+      .arr-dep-box table td { padding: ${printable ? 0.5 : 1}px 3px; font-size: ${sz.arrTd}px; }
+      .footer-area { margin-top: 4px; ${printable ? "" : `border-top: 1.5px solid ${accent}; padding-top: 4px;`} display: flex; justify-content: space-between; align-items: flex-end; flex-shrink: 0; }
+      .footer-text { font-size: 7.5px; color: #555; }
+      .footer-text .bold { font-weight: 700; color: ${accent}; font-size: 8px; text-decoration: underline; }
+      .stamp { width: 50px; height: 50px; border-radius: 50%; border: 2px solid ${accent}; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      .stamp-inner { font-size: 5px; font-weight: 700; color: ${accent}; line-height: 1.2; letter-spacing: 0.2px; }
+      .stamp-label { font-size: 5.2px; font-weight: 700; color: ${accent}; margin-bottom: 1px; }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>
+    <div class="page">
+      ${printable ? "" : `<div class="watermark"></div>`}
+      <div class="content">
+        ${printable ? "" : `<div class="header">
+          <div>
+            <img src="${LOGO_B64}" alt="Unitop" style="height:32px;width:auto;display:block;margin-bottom:1px;mix-blend-mode:multiply"/>
+            <div style="font-size:7px;color:${accent};font-weight:700;letter-spacing:1px">EXCHANGE ORDER</div>
+          </div>
+          <div class="co-info">
+            <div class="co-name">UNITOP TOURS &amp; TRAVEL PVT. LTD</div>
+            <div class="co-addr">506, DDA-2, District Centre, Janakpuri, New Delhi-110058<br/>
+            Ph: +91-11-25550991, 25550992, 41589897, 45503106<br/>
+            Email: unitoptours@gmail.com, Web: www.unitoptours.com</div>
+          </div>
         </div>
-        <div class="stamp">
-          <div class="stamp-label">UNITOP</div>
-          <div class="stamp-inner">TOURS &amp; TRAVEL<br/>PVT. LTD.</div>
-          <div style="font-size:5px;color:#C0392B;margin-top:1px;font-weight:700">✦ DIGITALLY ✦</div>
-          <div style="font-size:5px;color:#C0392B;font-weight:700">SIGNED &amp; VERIFIED</div>
-          <div style="font-size:5px;color:#C0392B;margin-top:1px">NEW DELHI</div>
+        <div class="eo-title">EXCHANGE ORDER</div>`}
+        <div class="svc-type">${svcLabel.toUpperCase()}</div>
+        <table class="order-details"><tbody>
+          <tr><td class="k">Exchange Order No.:</td><td>${orderNo}</td><td class="k">Issue Date:</td><td>${order.issueDate}</td></tr>
+          <tr><td class="k">Drawn on:</td><td>${order.drawnOn}</td><td class="k">In favour of Tour No.:</td><td>${order.tourNo}</td></tr>
+          <tr><td class="k">No. of Pax:</td><td>${order.pax}</td><td class="k">Nationality:</td><td>${order.nationality}</td></tr>
+          <tr><td class="k">Tour Facilitator Details:</td><td colspan="3">${order.tourFacilitatorDetails || "—"}</td></tr>
+        </tbody></table>
+        <div class="instruction">${tmpl.instructionLine}</div>
+        <hr class="divider"/>
+        <div class="two-col">
+          <div class="body-area">${order.serviceDetailsHtml || ""}</div>
+          ${arrDepBlock}
         </div>
+        ${printable ? "" : `<div class="footer-area">
+          <div class="footer-text">
+            <div class="bold">${tmpl.footerBold}</div>
+            <div>${tmpl.footerLine1}</div>
+            <div>${tmpl.footerLine2}</div>
+            <div style="margin-top:4px;font-weight:700">Authorised Signatory</div>
+          </div>
+          <div class="stamp">
+            <div class="stamp-label">UNITOP</div>
+            <div class="stamp-inner">TOURS &amp; TRAVEL<br/>PVT. LTD.</div>
+            <div style="font-size:4.2px;color:${accent};margin-top:1px;font-weight:700">✦ DIGITALLY ✦</div>
+            <div style="font-size:4.2px;color:${accent};font-weight:700">SIGNED &amp; VERIFIED</div>
+            <div style="font-size:4.2px;color:${accent};margin-top:1px">NEW DELHI</div>
+          </div>
+        </div>`}
       </div>
     </div>
     </body></html>`;
   };
 
-  const printOrder = (order, orderNo) => {
+  const printOrder = (order, orderNo, flavor = "shareable") => {
     const win = window.open("", "_blank");
-    win.document.write(buildPrintHTML(order, orderNo));
+    win.document.write(buildPrintHTML(order, orderNo, flavor));
     win.document.close();
     win.print();
   };
+
+  const printActions = (order, orderNo) => [
+    { id: "shareable", label: "Shareable", icon: "📤", hint: "Branded PDF, for sending as a soft copy", onSelect: () => printOrder(order, orderNo, "shareable") },
+    { id: "printable", label: "Printable", icon: "🖨", hint: "Plain, for printing on pre-printed stationery", onSelect: () => printOrder(order, orderNo, "printable") },
+  ];
 
   const inp = { padding: "6px 8px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12, fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white };
   const label = (t) => <div style={{ fontSize: 10, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{t}</div>;
@@ -482,7 +530,7 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
                       {order.confirmed ? "✗ Unconfirm" : "✓ Confirm"}
                     </button>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => openOrder(group)}>✏ Open</button>
-                    <button className="btn btn-success" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => printOrder(order, group.orderNo)}>🖨 Print</button>
+                    <ExportMenu G={G} label="Print" actions={printActions(order, group.orderNo)} />
                   </div>
                 );
               })}
@@ -497,7 +545,8 @@ export default function ExchangeOrderGenerator({ query, template, onClose, curre
                 <VersionDropdown versions={openVersions} viewingVersion={openViewingVersion}
                   displayVersion={openViewingVersion} finalVersion={openFinalVersion}
                   onSelectVersion={selectOpenVersion} onMarkFinal={onMarkOpenFinal} readOnly={readOnly} G={G} />
-                <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo)}>🖨 Print</button>
+                <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "shareable")}>📤 Shareable</button>
+                <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "printable")}>🖨 Printable</button>
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: G.navy, marginBottom: 10 }}>{openOrderNo}</div>
               {orderForm(saveNewVersionOfOpenOrder, "✓ Save New Version")}
