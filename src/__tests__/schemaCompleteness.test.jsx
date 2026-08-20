@@ -129,11 +129,11 @@ describe('Schema completeness: itineraries (saveItineraryVersion) -- pulled_from
   });
 });
 
-describe('Schema completeness: exchange_orders (saveExchangeOrderVersion) -- NEW table, requires migration', () => {
-  const EXPECTED_COLUMNS = ['query_id', 'version', 'is_final', 'note', 'content', 'created_by'];
+describe('Schema completeness: exchange_orders (saveExchangeOrderVersion) -- restructured 2026-08-20, order_no is a NEW column (each Exchange Order is now its own independently versioned document, not an array entry in a tour-file-wide bundle)', () => {
+  const EXPECTED_COLUMNS = ['order_no', 'query_id', 'version', 'is_final', 'note', 'content', 'created_by'];
   it('every intended column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
-    await saveExchangeOrderVersion(db, 'UTQ-1', { version: 1 }, null);
+    await saveExchangeOrderVersion(db, 'EO-2026-001', 'UTQ-1', { version: 1, order: {} }, null);
     const call = calls.find(c => c.table === 'exchange_orders');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'exchange_orders');
   });

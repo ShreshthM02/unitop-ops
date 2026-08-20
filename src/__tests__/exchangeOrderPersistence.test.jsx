@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+// Restructured 2026-08-20: each Exchange Order is now its own independently
+// versioned document (order_no + version), not an array entry inside one
+// tour-file-wide bundle. These tests cover the new shape: Generate New tab
+// assigns a globally-unique order_no on save; Repository tab lists every
+// EO for this tour file, grouped by order_no.
+
 const mockDb = {
   from: vi.fn((table) => {
     const builder = {
@@ -23,22 +29,25 @@ const fakeQuery = { id: 'UTQ-2026-800', groupName: 'Exchange Order Persistence T
 
 beforeEach(() => { mockDb.from.mockClear(); });
 
-describe('ExchangeOrderGenerator: real versioned persistence (Phase 0 of the Document Chain plan)', () => {
-  it('calls loadExchangeOrderVersions (via db.from("exchange_orders")) on mount', async () => {
+describe('ExchangeOrderGenerator: per-order versioned persistence (restructured 2026-08-20)', () => {
+  it('loads the tour file\'s Exchange Orders (via db.from("exchange_orders")) on mount', async () => {
     render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
     await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('exchange_orders'));
   });
 
-  it('clicking Save Version calls the exchange_orders insert with the current orders list', async () => {
+  it('saving a new order assigns a globally-unique order_no and inserts version 1', async () => {
     render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
-    fireEvent.click(await screen.findByText(/💾 Save v1/));
+    fireEvent.change(await screen.findByPlaceholderText('e.g. Nanking Restaurant'), { target: { value: 'Nanking Restaurant' } });
+    fireEvent.click(screen.getByText('✓ Save Exchange Order'));
     await waitFor(() => {
       const insertCalls = mockDb.from.mock.results
         .filter((r,i)=>mockDb.from.mock.calls[i][0]==='exchange_orders')
         .map(r=>r.value.insert.mock.calls).flat();
       expect(insertCalls.length).toBeGreaterThan(0);
-      expect(insertCalls[0][0]).toHaveProperty('content');
-      expect(insertCalls[0][0].content).toHaveProperty('orders');
+      const inserted = insertCalls[0][0];
+      expect(inserted).toHaveProperty('order_no');
+      expect(inserted.version).toBe(1);
+      expect(inserted.content.drawnOn).toBe('Nanking Restaurant');
     });
   });
 
@@ -47,9 +56,10 @@ describe('ExchangeOrderGenerator: real versioned persistence (Phase 0 of the Doc
     expect(await screen.findByText(/EXCHANGE ORDERS/)).toBeTruthy();
   });
 
-  it('loading a previously saved version populates the orders list', async () => {
+  it('Repository tab lists a previously saved Exchange Order grouped by its order_no', async () => {
     const versionRows = [
-      { version: 1, content: { orders: [{id:1,orderNo:41284,serviceType:'restaurant',drawnOn:'Test Restaurant',confirmed:false}] }, is_final: false },
+      { id:'row-1', order_no: 'EO-2026-001', query_id: fakeQuery.id, version: 1, is_final: false,
+        content: { serviceType:'restaurant', drawnOn:'Test Restaurant', confirmed:false, issueDate:'', pax:'' } },
     ];
     const db = {
       from: vi.fn((t) => {
@@ -66,6 +76,8 @@ describe('ExchangeOrderGenerator: real versioned persistence (Phase 0 of the Doc
     vi.resetModules();
     const { default: EOG } = await import('../components/ExchangeOrderGenerator.jsx');
     render(<EOG query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByText(/Test Restaurant/)).toBeTruthy());
+    fireEvent.click(await screen.findByText(/Repository/));
+    await waitFor(() => expect(screen.getByText('Test Restaurant')).toBeTruthy());
+    expect(screen.getByText('EO-2026-001')).toBeTruthy();
   });
 });

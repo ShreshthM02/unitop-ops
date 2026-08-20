@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, logAudit, db } = Lib;
 
-const SERVICE_STATUSES = ["requested","pending","confirmed","voucher issued","sold out","cancelled"];
+const SERVICE_STATUSES = ["requested","pending","confirmed","Ex. Order Issued","sold out","cancelled"];
 
 export function ServicesList({ query, sec, currentUser, readOnly }) {
   const DEFAULT_SERVICES = [
@@ -16,7 +16,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
     requested:  {bg:"#DBEAFE",color:"#1E40AF"},
     pending:    {bg:"#FEF3C7",color:"#92400E"},
     confirmed:  {bg:"#DCFCE7",color:"#166534"},
-    "voucher issued": {bg:"#EAFAF1",color:"#0E6655"},
+    "Ex. Order Issued": {bg:"#EAFAF1",color:"#0E6655"},
     "sold out": {bg:"#FEE2E2",color:"#991B1B"},
     cancelled:  {bg:"#F3F4F6",color:"#6B7280"},
   };
@@ -124,7 +124,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
       )}
 
       <div style={{marginTop:8,fontSize:11,color:G.gray400,background:G.gray50,padding:"8px 10px",borderRadius:6}}>
-        ℹ Select "Voucher Issued" once an Exchange Order has actually been issued for this service — this is a manual confirmation, not automatic, to avoid misrepresenting status due to a naming mismatch.
+        ℹ Select "Ex. Order Issued" once an Exchange Order has actually been issued for this service — this is a manual confirmation, not automatic, to avoid misrepresenting status due to a naming mismatch.
       </div>
     </fieldset>
   );

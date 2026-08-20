@@ -44,13 +44,13 @@ describe('ServicesList: real persistence', () => {
   });
 });
 
-describe('ServicesList: "Voucher Issued" status option', () => {
-  it('includes Voucher Issued as a selectable status, manually selectable (not automatic)', async () => {
+describe('ServicesList: "Ex. Order Issued" status option', () => {
+  it('includes Ex. Order Issued as a selectable status, manually selectable (not automatic)', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
     await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
     const select = document.querySelectorAll('select')[0];
     const options = Array.from(select.querySelectorAll('option')).map(o => o.value);
-    expect(options).toContain('voucher issued');
+    expect(options).toContain('Ex. Order Issued');
   });
 
   it('shows a note clarifying this is manual, not automatic', async () => {

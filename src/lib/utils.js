@@ -726,15 +726,20 @@ export function extractTourBriefingTransportSummary(transports) {
 }
 
 // Cost Sheet transports[] + localHandlers[] -> partial Exchange Order
-// drafts (serviceType, route, vehicleType only) -- vendor name,
-// contact, escort, and dates are left for the user to fill in, since
-// Cost Sheet has no source data for any of them.
+// drafts (serviceType + a starter line in the unified Service Details rich
+// text field) -- vendor name, contact, tour facilitator details, and dates
+// are left for the user to fill in, since Cost Sheet has no source data for
+// any of them. Updated 2026-08-20 for the single-rich-text-field Service
+// Details model (previously route/vehicleType were separate structured
+// fields, which no longer exist on an order).
 export function extractExchangeOrderDraftsFromCostSheet(transports, localHandlers) {
   const fromTransports = (transports || []).map(t => ({
-    serviceType: "transport", route: t.sector || "", vehicleType: t.vehicleType || "",
+    serviceType: "transport",
+    serviceDetailsHtml: `<p>${[t.vehicleType, t.sector].filter(Boolean).join(" for ") || "Vehicle for sector TBC"}</p>`,
   }));
   const fromHandlers = (localHandlers || []).map(h => ({
-    serviceType: "handler", route: h.sector || "", vehicleType: "",
+    serviceType: "handler",
+    serviceDetailsHtml: `<p>${h.sector || "Sector TBC"}</p>`,
   }));
   return [...fromTransports, ...fromHandlers];
 }
@@ -973,39 +978,71 @@ export async function markItineraryVersionFinal(db, queryId, version, style) {
   }
 }
 
-// ─── EXCHANGE ORDERS (real versioned history -- Phase 0 of the Document
-// Chain plan). orders[] is a list of independent vendor instructions
-// (each already has its own confirmed flag), not sections of one draft --
-// but versioned the same way as every other document here for a
-// consistent, holistic history system rather than a bespoke model just
-// for this one. Bundled into a single jsonb `content` column rather than
-// enumerating every field as its own column, given the scale of fields
-// involved (each order alone has 25+ fields). ─────────────────────────────
+// ─── EXCHANGE ORDERS (restructured 2026-08-20). Each Exchange Order is now
+// its OWN independently versioned document, identified by a globally
+// unique order_no assigned once at creation and stable across every later
+// edit -- not an array entry inside one tour-file-wide bundle (the old
+// model). order_no plays the same role here that query_id plays for every
+// other document's version history: the stable grouping key. Many EOs
+// belong to one tour file, so query_id is kept as a plain column for
+// listing "every EO for this tour file" (the Repository tab), while
+// version history within one EO groups by order_no. ───────────────────────
 export function mapDbExchangeOrderRow(row) {
   return {
-    id: row.id, version: row.version, isFinal: row.is_final || false,
+    id: row.id, orderNo: row.order_no, queryId: row.query_id,
+    version: row.version, isFinal: row.is_final || false,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
-    orders: (row.content && row.content.orders) || [],
+    order: row.content || {},
     pulledFromCostSheetVersion: (row.content && row.content.pulledFromCostSheetVersion) ?? null,
   };
 }
 
-export async function loadExchangeOrderVersions(db, queryId) {
+// All version rows for every EO belonging to one tour file -- used to
+// build the Repository tab (grouped client-side by orderNo into one card
+// per EO, showing its latest version).
+export async function loadExchangeOrdersForTourFile(db, queryId) {
   try {
     const { data } = await db.from("exchange_orders").select("*").eq("query_id", queryId).order("version", { ascending: true });
     return (data || []).map(mapDbExchangeOrderRow);
   } catch (e) {
-    console.warn("Load exchange order versions failed:", e);
+    console.warn("Load exchange orders for tour file failed:", e);
     return [];
   }
 }
 
-export async function saveExchangeOrderVersion(db, queryId, snap, createdBy) {
+// Full version history for one specific EO (by its stable order_no) --
+// used to drive that EO's own VersionDropdown when opened for edit.
+export async function loadExchangeOrderVersionHistory(db, orderNo) {
+  try {
+    const { data } = await db.from("exchange_orders").select("*").eq("order_no", orderNo).order("version", { ascending: true });
+    return (data || []).map(mapDbExchangeOrderRow);
+  } catch (e) {
+    console.warn("Load exchange order version history failed:", e);
+    return [];
+  }
+}
+
+// Global order_no sequence -- queries every EO ever issued, across every
+// tour file, not just this one (per direct spec: EO numbers are universally
+// auto-incremental across all tour files, same numbering mechanism as
+// nextInvoiceNo() already uses for Tax/Pro-forma Invoice).
+export async function nextExchangeOrderNo(db, prefix) {
+  try {
+    const { data } = await db.from("exchange_orders").select("order_no");
+    const existing = [...new Set((data || []).map(r => r.order_no).filter(Boolean))];
+    return nextInvoiceNo(prefix, existing);
+  } catch (e) {
+    console.warn("Generate next exchange order number failed:", e);
+    return `${prefix}-${new Date().getFullYear()}-001`;
+  }
+}
+
+export async function saveExchangeOrderVersion(db, orderNo, queryId, snap, createdBy) {
   try {
     const { data, error } = await db.from("exchange_orders").insert({
-      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
-      content: { orders: snap.orders || [], pulledFromCostSheetVersion: snap.pulledFromCostSheetVersion ?? null },
+      order_no: orderNo, query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+      content: { ...snap.order, pulledFromCostSheetVersion: snap.pulledFromCostSheetVersion ?? null },
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };
@@ -1016,10 +1053,21 @@ export async function saveExchangeOrderVersion(db, queryId, snap, createdBy) {
   }
 }
 
-export async function markExchangeOrderVersionFinal(db, queryId, version) {
+// Lightweight in-place update of one EO version row's content -- used only
+// for the Confirmed/Pending toggle, which is a quick status flag and
+// shouldn't force a whole new version the way an actual content edit does.
+export async function updateExchangeOrderRowContent(db, rowId, content) {
   try {
-    await db.from("exchange_orders").eq("query_id", queryId).update({ is_final: false });
-    await db.from("exchange_orders").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+    await db.from("exchange_orders").eq("id", rowId).update({ content });
+  } catch (e) {
+    console.warn("Update exchange order row content failed:", e);
+  }
+}
+
+export async function markExchangeOrderVersionFinal(db, orderNo, version) {
+  try {
+    await db.from("exchange_orders").eq("order_no", orderNo).update({ is_final: false });
+    await db.from("exchange_orders").eq("order_no", orderNo).eq("version", version).update({ is_final: true });
   } catch (e) {
     console.warn("Mark exchange order version final failed:", e);
   }

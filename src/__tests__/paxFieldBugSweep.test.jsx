@@ -30,8 +30,7 @@ describe('The q.pax bug: paxDisplay now actually shows up everywhere it is suppo
   it('ExchangeOrderGenerator seeds its own pax field from paxDisplay, not the never-existent query.pax', async () => {
     const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
     render(<ExchangeOrderGenerator query={queryWithPax} onClose={()=>{}}/>);
-    const paxInput = document.querySelector('input[placeholder="e.g. 16 + 01"]');
-    expect(paxInput.value).toBe('18 pax (confirmed)');
+    expect(await screen.findByDisplayValue('18 pax (confirmed)')).toBeTruthy();
   });
 
   it('ProformaInvoice seeds its own pax field from paxDisplay, not the never-existent query.pax', async () => {

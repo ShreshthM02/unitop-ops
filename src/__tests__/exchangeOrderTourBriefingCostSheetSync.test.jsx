@@ -20,39 +20,33 @@ function makeDb({ costSheetRows = [], exchangeOrderRows = [], tourBriefingRows =
   };
 }
 
-describe('ExchangeOrderGenerator Phase 5: auto-pulls partial draft orders from the star-marked Cost Sheet', () => {
-  it('a brand-new Exchange Orders panel (zero saved versions) pulls draft orders automatically', async () => {
+describe('ExchangeOrderGenerator: Cost Sheet draft pull (restructured 2026-08-20 -- now manual, staged as a review queue rather than auto-saved)', () => {
+  it('shows a banner offering to pull from the star-marked final Cost Sheet, without auto-pulling', async () => {
     const finalCS = { id: 'cs-1', version: 2, is_final: true, days: [], transports: [{ sector:'DELHI', vehicleType:'Large Coach' }], local_handlers: [{ sector:'KASHMIR' }] };
     const db = makeDb({ costSheetRows: [finalCS] });
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
     render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByText(/Pulled 2 draft orders from Cost Sheet v2/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Cost Sheet v2 \(final\) has transport\/handler data/)).toBeTruthy());
+    expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy();
   });
 
-  it('never fabricates vendor name/contact fields -- those stay blank for the user to fill in', async () => {
+  it('pulling stages drafts for review instead of saving them, and never fabricates vendor/facilitator fields', async () => {
     const finalCS = { id: 'cs-2', version: 1, is_final: true, days: [], transports: [{ sector:'DELHI', vehicleType:'Mini Bus' }], local_handlers: [] };
     const db = makeDb({ costSheetRows: [finalCS] });
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
     render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
     await waitFor(() => expect(screen.getByText(/Pulled 1 draft order from Cost Sheet v1/)).toBeTruthy());
-    // The saved orders list should show the pulled order with an empty vendor field
-    expect(screen.getByText(/Not Confirmed|—/)).toBeTruthy();
-  });
-
-  it('shows the staleness banner when a newer final Cost Sheet exists', async () => {
-    const finalCS = { id: 'cs-3', version: 4, is_final: true, days: [], transports: [{sector:'X',vehicleType:'Y'}], local_handlers: [] };
-    const savedOrders = { version: 1, content: { orders: [], pulledFromCostSheetVersion: 2 }, is_final: false };
-    const db = makeDb({ costSheetRows: [finalCS], exchangeOrderRows: [savedOrders] });
-    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
-    vi.resetModules();
-    const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
-    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByText(/Cost Sheet v4 \(final\) has transport\/handler data/)).toBeTruthy());
-    expect(screen.getByText('↻ Pull latest')).toBeTruthy();
+    expect(screen.getByText('Pending Drafts — click to complete')).toBeTruthy();
+    // Nothing was inserted -- the draft is staged locally, not saved as a real Exchange Order yet
+    const insertCalls = db.from.mock.results
+      .filter((r,i)=>db.from.mock.calls[i][0]==='exchange_orders')
+      .map(r=>r.value.insert.mock.calls).flat();
+    expect(insertCalls.length).toBe(0);
   });
 });
 

@@ -119,20 +119,20 @@ describe('extractTourBriefingTransportSummary: a free-text summary line, not a t
   });
 });
 
-describe('extractExchangeOrderDraftsFromCostSheet: partial drafts only -- route/vehicle/serviceType, never fabricated vendor contact info', () => {
+describe('extractExchangeOrderDraftsFromCostSheet: partial drafts only -- serviceType + a starter Service Details line, never fabricated vendor contact info', () => {
   it('creates one transport draft per transport row and one handler draft per local handler row', () => {
     const result = extractExchangeOrderDraftsFromCostSheet(
       [{ sector: 'DELHI', vehicleType: 'Large Coach' }],
       [{ sector: 'KASHMIR' }],
     );
     expect(result).toEqual([
-      { serviceType: 'transport', route: 'DELHI', vehicleType: 'Large Coach' },
-      { serviceType: 'handler', route: 'KASHMIR', vehicleType: '' },
+      { serviceType: 'transport', serviceDetailsHtml: '<p>Large Coach for DELHI</p>' },
+      { serviceType: 'handler', serviceDetailsHtml: '<p>KASHMIR</p>' },
     ]);
   });
-  it('never includes vendor name, contact, or escort fields -- those have no Cost Sheet source', () => {
+  it('never includes vendor name, contact, or tour facilitator fields -- those have no Cost Sheet source', () => {
     const result = extractExchangeOrderDraftsFromCostSheet([{ sector: 'X', vehicleType: 'Y' }], []);
     expect(result[0]).not.toHaveProperty('drawnOn');
-    expect(result[0]).not.toHaveProperty('escort');
+    expect(result[0]).not.toHaveProperty('tourFacilitatorDetails');
   });
 });
