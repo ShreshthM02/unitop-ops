@@ -18,16 +18,23 @@ const {
 // Horizontal rows (not diagonal tiles) per direct correction 2026-08-21 --
 // the text reads left-to-right normally, repeated across each row to fill
 // the width, with rows stacked top to bottom to fill the height.
+// Horizontal-row watermark, matching the real reference stationery
+// (Service_Voucher.pdf) measured 2026-08-21: regular weight (not bold),
+// rows packed at ~1.33x line-height with almost no gap between them so
+// the page reads as "populated" top to bottom, same blue as the
+// letterhead's other text (#061BB0) at moderate opacity -- lower than
+// that reads too faint against the sample; the earlier very-low-opacity
+// bold attempt undershot how present this is meant to look.
 const eoWatermarkInlineSVG = (pageWidthPt, pageHeightPt, color = "6,27,176") => {
-  const rowHeight = 42;
-  const rows = Math.ceil(pageHeightPt / rowHeight) + 1;
-  const repeatText = `${WATERMARK_TEXT}      `.repeat(Math.ceil(pageWidthPt / 110) + 2);
+  const rowHeight = 11.7;
+  const rows = Math.ceil(pageHeightPt / rowHeight) + 2;
+  const repeatText = `${WATERMARK_TEXT} `.repeat(Math.ceil(pageWidthPt / 95) + 2);
   const texts = [];
   for (let row = 0; row < rows; row++) {
     texts.push(`<text class="wm" x="0" y="${row * rowHeight}">${repeatText}</text>`);
   }
   return `<svg class="abs" style="left:0;top:0;z-index:0" width="${pageWidthPt}" height="${pageHeightPt}" xmlns="http://www.w3.org/2000/svg">
-    <style>.wm{font-family:Arial;font-size:9px;fill:rgba(${color},0.055);font-weight:700;letter-spacing:1px;}</style>
+    <style>.wm{font-family:Arial;font-size:8.8px;font-weight:400;fill:rgba(${color},0.075);letter-spacing:0.3px;}</style>
     ${texts.join("")}
   </svg>`;
 };
@@ -300,11 +307,11 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       <div class="abs" style="left:36pt;top:95pt;width:523.5pt;text-align:center;font-weight:700;font-size:10pt;">${svcLabel.toUpperCase()}</div>
 
       <div class="abs nowrap" style="left:36pt;top:109pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:320pt;top:109pt;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs nowrap" style="left:320pt;top:109pt;width:239.5pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
       <div class="abs" style="left:36pt;top:123pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:320pt;top:123pt;font-size:10pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:320pt;top:123pt;width:239.5pt;text-align:right;font-size:10pt;">No. of Pax: ${order.pax}</div>
       <div class="abs" style="left:36pt;top:137pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:320pt;top:137pt;font-size:10pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:320pt;top:137pt;width:239.5pt;text-align:right;font-size:10pt;">Nationality: ${order.nationality}</div>
       <div class="abs" style="left:36pt;top:155pt;font-size:10pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
       <div class="rule" style="left:36pt;top:165pt;width:523.5pt;"></div>
 
@@ -330,66 +337,68 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
     const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
     const hasArrDep = order.arrivalDate || order.departureDate;
-    const BLUE = "#061BB0";
+    // Real letterhead text color, measured from Service_Voucher.pdf --
+    // distinct from the watermark's blue (#061BB0): the header/footer
+    // text and rules use this darker navy.
+    const TEXT_BLUE = "#2E266D";
     const fD = (iso) => formatDateDMY(iso) || iso || "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
     <style>
-      @page { size: 595.28pt 419.53pt; margin: 0; }
+      @page { size: 576pt 360pt; margin: 0; }
       * { box-sizing: border-box; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; padding: 0;
-        width: 595.28pt; height: 419.53pt; position: relative; overflow: hidden; background: #fff; }
+        width: 576pt; height: 360pt; position: relative; overflow: hidden; background: #fff; }
       .abs { position: absolute; z-index: 1; }
       .arial { font-family: Arial, sans-serif; }
       .nowrap { white-space: nowrap; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
-      ${eoWatermarkInlineSVG(595.28, 419.53, "6,27,176")}
+      ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:20pt;top:8pt;width:44pt;height:auto;mix-blend-mode:multiply;z-index:2"/>
-      <div class="abs arial nowrap" style="left:18pt;top:47pt;font-size:7.5pt;font-weight:700;color:${BLUE};z-index:2">EXCHANGE ORDER</div>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:8pt;height:76pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <div class="abs" style="left:14pt;top:80pt;width:165pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
+      <div class="abs arial nowrap" style="left:14pt;top:84pt;font-size:15pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
-      <div class="abs arial nowrap" style="left:280pt;top:10pt;width:295.28pt;text-align:center;font-size:13pt;font-weight:700;color:${BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD</div>
-      <div class="abs arial nowrap" style="left:150pt;top:25pt;width:425.28pt;text-align:center;font-size:6.3pt;font-weight:700;color:${BLUE};z-index:2">Registered Office: ${COMPANY_INFO.address}</div>
-      <div class="abs arial nowrap" style="left:150pt;top:33pt;width:425.28pt;text-align:center;font-size:6.3pt;font-weight:700;color:${BLUE};z-index:2">Corporate Office: 452, JMD Megapolis, Sec-48, Sohna Rd., Gurugram, Haryana, India - 122018</div>
-      <div class="abs arial nowrap" style="left:150pt;top:41pt;width:425.28pt;text-align:center;font-size:6.3pt;font-weight:700;color:${BLUE};z-index:2">Website: ${COMPANY_INFO.web} &nbsp;|&nbsp; E-Mail: ${COMPANY_INFO.email} &nbsp;|&nbsp; Telephone: +91-124-4476571</div>
+      <div class="abs arial nowrap" style="left:150pt;top:14pt;width:408pt;text-align:right;font-size:15pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
+      <div class="abs arial nowrap" style="left:150pt;top:47pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">${COMPANY_INFO.address}</div>
+      <div class="abs arial nowrap" style="left:150pt;top:65pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">Tel: +91-124-4476571</div>
+      <div class="abs arial nowrap" style="left:150pt;top:83pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">E-Mail: ${COMPANY_INFO.email} &nbsp;|&nbsp; Web: ${COMPANY_INFO.web}</div>
 
-      <div class="abs" style="left:20pt;top:58pt;width:555.28pt;border-top:1pt solid #999;"></div>
+      <div class="abs" style="left:14pt;top:109pt;width:548pt;text-align:center;font-size:12pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
 
-      <div class="abs" style="left:20pt;top:64pt;width:555.28pt;text-align:center;font-size:11pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
+      <div class="abs nowrap" style="left:14pt;top:126pt;font-size:9pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:300pt;top:126pt;width:262pt;text-align:right;font-size:9pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:14pt;top:139pt;font-size:9pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:300pt;top:139pt;width:262pt;text-align:right;font-size:9pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:14pt;top:152pt;font-size:9pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:300pt;top:152pt;width:262pt;text-align:right;font-size:9pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:14pt;top:169pt;font-size:8.5pt;">${tmpl.instructionLine}</div>
+      <div class="abs" style="left:14pt;top:180pt;width:548pt;border-top:1pt solid #999;"></div>
 
-      <div class="abs nowrap" style="left:20pt;top:79pt;font-size:8.5pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:310pt;top:79pt;font-size:8.5pt;">Dated: ${fD(order.issueDate)}</div>
-      <div class="abs" style="left:20pt;top:91pt;font-size:8.5pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:310pt;top:91pt;font-size:8.5pt;">No. of Pax: ${order.pax}</div>
-      <div class="abs" style="left:20pt;top:103pt;font-size:8.5pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:310pt;top:103pt;font-size:8.5pt;">Nationality: ${order.nationality}</div>
-      <div class="abs" style="left:20pt;top:117pt;font-size:8pt;">${tmpl.instructionLine}</div>
-      <div class="abs" style="left:20pt;top:127pt;width:555.28pt;border-top:1pt solid #595959;"></div>
+      <div class="abs" style="left:400pt;top:186pt;font-size:9pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:490pt;top:186pt;font-size:9pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:300pt;top:133pt;font-size:9pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:440pt;top:133pt;font-size:9pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
-
-      <div class="abs" style="left:20pt;top:133pt;width:270pt;font-size:8.5pt;line-height:1.4;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:14pt;top:186pt;width:378pt;font-size:9pt;line-height:1.42;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs" style="left:300pt;top:147pt;font-size:8.5pt;">${lv("Date:", fD(order.arrivalDate), 28)}</div>
-      <div class="abs" style="left:440pt;top:147pt;font-size:8.5pt;">${lv("Date:", fD(order.departureDate), 28)}</div>
-      <div class="abs" style="left:300pt;top:160pt;font-size:8.5pt;">${lv("From:", order.arrivalFrom, 28)}</div>
-      <div class="abs" style="left:440pt;top:160pt;font-size:8.5pt;">${lv("To:", order.departureTo, 28)}</div>
-      <div class="abs" style="left:300pt;top:173pt;font-size:8.5pt;">${lv("By:", order.arrivalBy, 28)}</div>
-      <div class="abs" style="left:440pt;top:173pt;font-size:8.5pt;">${lv("By:", order.departureBy, 28)}</div>
-      <div class="abs" style="left:300pt;top:186pt;font-size:8.5pt;">${lv("Time:", order.arrivalTime, 28)}</div>
-      <div class="abs" style="left:440pt;top:186pt;font-size:8.5pt;">${lv("Time:", order.departureTime, 28)}</div>
+      <div class="abs" style="left:400pt;top:200pt;font-size:8.5pt;">${lv("Date:", fD(order.arrivalDate), 28)}</div>
+      <div class="abs" style="left:490pt;top:200pt;font-size:8.5pt;">${lv("Date:", fD(order.departureDate), 28)}</div>
+      <div class="abs" style="left:400pt;top:213pt;font-size:8.5pt;">${lv("From:", order.arrivalFrom, 28)}</div>
+      <div class="abs" style="left:490pt;top:213pt;font-size:8.5pt;">${lv("To:", order.departureTo, 28)}</div>
+      <div class="abs" style="left:400pt;top:226pt;font-size:8.5pt;">${lv("By:", order.arrivalBy, 28)}</div>
+      <div class="abs" style="left:490pt;top:226pt;font-size:8.5pt;">${lv("By:", order.departureBy, 28)}</div>
+      <div class="abs" style="left:400pt;top:239pt;font-size:8.5pt;">${lv("Time:", order.arrivalTime, 28)}</div>
+      <div class="abs" style="left:490pt;top:239pt;font-size:8.5pt;">${lv("Time:", order.departureTime, 28)}</div>
       ` : ""}
 
-      <img src="${STAMP_B64}" class="abs" style="left:492pt;top:266pt;width:42pt;height:42pt;"/>
+      <img src="${STAMP_B64}" class="abs" style="left:472pt;top:290pt;width:36pt;height:36pt;"/>
+      <div class="abs" style="left:440pt;top:328pt;width:124pt;border-top:1.2pt solid ${TEXT_BLUE};"></div>
+      <div class="abs arial" style="left:440pt;top:332pt;width:124pt;text-align:center;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};">Authorised Signatory</div>
 
-      <div class="abs arial" style="left:20pt;top:272pt;font-size:8pt;font-weight:700;color:${BLUE};text-decoration:underline;">${tmpl.footerBold}</div>
-      <div class="abs arial" style="left:20pt;top:283pt;font-size:6.5pt;color:${BLUE};">${tmpl.footerLine1}</div>
-      <div class="abs arial" style="left:20pt;top:291pt;font-size:6.5pt;color:${BLUE};">${tmpl.footerLine2}</div>
-      <div class="abs" style="left:485pt;top:292pt;width:90pt;border-top:1pt solid ${BLUE};"></div>
-      <div class="abs arial" style="left:485pt;top:296pt;width:90pt;text-align:center;font-size:8pt;font-weight:700;color:${BLUE};">Authorised Signatory</div>
+      <div class="abs arial nowrap" style="left:12pt;top:305pt;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};letter-spacing:1.5pt;text-decoration:underline;">${tmpl.footerBold}</div>
+      <div class="abs arial" style="left:12pt;top:317pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine1}</div>
+      <div class="abs arial" style="left:12pt;top:326pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine2}</div>
     </body></html>`;
   };
 
