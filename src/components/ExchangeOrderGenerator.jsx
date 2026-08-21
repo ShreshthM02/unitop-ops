@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   SERVICE_TYPES, VENDOR_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G,
-  LOGO_B64, STAMP_B64, COMPANY_INFO, WATERMARK_TEXT, formatDateDMY,
+  LOGO_B64, STAMP_B64, WATERMARK_TEXT, formatDateDMY,
   loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo, groupExchangeOrderVersions,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
   DEFAULT_DOC_SETTINGS, logAudit, db,
@@ -33,7 +33,15 @@ const eoWatermarkInlineSVG = (pageWidthPt, pageHeightPt, color = "6,27,176") => 
   for (let row = 0; row < rows; row++) {
     texts.push(`<text class="wm" x="0" y="${row * rowHeight}">${repeatText}</text>`);
   }
-  return `<svg class="abs" style="left:0;top:0;z-index:0" width="${pageWidthPt}" height="${pageHeightPt}" xmlns="http://www.w3.org/2000/svg">
+  // width/height ATTRIBUTES on <svg> are unitless (CSS px per the SVG
+  // spec) while everything else on this page is sized in pt -- left as
+  // bare numbers, the rendered box came out ~75% of the page in each
+  // direction (1pt = 1.333px), which is exactly the "stops midway, both
+  // directions" bug reported 2026-08-21. viewBox maps the internal
+  // coordinate system (matching the row/column math above, in the same
+  // units as pageWidthPt/pageHeightPt) onto an explicit CSS-pt-sized box,
+  // so the two can't drift apart again.
+  return `<svg class="abs" style="left:0;top:0;width:${pageWidthPt}pt;height:${pageHeightPt}pt;z-index:0" viewBox="0 0 ${pageWidthPt} ${pageHeightPt}" xmlns="http://www.w3.org/2000/svg">
     <style>.wm{font-family:Arial;font-size:8.8px;font-weight:400;fill:rgba(${color},0.075);letter-spacing:0.3px;}</style>
     ${texts.join("")}
   </svg>`;
@@ -44,7 +52,7 @@ const eoWatermarkInlineSVG = (pageWidthPt, pageHeightPt, color = "6,27,176") => 
 // nbsp-count guessing, which is what caused the Departure column
 // misalignment in Printable (2026-08-21 fix; applied to both flavors for
 // consistency even though only Printable was reported as wrong).
-const lv = (label, value, labelWidthPt = 34) =>
+const lv = (label, value, labelWidthPt = 38) =>
   `<span style="display:inline-block;width:${labelWidthPt}pt">${label}</span>${value}`;
 
 // ─── Lightweight rich-text editor for the unified Service Details field.
@@ -306,29 +314,29 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     </style></head><body>
       <div class="abs" style="left:36pt;top:95pt;width:523.5pt;text-align:center;font-weight:700;font-size:10pt;">${svcLabel.toUpperCase()}</div>
 
-      <div class="abs nowrap" style="left:36pt;top:109pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:320pt;top:109pt;width:239.5pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
-      <div class="abs" style="left:36pt;top:123pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:320pt;top:123pt;width:239.5pt;text-align:right;font-size:10pt;">No. of Pax: ${order.pax}</div>
-      <div class="abs" style="left:36pt;top:137pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:320pt;top:137pt;width:239.5pt;text-align:right;font-size:10pt;">Nationality: ${order.nationality}</div>
-      <div class="abs" style="left:36pt;top:155pt;font-size:10pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
-      <div class="rule" style="left:36pt;top:165pt;width:523.5pt;"></div>
+      <div class="abs nowrap" style="left:36pt;top:109pt;font-size:11pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:320pt;top:109pt;width:239.5pt;text-align:right;font-size:11pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:36pt;top:124pt;font-size:11pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:320pt;top:124pt;width:239.5pt;text-align:right;font-size:11pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:36pt;top:139pt;font-size:11pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:320pt;top:139pt;width:239.5pt;text-align:right;font-size:11pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:36pt;top:158pt;font-size:11pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
+      <div class="rule" style="left:36pt;top:169pt;width:523.5pt;"></div>
 
-      <div class="abs" style="left:355.5pt;top:177pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:483.9pt;top:177pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:355.5pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:483.9pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:41.2pt;top:177pt;width:300pt;font-size:10pt;line-height:1.5;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:41.2pt;top:181pt;width:300pt;font-size:11pt;line-height:1.5;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs" style="left:355.5pt;top:194pt;font-size:10pt;">${lv("Date:", fD(order.arrivalDate))}</div>
-      <div class="abs" style="left:483.9pt;top:194pt;font-size:10pt;">${lv("Date:", fD(order.departureDate))}</div>
-      <div class="abs" style="left:355.5pt;top:216pt;font-size:10pt;">${lv("From:", order.arrivalFrom)}</div>
-      <div class="abs" style="left:483.9pt;top:216pt;font-size:10pt;">${lv("To:", order.departureTo)}</div>
-      <div class="abs" style="left:355.5pt;top:238pt;font-size:10pt;">${lv("By:", order.arrivalBy)}</div>
-      <div class="abs" style="left:483.9pt;top:238pt;font-size:10pt;">${lv("By:", order.departureBy)}</div>
-      <div class="abs" style="left:355.5pt;top:260pt;font-size:10pt;">${lv("Time:", order.arrivalTime)}</div>
-      <div class="abs" style="left:483.9pt;top:260pt;font-size:10pt;">${lv("Time:", order.departureTime)}</div>
+      <div class="abs nowrap" style="left:355.5pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
+      <div class="abs nowrap" style="left:483.9pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.departureDate))}</div>
+      <div class="abs nowrap" style="left:355.5pt;top:222pt;font-size:11pt;">${lv("From:", order.arrivalFrom)}</div>
+      <div class="abs nowrap" style="left:483.9pt;top:222pt;font-size:11pt;">${lv("To:", order.departureTo)}</div>
+      <div class="abs nowrap" style="left:355.5pt;top:245pt;font-size:11pt;">${lv("By:", order.arrivalBy)}</div>
+      <div class="abs nowrap" style="left:483.9pt;top:245pt;font-size:11pt;">${lv("By:", order.departureBy)}</div>
+      <div class="abs nowrap" style="left:355.5pt;top:268pt;font-size:11pt;">${lv("Time:", order.arrivalTime)}</div>
+      <div class="abs nowrap" style="left:483.9pt;top:268pt;font-size:11pt;">${lv("Time:", order.departureTime)}</div>
       ` : ""}
     </body></html>`;
   };
@@ -352,53 +360,54 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       .abs { position: absolute; z-index: 1; }
       .arial { font-family: Arial, sans-serif; }
       .nowrap { white-space: nowrap; }
+      .upper { text-transform: uppercase; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
       ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:8pt;height:76pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
-      <div class="abs" style="left:14pt;top:80pt;width:165pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
-      <div class="abs arial nowrap" style="left:14pt;top:84pt;font-size:15pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:12pt;height:48pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <div class="abs" style="left:14pt;top:62pt;width:140pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
+      <div class="abs arial nowrap" style="left:14pt;top:65pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
-      <div class="abs arial nowrap" style="left:150pt;top:14pt;width:408pt;text-align:right;font-size:15pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
-      <div class="abs arial nowrap" style="left:150pt;top:47pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">${COMPANY_INFO.address}</div>
-      <div class="abs arial nowrap" style="left:150pt;top:65pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">Tel: +91-124-4476571</div>
-      <div class="abs arial nowrap" style="left:150pt;top:83pt;width:408pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">E-Mail: ${COMPANY_INFO.email} &nbsp;|&nbsp; Web: ${COMPANY_INFO.web}</div>
+      <div class="abs arial nowrap" style="left:150pt;top:12pt;width:412pt;text-align:right;font-size:14pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
+      <div class="abs arial nowrap" style="left:150pt;top:38pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">506, DDA-2F, DISTRICT CENTRE, JANAK PURI, NEW DELHI-110058</div>
+      <div class="abs arial nowrap" style="left:150pt;top:50pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">TEL: +91-124-4476571 | MOBILE: +91-9810203502 ; +91-9555962990</div>
+      <div class="abs arial nowrap" style="left:150pt;top:62pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">E-MAIL: UNITOPTOURS@GMAIL.COM | WEB: WWW.UNITOPTOURS.COM</div>
 
-      <div class="abs" style="left:14pt;top:109pt;width:548pt;text-align:center;font-size:12pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
+      <div class="abs" style="left:14pt;top:90pt;width:548pt;text-align:center;font-size:12pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
 
-      <div class="abs nowrap" style="left:14pt;top:126pt;font-size:9pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:300pt;top:126pt;width:262pt;text-align:right;font-size:9pt;">Dated: ${fD(order.issueDate)}</div>
-      <div class="abs" style="left:14pt;top:139pt;font-size:9pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:300pt;top:139pt;width:262pt;text-align:right;font-size:9pt;">No. of Pax: ${order.pax}</div>
-      <div class="abs" style="left:14pt;top:152pt;font-size:9pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:300pt;top:152pt;width:262pt;text-align:right;font-size:9pt;">Nationality: ${order.nationality}</div>
-      <div class="abs" style="left:14pt;top:169pt;font-size:8.5pt;">${tmpl.instructionLine}</div>
-      <div class="abs" style="left:14pt;top:180pt;width:548pt;border-top:1pt solid #999;"></div>
+      <div class="abs nowrap" style="left:14pt;top:107pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:300pt;top:107pt;width:262pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:14pt;top:121pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:300pt;top:121pt;width:262pt;text-align:right;font-size:10pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:14pt;top:135pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:300pt;top:135pt;width:262pt;text-align:right;font-size:10pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:14pt;top:153pt;font-size:9.5pt;">${tmpl.instructionLine}</div>
+      <div class="abs" style="left:14pt;top:165pt;width:548pt;border-top:1pt solid #999;"></div>
 
-      <div class="abs" style="left:400pt;top:186pt;font-size:9pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:490pt;top:186pt;font-size:9pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:385pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:478pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:14pt;top:186pt;width:378pt;font-size:9pt;line-height:1.42;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:14pt;top:172pt;width:363pt;font-size:10pt;line-height:1.42;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs" style="left:400pt;top:200pt;font-size:8.5pt;">${lv("Date:", fD(order.arrivalDate), 28)}</div>
-      <div class="abs" style="left:490pt;top:200pt;font-size:8.5pt;">${lv("Date:", fD(order.departureDate), 28)}</div>
-      <div class="abs" style="left:400pt;top:213pt;font-size:8.5pt;">${lv("From:", order.arrivalFrom, 28)}</div>
-      <div class="abs" style="left:490pt;top:213pt;font-size:8.5pt;">${lv("To:", order.departureTo, 28)}</div>
-      <div class="abs" style="left:400pt;top:226pt;font-size:8.5pt;">${lv("By:", order.arrivalBy, 28)}</div>
-      <div class="abs" style="left:490pt;top:226pt;font-size:8.5pt;">${lv("By:", order.departureBy, 28)}</div>
-      <div class="abs" style="left:400pt;top:239pt;font-size:8.5pt;">${lv("Time:", order.arrivalTime, 28)}</div>
-      <div class="abs" style="left:490pt;top:239pt;font-size:8.5pt;">${lv("Time:", order.departureTime, 28)}</div>
+      <div class="abs nowrap" style="left:385pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.arrivalDate), 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.departureDate), 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:199pt;font-size:9.5pt;">${lv("From:", order.arrivalFrom, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:199pt;font-size:9.5pt;">${lv("To:", order.departureTo, 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:212pt;font-size:9.5pt;">${lv("By:", order.arrivalBy, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:212pt;font-size:9.5pt;">${lv("By:", order.departureBy, 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:225pt;font-size:9.5pt;">${lv("Time:", order.arrivalTime, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:225pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
       ` : ""}
 
-      <img src="${STAMP_B64}" class="abs" style="left:472pt;top:290pt;width:36pt;height:36pt;"/>
-      <div class="abs" style="left:440pt;top:328pt;width:124pt;border-top:1.2pt solid ${TEXT_BLUE};"></div>
-      <div class="abs arial" style="left:440pt;top:332pt;width:124pt;text-align:center;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};">Authorised Signatory</div>
+      <img src="${STAMP_B64}" class="abs" style="left:480pt;top:287pt;width:42pt;height:42pt;"/>
+      <div class="abs" style="left:440pt;top:332pt;width:124pt;border-top:1.2pt solid ${TEXT_BLUE};"></div>
+      <div class="abs arial upper" style="left:440pt;top:336pt;width:124pt;text-align:center;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};">Authorised Signatory</div>
 
-      <div class="abs arial nowrap" style="left:12pt;top:305pt;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};letter-spacing:1.5pt;text-decoration:underline;">${tmpl.footerBold}</div>
-      <div class="abs arial" style="left:12pt;top:317pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine1}</div>
-      <div class="abs arial" style="left:12pt;top:326pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine2}</div>
+      <div class="abs arial nowrap" style="left:14pt;top:296pt;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};letter-spacing:1.5pt;text-decoration:underline;">${tmpl.footerBold}</div>
+      <div class="abs arial upper" style="left:14pt;top:309pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine1}</div>
+      <div class="abs arial upper" style="left:14pt;top:318pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine2}</div>
     </body></html>`;
   };
 
