@@ -187,6 +187,12 @@ export const INITIAL_AGENTS = [
 ];
 
 // ─── VENDOR MASTER DATA ──────────────────────────────────────────────────────
+// Kept as the same data as Exchange Order's SERVICE_TYPES labels
+// (constants.js, further down) by direct instruction (2026-08-21) --
+// Exchange Order's "Drawn on" vendor picker filters by exact match
+// against this list, so a vendor type added here needs a matching
+// SERVICE_TYPES entry (or vice versa) or that service type's vendor
+// dropdown will come up empty.
 export const VENDOR_TYPES = ["Hotel","Restaurant","Transport","Tour Facilitator","Local Handler","Activity","Other"];
 export const INITIAL_VENDORS = [
   { id:"VND-001", name:"Saura / Golden Tulip", type:"Hotel", city:"Agra", contactName:"Sales Manager",
@@ -645,14 +651,17 @@ export const DEFAULT_ITINERARY_TEMPLATE = {
 // Cost Sheet's service categories, even though some names overlap. "others"
 // is the one entry that prompts a free-text field (otherServiceType on the
 // order) instead of being used as-is.
+// Labels updated 2026-08-21: must exactly match VENDOR_TYPES (below) --
+// "Drawn on" filters the vendor list by this label, so the two lists are
+// deliberately kept as the same data rather than two lists that could drift.
 export const SERVICE_TYPES = [
   { id:"restaurant",  label:"Restaurant",        icon:"🍽" },
   { id:"hotel",        label:"Hotel",             icon:"🏨" },
   { id:"transport",    label:"Transport",         icon:"🚌" },
-  { id:"facilitator",  label:"Tour Facilitator",  icon:"🧭" },
+  { id:"facilitator",  label:"Tour Facilitator",  icon:"🚩" },
   { id:"handler",      label:"Local Handler",     icon:"🤝" },
   { id:"activity",     label:"Activity",          icon:"🎯" },
-  { id:"others",       label:"Others",            icon:"✳" },
+  { id:"others",       label:"Other",             icon:"✳" },
 ];
 
 // Watermark SVG pattern

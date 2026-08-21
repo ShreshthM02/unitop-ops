@@ -23,7 +23,15 @@ import { useState, useRef, useEffect } from 'react';
 // documents with only a PDF route (e.g. Exchange Order) looking unchanged
 // while still going through this component, so they pick up a second
 // format later with a one-line change.
-export function ExportMenu({ actions, G, label = "Export", disabled = false }) {
+//
+// openDirection ("up" default, or "down"): the panel opens upward by
+// default since most callers place this button in a bottom toolbar/footer.
+// Pass "down" for buttons that sit inside a scrollable list of rows (e.g.
+// Exchange Order's Repository tab) -- opening upward there gets clipped by
+// the list's own overflow:auto for rows near the top of the visible area,
+// rendering the menu invisible behind whatever sits above the scroll
+// container. Added 2026-08-21 after exactly that report.
+export function ExportMenu({ actions, G, label = "Export", disabled = false, openDirection = "up" }) {
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const menuRef = useRef(null);
@@ -96,7 +104,7 @@ export function ExportMenu({ actions, G, label = "Export", disabled = false }) {
       </button>
       {open && (
         <div role="menu" style={{
-          position: "absolute", bottom: "calc(100% + 6px)", right: 0, zIndex: 50,
+          position: "absolute", ...(openDirection === "down" ? { top: "calc(100% + 6px)" } : { bottom: "calc(100% + 6px)" }), right: 0, zIndex: 50,
           background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 8,
           boxShadow: "0 8px 28px rgba(0,0,0,0.16)", minWidth: 208, padding: 4,
         }}>

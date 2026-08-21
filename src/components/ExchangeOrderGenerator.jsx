@@ -1,11 +1,42 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
-  SERVICE_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G, WatermarkSVG, LOGO_B64,
+  SERVICE_TYPES, VENDOR_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G,
+  LOGO_B64, STAMP_B64, COMPANY_INFO, WATERMARK_TEXT, formatDateDMY,
   loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo, groupExchangeOrderVersions,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
   DEFAULT_DOC_SETTINGS, logAudit, db,
 } = Lib;
+
+// Blue tiled watermark for the Shareable print flavor -- deliberately NOT
+// the shared WatermarkSVG() (constants.js), which is a fixed red and used
+// by many other documents; reusing it here would mean either an
+// off-brand red watermark on this one document or silently recoloring it
+// everywhere else. Same tiling approach, blue fill to match the real
+// letterhead template exactly (2026-08-21 measurement: watermark text
+// color is #061BB0).
+// Inline (not CSS background-image) tiled watermark, sized to the exact
+// page it's rendered into. Deliberately NOT a CSS background-image data
+// URI -- that path silently failed to render at all under this app's PDF
+// rendering pipeline (confirmed 2026-08-21: the markup was present and
+// well-formed, but nothing painted, even at 4x contrast). An inline <svg>
+// element is a standard DOM node rather than an asset the renderer has to
+// fetch/decode, and is far more reliably supported.
+const eoWatermarkInlineSVG = (pageWidthPt, pageHeightPt, color = "6,27,176") => {
+  const cols = Math.ceil(pageWidthPt / 180) + 1;
+  const rows = Math.ceil(pageHeightPt / 40) + 1;
+  const texts = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = col * 180 - 20, y = row * 40;
+      texts.push(`<text class="wm" x="${x}" y="${y}" transform="rotate(-25,${x + 20},${y})">${WATERMARK_TEXT}</text>`);
+    }
+  }
+  return `<svg class="abs" style="left:0;top:0;z-index:0" width="${pageWidthPt}" height="${pageHeightPt}" xmlns="http://www.w3.org/2000/svg">
+    <style>.wm{font-family:Arial;font-size:11px;fill:rgba(${color},0.10);font-weight:700;letter-spacing:1px;}</style>
+    ${texts.join("")}
+  </svg>`;
+};
 
 // ─── Lightweight rich-text editor for the unified Service Details field.
 // contentEditable-based rather than a library: matches this app's
@@ -45,6 +76,8 @@ function RichTextEditor({ value, onChange, readOnly }) {
   );
 }
 
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
 export default function ExchangeOrderGenerator({ query, template, vendors, onClose, currentUser, readOnly, initialOpenOrderNo }) {
   const tmpl = { ...DEFAULT_EXCHANGE_TEMPLATE, ...(template || {}) };
   const eoPrefix = (DEFAULT_DOC_SETTINGS.exchange && DEFAULT_DOC_SETTINGS.exchange.prefix) || "EO";
@@ -66,7 +99,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
   const emptyOrder = () => ({
     serviceType: "restaurant",
     otherServiceType: "",
-    issueDate: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" }),
+    issueDate: todayISO(),
     drawnOnVendorId: "",
     drawnOn: "",
     tourNo: query.tourFileId || query.id,
@@ -74,8 +107,8 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     nationality: query.nationality || "",
     tourFacilitatorDetails: "",
     serviceDetailsHtml: "",
-    arrivalDate: "", arrivalFrom: "", arrivalBy: "FLIGHT", arrivalTime: "",
-    departureDate: "", departureTo: "", departureBy: "FLIGHT", departureTime: "",
+    arrivalDate: "", arrivalFrom: "", arrivalBy: "", arrivalTime: "",
+    departureDate: "", departureTo: "", departureBy: "", departureTime: "",
     notes: "",
     confirmed: false,
     // Whether the vendor's bill for this service has been paid -- a
@@ -92,6 +125,17 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     const v = vendorList.find(x => x.id === vendorId);
     setForm(p => ({ ...p, drawnOnVendorId: vendorId, drawnOn: v ? v.name : "" }));
   };
+  // "Drawn on" is filtered to vendors of the matching type -- Vendor
+  // Master's VENDOR_TYPES and SERVICE_TYPES' labels are kept as the same
+  // data by direct instruction (2026-08-21), so this is a plain string
+  // match. Changing the service type clears the vendor selection, since a
+  // vendor valid under the old type may not be under the new one.
+  const setServiceType = (id) => setForm(p => ({ ...p, serviceType: id, otherServiceType: "", drawnOnVendorId: "", drawnOn: "" }));
+  const svcNow = SERVICE_TYPES.find(s => s.id === form.serviceType);
+  const vendorOptions = (svcNow && svcNow.label !== "Other")
+    ? vendorList.filter(v => v.type === svcNow.label)
+    : vendorList; // "Other" service type -- any vendor is fair game, per direct instruction
+
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -116,7 +160,10 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
 
   // ─── Save a brand-new EO: version 1, order_no assigned now from the
   // global sequence (per 1.7 -- universally auto-incremental across every
-  // tour file, not just this one). ──────────────────────────────────────
+  // tour file, not just this one). Lands the user directly on the saved
+  // order afterward (2026-08-21 fix) -- previously dropped them on the
+  // flat Repository list, which is why the version history looked "not
+  // visible": there was nothing wrong with it, it just was not being shown. ──
   const saveNewOrder = async () => {
     if (!form.drawnOnVendorId) return;
     setSaving(true);
@@ -124,14 +171,16 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     const { error } = await saveExchangeOrderVersion(db, orderNo, query.id, form.drawnOnVendorId, { version: 1, order: form }, currentUser?.id);
     if (error) {
       setToast(`Failed to save: ${error}`);
+      setSaving(false);
     } else {
       logAudit(db, query.id, currentUser?.name, `Exchange Order ${orderNo} created`);
       setToast(`Exchange Order ${orderNo} saved.`);
-      setForm(emptyOrder());
-      refreshList();
       setTab("repository");
+      const groups = await refreshList();
+      const match = groups.find(g => g.orderNo === orderNo);
+      if (match) await openOrder(match);
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   // ─── Open an existing EO for viewing/editing -- loads its own version
@@ -180,185 +229,170 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     setOpenFinalVersion(v.version);
   };
 
-  // Confirmed/Pending is a quick status flag, not a content edit -- updated
-  // in place on the row currently shown rather than spawning a new version.
+  // Confirmed/Pending and Settled/Unsettled are quick status flags, not
+  // content edits -- updated in place on the row currently shown rather
+  // than spawning a new version. Both now log to the audit trail
+  // (2026-08-21 -- previously silent).
   const toggleGroupConfirmed = async (group) => {
     if (readOnly) return;
     const row = group.latest;
-    const nextOrder = { ...row.order, confirmed: !row.order.confirmed };
-    await updateExchangeOrderRowContent(db, row.id, nextOrder);
+    const next = !row.order.confirmed;
+    await updateExchangeOrderRowContent(db, row.id, { ...row.order, confirmed: next });
+    logAudit(db, query.id, currentUser?.name, `Exchange Order ${group.orderNo} marked ${next ? "Confirmed" : "Pending"}`);
     refreshList();
   };
 
-  // Settled/Unsettled: whether the vendor's bill for this service has been
-  // paid. Same lightweight in-place update as Confirmed -- no amount, no
-  // link to a payment record (see emptyOrder() note above).
   const toggleGroupSettled = async (group) => {
     if (readOnly) return;
     const row = group.latest;
-    const nextOrder = { ...row.order, settled: !row.order.settled };
-    await updateExchangeOrderRowContent(db, row.id, nextOrder);
+    const next = !row.order.settled;
+    await updateExchangeOrderRowContent(db, row.id, { ...row.order, settled: next });
+    logAudit(db, query.id, currentUser?.name, `Exchange Order ${group.orderNo} marked ${next ? "Settled" : "Unsettled"}`);
     refreshList();
   };
 
-  // ─── Print (Phase B): true 8"x5" landscape, two flavors per direct spec.
-  // Shareable replicates the branded template as-is (logo, company info,
-  // watermark, footer, digital stamp). Printable keeps only the field
-  // values -- no logo/footer/stamp/watermark, since those are already on
-  // the pre-printed stationery -- confined inside the specified margins
-  // (top 1.45in / bottom 1.45in / left 0.25in / right 0.25in) so it lines
-  // up with what's already on the paper. Both use the same two-column
-  // Service Details / Arrival-Departure layout to fit the compact 5in
-  // page height, and share the same field content and ordering so the
-  // two stay visually consistent with each other. ─────────────────────────
-  const buildPrintHTML = (order, orderNo, flavor = "shareable") => {
-    const printable = flavor === "printable";
+  // ─── Print. Two flavors, rebuilt 2026-08-21 to match the real reference
+  // templates exactly rather than an approximation:
+  // - Printable: real A4 portrait (595.28pt x 841.89pt / 210x297mm),
+  //   not the earlier 8x5in guess -- every coordinate below is taken
+  //   directly from the original Word-generated PDF (measured via
+  //   PyMuPDF: text span bboxes, fonts, rule positions), so it lines up
+  //   with the actual pre-printed stationery. Colors: plain black, no
+  //   logo/watermark/stamp (already on the paper).
+  // - Shareable: real 10in x 5.625in landscape (720pt x 405pt -- also
+  //   measured from the reference PDF, not the 8x5in this was built to
+  //   before), blue (#061BB0) for every branded/header/footer element,
+  //   black for the order content, red only on the stamp (the same
+  //   STAMP_B64 asset used on the real letterhead), and a blue tiled
+  //   watermark matching the reference exactly.
+  // Both add three fields the original templates don't have (No. of Pax,
+  // Nationality, Tour Facilitator Details -- added in Phase A per direct
+  // spec) using the same font/style as the surrounding content, absorbing
+  // the extra height by tightening row spacing slightly rather than
+  // pushing the footer off the page (Shareable's card is only 405pt tall
+  // top to bottom, so there is no free space to spend). ───────────────────
+  const buildPrintableHTML = (order, orderNo) => {
     const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
     const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
-    const wmDataUrl = `data:image/svg+xml,${encodeURIComponent(WatermarkSVG())}`;
     const hasArrDep = order.arrivalDate || order.departureDate;
-    const accent = printable ? "#1a1a1a" : "#C0392B";
-    const navy = printable ? "#1a1a1a" : "#0D1B2A";
+    const fD = (iso) => formatDateDMY(iso) || iso || "";
 
-    // Printable reserves the physical stationery's own margins; Shareable
-    // just needs enough padding to keep the design off the page edge.
-    const padTop = printable ? "1.45in" : "0.22in";
-    const padBottom = printable ? "1.45in" : "0.18in";
-    const padSide = printable ? "0.25in" : "0.24in";
-
-    // Printable's usable box is only ~2.1in tall (top+bottom margins eat
-    // 2.9in of the 5in page), against Shareable's ~4.4in for the same
-    // content -- confirmed by rendering both to real PDFs and rasterizing
-    // them: at Shareable's type scale, Printable's Arrival/Departure and
-    // Service Details clipped mid-content. Printable also drops the
-    // logo/company block AND the "EXCHANGE ORDER" title (per 1.16 --
-    // that's already printed on the stationery), which claws back some
-    // room, but still needs a meaningfully smaller scale to reliably fit
-    // a normal amount of Service Details text. Even so, this is a hard
-    // physical limit, not something typography alone fully solves --
-    // unusually long Service Details can still run past the margin on
-    // paper, since there's no pagination for a single 8x5in card.
-    const sz = printable
-      ? { svcType: 8, orderDet: 8, orderK: 100, instruction: 7, body: 8, arrH4: 7.5, arrTd: 7 }
-      : { svcType: 9.5, orderDet: 9.5, orderK: 130, instruction: 8.5, body: 9.5, arrH4: 9, arrTd: 8.5 };
-
-    const arrDepBlock = hasArrDep ? `<div class="arr-dep">
-        <div class="arr-dep-box">
-          <h4>ARRIVAL</h4>
-          <table><tbody>
-            <tr><td>Date:</td><td>${order.arrivalDate}</td></tr>
-            <tr><td>From:</td><td>${order.arrivalFrom}</td></tr>
-            <tr><td>By:</td><td>${order.arrivalBy}</td></tr>
-            <tr><td>Time:</td><td>${order.arrivalTime}</td></tr>
-          </tbody></table>
-        </div>
-        <div class="arr-dep-box">
-          <h4>DEPARTURE</h4>
-          <table><tbody>
-            <tr><td>Date:</td><td>${order.departureDate}</td></tr>
-            <tr><td>To:</td><td>${order.departureTo}</td></tr>
-            <tr><td>By:</td><td>${order.departureBy}</td></tr>
-            <tr><td>Time:</td><td>${order.departureTime}</td></tr>
-          </tbody></table>
-        </div>
-      </div>` : "";
-
-    return `<!DOCTYPE html><html><head><title>Exchange Order ${orderNo}</title>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
     <style>
-      @page { size: 8in 5in; margin: 0; }
+      @page { size: 595.28pt 841.89pt; margin: 0; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; font-size: 10px; color: #1a1a1a; margin: 0; padding: 0;
-        background: white; width: 8in; height: 5in; position: relative; overflow: hidden; }
-      .page { position: relative; width: 100%; height: 100%; padding: ${padTop} ${padSide} ${padBottom}; }
-      ${printable ? "" : `.watermark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
-        background-image: url("${wmDataUrl}"); background-repeat: repeat; opacity: 1; pointer-events: none; }`}
-      .content { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
-      .header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1.5px solid ${accent}; padding-bottom: 4px; margin-bottom: 5px; }
-      .co-info { text-align: right; }
-      .co-name { font-size: 11px; font-weight: 900; color: ${navy}; }
-      .co-addr { font-size: 7.5px; color: #555; line-height: 1.3; }
-      .eo-title { font-size: 12px; font-weight: 900; color: ${accent}; text-align: center; letter-spacing: 1px; margin-bottom: 1px; }
-      .svc-type { font-size: ${sz.svcType}px; font-weight: 700; text-align: center; color: ${navy}; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: ${printable ? 2 : 4}px; }
-      .order-details { width: 100%; font-size: ${sz.orderDet}px; margin-bottom: ${printable ? 2 : 4}px; }
-      .order-details td { padding: ${printable ? 0.5 : 1}px 3px; }
-      .order-details td.k { width: ${sz.orderK}px; font-weight: 700; color: ${accent}; white-space: nowrap; }
-      .instruction { font-size: ${sz.instruction}px; margin-bottom: ${printable ? 2 : 3}px; }
-      .divider { border: none; border-top: 1px solid #ccc; margin: ${printable ? 2 : 3}px 0; flex-shrink: 0; }
-      .two-col { display: flex; gap: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-      .body-area { flex: 1.3 1 0; font-size: ${sz.body}px; overflow: hidden; min-width: 0; }
-      .body-area p { margin: 0 0 ${printable ? 2 : 4}px; }
-      .body-area ul { margin: 0 0 ${printable ? 2 : 4}px 14px; padding: 0; }
-      .arr-dep { flex: 1 1 0; display: flex; gap: 8px; min-width: 0; }
-      .arr-dep-box { flex: 1 1 0; min-width: 0; }
-      .arr-dep-box h4 { font-size: ${sz.arrH4}px; font-weight: 900; text-decoration: underline; margin: 0 0 ${printable ? 2 : 3}px; color: ${navy}; }
-      .arr-dep-box table td { padding: ${printable ? 0.5 : 1}px 3px; font-size: ${sz.arrTd}px; }
-      .footer-area { margin-top: 4px; ${printable ? "" : `border-top: 1.5px solid ${accent}; padding-top: 4px;`} display: flex; justify-content: space-between; align-items: flex-end; flex-shrink: 0; }
-      .footer-text { font-size: 7.5px; color: #555; }
-      .footer-text .bold { font-weight: 700; color: ${accent}; font-size: 8px; text-decoration: underline; }
-      .stamp { width: 50px; height: 50px; border-radius: 50%; border: 2px solid ${accent}; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-      .stamp-inner { font-size: 5px; font-weight: 700; color: ${accent}; line-height: 1.2; letter-spacing: 0.2px; }
-      .stamp-label { font-size: 5.2px; font-weight: 700; color: ${accent}; margin-bottom: 1px; }
+      body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; padding: 0;
+        width: 595.28pt; height: 841.89pt; position: relative; background: #fff; }
+      .abs { position: absolute; }
+      .nowrap { white-space: nowrap; }
+      .lbl { font-weight: 400; }
+      .rule { position: absolute; border-top: 0.75pt solid #000; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
-    <div class="page">
-      ${printable ? "" : `<div class="watermark"></div>`}
-      <div class="content">
-        ${printable ? "" : `<div class="header">
-          <div>
-            <img src="${LOGO_B64}" alt="Unitop" style="height:32px;width:auto;display:block;margin-bottom:1px;mix-blend-mode:multiply"/>
-            <div style="font-size:7px;color:${accent};font-weight:700;letter-spacing:1px">EXCHANGE ORDER</div>
-          </div>
-          <div class="co-info">
-            <div class="co-name">UNITOP TOURS &amp; TRAVEL PVT. LTD</div>
-            <div class="co-addr">506, DDA-2, District Centre, Janakpuri, New Delhi-110058<br/>
-            Ph: +91-11-25550991, 25550992, 41589897, 45503106<br/>
-            Email: unitoptours@gmail.com, Web: www.unitoptours.com</div>
-          </div>
-        </div>
-        <div class="eo-title">EXCHANGE ORDER</div>`}
-        <div class="svc-type">${svcLabel.toUpperCase()}</div>
-        <table class="order-details"><tbody>
-          <tr><td class="k">Exchange Order No.:</td><td>${orderNo}</td><td class="k">Issue Date:</td><td>${order.issueDate}</td></tr>
-          <tr><td class="k">Drawn on:</td><td>${order.drawnOn}</td><td class="k">In favour of Tour No.:</td><td>${order.tourNo}</td></tr>
-          <tr><td class="k">No. of Pax:</td><td>${order.pax}</td><td class="k">Nationality:</td><td>${order.nationality}</td></tr>
-          <tr><td class="k">Tour Facilitator Details:</td><td colspan="3">${order.tourFacilitatorDetails || "—"}</td></tr>
-        </tbody></table>
-        <div class="instruction">${tmpl.instructionLine}</div>
-        <hr class="divider"/>
-        <div class="two-col">
-          <div class="body-area">${order.serviceDetailsHtml || ""}</div>
-          ${arrDepBlock}
-        </div>
-        ${printable ? "" : `<div class="footer-area">
-          <div class="footer-text">
-            <div class="bold">${tmpl.footerBold}</div>
-            <div>${tmpl.footerLine1}</div>
-            <div>${tmpl.footerLine2}</div>
-            <div style="margin-top:4px;font-weight:700">Authorised Signatory</div>
-          </div>
-          <div class="stamp">
-            <div class="stamp-label">UNITOP</div>
-            <div class="stamp-inner">TOURS &amp; TRAVEL<br/>PVT. LTD.</div>
-            <div style="font-size:4.2px;color:${accent};margin-top:1px;font-weight:700">✦ DIGITALLY ✦</div>
-            <div style="font-size:4.2px;color:${accent};font-weight:700">SIGNED &amp; VERIFIED</div>
-            <div style="font-size:4.2px;color:${accent};margin-top:1px">NEW DELHI</div>
-          </div>
-        </div>`}
-      </div>
-    </div>
+      <div class="abs" style="left:36pt;top:123pt;width:523.5pt;text-align:center;font-weight:700;font-size:10pt;">${svcLabel.toUpperCase()}</div>
+
+      <div class="abs" style="left:36pt;top:137pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:400pt;top:137pt;width:159.28pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:36pt;top:151pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:36pt;top:165pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:36pt;top:179pt;font-size:10pt;">No. of Pax: ${order.pax}&nbsp;&nbsp;&nbsp;&nbsp;Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:36pt;top:193pt;font-size:10pt;">Tour Facilitator Details: ${order.tourFacilitatorDetails || "—"}</div>
+      <div class="abs" style="left:36pt;top:207pt;font-size:10pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
+      <div class="rule" style="left:36pt;top:217pt;width:523.5pt;"></div>
+
+      <div class="abs" style="left:41.2pt;top:229pt;font-size:10pt;font-weight:700;">Details of services</div>
+      <div class="abs" style="left:355.5pt;top:229pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:483.9pt;top:229pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+
+      <div class="abs" style="left:41.2pt;top:246pt;width:300pt;font-size:10pt;line-height:1.5;">${order.serviceDetailsHtml || ""}</div>
+
+      ${hasArrDep ? `
+      <div class="abs" style="left:355.5pt;top:251pt;font-size:10pt;">Date:&nbsp;&nbsp; ${fD(order.arrivalDate)}</div>
+      <div class="abs" style="left:462.8pt;top:251pt;font-size:10pt;">Date:&nbsp;&nbsp; ${fD(order.departureDate)}</div>
+      <div class="abs" style="left:355.5pt;top:273pt;font-size:10pt;">From:&nbsp; ${order.arrivalFrom}</div>
+      <div class="abs" style="left:462.8pt;top:273pt;font-size:10pt;">To:&nbsp;&nbsp;&nbsp;&nbsp; ${order.departureTo}</div>
+      <div class="abs" style="left:355.5pt;top:295pt;font-size:10pt;">By:&nbsp;&nbsp;&nbsp;&nbsp; ${order.arrivalBy}</div>
+      <div class="abs" style="left:462.8pt;top:295pt;font-size:10pt;">By:&nbsp;&nbsp;&nbsp;&nbsp; ${order.departureBy}</div>
+      <div class="abs" style="left:355.5pt;top:317pt;font-size:10pt;">Time:&nbsp; ${order.arrivalTime}</div>
+      <div class="abs" style="left:462.8pt;top:317pt;font-size:10pt;">Time:&nbsp; ${order.departureTime}</div>
+      ` : ""}
+    </body></html>`;
+  };
+
+  const buildShareableHTML = (order, orderNo) => {
+    const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
+    const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
+    const hasArrDep = order.arrivalDate || order.departureDate;
+    const BLUE = "#061BB0";
+    const fD = (iso) => formatDateDMY(iso) || iso || "";
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
+    <style>
+      @page { size: 720pt 405pt; margin: 0; }
+      * { box-sizing: border-box; }
+      body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; padding: 0;
+        width: 720pt; height: 405pt; position: relative; overflow: hidden; background: #fff; }
+      .abs { position: absolute; z-index: 1; }
+      .arial { font-family: Arial, sans-serif; }
+      .nowrap { white-space: nowrap; }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>
+      ${eoWatermarkInlineSVG(720, 405, "6,27,176")}
+
+      <img src="${LOGO_B64}" class="abs" style="left:35pt;top:2pt;width:118pt;height:auto;mix-blend-mode:multiply"/>
+      <div class="abs arial" style="left:25pt;top:69pt;font-size:14pt;font-weight:700;color:${BLUE};">EXCHANGE ORDER</div>
+
+      <div class="abs arial nowrap" style="left:298pt;top:10pt;width:400pt;text-align:right;font-size:17pt;font-weight:700;color:${BLUE};">UNITOP TOURS &amp; TRAVEL PVT. LTD</div>
+      <div class="abs arial nowrap" style="left:298pt;top:31pt;width:400pt;text-align:right;font-size:8pt;font-weight:700;color:${BLUE};">${COMPANY_INFO.address}</div>
+      <div class="abs arial nowrap" style="left:298pt;top:42pt;width:400pt;text-align:right;font-size:8pt;font-weight:700;color:${BLUE};">Corporate Office: 452, JMD Megapolis, Sec-48, Sohna Rd., Gurugram, Haryana - 122018</div>
+      <div class="abs arial nowrap" style="left:298pt;top:53pt;width:400pt;text-align:right;font-size:8pt;font-weight:700;color:${BLUE};">Web: ${COMPANY_INFO.web} &nbsp;|&nbsp; Email: ${COMPANY_INFO.email}</div>
+
+      <div class="abs" style="left:325pt;top:83pt;width:400pt;text-align:center;font-size:13pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
+
+      <div class="abs nowrap" style="left:28pt;top:103pt;font-size:10.5pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:400pt;top:103pt;width:292pt;text-align:right;font-size:10.5pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:28pt;top:117pt;font-size:10.5pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:28pt;top:131pt;font-size:10.5pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:28pt;top:145pt;font-size:10.5pt;">No. of Pax: ${order.pax}&nbsp;&nbsp;&nbsp;&nbsp;Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:28pt;top:159pt;font-size:10.5pt;">Tour Facilitator Details: ${order.tourFacilitatorDetails || "—"}</div>
+      <div class="abs" style="left:28pt;top:173pt;font-size:10.5pt;">${tmpl.instructionLine}</div>
+      <div class="abs" style="left:27.5pt;top:187pt;width:668pt;border-top:1.5pt solid #595959;"></div>
+
+      <div class="abs" style="left:28pt;top:196pt;width:410pt;font-size:10pt;line-height:1.45;">${order.serviceDetailsHtml || ""}</div>
+
+      ${hasArrDep ? `
+      <div class="abs" style="left:451pt;top:196pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:581pt;top:196pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:451pt;top:214pt;font-size:10pt;">Date:&nbsp;&nbsp; ${fD(order.arrivalDate)}</div>
+      <div class="abs" style="left:581pt;top:214pt;font-size:10pt;">Date:&nbsp;&nbsp; ${fD(order.departureDate)}</div>
+      <div class="abs" style="left:451pt;top:231pt;font-size:10pt;">From:&nbsp; ${order.arrivalFrom}</div>
+      <div class="abs" style="left:581pt;top:231pt;font-size:10pt;">To:&nbsp;&nbsp;&nbsp;&nbsp; ${order.departureTo}</div>
+      <div class="abs" style="left:451pt;top:248pt;font-size:10pt;">By:&nbsp;&nbsp;&nbsp;&nbsp; ${order.arrivalBy}</div>
+      <div class="abs" style="left:581pt;top:248pt;font-size:10pt;">By:&nbsp;&nbsp;&nbsp;&nbsp; ${order.departureBy}</div>
+      <div class="abs" style="left:451pt;top:265pt;font-size:10pt;">Time:&nbsp; ${order.arrivalTime}</div>
+      <div class="abs" style="left:581pt;top:265pt;font-size:10pt;">Time:&nbsp; ${order.departureTime}</div>
+      ` : ""}
+
+      <img src="${STAMP_B64}" class="abs" style="left:546pt;top:264pt;width:110pt;height:110pt;"/>
+
+      <div class="abs arial" style="left:25pt;top:344pt;font-size:11.5pt;font-weight:700;color:${BLUE};text-decoration:underline;">${tmpl.footerBold}</div>
+      <div class="abs arial" style="left:25pt;top:359pt;font-size:10pt;color:${BLUE};">${tmpl.footerLine1}</div>
+      <div class="abs arial" style="left:25pt;top:372pt;font-size:10pt;color:${BLUE};">${tmpl.footerLine2}</div>
+      <div class="abs" style="left:545pt;top:367pt;width:150pt;border-top:1.5pt solid ${BLUE};"></div>
+      <div class="abs arial" style="left:545pt;top:371pt;font-size:11.5pt;font-weight:700;color:${BLUE};">Authorised Signatory</div>
     </body></html>`;
   };
 
   const printOrder = (order, orderNo, flavor = "shareable") => {
     const win = window.open("", "_blank");
-    win.document.write(buildPrintHTML(order, orderNo, flavor));
+    win.document.write(flavor === "printable" ? buildPrintableHTML(order, orderNo) : buildShareableHTML(order, orderNo));
     win.document.close();
     win.print();
   };
 
   const printActions = (order, orderNo) => [
     { id: "shareable", label: "Shareable", icon: "📤", hint: "Branded PDF, for sending as a soft copy", onSelect: () => printOrder(order, orderNo, "shareable") },
-    { id: "printable", label: "Printable", icon: "🖨", hint: "Plain, for printing on pre-printed stationery", onSelect: () => printOrder(order, orderNo, "printable") },
+    { id: "printable", label: "Printable", icon: "🖨", hint: "Plain, A4, for printing on pre-printed stationery", onSelect: () => printOrder(order, orderNo, "printable") },
   ];
 
   const inp = { padding: "6px 8px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12, fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white };
@@ -371,19 +405,20 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     <div style={{ background: G.gray50, border: `1px solid ${G.gray200}`, borderRadius: 10, padding: 16 }}>
       {secHead("📋 Order Details")}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        <div>{label("Issue Date")}<input style={inp} value={form.issueDate} onChange={e => setF("issueDate", e.target.value)} /></div>
+        <div>{label("Issue Date")}<input type="date" style={inp} value={form.issueDate} onChange={e => setF("issueDate", e.target.value)} /></div>
         <div>
           {label("Type of Service")}
-          <select style={inp} value={form.serviceType} onChange={e => setF("serviceType", e.target.value)} disabled={readOnly}>
+          <select style={inp} value={form.serviceType} onChange={e => setServiceType(e.target.value)} disabled={readOnly}>
             {SERVICE_TYPES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
           </select>
           {form.serviceType === "others" && <OtherInput value={form.otherServiceType} onChange={v => setF("otherServiceType", v)} placeholder="Specify service type..." />}
         </div>
-        <div>{label("Drawn on (Vendor)")}
+        <div>{label(`Drawn on (Vendor${svcNow && svcNow.label !== "Other" ? ` — ${svcNow.label}` : ""})`)}
           <select style={inp} value={form.drawnOnVendorId} onChange={e => setVendor(e.target.value)} disabled={readOnly}>
             <option value="">Select vendor...</option>
-            {vendorList.filter(v => v.active !== false).map(v => <option key={v.id} value={v.id}>{v.name} ({v.type})</option>)}
+            {vendorOptions.filter(v => v.active !== false).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
+          {vendorOptions.length === 0 && <div style={{ fontSize: 10, color: G.gray400, marginTop: 3 }}>No vendors of this type in Vendor Master yet.</div>}
         </div>
         <div>{label("Tour No.")}<input style={inp} value={form.tourNo} onChange={e => setF("tourNo", e.target.value)} /></div>
         <div>{label("No. of Pax")}<input style={inp} value={form.pax} onChange={e => setF("pax", e.target.value)} /></div>
@@ -401,21 +436,19 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, marginBottom: 8 }}>ARRIVAL</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>{label("Date")}<input style={inp} value={form.arrivalDate} onChange={e => setF("arrivalDate", e.target.value)} /></div>
-            <div>{label("Time")}<input style={inp} value={form.arrivalTime} onChange={e => setF("arrivalTime", e.target.value)} placeholder="e.g. 13:00" /></div>
+            <div>{label("Date")}<input type="date" style={inp} value={form.arrivalDate} onChange={e => setF("arrivalDate", e.target.value)} /></div>
+            <div>{label("Time")}<input type="time" style={inp} value={form.arrivalTime} onChange={e => setF("arrivalTime", e.target.value)} /></div>
             <div>{label("From")}<input style={inp} value={form.arrivalFrom} onChange={e => setF("arrivalFrom", e.target.value)} placeholder="e.g. LEH" /></div>
-            <div>{label("By")}<select style={inp} value={form.arrivalBy} onChange={e => setF("arrivalBy", e.target.value)}>
-              {["FLIGHT", "TRAIN", "ROAD", "SHIP"].map(m => <option key={m}>{m}</option>)}</select></div>
+            <div>{label("By")}<input style={inp} value={form.arrivalBy} onChange={e => setF("arrivalBy", e.target.value)} placeholder="e.g. Flight" /></div>
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, marginBottom: 8 }}>DEPARTURE</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>{label("Date")}<input style={inp} value={form.departureDate} onChange={e => setF("departureDate", e.target.value)} /></div>
-            <div>{label("Time")}<input style={inp} value={form.departureTime} onChange={e => setF("departureTime", e.target.value)} placeholder="e.g. 21:00" /></div>
+            <div>{label("Date")}<input type="date" style={inp} value={form.departureDate} onChange={e => setF("departureDate", e.target.value)} /></div>
+            <div>{label("Time")}<input type="time" style={inp} value={form.departureTime} onChange={e => setF("departureTime", e.target.value)} /></div>
             <div>{label("To")}<input style={inp} value={form.departureTo} onChange={e => setF("departureTo", e.target.value)} placeholder="e.g. HONGKONG" /></div>
-            <div>{label("By")}<select style={inp} value={form.departureBy} onChange={e => setF("departureBy", e.target.value)}>
-              {["FLIGHT", "TRAIN", "ROAD", "SHIP"].map(m => <option key={m}>{m}</option>)}</select></div>
+            <div>{label("By")}<input style={inp} value={form.departureBy} onChange={e => setF("departureBy", e.target.value)} placeholder="e.g. Flight" /></div>
           </div>
         </div>
       </div>
@@ -428,7 +461,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       {!readOnly && (
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }} />
-          <button className="btn btn-primary" style={{ opacity: form.drawnOn ? 1 : 0.5 }} disabled={saving || !form.drawnOn} onClick={onSave}>
+          <button className="btn btn-primary" style={{ opacity: form.drawnOnVendorId ? 1 : 0.5 }} disabled={saving || !form.drawnOnVendorId} onClick={onSave}>
             {saving ? "Saving…" : saveLabel}
           </button>
         </div>
@@ -448,6 +481,23 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
           </div>
           <button onClick={onClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
         </div>
+
+        {/* Order-context bar: only when a specific EO is open, so the
+            version dropdown (styled for a dark background) actually sits
+            on one -- it was rendering correctly before, just invisible
+            (white text on the white content pane). 2026-08-21 fix. */}
+        {openOrderNo && (
+          <div style={{ background: G.navyMid || "#1B3A5C", padding: "8px 20px", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.12)", color: "#fff", border: "none", fontSize: 11 }} onClick={closeOpenOrder}>← Back to Repository</button>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{openOrderNo}</div>
+            <div style={{ flex: 1 }} />
+            <VersionDropdown versions={openVersions} viewingVersion={openViewingVersion}
+              displayVersion={openViewingVersion} finalVersion={openFinalVersion}
+              onSelectVersion={selectOpenVersion} onMarkFinal={onMarkOpenFinal} readOnly={readOnly} G={G} />
+            <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "shareable")}>📤 Shareable</button>
+            <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "printable")}>🖨 Printable</button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `1px solid ${G.gray200}`, flexShrink: 0, background: G.gray50 }}>
@@ -494,7 +544,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
                         <span style={{ fontSize: 10, color: G.gray400 }}>v{group.latest.version}{group.finalVersion && " ★"}</span>
                       </div>
                       <div style={{ fontSize: 12, color: G.gray800, fontWeight: 500 }}>{order.drawnOn}</div>
-                      <div style={{ fontSize: 11, color: G.gray600 }}>{order.issueDate} · {order.pax} pax</div>
+                      <div style={{ fontSize: 11, color: G.gray600 }}>{formatDateDMY(order.issueDate) || order.issueDate} · {order.pax} pax</div>
                     </div>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleGroupConfirmed(group)}>
                       {order.confirmed ? "✗ Unconfirm" : "✓ Confirm"}
@@ -503,28 +553,14 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
                       {order.settled ? "✗ Unsettle" : "✓ Settle"}
                     </button>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => openOrder(group)}>✏ Open</button>
-                    <ExportMenu G={G} label="Print" actions={printActions(order, group.orderNo)} />
+                    <ExportMenu G={G} label="Print" openDirection="down" actions={printActions(order, group.orderNo)} />
                   </div>
                 );
               })}
             </>
           )}
 
-          {tab === "repository" && openOrderNo && (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={closeOpenOrder}>← Back to Repository</button>
-                <div style={{ flex: 1 }} />
-                <VersionDropdown versions={openVersions} viewingVersion={openViewingVersion}
-                  displayVersion={openViewingVersion} finalVersion={openFinalVersion}
-                  onSelectVersion={selectOpenVersion} onMarkFinal={onMarkOpenFinal} readOnly={readOnly} G={G} />
-                <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "shareable")}>📤 Shareable</button>
-                <button className="btn btn-success" style={{ fontSize: 11 }} onClick={() => printOrder(form, openOrderNo, "printable")}>🖨 Printable</button>
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: G.navy, marginBottom: 10 }}>{openOrderNo}</div>
-              {orderForm(saveNewVersionOfOpenOrder, "✓ Save New Version")}
-            </>
-          )}
+          {tab === "repository" && openOrderNo && orderForm(saveNewVersionOfOpenOrder, "✓ Save New Version")}
         </div>
 
         <div style={{ padding: "12px 20px", borderTop: `1px solid ${G.gray200}`, display: "flex", gap: 10, flexShrink: 0, background: G.gray50 }}>

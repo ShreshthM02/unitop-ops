@@ -126,3 +126,59 @@ describe('ExchangeOrderGenerator: per-order versioned persistence (restructured 
     warnSpy.mockRestore();
   });
 });
+
+describe('ExchangeOrderGenerator: 2026-08-21 fixes', () => {
+  it('saving a new order lands the user on the open editor, with the version control bar visible', async () => {
+    // Stateful mock: insert has to actually persist so the subsequent
+    // refreshList() + openOrder() the fix relies on can find the new row.
+    let rows = [];
+    const db = {
+      from: vi.fn((t) => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => { const row = { ...r, id: 'new-id-' + rows.length }; if (t === 'exchange_orders') rows.push(row); return { data: [row], error: null }; }),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: t === 'exchange_orders' ? rows : [], error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: EOG } = await import('../components/ExchangeOrderGenerator.jsx');
+    render(<EOG query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    fireEvent.change(await screen.findByDisplayValue('Select vendor...'), { target: { value: 'VND-001' } });
+    fireEvent.click(screen.getByText('✓ Save Exchange Order'));
+    await waitFor(() => expect(screen.getByText('← Back to Repository')).toBeTruthy());
+    expect(screen.getByText('📤 Shareable')).toBeTruthy();
+  });
+
+  it('toggling Confirmed/Settled logs to the audit trail', async () => {
+    const versionRows = [
+      { id:'row-1', order_no: 'EO-2026-060', query_id: fakeQuery.id, vendor_id: 'VND-001', version: 1, is_final: false,
+        content: { serviceType:'restaurant', drawnOn:'Nanking Restaurant', confirmed:false, settled:false, issueDate:'', pax:'' } },
+    ];
+    const inserts = [];
+    const db = {
+      from: vi.fn((t) => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => { inserts.push({ table: t, row: r }); return { data: [{ ...r, id: 'new-id' }], error: null }; }),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: t === 'exchange_orders' ? versionRows : [], error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: EOG } = await import('../components/ExchangeOrderGenerator.jsx');
+    render(<EOG query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    fireEvent.click(await screen.findByText(/Repository/));
+    fireEvent.click(await screen.findByText('✓ Confirm'));
+    await waitFor(() => {
+      const auditInserts = inserts.filter(i => i.table === 'query_audit');
+      expect(auditInserts.length).toBeGreaterThan(0);
+    });
+  });
+});
