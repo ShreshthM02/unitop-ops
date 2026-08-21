@@ -239,7 +239,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div style={{gridColumn:"1/-1"}}>
                       <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Pax Display</div>
                       <input style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800}}
-                        value={editForm.paxDisplay||""} onChange={e=>setEF("paxDisplay",e.target.value)} placeholder="e.g. 18 pax (confirmed)"/>
+                        value={editForm.paxDisplay||""} onChange={e=>setEF("paxDisplay",e.target.value)} placeholder="e.g. 18 pax"/>
                     </div>
                     <div style={{gridColumn:"1/-1"}}>
                       <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Special Notes</div>

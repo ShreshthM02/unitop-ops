@@ -181,4 +181,26 @@ describe('ExchangeOrderGenerator: 2026-08-21 fixes', () => {
       expect(auditInserts.length).toBeGreaterThan(0);
     });
   });
+
+  it('"Custom" vendor option lets staff type a name not in Vendor Master, and saves with a null vendor_id', async () => {
+    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    fireEvent.change(await screen.findByDisplayValue('Select vendor...'), { target: { value: '__custom__' } });
+    fireEvent.change(screen.getByPlaceholderText('Vendor name...'), { target: { value: 'Local Dhaba (walk-in)' } });
+    fireEvent.click(screen.getByText('✓ Save Exchange Order'));
+    await waitFor(() => {
+      const insertCalls = mockDb.from.mock.results
+        .filter((r,i)=>mockDb.from.mock.calls[i][0]==='exchange_orders')
+        .map(r=>r.value.insert.mock.calls).flat();
+      expect(insertCalls.length).toBeGreaterThan(0);
+      const inserted = insertCalls[0][0];
+      expect(inserted.vendor_id).toBe(null);
+      expect(inserted.content.drawnOn).toBe('Local Dhaba (walk-in)');
+    });
+  });
+
+  it('the form no longer has a Tour Facilitator Details field', async () => {
+    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await screen.findByText('✓ Save Exchange Order');
+    expect(screen.queryByText('Tour Facilitator Details')).toBeNull();
+  });
 });

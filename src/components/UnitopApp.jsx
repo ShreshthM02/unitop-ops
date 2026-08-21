@@ -300,7 +300,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const handleNewQuery = async (form) => {
     const id = nextQueryId();
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-    const paxDisplay = form.paxKnown?`${form.paxExact} pax (confirmed)`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
+    const paxDisplay = form.paxKnown?`${form.paxExact} pax`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
     const dateDisplay = form.dateKnown?`${formatDateDMY(form.travelDateFrom)}${form.travelDateTo?" → "+formatDateDMY(form.travelDateTo):""}`:`${form.travelMonth||""}${form.travelSeason?" · "+form.travelSeason:""} (TBC)`;
     const newQ = {...form,id,type:"query",status:"new_query",
       clientName:form.groupName||form.agentCompany,
