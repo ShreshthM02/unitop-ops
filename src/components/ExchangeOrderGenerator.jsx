@@ -326,7 +326,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       <div class="abs" style="left:355.5pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
       <div class="abs" style="left:483.9pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:41.2pt;top:181pt;width:300pt;font-size:11pt;line-height:1.5;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:41.2pt;top:181pt;width:300pt;font-size:11pt;line-height:1.5;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
       <div class="abs nowrap" style="left:355.5pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
@@ -345,10 +345,13 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
     const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
     const hasArrDep = order.arrivalDate || order.departureDate;
-    // Real letterhead text color, measured from Service_Voucher.pdf --
-    // distinct from the watermark's blue (#061BB0): the header/footer
-    // text and rules use this darker navy.
-    const TEXT_BLUE = "#2E266D";
+    // Unified blue (2026-08-21): sampled directly from the LOGO_B64 pixel
+    // data (dominant blue = rgb(6,27,176) = #061BB0) rather than guessed --
+    // this is the SAME color already used for the watermark, so all three
+    // (logo, watermark, text) now agree instead of the two different
+    // blues (#061BB0 watermark vs #2E266D text) used through the last
+    // few rounds.
+    const TEXT_BLUE = "#061BB0";
     const fD = (iso) => formatDateDMY(iso) || iso || "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
@@ -365,9 +368,9 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     </style></head><body>
       ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:12pt;height:48pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
-      <div class="abs" style="left:14pt;top:62pt;width:140pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
-      <div class="abs arial nowrap" style="left:14pt;top:65pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:12pt;height:38pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <div class="abs" style="left:14pt;top:53pt;width:108pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
+      <div class="abs arial nowrap" style="left:14pt;top:57pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
       <div class="abs arial nowrap" style="left:150pt;top:12pt;width:412pt;text-align:right;font-size:14pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
       <div class="abs arial nowrap" style="left:150pt;top:38pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">506, DDA-2F, DISTRICT CENTRE, JANAK PURI, NEW DELHI-110058</div>
@@ -388,7 +391,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       <div class="abs" style="left:385pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
       <div class="abs" style="left:478pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:14pt;top:172pt;width:363pt;font-size:10pt;line-height:1.42;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:14pt;top:172pt;width:363pt;font-size:10pt;line-height:1.42;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
       <div class="abs nowrap" style="left:385pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.arrivalDate), 34)}</div>
@@ -401,13 +404,13 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       <div class="abs nowrap" style="left:478pt;top:225pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
       ` : ""}
 
-      <img src="${STAMP_B64}" class="abs" style="left:480pt;top:287pt;width:42pt;height:42pt;"/>
+      <img src="${STAMP_B64}" class="abs" style="left:478pt;top:281pt;width:48pt;height:48pt;"/>
       <div class="abs" style="left:440pt;top:332pt;width:124pt;border-top:1.2pt solid ${TEXT_BLUE};"></div>
       <div class="abs arial upper" style="left:440pt;top:336pt;width:124pt;text-align:center;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};">Authorised Signatory</div>
 
-      <div class="abs arial nowrap" style="left:14pt;top:296pt;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};letter-spacing:1.5pt;text-decoration:underline;">${tmpl.footerBold}</div>
-      <div class="abs arial upper" style="left:14pt;top:309pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine1}</div>
-      <div class="abs arial upper" style="left:14pt;top:318pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine2}</div>
+      <div class="abs arial nowrap" style="left:14pt;top:316pt;font-size:8.5pt;font-weight:700;color:${TEXT_BLUE};letter-spacing:1.5pt;text-decoration:underline;">${tmpl.footerBold}</div>
+      <div class="abs arial upper" style="left:14pt;top:329pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine1}</div>
+      <div class="abs arial upper" style="left:14pt;top:338pt;font-size:7pt;font-weight:700;color:${TEXT_BLUE};">${tmpl.footerLine2}</div>
     </body></html>`;
   };
 
