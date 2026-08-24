@@ -368,7 +368,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     </style></head><body>
       ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:12pt;height:38pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:4pt;height:46pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
       <div class="abs" style="left:14pt;top:53pt;width:108pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
       <div class="abs arial nowrap" style="left:14pt;top:57pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
@@ -396,12 +396,12 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       ${hasArrDep ? `
       <div class="abs nowrap" style="left:385pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.arrivalDate), 34)}</div>
       <div class="abs nowrap" style="left:478pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.departureDate), 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:199pt;font-size:9.5pt;">${lv("From:", order.arrivalFrom, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:199pt;font-size:9.5pt;">${lv("To:", order.departureTo, 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:212pt;font-size:9.5pt;">${lv("By:", order.arrivalBy, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:212pt;font-size:9.5pt;">${lv("By:", order.departureBy, 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:225pt;font-size:9.5pt;">${lv("Time:", order.arrivalTime, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:225pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:203pt;font-size:9.5pt;">${lv("From:", order.arrivalFrom, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:203pt;font-size:9.5pt;">${lv("To:", order.departureTo, 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:220pt;font-size:9.5pt;">${lv("By:", order.arrivalBy, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:220pt;font-size:9.5pt;">${lv("By:", order.departureBy, 34)}</div>
+      <div class="abs nowrap" style="left:385pt;top:237pt;font-size:9.5pt;">${lv("Time:", order.arrivalTime, 34)}</div>
+      <div class="abs nowrap" style="left:478pt;top:237pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
       ` : ""}
 
       <img src="${STAMP_B64}" class="abs" style="left:478pt;top:281pt;width:48pt;height:48pt;"/>
