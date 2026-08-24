@@ -413,9 +413,9 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     </style></head><body>
       ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:0pt;height:60pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
-      <div class="abs" style="left:14pt;top:63pt;width:108pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
-      <div class="abs arial nowrap" style="left:14pt;top:67pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:7pt;height:60pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <div class="abs" style="left:14pt;top:70pt;width:130pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
+      <div class="abs arial nowrap" style="left:14pt;top:74pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
       <div class="abs arial nowrap" style="left:150pt;top:12pt;width:412pt;text-align:right;font-size:14pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
       <div class="abs arial nowrap" style="left:150pt;top:42pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">506, DDA-2F, DISTRICT CENTRE, JANAK PURI, NEW DELHI-110058</div>
