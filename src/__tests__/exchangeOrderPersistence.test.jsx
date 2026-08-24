@@ -204,3 +204,22 @@ describe('ExchangeOrderGenerator: 2026-08-21 fixes', () => {
     expect(screen.queryByText('Tour Facilitator Details')).toBeNull();
   });
 });
+
+describe('ExchangeOrderGenerator: Service Details fit budget (2026-08-22)', () => {
+  it('shows a character/line budget under the editor, based on Shareable\'s tighter column', async () => {
+    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    expect(await screen.findByText(/characters left for a clean fit/)).toBeTruthy();
+  });
+
+  it('warns when content exceeds the estimated fit', async () => {
+    render(<ExchangeOrderGenerator query={fakeQuery} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const editor = document.querySelector('[contenteditable="true"]');
+    // 20 short paragraphs -- each forces its own line regardless of length,
+    // which should blow the line budget even though the flat character
+    // count alone would look small.
+    const html = Array.from({ length: 20 }, () => '<p>hi</p>').join('');
+    editor.innerHTML = html;
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(await screen.findByText(/Over the printed voucher's fit/)).toBeTruthy();
+  });
+});

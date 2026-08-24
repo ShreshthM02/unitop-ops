@@ -55,6 +55,40 @@ const eoWatermarkInlineSVG = (pageWidthPt, pageHeightPt, color = "6,27,176") => 
 const lv = (label, value, labelWidthPt = 38) =>
   `<span style="display:inline-block;width:${labelWidthPt}pt">${label}</span>${value}`;
 
+// ─── Service Details fit budget (2026-08-22). Both print flavors share
+// one Service Details field, but Shareable's 8x5in card is the binding
+// constraint (Printable's A4 page has room to spare) -- so the budget
+// shown while typing is deliberately based on Shareable's tighter
+// column, guaranteeing that content fitting Shareable also fits
+// Printable. This is a rough estimate (average glyph width for Times
+// New Roman body text), not a pixel-exact guarantee -- word-length
+// distribution shifts real wrapping either way. The hard backstop is
+// buildShareableHTML's own max-height + overflow:hidden on the Service
+// Details box, which clips rather than visually colliding with the
+// footer if this estimate undershoots.
+const SD_CHARS_PER_LINE = 68; // ~338pt column / (10pt font x ~0.5 avg glyph width)
+const SD_MAX_LINES = 8;       // ~126pt available height / ~14.2pt line height
+const SD_CHAR_BUDGET = SD_CHARS_PER_LINE * SD_MAX_LINES;
+
+// Each block-level element (paragraph, bullet item) forces its own line
+// regardless of how short it is -- pressing Enter for a fresh (even
+// empty) line still spends a full SD_CHARS_PER_LINE against the budget,
+// which a flat character count would miss entirely.
+function estimateServiceDetailsUsage(html) {
+  if (!html) return { chars: 0, lines: 0 };
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  const blocks = Array.from(div.querySelectorAll("p, li, div"));
+  const list = blocks.length ? blocks : [div];
+  let chars = 0, lines = 0;
+  list.forEach(b => {
+    const text = (b.textContent || "").replace(/ /g, " ");
+    chars += text.length;
+    lines += Math.max(1, Math.ceil(text.length / SD_CHARS_PER_LINE));
+  });
+  return { chars, lines };
+}
+
 // ─── Lightweight rich-text editor for the unified Service Details field.
 // contentEditable-based rather than a library: matches this app's
 // dependency-light style, and the b/i/u/list markup it produces is exactly
@@ -76,6 +110,10 @@ function RichTextEditor({ value, onChange, readOnly }) {
       {lbl}
     </button>
   );
+  const { chars, lines } = estimateServiceDetailsUsage(value);
+  const linesLeft = SD_MAX_LINES - lines;
+  const charsLeft = linesLeft * SD_CHARS_PER_LINE;
+  const overBudget = lines > SD_MAX_LINES;
   return (
     <div>
       {!readOnly && (
@@ -89,6 +127,13 @@ function RichTextEditor({ value, onChange, readOnly }) {
       <div ref={ref} contentEditable={!readOnly} suppressContentEditableWarning
         onInput={() => onChange(ref.current.innerHTML)}
         style={{ minHeight: 110, padding: "8px 10px", border: `1px solid ${G.gray200}`, borderRadius: 6, fontSize: 12, lineHeight: 1.5, fontFamily: "'Inter',sans-serif", background: readOnly ? G.gray50 : G.white, outline: "none" }} />
+      {!readOnly && (
+        <div style={{ fontSize: 10, marginTop: 3, color: overBudget ? "#C0392B" : G.gray600 }}>
+          {overBudget
+            ? `Over the printed voucher's fit by ~${Math.abs(charsLeft)} characters (~${Math.abs(linesLeft)} line${Math.abs(linesLeft) === 1 ? "" : "s"}) -- trim it or it may get clipped on the Shareable PDF.`
+            : `~${charsLeft} characters left for a clean fit (~${linesLeft} line${linesLeft === 1 ? "" : "s"} of ~${SD_CHARS_PER_LINE} chars each) -- pressing Enter for a new line uses up to ${SD_CHARS_PER_LINE} characters even if it's short.`}
+        </div>
+      )}
     </div>
   );
 }
@@ -323,20 +368,20 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       <div class="abs" style="left:36pt;top:158pt;font-size:11pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
       <div class="rule" style="left:36pt;top:169pt;width:523.5pt;"></div>
 
-      <div class="abs" style="left:355.5pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:483.9pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:335.5pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:463.9pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:41.2pt;top:181pt;width:300pt;font-size:11pt;line-height:1.5;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:41.2pt;top:181pt;width:280pt;font-size:11pt;line-height:1.5;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs nowrap" style="left:355.5pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
-      <div class="abs nowrap" style="left:483.9pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.departureDate))}</div>
-      <div class="abs nowrap" style="left:355.5pt;top:222pt;font-size:11pt;">${lv("From:", order.arrivalFrom)}</div>
-      <div class="abs nowrap" style="left:483.9pt;top:222pt;font-size:11pt;">${lv("To:", order.departureTo)}</div>
-      <div class="abs nowrap" style="left:355.5pt;top:245pt;font-size:11pt;">${lv("By:", order.arrivalBy)}</div>
-      <div class="abs nowrap" style="left:483.9pt;top:245pt;font-size:11pt;">${lv("By:", order.departureBy)}</div>
-      <div class="abs nowrap" style="left:355.5pt;top:268pt;font-size:11pt;">${lv("Time:", order.arrivalTime)}</div>
-      <div class="abs nowrap" style="left:483.9pt;top:268pt;font-size:11pt;">${lv("Time:", order.departureTime)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:199pt;font-size:11pt;">${lv("Date:", fD(order.departureDate))}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:222pt;font-size:11pt;">${lv("From:", order.arrivalFrom)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:222pt;font-size:11pt;">${lv("To:", order.departureTo)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:245pt;font-size:11pt;">${lv("By:", order.arrivalBy)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:245pt;font-size:11pt;">${lv("By:", order.departureBy)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:268pt;font-size:11pt;">${lv("Time:", order.arrivalTime)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:268pt;font-size:11pt;">${lv("Time:", order.departureTime)}</div>
       ` : ""}
     </body></html>`;
   };
@@ -368,40 +413,40 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     </style></head><body>
       ${eoWatermarkInlineSVG(576, 360, "6,27,176")}
 
-      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:4pt;height:46pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
-      <div class="abs" style="left:14pt;top:53pt;width:108pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
-      <div class="abs arial nowrap" style="left:14pt;top:57pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
+      <img src="${LOGO_B64}" class="abs" style="left:14pt;top:0pt;height:60pt;width:auto;mix-blend-mode:multiply;z-index:2"/>
+      <div class="abs" style="left:14pt;top:63pt;width:108pt;border-top:1.2pt solid ${TEXT_BLUE};z-index:2"></div>
+      <div class="abs arial nowrap" style="left:14pt;top:67pt;font-size:12pt;font-weight:700;color:${TEXT_BLUE};z-index:2">EXCHANGE ORDER</div>
 
       <div class="abs arial nowrap" style="left:150pt;top:12pt;width:412pt;text-align:right;font-size:14pt;font-weight:700;color:${TEXT_BLUE};z-index:2">UNITOP TOURS &amp; TRAVEL PVT. LTD.</div>
-      <div class="abs arial nowrap" style="left:150pt;top:38pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">506, DDA-2F, DISTRICT CENTRE, JANAK PURI, NEW DELHI-110058</div>
-      <div class="abs arial nowrap" style="left:150pt;top:50pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">TEL: +91-124-4476571 | MOBILE: +91-9810203502 ; +91-9555962990</div>
-      <div class="abs arial nowrap" style="left:150pt;top:62pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">E-MAIL: UNITOPTOURS@GMAIL.COM | WEB: WWW.UNITOPTOURS.COM</div>
+      <div class="abs arial nowrap" style="left:150pt;top:42pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">506, DDA-2F, DISTRICT CENTRE, JANAK PURI, NEW DELHI-110058</div>
+      <div class="abs arial nowrap" style="left:150pt;top:57pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">TEL: +91-124-4476571 | MOBILE: +91-9810203502 ; +91-9555962990</div>
+      <div class="abs arial nowrap" style="left:150pt;top:72pt;width:412pt;text-align:right;font-size:8pt;font-weight:700;color:${TEXT_BLUE};z-index:2">E-MAIL: UNITOPTOURS@GMAIL.COM | WEB: WWW.UNITOPTOURS.COM</div>
 
-      <div class="abs" style="left:14pt;top:90pt;width:548pt;text-align:center;font-size:12pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
+      <div class="abs" style="left:14pt;top:100pt;width:548pt;text-align:center;font-size:12pt;font-weight:700;color:#000;">${svcLabel.toUpperCase()}</div>
 
-      <div class="abs nowrap" style="left:14pt;top:107pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:300pt;top:107pt;width:262pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
-      <div class="abs" style="left:14pt;top:121pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:300pt;top:121pt;width:262pt;text-align:right;font-size:10pt;">No. of Pax: ${order.pax}</div>
-      <div class="abs" style="left:14pt;top:135pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:300pt;top:135pt;width:262pt;text-align:right;font-size:10pt;">Nationality: ${order.nationality}</div>
-      <div class="abs" style="left:14pt;top:153pt;font-size:9.5pt;">${tmpl.instructionLine}</div>
-      <div class="abs" style="left:14pt;top:165pt;width:548pt;border-top:1pt solid #999;"></div>
+      <div class="abs nowrap" style="left:14pt;top:117pt;font-size:10pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:300pt;top:117pt;width:262pt;text-align:right;font-size:10pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:14pt;top:131pt;font-size:10pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:300pt;top:131pt;width:262pt;text-align:right;font-size:10pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:14pt;top:145pt;font-size:10pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:300pt;top:145pt;width:262pt;text-align:right;font-size:10pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:14pt;top:163pt;font-size:9.5pt;">${tmpl.instructionLine}</div>
+      <div class="abs" style="left:14pt;top:175pt;width:548pt;border-top:1pt solid #999;"></div>
 
-      <div class="abs" style="left:385pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:478pt;top:172pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:360pt;top:182pt;font-size:10pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:475pt;top:182pt;font-size:10pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:14pt;top:172pt;width:363pt;font-size:10pt;line-height:1.42;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:14pt;top:182pt;width:338pt;max-height:126pt;overflow:hidden;font-size:10pt;line-height:1.42;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs nowrap" style="left:385pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.arrivalDate), 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:186pt;font-size:9.5pt;">${lv("Date:", fD(order.departureDate), 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:203pt;font-size:9.5pt;">${lv("From:", order.arrivalFrom, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:203pt;font-size:9.5pt;">${lv("To:", order.departureTo, 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:220pt;font-size:9.5pt;">${lv("By:", order.arrivalBy, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:220pt;font-size:9.5pt;">${lv("By:", order.departureBy, 34)}</div>
-      <div class="abs nowrap" style="left:385pt;top:237pt;font-size:9.5pt;">${lv("Time:", order.arrivalTime, 34)}</div>
-      <div class="abs nowrap" style="left:478pt;top:237pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
+      <div class="abs nowrap" style="left:360pt;top:196pt;font-size:9.5pt;">${lv("Date:", fD(order.arrivalDate), 34)}</div>
+      <div class="abs nowrap" style="left:475pt;top:196pt;font-size:9.5pt;">${lv("Date:", fD(order.departureDate), 34)}</div>
+      <div class="abs nowrap" style="left:360pt;top:213pt;font-size:9.5pt;">${lv("From:", order.arrivalFrom, 34)}</div>
+      <div class="abs nowrap" style="left:475pt;top:213pt;font-size:9.5pt;">${lv("To:", order.departureTo, 34)}</div>
+      <div class="abs nowrap" style="left:360pt;top:230pt;font-size:9.5pt;">${lv("By:", order.arrivalBy, 34)}</div>
+      <div class="abs nowrap" style="left:475pt;top:230pt;font-size:9.5pt;">${lv("By:", order.departureBy, 34)}</div>
+      <div class="abs nowrap" style="left:360pt;top:247pt;font-size:9.5pt;">${lv("Time:", order.arrivalTime, 34)}</div>
+      <div class="abs nowrap" style="left:475pt;top:247pt;font-size:9.5pt;">${lv("Time:", order.departureTime, 34)}</div>
       ` : ""}
 
       <img src="${STAMP_B64}" class="abs" style="left:478pt;top:281pt;width:48pt;height:48pt;"/>
