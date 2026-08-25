@@ -267,7 +267,7 @@ export default function ProformaInvoice({ query, template, docSettings, onClose,
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:720,height:'100vh',display:'flex',flexDirection:'column',boxShadow:'-4px 0 24px rgba(0,0,0,0.15)'}}>
+      <div style={{background:G.white,width:"min(720px, 100vw)",height:'100vh',display:'flex',flexDirection:'column',boxShadow:'-4px 0 24px rgba(0,0,0,0.15)'}}>
         {/* Header */}
         <div style={{background:G.navy,padding:'12px 18px',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
           <div style={{flex:1}}>

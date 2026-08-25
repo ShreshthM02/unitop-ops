@@ -40,7 +40,7 @@ export default function AgentLedgerPanel({ agent, queries, payments, onClose }) 
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:700,height:"100vh",overflowY:"auto",
+      <div style={{background:G.white,width:"min(700px, 100vw)",height:"100vh",overflowY:"auto",
         boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",flexShrink:0}}>
           <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>AGENT LEDGER</div>

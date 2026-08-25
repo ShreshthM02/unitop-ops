@@ -27,7 +27,7 @@ export default function VendorLedgerPanel({ vendor, queries, allPayments, onClos
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:G.white, width:640, height:"100vh", overflowY:"auto",
+      <div style={{ background:G.white, width:"min(640px, 100vw)", height:"100vh", overflowY:"auto",
         boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
         <div style={{ background:G.navy, padding:"14px 20px", flexShrink:0 }}>
           <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:1 }}>VENDOR LEDGER</div>

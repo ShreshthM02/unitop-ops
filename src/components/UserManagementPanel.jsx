@@ -74,7 +74,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:G.white, width:760, height:"100vh", display:"flex",
+      <div style={{ background:G.white, width:"min(760px, 100vw)", height:"100vh", display:"flex",
         flexDirection:"column", boxShadow:"-4px 0 24px rgba(0,0,0,0.15)" }}>
 
         {/* Header */}

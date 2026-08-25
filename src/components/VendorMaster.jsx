@@ -60,7 +60,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const PT_STYLE={cash:{bg:"#DCFCE7",color:"#166534",label:"Cash"},voucher:{bg:"#FEF3C7",color:"#92400E",label:"Voucher"},settle:{bg:"#DBEAFE",color:"#1E40AF",label:"Settlement"}};
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:900,height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
+      <div style={{background:G.white,width:"min(900px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Vendor Repository</div></div>
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);}}>+ New Vendor</button>

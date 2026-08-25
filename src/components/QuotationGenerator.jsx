@@ -490,7 +490,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
   return (
     <div className="overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div style={{ background:G.white, width:680, height:"100vh", overflowY:"auto",
+      <div style={{ background:G.white, width:"min(680px, 100vw)", height:"100vh", overflowY:"auto",
         boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
 
         {/* Header */}

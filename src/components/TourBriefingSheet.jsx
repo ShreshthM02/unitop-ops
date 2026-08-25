@@ -280,7 +280,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:880,height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
+      <div style={{background:G.white,width:"min(880px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>TOUR BRIEFING SHEET · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>

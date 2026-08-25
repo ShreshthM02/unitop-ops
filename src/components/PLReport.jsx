@@ -68,7 +68,7 @@ export default function PLReport({ queries, payments, onClose }) {
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:720,height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
+      <div style={{background:G.white,width:"min(720px, 100vw)",height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
             <div style={{flex:1}}>

@@ -194,7 +194,7 @@ export default function TaxInvoice({ query, payments, template, docSettings, onC
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:660,height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
+      <div style={{background:G.white,width:"min(660px, 100vw)",height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>GST TAX INVOICE · {versions.length>0?`v${version-1} saved`:"unsaved"}</div>

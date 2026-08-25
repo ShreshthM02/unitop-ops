@@ -124,7 +124,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="drawer" style={{width:520}}>
+      <div className="drawer" style={{width:"min(520px, 100vw)"}}>
 
         {/* Header */}
         <div className="drawer-head">

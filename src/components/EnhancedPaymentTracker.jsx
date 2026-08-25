@@ -182,7 +182,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:G.white,width:660,height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
+      <div style={{background:G.white,width:"min(660px, 100vw)",height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",flexShrink:0}}>
           <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>PAYMENT TRACKER</div>
           <div style={{fontSize:17,fontWeight:700,color:G.white,fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
