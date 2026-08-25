@@ -178,10 +178,10 @@ export const ROLE_BG    = { admin:"#FDEDEC", sales:"#F5EEF8", ops:"#EAFAF1", acc
 
 // ─── AGENT MASTER DATA ───────────────────────────────────────────────────────
 export const INITIAL_AGENTS = [
-  { id:"AGT-001", company:"NCH Holidays", country:"Thailand", city:"Bangkok", market:"Thai",
+  { id:"AGT-001", company:"NCH Holidays", country:"Thailand", city:"Bangkok", address:"", market:"Thai",
     contactName:"Pee Suchint", contactPhone:"+66-XX-XXXXXXX", contactEmail:"nch@nchholidays.com",
     gstin:"", notes:"Long-standing partner since 2010. Peak season Oct-Mar.", active:true },
-  { id:"AGT-002", company:"Mueller Reisen GmbH", country:"Germany", city:"Munich", market:"German",
+  { id:"AGT-002", company:"Mueller Reisen GmbH", country:"Germany", city:"Munich", address:"", market:"German",
     contactName:"Hans Mueller", contactPhone:"+49-89-XXXXXXX", contactEmail:"hans@mueller-reisen.de",
     gstin:"", notes:"Specialist in Buddhist Circuit and pilgrimage tours.", active:true },
 ];
@@ -195,19 +195,19 @@ export const INITIAL_AGENTS = [
 // dropdown will come up empty.
 export const VENDOR_TYPES = ["Hotel","Restaurant","Transport","Tour Facilitator","Local Handler","Activity","Other"];
 export const INITIAL_VENDORS = [
-  { id:"VND-001", name:"Saura / Golden Tulip", type:"Hotel", city:"Agra", contactName:"Sales Manager",
+  { id:"VND-001", name:"Saura / Golden Tulip", type:"Hotel", city:"Agra", address:"", contactName:"Sales Manager",
     contactPhone:"+91-562-XXXXXXX", contactEmail:"sales@sauraagra.com", gstin:"", notes:"Contracted rates on file.", active:true },
-  { id:"VND-002", name:"Nanking Restaurant", type:"Restaurant", city:"New Delhi", contactName:"Manager",
+  { id:"VND-002", name:"Nanking Restaurant", type:"Restaurant", city:"New Delhi", address:"", contactName:"Manager",
     contactPhone:"+91-11-XXXXXXX", contactEmail:"", gstin:"", notes:"Chinese cuisine specialist.", active:true },
   // Tour Facilitators are vendors too (type: "Tour Facilitator") -- individuals,
-  // not businesses, so `languages`/`areas` matter more than gstin/city for
+  // not businesses, so `languages`/`areas` matter more than gstin/city/address for
   // this type. Tour Briefing Sheet selects from these by id instead of
   // free-typing a name, so "days worked"/"payments" reports can reliably
   // total per person -- free text let the same person appear as "Prithvi",
   // "Prithvee", and "PRITHVI" across different tours.
-  { id:"VND-003", name:"Prithvi", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Bodhgaya, Rajgir, Nalanda", active:true },
-  { id:"VND-004", name:"Ashutosh", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Thai", areas:"Bodhgaya, Varanasi", active:true },
-  { id:"VND-005", name:"Manoj", type:"Tour Facilitator", city:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Delhi, Agra", active:true },
+  { id:"VND-003", name:"Prithvi", type:"Tour Facilitator", city:"", address:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Bodhgaya, Rajgir, Nalanda", active:true },
+  { id:"VND-004", name:"Ashutosh", type:"Tour Facilitator", city:"", address:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Thai", areas:"Bodhgaya, Varanasi", active:true },
+  { id:"VND-005", name:"Manoj", type:"Tour Facilitator", city:"", address:"", contactName:"", contactPhone:"+91-98XXXXXXXX", contactEmail:"", gstin:"", notes:"", languages:"English, Hindi", areas:"Delhi, Agra", active:true },
 ];
 
 // ─── VEHICLE TYPES (for cost sheet and exchange order) ───────────────────────

@@ -225,7 +225,7 @@ describe('Schema completeness: payments + payment_incoming + payment_outgoing (s
 });
 
 describe('Schema completeness: vendors (saveVendorToDB) -- the exact table that had the real bug', () => {
-  const EXPECTED_COLUMNS = ['name','type','city','contact_name','contact_phone','contact_email','gstin','notes','active','languages','areas'];
+  const EXPECTED_COLUMNS = ['name','type','city','address','contact_name','contact_phone','contact_email','gstin','notes','active','languages','areas'];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveVendorToDB(db, { id: 'VND-1' });
@@ -234,8 +234,8 @@ describe('Schema completeness: vendors (saveVendorToDB) -- the exact table that 
   });
 });
 
-describe('Schema completeness: agents (saveAgentToDB)', () => {
-  const EXPECTED_COLUMNS = ['company','country','city','market','contact_name','contact_phone','contact_email','notes','active'];
+describe('Schema completeness: agents (saveAgentToDB) -- address and gstin added 2026-08-22 (gstin already existed as a real column but was silently dropped by this function until now)', () => {
+  const EXPECTED_COLUMNS = ['company','country','city','address','market','contact_name','contact_phone','contact_email','gstin','notes','active'];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveAgentToDB(db, {});

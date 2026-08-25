@@ -201,14 +201,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         }
         if (agData && agData.length > 0) {
           setAgents(agData.map(a => ({
-            id: a.id, company: a.company, country: a.country, city: a.city,
+            id: a.id, company: a.company, country: a.country, city: a.city, address: a.address,
             market: a.market, contactName: a.contact_name, contactPhone: a.contact_phone,
-            contactEmail: a.contact_email, notes: a.notes, active: a.active,
+            contactEmail: a.contact_email, gstin: a.gstin, notes: a.notes, active: a.active,
           })));
         }
         if (vData && vData.length > 0) {
           setVendors(vData.map(v => ({
-            id: v.id, name: v.name, type: v.type, city: v.city,
+            id: v.id, name: v.name, type: v.type, city: v.city, address: v.address,
             contactName: v.contact_name, contactPhone: v.contact_phone,
             contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
             languages: v.languages, areas: v.areas, active: v.active,

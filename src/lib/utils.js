@@ -195,6 +195,7 @@ export async function saveVendorToDB(db, vendor) {
       name: vendor.name,
       type: vendor.type,
       city: vendor.city,
+      address: vendor.address,
       contact_name: vendor.contactName,
       contact_phone: vendor.contactPhone,
       contact_email: vendor.contactEmail,
@@ -426,9 +427,9 @@ export async function loadFinalCostSheetVersion(db, queryId) {
 // its local state correctly.
 export async function saveAgentToDB(db, agent) {
   const payload = {
-    company: agent.company, country: agent.country, city: agent.city,
+    company: agent.company, country: agent.country, city: agent.city, address: agent.address,
     market: agent.market, contact_name: agent.contactName, contact_phone: agent.contactPhone,
-    contact_email: agent.contactEmail, notes: agent.notes, active: agent.active !== false,
+    contact_email: agent.contactEmail, gstin: agent.gstin, notes: agent.notes, active: agent.active !== false,
   };
   try {
     if (agent.id) {
