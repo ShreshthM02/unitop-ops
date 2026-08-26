@@ -80,20 +80,40 @@ describe('InvoiceGenerator: Pro-Forma / Tax Invoice sub-tabs keep independent ve
   });
 });
 
-describe('InvoiceGenerator: Bill To -- Agent Master picker with Custom fallback (mirrors Exchange Order\'s vendor picker)', () => {
-  it('selecting an agent auto-fills address, city/country, and GSTIN', async () => {
+describe('InvoiceGenerator: Addressee vs Billed To -- kept as two separate blocks, Agent Master picker cascades from one into the other', () => {
+  it('selecting an agent for Addressee fills Name/Company/City there, and cascades Company/Address/City/GSTIN into Billed To', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
     const select = await screen.findByDisplayValue('Select from Agent Master...');
     fireEvent.change(select, { target: { value: 'AGT-1' } });
-    await waitFor(() => expect(screen.getByDisplayValue('99 Sukhumvit Rd')).toBeTruthy());
-    expect(screen.getByDisplayValue('Bangkok, Thailand')).toBeTruthy();
+    await waitFor(() => expect(screen.getByDisplayValue('Pee Suchint')).toBeTruthy());
+    // Addressee's own City/Country field
+    expect(screen.getAllByDisplayValue('Bangkok, Thailand').length).toBe(2); // Addressee + Billed To
+    // Cascaded into Billed To, which has no contact-name field at all
+    expect(screen.getByDisplayValue('99 Sukhumvit Rd')).toBeTruthy();
+    expect(screen.queryByText('Contact Name')).toBeNull();
   });
 
-  it('"Custom" lets staff type a Bill To company not in Agent Master', async () => {
+  it('the two blocks stay independently editable after the cascade -- editing Billed To does not change Addressee', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const select = await screen.findByDisplayValue('Select from Agent Master...');
+    fireEvent.change(select, { target: { value: 'AGT-1' } });
+    await waitFor(() => expect(screen.getAllByDisplayValue('NCH Holidays').length).toBe(3)); // Addressee + Billed To + the <select> itself
+    const billToCompanyInput = screen.getByText('Company / Agency / Client').parentElement.querySelector('input');
+    fireEvent.change(billToCompanyInput, { target: { value: 'A Different Billing Entity Ltd.' } });
+    // Addressee's own Company field (and the select showing the picked
+    // agent) should be untouched -- 2 remaining matches, not the 3 from
+    // before editing Billed To away from it.
+    expect(screen.getAllByDisplayValue('NCH Holidays').length).toBe(2);
+    expect(screen.getByDisplayValue('A Different Billing Entity Ltd.')).toBeTruthy();
+  });
+
+  it('"Custom" is available for an addressee not in Agent Master, and the always-visible fields below take manual entry either way', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
     const select = await screen.findByDisplayValue('Select from Agent Master...');
     fireEvent.change(select, { target: { value: '__custom__' } });
-    expect(await screen.findByPlaceholderText('Company / Agency / Client name')).toBeTruthy();
+    const nameInput = screen.getByText('Name').parentElement.querySelector('input');
+    fireEvent.change(nameInput, { target: { value: 'A Walk-in Client' } });
+    expect(screen.getByDisplayValue('A Walk-in Client')).toBeTruthy();
   });
 });
 
@@ -117,7 +137,7 @@ describe('InvoiceGenerator: Pro-Forma content fixes', () => {
   });
 
   it('travel date is shown as an arrival-to-departure range in dd/mm/yyyy', async () => {
-    const q = { ...fakeQuery, travelDateFrom: '2026-09-01', travelDateTo: '2026-09-10' };
+    const q = { ...fakeQuery, travelDate: '2026-09-01', travelDateTo: '2026-09-10' };
     render(<InvoiceGenerator query={q} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
     expect(await screen.findByDisplayValue('01-09-2026 to 10-09-2026')).toBeTruthy();
   });
@@ -145,8 +165,52 @@ describe('InvoiceGenerator: Tax Invoice content fixes', () => {
 
   it('Bill To and Tour Details are editable, same as Pro-Forma', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} initialFlavor="tax" onClose={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByText(/Bill To/)).toBeTruthy();
+    expect(await screen.findByText(/📬 Billed To/)).toBeTruthy();
     expect(screen.getByText(/Tour Details/)).toBeTruthy();
+  });
+});
+
+describe('InvoiceGenerator: line item Amount is always Qty x Rate, computed not typed', () => {
+  it('changing Qty or Rate recomputes Amount automatically', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const qtyInput = await screen.findByDisplayValue('1');
+    fireEvent.change(qtyInput, { target: { value: '4' } });
+    const zeroInputs = await screen.findAllByDisplayValue('0');
+    const rateInput = zeroInputs.find(el => !el.readOnly);
+    fireEvent.change(rateInput, { target: { value: '250' } });
+    expect(await screen.findByDisplayValue('1000')).toBeTruthy();
+  });
+
+  it('the Amount field is read-only', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const amountInput = await screen.findAllByDisplayValue('0');
+    // rate and amount both show '0' initially -- find the readOnly one
+    const readOnlyOne = amountInput.find(el => el.readOnly);
+    expect(readOnlyOne).toBeTruthy();
+  });
+});
+
+describe('InvoiceGenerator: currency dropdown defaults to USD', () => {
+  it('shows a select with USD pre-selected, not a free-text field', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    const currencySelect = await screen.findByDisplayValue('USD');
+    expect(currencySelect.tagName).toBe('SELECT');
+  });
+});
+
+describe('InvoiceGenerator: RE line omitted entirely when the subject is blank', () => {
+  it('does not render an empty "RE:" line', async () => {
+    let captured = {};
+    const realOpen = window.open;
+    window.open = () => ({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    const subjectInput = await screen.findByDisplayValue(/GROUP FROM/);
+    fireEvent.change(subjectInput, { target: { value: '' } });
+    fireEvent.click(screen.getAllByText(/⬇ Export/)[0]);
+    fireEvent.click(await screen.findByText('📕 PDF'));
+    await waitFor(() => expect(captured.html).toBeTruthy());
+    expect(captured.html).not.toContain('RE:');
+    window.open = realOpen;
   });
 });
 
@@ -154,17 +218,17 @@ describe('InvoiceGenerator: Phase B -- Advance / Adjusted Payment auto-fetch fro
   const paymentsWithEntries = {
     'UTQ-2026-1000': {
       entries: [
-        { id: 1, type: 'advance', inCurrency: 'INR', amount: '50000', date: '2026-08-01', receipt: 'RCP-2026-001' },
-        { id: 2, type: 'balance', inCurrency: 'INR', amount: '25000', date: '2026-08-10', receipt: 'RCP-2026-002' },
-        { id: 3, type: 'advance', inCurrency: 'USD', amount: '500', date: '2026-08-05', receipt: 'RCP-2026-003' },
+        { id: 1, type: 'advance', inCurrency: 'USD', amount: '50000', date: '2026-08-01', receipt: 'RCP-2026-001' },
+        { id: 2, type: 'balance', inCurrency: 'USD', amount: '25000', date: '2026-08-10', receipt: 'RCP-2026-002' },
+        { id: 3, type: 'advance', inCurrency: 'INR', amount: '500', date: '2026-08-05', receipt: 'RCP-2026-003' },
         // No receipt -- must not be counted, per direct instruction
         // ("only incoming payments which have a receipt get fetched").
-        { id: 4, type: 'advance', inCurrency: 'INR', amount: '9999', date: '2026-08-12', receipt: '' },
+        { id: 4, type: 'advance', inCurrency: 'USD', amount: '9999', date: '2026-08-12', receipt: '' },
       ],
     },
   };
 
-  it('turning the section on auto-fetches the total of receipted INR entries (matching invoice currency), excluding the un-receipted one', async () => {
+  it('turning the section on auto-fetches the total of receipted entries matching the invoice currency (USD, the new default), excluding the un-receipted one', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={paymentsWithEntries} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
     fireEvent.click(await screen.findByText(/Show advance/));
     await waitFor(() => expect(screen.getByDisplayValue('75000')).toBeTruthy());

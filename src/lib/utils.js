@@ -462,7 +462,7 @@ export function isUuid(v) {
 // error-toast fix, then loudly (but still unfixed) after it. isUuid()
 // already protected agent_id/assigned_to from an analogous mismatch;
 // this is the same category of gap for a date column.
-function isIsoDateString(v) {
+export function isIsoDateString(v) {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v);
 }
 

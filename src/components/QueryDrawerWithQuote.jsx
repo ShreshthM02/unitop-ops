@@ -112,9 +112,8 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
     {icon:"📊",label:"Cost Sheet",        panel:"costsheet"},
     {icon:"🗺",label:"Itinerary",         panel:"itinerary"},
     {icon:"📋",label:"Quotation",         panel:"quotation"},
-    {icon:"🧾",label:"Proforma Inv.",     panel:"proforma"},
+    {icon:"🧾",label:"Invoices",          panel:"proforma"},
     {icon:"₹", label:"Payments",          panel:"payments"},
-    {icon:"🧾",label:"Tax Invoice",       panel:"taxinv"},
     {icon:"🎫",label:"Exchange Orders",   panel:"voucher"},
     {icon:"📋",label:"Tour Briefing Sheet",panel:"tourbriefing"},
     {icon:"🍽",label:"Meal Plan",         panel:"mealplan"},
@@ -550,7 +549,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               </div>
               {!isCaseFile&&(
                 <div style={{padding:"10px 12px",background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,fontSize:11,color:"#784212"}}>
-                  ℹ Proforma, Tax Invoice, Exchange Orders and Payment Tracker become available after this query is converted to a Tour File.
+                  ℹ Invoices, Exchange Orders and Payment Tracker become available after this query is converted to a Tour File.
                 </div>
               )}
               {isCaseFile&&showUploadsInline&&(

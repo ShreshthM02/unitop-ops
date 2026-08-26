@@ -21,7 +21,7 @@ describe('1.3 Itinerary is available at query stage, not only after tour-file co
     render(<QueryDrawerWithQuote query={baseQuery} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
     // These stay gated behind conversion.
-    expect(screen.queryByText('Tax Invoice')).toBeNull();
+    expect(screen.queryByText('Invoices')).toBeNull();
     expect(screen.queryByText('Exchange Orders')).toBeNull();
     expect(screen.queryByText('Meal Plan')).toBeNull();
     expect(screen.queryByText('Tour Briefing Sheet')).toBeNull();
@@ -31,7 +31,7 @@ describe('1.3 Itinerary is available at query stage, not only after tour-file co
     render(<QueryDrawerWithQuote query={{ ...baseQuery, tourFileId: 'TUR-2026-001' }} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
     expect(screen.getByText('Itinerary')).toBeTruthy();
-    expect(screen.getByText('Tax Invoice')).toBeTruthy();
+    expect(screen.getByText('Invoices')).toBeTruthy();
     expect(screen.getByText('Meal Plan')).toBeTruthy();
   });
 });

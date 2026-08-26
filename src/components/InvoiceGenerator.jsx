@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
-  LetterheadToggleBar, useLetterheadToggles, OtherInput, buildAddresseeBlock,
+  LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
-  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY,
+  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
   logAudit, db,
 } = Lib;
@@ -29,19 +29,36 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
   // flavors (or picking an older version) reloads these from that
   // version's own saved content, matching Itinerary's Brief/Detailed. ────
   const travelDateRange = () => {
-    const from = query.travelDateFrom ? formatDateDMY(query.travelDateFrom) : "";
-    const to = query.travelDateTo ? formatDateDMY(query.travelDateTo) : "";
-    if (from && to) return `${from} to ${to}`;
-    return from || to || (query.travelDate || "TBC");
+    // query.travelDateFrom does not exist on a real loaded query object --
+    // the arrival date is stored under the plain `travelDate` key (see
+    // utils.js's row mapping), with travelDateFrom only ever existing on
+    // the transient query-creation form. Checking the wrong key meant
+    // `from` was always empty, so this never actually produced a range.
+    const fromRaw = query.travelDate;
+    const toRaw = query.travelDateTo;
+    const fromIsDate = isIsoDateString(fromRaw);
+    const toIsDate = isIsoDateString(toRaw);
+    if (fromIsDate && toIsDate) return `${formatDateDMY(fromRaw)} to ${formatDateDMY(toRaw)}`;
+    if (fromIsDate) return formatDateDMY(fromRaw);
+    return fromRaw || "TBC";
   };
 
+  // ─── Addressee vs Billed To (2026-08-22) -- kept as two separate blocks
+  // per direct instruction: Addressee is the "Attn:" salutation at the
+  // top of the letter (a person, at a company); Billed To is the actual
+  // paying entity and doesn't need a contact name at all. Picking an
+  // agent for Addressee cascades into Billed To once, at selection time
+  // -- both stay independently editable afterward, which is the whole
+  // point of keeping them separate rather than one shared block. ────────
   const emptyShared = () => ({
-    billToPartyId: "",
+    addresseePartyId: "",
+    addresseeName: "",
+    addresseeCompany: query.agentCompany || "",
+    addresseeCityCountry: query.agentCountry || "",
     billToCompany: query.agentCompany || "",
     billToAddress: "",
     billToCityCountry: query.agentCountry || "",
     billToGSTIN: "",
-    billToContactName: "",
     tourName: query.groupName || query.clientName || "",
     tourRef: query.tourFileId || query.id,
     travelDate: travelDateRange(),
@@ -55,7 +72,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     validUntil: "",
     subject: `GROUP FROM ${query.travelDate || ""} x ${query.paxDisplay || "??"}`,
     openingLine: pTmpl.asDesiredLine,
-    currency: "INR",
+    currency: "USD",
     items: [{ desc: "Tour Package", qty: 1, unit: "Package", rate: 0, amount: 0 }],
     roeNote: "",
     advanceEnabled: false,
@@ -88,16 +105,23 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
   const [tInv, setTInv] = useState(emptyTax());
   const setT = (k, v) => setTInv(p => ({ ...p, [k]: v }));
 
-  const setBillToParty = (partyId) => {
-    if (partyId === CUSTOM_PARTY) { setS("billToPartyId", CUSTOM_PARTY); return; }
+  const setAddresseeParty = (partyId) => {
+    if (partyId === CUSTOM_PARTY) { setS("addresseePartyId", CUSTOM_PARTY); return; }
     const a = agentList.find(x => x.id === partyId);
+    if (!a) { setS("addresseePartyId", partyId); return; }
+    const cityCountry = [a.city, a.country].filter(Boolean).join(", ");
     setShared(p => ({
-      ...p, billToPartyId: partyId,
-      billToCompany: a ? a.company : p.billToCompany,
-      billToAddress: a ? (a.address || "") : p.billToAddress,
-      billToCityCountry: a ? [a.city, a.country].filter(Boolean).join(", ") : p.billToCityCountry,
-      billToGSTIN: a ? (a.gstin || "") : p.billToGSTIN,
-      billToContactName: a ? (a.contactName || "") : p.billToContactName,
+      ...p, addresseePartyId: partyId,
+      addresseeName: a.contactName || "",
+      addresseeCompany: a.company,
+      addresseeCityCountry: cityCountry,
+      // One-time cascade into Billed To at the moment of selection --
+      // both stay independently editable afterward, that's the point of
+      // keeping them as two separate blocks rather than one shared one.
+      billToCompany: a.company,
+      billToAddress: a.address || "",
+      billToCityCountry: cityCountry,
+      billToGSTIN: a.gstin || "",
     }));
   };
 
@@ -212,7 +236,16 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
   const tGstCalc = Math.round(tSubtotal * tInv.gstRate / 100);
   const tGrandTotal = tSubtotal + tGstCalc;
 
-  const updateItem = (setInvFn, i, f, v) => setInvFn(p => ({ ...p, items: p.items.map((x, idx) => idx === i ? { ...x, [f]: v } : x) }));
+  // Amount is always qty x rate -- computed, never typed directly, so it
+  // can't drift from the two numbers it's supposed to represent.
+  const updateItem = (setInvFn, i, f, v) => setInvFn(p => ({
+    ...p, items: p.items.map((x, idx) => {
+      if (idx !== i) return x;
+      const next = { ...x, [f]: v };
+      if (f === "qty" || f === "rate") next.amount = (parseFloat(next.qty) || 0) * (parseFloat(next.rate) || 0);
+      return next;
+    }),
+  }));
   const addItem = (setInvFn, blank) => setInvFn(p => ({ ...p, items: [...p.items, blank] }));
   const removeItem = (setInvFn, i) => setInvFn(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
 
@@ -229,13 +262,13 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     const addresseeBlock = `
         <div style="display:table;width:100%;margin-bottom:10pt">
           <div style="display:table-cell;vertical-align:top">
-            ${buildAddresseeBlock({ name: shared.billToContactName, company: shared.billToCompany, address: shared.billToAddress, city: shared.billToCityCountry, fontSizePt: 10.5 })}
+            ${buildAddresseeBlock({ name: shared.addresseeName, company: shared.addresseeCompany, city: shared.addresseeCityCountry, fontSizePt: 10.5 })}
           </div>
           <div style="display:table-cell;vertical-align:top;text-align:right;white-space:nowrap">
             <div style="font-size:10.5pt">DATE: <strong>${pInv.date}</strong></div>
           </div>
         </div>
-        <div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:6pt">RE: ${pInv.subject}</div>
+        ${pInv.subject ? `<div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:6pt">RE: ${pInv.subject}</div>` : ''}
         <div style="font-size:10.5pt;font-weight:bold;margin-bottom:12pt">${pInv.openingLine}</div>
         <div style="display:flex;justify-content:space-between;margin-bottom:7pt;font-size:9pt">
           <div>
@@ -256,7 +289,6 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
           <div class="party-block">
             <div class="party-label">Billed To</div>
             <div class="party-name">${shared.billToCompany}</div>
-            ${shared.billToContactName ? `<div class="party-detail">Attn: ${shared.billToContactName}</div>` : ''}
             ${shared.billToAddress ? `<div class="party-detail">${shared.billToAddress}</div>` : ''}
             ${shared.billToCityCountry ? `<div class="party-detail">${shared.billToCityCountry}</div>` : ''}
             ${shared.billToGSTIN ? `<div class="party-detail">GSTIN: ${shared.billToGSTIN}</div>` : ''}
@@ -309,7 +341,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
           ${stampHTML}
           ${showStamp ? '' : '<div style="height:44pt;"></div>'}
           <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
-          <div style="font-size:10pt;font-weight:700;color:#1A3A52;">${pInv.signOff}</div>
+          <div style="font-size:10pt;font-weight:700;color:#1A3A52;">${pInv.signOff.replace(/\n/g, '<br/>')}</div>
           <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
         </div>`;
 
@@ -353,7 +385,6 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
           <div class="party-block">
             <div class="party-label">Billed To</div>
             <div class="party-name">${shared.billToCompany}</div>
-            ${shared.billToContactName ? `<div class="party-detail">Attn: ${shared.billToContactName}</div>` : ''}
             ${shared.billToAddress ? `<div class="party-detail">${shared.billToAddress}</div>` : ''}
             ${shared.billToCityCountry ? `<div class="party-detail">${shared.billToCityCountry}</div>` : ''}
             <div class="party-detail">GSTIN: ${shared.billToGSTIN || 'N/A (Foreign Agent)'}</div>
@@ -472,22 +503,27 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
 
         {activeTab === "content" ? (
           <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-            {secHead("📬 Bill To")}
+            {secHead("👤 Addressee")}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
               <div style={{ gridColumn: "1/-1" }}>
-                {label("Company / Agency / Client")}
-                <select style={inp} value={shared.billToPartyId} onChange={e => setBillToParty(e.target.value)} disabled={readOnly}>
+                {label("Choose from Agent Master (fills Addressee and Billed To below — both stay editable after)")}
+                <select style={inp} value={shared.addresseePartyId} onChange={e => setAddresseeParty(e.target.value)} disabled={readOnly}>
                   <option value="">Select from Agent Master...</option>
                   <option value={CUSTOM_PARTY}>✎ Custom (type details manually)</option>
                   {agentList.filter(a => a.active !== false).map(a => <option key={a.id} value={a.id}>{a.company}</option>)}
                 </select>
-                {(shared.billToPartyId === CUSTOM_PARTY || !shared.billToPartyId) &&
-                  <div style={{ marginTop: 6 }}><OtherInput value={shared.billToCompany} onChange={v => setS("billToCompany", v)} placeholder="Company / Agency / Client name" /></div>}
               </div>
-              <div>{label("Contact Name")}<input style={inp} value={shared.billToContactName} onChange={e => setS("billToContactName", e.target.value)} /></div>
-              <div>{label("GSTIN (if applicable for Indian customers)")}<input style={inp} value={shared.billToGSTIN} onChange={e => setS("billToGSTIN", e.target.value)} /></div>
+              <div>{label("Name")}<input style={inp} value={shared.addresseeName} onChange={e => setS("addresseeName", e.target.value)} /></div>
+              <div>{label("Company")}<input style={inp} value={shared.addresseeCompany} onChange={e => setS("addresseeCompany", e.target.value)} /></div>
+              <div>{label("City / Country")}<input style={inp} value={shared.addresseeCityCountry} onChange={e => setS("addresseeCityCountry", e.target.value)} /></div>
+            </div>
+
+            {secHead("📬 Billed To")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+              <div style={{ gridColumn: "1/-1" }}>{label("Company / Agency / Client")}<input style={inp} value={shared.billToCompany} onChange={e => setS("billToCompany", e.target.value)} /></div>
               <div>{label("Address")}<input style={inp} value={shared.billToAddress} onChange={e => setS("billToAddress", e.target.value)} /></div>
               <div>{label("City / Country")}<input style={inp} value={shared.billToCityCountry} onChange={e => setS("billToCityCountry", e.target.value)} /></div>
+              <div>{label("GSTIN (if applicable for Indian customers)")}<input style={inp} value={shared.billToGSTIN} onChange={e => setS("billToGSTIN", e.target.value)} /></div>
             </div>
 
             {secHead("✈ Tour Details")}
@@ -506,7 +542,11 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                   <div>{label("Invoice Number")}<input style={inp} value={pInv.invoiceNo} onChange={e => setP("invoiceNo", e.target.value)} /></div>
                   <div>{label("Date")}<input style={inp} value={pInv.date} onChange={e => setP("date", e.target.value)} /></div>
                   <div>{label("Valid Until")}<input style={inp} value={pInv.validUntil} onChange={e => setP("validUntil", e.target.value)} placeholder="e.g. 15 August 2026" /></div>
-                  <div>{label("Currency")}<input style={inp} value={pInv.currency} onChange={e => setP("currency", e.target.value)} /></div>
+                  <div>{label("Currency")}
+                    <select style={inp} value={pInv.currency} onChange={e => setP("currency", e.target.value)}>
+                      {["USD", "INR", "EUR", "GBP", "AUD", "CAD", "SGD", "AED", "THB"].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                   <div style={{ gridColumn: "1/-1" }}>{label("RE / Subject Line")}<input style={inp} value={pInv.subject} onChange={e => setP("subject", e.target.value)} /></div>
                   <div style={{ gridColumn: "1/-1" }}>{label("Opening Line")}<input style={inp} value={pInv.openingLine} onChange={e => setP("openingLine", e.target.value)} /></div>
                 </div>
@@ -517,7 +557,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                     <div style={{ marginBottom: 8 }}>{label("Description")}<input style={inp} value={it.desc} onChange={e => updateItem(setPInv, i, "desc", e.target.value)} /></div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8 }}>
                       {[["Qty", it.qty, "qty"], ["Unit", it.unit, "unit"], ["Rate", it.rate, "rate"], ["Amount", it.amount, "amount"]].map(([l, v, k]) => (
-                        <div key={k}>{label(l)}<input style={{ ...inp, textAlign: ["Rate", "Amount"].includes(l) ? "right" : "left" }} value={v} onChange={e => updateItem(setPInv, i, k, e.target.value)} /></div>
+                        <div key={k}>{label(l)}<input style={{ ...inp, textAlign: ["Rate", "Amount"].includes(l) ? "right" : "left", background: k === "amount" ? G.gray100 : G.white }} readOnly={k === "amount"} value={v} onChange={e => updateItem(setPInv, i, k, e.target.value)} /></div>
                       ))}
                       {pInv.items.length > 1 && <button className="btn btn-ghost" style={{ alignSelf: "end", fontSize: 10 }} onClick={() => removeItem(setPInv, i)}>✕</button>}
                     </div>
@@ -557,7 +597,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                 <textarea style={{ ...inp, minHeight: 72, resize: "vertical", marginBottom: 14 }} value={pInv.notes} onChange={e => setP("notes", e.target.value)} />
 
                 {secHead("✍ Sign-off")}
-                <input style={{ ...inp, marginBottom: 14 }} value={pInv.signOff} onChange={e => setP("signOff", e.target.value)} />
+                <textarea style={{ ...inp, minHeight: 110, resize: "vertical", lineHeight: 1.5, marginBottom: 14 }} value={pInv.signOff} onChange={e => setP("signOff", e.target.value)} />
               </>
             ) : (
               <>
@@ -592,7 +632,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                     <div style={{ marginBottom: 8 }}>{label("Description")}<input style={inp} value={it.desc} onChange={e => updateItem(setTInv, i, "desc", e.target.value)} /></div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8 }}>
                       {[["HSN/SAC", it.hsn, "hsn"], ["Qty", it.qty, "qty"], ["Rate (₹)", it.rate, "rate"], ["Amount (₹)", it.amount, "amount"]].map(([l, v, k]) => (
-                        <div key={k}>{label(l)}<input style={{ ...inp, textAlign: ["Rate (₹)", "Amount (₹)"].includes(l) ? "right" : "left" }} type={k === "hsn" ? "text" : "number"} value={v} onChange={e => updateItem(setTInv, i, k, e.target.value)} /></div>
+                        <div key={k}>{label(l)}<input style={{ ...inp, textAlign: ["Rate (₹)", "Amount (₹)"].includes(l) ? "right" : "left", background: k === "amount" ? G.gray100 : G.white }} readOnly={k === "amount"} type={k === "hsn" ? "text" : "number"} value={v} onChange={e => updateItem(setTInv, i, k, e.target.value)} /></div>
                       ))}
                       {tInv.items.length > 1 && <button className="btn btn-ghost" style={{ alignSelf: "end", fontSize: 10 }} onClick={() => removeItem(setTInv, i)}>✕</button>}
                     </div>
