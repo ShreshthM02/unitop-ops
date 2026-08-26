@@ -357,31 +357,31 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
       .rule { position: absolute; border-top: 0.75pt solid #000; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
-      <div class="abs" style="left:36pt;top:95pt;width:523.5pt;text-align:center;font-weight:700;font-size:10pt;">${svcLabel.toUpperCase()}</div>
+      <div class="abs" style="left:36pt;top:109.2pt;width:523.5pt;text-align:center;font-weight:700;font-size:10pt;">${svcLabel.toUpperCase()}</div>
 
-      <div class="abs nowrap" style="left:36pt;top:109pt;font-size:11pt;">Exchange Order No.: ${orderNo}</div>
-      <div class="abs nowrap" style="left:320pt;top:109pt;width:239.5pt;text-align:right;font-size:11pt;">Dated: ${fD(order.issueDate)}</div>
-      <div class="abs" style="left:36pt;top:124pt;font-size:11pt;">Drawn on: ${order.drawnOn}</div>
-      <div class="abs" style="left:320pt;top:124pt;width:239.5pt;text-align:right;font-size:11pt;">No. of Pax: ${order.pax}</div>
-      <div class="abs" style="left:36pt;top:139pt;font-size:11pt;">In favour of Tour No.: ${order.tourNo}</div>
-      <div class="abs" style="left:320pt;top:139pt;width:239.5pt;text-align:right;font-size:11pt;">Nationality: ${order.nationality}</div>
-      <div class="abs" style="left:36pt;top:158pt;font-size:11pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
-      <div class="rule" style="left:36pt;top:169pt;width:523.5pt;"></div>
+      <div class="abs nowrap" style="left:36pt;top:123.2pt;font-size:11pt;">Exchange Order No.: ${orderNo}</div>
+      <div class="abs nowrap" style="left:320pt;top:123.2pt;width:239.5pt;text-align:right;font-size:11pt;">Dated: ${fD(order.issueDate)}</div>
+      <div class="abs" style="left:36pt;top:138.2pt;font-size:11pt;">Drawn on: ${order.drawnOn}</div>
+      <div class="abs" style="left:320pt;top:138.2pt;width:239.5pt;text-align:right;font-size:11pt;">No. of Pax: ${order.pax}</div>
+      <div class="abs" style="left:36pt;top:153.2pt;font-size:11pt;">In favour of Tour No.: ${order.tourNo}</div>
+      <div class="abs" style="left:320pt;top:153.2pt;width:239.5pt;text-align:right;font-size:11pt;">Nationality: ${order.nationality}</div>
+      <div class="abs" style="left:36pt;top:172.2pt;font-size:11pt;">Please provide the following services against this order &amp; <b>bill us in duplicate</b></div>
+      <div class="rule" style="left:36pt;top:183.2pt;width:523.5pt;"></div>
 
-      <div class="abs" style="left:335.5pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
-      <div class="abs" style="left:463.9pt;top:181pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
+      <div class="abs" style="left:335.5pt;top:195.2pt;font-size:11pt;font-weight:700;text-decoration:underline;">ARRIVAL</div>
+      <div class="abs" style="left:463.9pt;top:195.2pt;font-size:11pt;font-weight:700;text-decoration:underline;">DEPARTURE</div>
 
-      <div class="abs" style="left:41.2pt;top:181pt;width:280pt;font-size:11pt;line-height:1.5;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
+      <div class="abs" style="left:41.2pt;top:195.2pt;width:280pt;font-size:11pt;line-height:1.5;overflow-wrap:break-word;word-break:break-word;">${order.serviceDetailsHtml || ""}</div>
 
       ${hasArrDep ? `
-      <div class="abs nowrap" style="left:335.5pt;top:204pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
-      <div class="abs nowrap" style="left:463.9pt;top:204pt;font-size:11pt;">${lv("Date:", fD(order.departureDate))}</div>
-      <div class="abs nowrap" style="left:335.5pt;top:227pt;font-size:11pt;">${lv("From:", order.arrivalFrom)}</div>
-      <div class="abs nowrap" style="left:463.9pt;top:227pt;font-size:11pt;">${lv("To:", order.departureTo)}</div>
-      <div class="abs nowrap" style="left:335.5pt;top:250pt;font-size:11pt;">${lv("By:", order.arrivalBy)}</div>
-      <div class="abs nowrap" style="left:463.9pt;top:250pt;font-size:11pt;">${lv("By:", order.departureBy)}</div>
-      <div class="abs nowrap" style="left:335.5pt;top:273pt;font-size:11pt;">${lv("Time:", order.arrivalTime)}</div>
-      <div class="abs nowrap" style="left:463.9pt;top:273pt;font-size:11pt;">${lv("Time:", order.departureTime)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:218.2pt;font-size:11pt;">${lv("Date:", fD(order.arrivalDate))}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:218.2pt;font-size:11pt;">${lv("Date:", fD(order.departureDate))}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:241.2pt;font-size:11pt;">${lv("From:", order.arrivalFrom)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:241.2pt;font-size:11pt;">${lv("To:", order.departureTo)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:264.2pt;font-size:11pt;">${lv("By:", order.arrivalBy)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:264.2pt;font-size:11pt;">${lv("By:", order.departureBy)}</div>
+      <div class="abs nowrap" style="left:335.5pt;top:287.2pt;font-size:11pt;">${lv("Time:", order.arrivalTime)}</div>
+      <div class="abs nowrap" style="left:463.9pt;top:287.2pt;font-size:11pt;">${lv("Time:", order.departureTime)}</div>
       ` : ""}
     </body></html>`;
   };
