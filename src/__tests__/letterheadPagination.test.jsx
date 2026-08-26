@@ -366,3 +366,23 @@ describe('regression: a day whose content overflows the current page must contin
     expect(pages[1]).toContain(item);
   });
 });
+
+describe('buildPaginatedLetterheadDocument: UTF-8 charset (2026-08-22 -- ₹, em-dashes, and other non-ASCII characters were rendering as mojibage/garbled text in every document using this shared builder, missing <meta charset="utf-8"> in all three real document-building code paths)', async () => {
+  const { buildPaginatedLetterheadDocument } = await import('../lib/letterhead.js');
+
+  it('non-repeating (single flowing document) path declares UTF-8', async () => {
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<div>₹ 1,000 — test</div>'],
+      headerFooterAllPages: false, printOnLetterhead: false,
+    });
+    expect(html).toContain('<meta charset="utf-8"/>');
+  });
+
+  it('repeating (paginated across multiple pages) path declares UTF-8', async () => {
+    const html = await buildPaginatedLetterheadDocument({
+      title: 'Test', bodyBlocks: ['<div>₹ 1,000 — test</div>'],
+      headerFooterAllPages: true,
+    });
+    expect(html).toContain('<meta charset="utf-8"/>');
+  });
+});

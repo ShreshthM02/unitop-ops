@@ -245,7 +245,7 @@ export function buildLetterheadDocument({
   const pageCSS = `@page { size: A4 ${orientation === "landscape" ? "landscape" : "portrait"}; margin: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left}; }
     ${showPageNum ? '@page { @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7.5pt; color: #999; font-family: Inter, Arial, sans-serif; } }' : ""}`;
 
-  return `<!DOCTYPE html><html><head><title>${title}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>
     <style>${invoiceLetterheadCSS}</style>
     <style>${extraHeadCSS}</style>
     <style>${pageCSS}</style>
@@ -582,7 +582,7 @@ export async function buildPaginatedLetterheadDocument({
     });
     if (headerInner) renderedBlocks.unshift(headerInner);
     if (footerInner) renderedBlocks.push(footerInner);
-    return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>${headBlock}</head><body>
       ${renderedBlocks.join("\n")}
     </body></html>`;
   }
@@ -625,7 +625,7 @@ export async function buildPaginatedLetterheadDocument({
       </div>`;
     }).join("\n");
 
-    return `<!DOCTYPE html><html><head><title>${title}</title>${headBlock}</head><body>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>${headBlock}</head><body>
       ${pageDivs}
     </body></html>`;
   } finally {
