@@ -61,6 +61,8 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     advanceEnabled: false,
     advanceAmount: 0,
     advanceIsManual: false,
+    advanceFetchedAt: null,
+    advanceOtherCurrencyCount: 0,
     notes: pTmpl.notes,
     signOff: pTmpl.signOff,
   });
@@ -167,12 +169,39 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     setFinalVersion(v.version);
   };
 
-  // ─── Advance / Adjusted Payment (Proforma only) -- automatic fetch from
-  // receipted incoming payments, with manual override for edge cases
-  // (lump-sum advances on series bookings). Deferred to a follow-up pass
-  // once the Payments feature's "has a receipt" data shape is confirmed --
-  // the toggle exists so the UI shape is settled, but fetching is not
-  // wired up yet. ─────────────────────────────────────────────────────
+  // ─── Advance / Adjusted Payment (Proforma only), Phase B ──────────────
+  // Automatic by direct instruction: "only incoming payments which have a
+  // receipt get fetched" -- every incoming entry in the Payments feature
+  // gets a real receipt number stamped on it the moment it's logged
+  // (EnhancedPaymentTracker.jsx), so `!!e.receipt` is the literal, correct
+  // encoding of that rule -- it happens to be true for every entry today
+  // (receipt issuance isn't currently conditional), but this is still the
+  // right filter to write: it's checking the actual field that means
+  // "has a receipt," not just assuming the current always-true behavior.
+  // Manual editing stays available underneath for the lump-sum-advance-on-
+  // series-bookings case, per direct instruction -- fetching sets a
+  // value, it doesn't lock the field.
+  const fetchAdvanceFromPayments = () => {
+    const entries = (pt && pt.entries) || [];
+    const receipted = entries.filter(e => !!e.receipt);
+    const sameCurrency = receipted.filter(e => (e.inCurrency || "INR") === pInv.currency);
+    const otherCurrency = receipted.filter(e => (e.inCurrency || "INR") !== pInv.currency);
+    const total = sameCurrency.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    setPInv(p => ({
+      ...p, advanceAmount: total, advanceIsManual: false,
+      advanceFetchedAt: new Date().toLocaleString("en-IN"),
+      advanceOtherCurrencyCount: otherCurrency.length,
+    }));
+  };
+
+  const toggleAdvance = (checked) => {
+    setP("advanceEnabled", checked);
+    // Only auto-fetch on turning the section on, and only if the amount
+    // hasn't already been hand-typed -- reopening a saved version with a
+    // genuine manual figure should show that figure, not silently
+    // overwrite it with a live re-fetch.
+    if (checked && !pInv.advanceIsManual) fetchAdvanceFromPayments();
+  };
 
   const subTotal = pInv.items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
   const advance = pInv.advanceEnabled ? (parseFloat(pInv.advanceAmount) || 0) : 0;
@@ -501,12 +530,26 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                 {secHead("💵 Advance / Adjusted Payment (optional)")}
                 <div style={{ background: G.gray50, border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", marginBottom: pInv.advanceEnabled ? 10 : 0 }}>
-                    <input type="checkbox" checked={pInv.advanceEnabled} onChange={e => setP("advanceEnabled", e.target.checked)} />
+                    <input type="checkbox" checked={pInv.advanceEnabled} onChange={e => toggleAdvance(e.target.checked)} />
                     Show advance / adjusted payment and Total Due
                   </label>
                   {pInv.advanceEnabled && <>
-                    <div style={{ fontSize: 10, color: G.gray600, marginBottom: 6 }}>Advance amount is meant to be fetched automatically from receipted incoming payments (not wired up yet -- enter manually for now, e.g. for lump-sum advances on series bookings).</div>
-                    <input style={inp} type="number" value={pInv.advanceAmount} onChange={e => { setP("advanceAmount", e.target.value); setP("advanceIsManual", true); }} placeholder="0" />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <input style={{ ...inp, flex: 1 }} type="number" value={pInv.advanceAmount} onChange={e => { setP("advanceAmount", e.target.value); setP("advanceIsManual", true); }} placeholder="0" />
+                      <button type="button" className="btn btn-ghost" style={{ fontSize: 10, whiteSpace: "nowrap" }} onClick={fetchAdvanceFromPayments}>↻ Fetch from Payments</button>
+                    </div>
+                    <div style={{ fontSize: 10, color: pInv.advanceIsManual ? G.accent : G.gray600 }}>
+                      {pInv.advanceIsManual
+                        ? "Entered manually — won't be overwritten by re-fetching unless you click \"Fetch from Payments\" again."
+                        : pInv.advanceFetchedAt
+                          ? `Fetched from receipted incoming payments in ${pInv.currency} as of ${pInv.advanceFetchedAt}.`
+                          : `Fetches receipted incoming payments in ${pInv.currency} automatically. Only entries with a receipt number count.`}
+                    </div>
+                    {pInv.advanceOtherCurrencyCount > 0 && (
+                      <div style={{ fontSize: 10, color: "#B7791F", marginTop: 4 }}>
+                        ⚠ {pInv.advanceOtherCurrencyCount} receipted payment{pInv.advanceOtherCurrencyCount === 1 ? "" : "s"} in a different currency than this invoice ({pInv.currency}) were not included — check manually if any should count.
+                      </div>
+                    )}
                   </>}
                 </div>
 

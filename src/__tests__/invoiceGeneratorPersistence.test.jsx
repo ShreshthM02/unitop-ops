@@ -149,3 +149,58 @@ describe('InvoiceGenerator: Tax Invoice content fixes', () => {
     expect(screen.getByText(/Tour Details/)).toBeTruthy();
   });
 });
+
+describe('InvoiceGenerator: Phase B -- Advance / Adjusted Payment auto-fetch from receipted incoming payments', () => {
+  const paymentsWithEntries = {
+    'UTQ-2026-1000': {
+      entries: [
+        { id: 1, type: 'advance', inCurrency: 'INR', amount: '50000', date: '2026-08-01', receipt: 'RCP-2026-001' },
+        { id: 2, type: 'balance', inCurrency: 'INR', amount: '25000', date: '2026-08-10', receipt: 'RCP-2026-002' },
+        { id: 3, type: 'advance', inCurrency: 'USD', amount: '500', date: '2026-08-05', receipt: 'RCP-2026-003' },
+        // No receipt -- must not be counted, per direct instruction
+        // ("only incoming payments which have a receipt get fetched").
+        { id: 4, type: 'advance', inCurrency: 'INR', amount: '9999', date: '2026-08-12', receipt: '' },
+      ],
+    },
+  };
+
+  it('turning the section on auto-fetches the total of receipted INR entries (matching invoice currency), excluding the un-receipted one', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={paymentsWithEntries} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText(/Show advance/));
+    await waitFor(() => expect(screen.getByDisplayValue('75000')).toBeTruthy());
+  });
+
+  it('flags receipted payments in a different currency instead of silently including or dropping them', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={paymentsWithEntries} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText(/Show advance/));
+    expect(await screen.findByText(/1 receipted payment.*different currency/)).toBeTruthy();
+  });
+
+  it('manual entry overrides the fetched value and is not silently clobbered by re-toggling', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={paymentsWithEntries} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText(/Show advance/));
+    const amountInput = await screen.findByDisplayValue('75000');
+    fireEvent.change(amountInput, { target: { value: '30000' } });
+    expect(await screen.findByText(/Entered manually/)).toBeTruthy();
+    // Turn off then back on -- a genuine manual entry should not be
+    // silently overwritten by an automatic re-fetch.
+    fireEvent.click(screen.getByText(/Show advance/));
+    fireEvent.click(screen.getByText(/Show advance/));
+    expect(await screen.findByDisplayValue('30000')).toBeTruthy();
+  });
+
+  it('"Fetch from Payments" recomputes on demand even after a manual edit', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={paymentsWithEntries} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText(/Show advance/));
+    const amountInput = await screen.findByDisplayValue('75000');
+    fireEvent.change(amountInput, { target: { value: '30000' } });
+    fireEvent.click(await screen.findByText('↻ Fetch from Payments'));
+    expect(await screen.findByDisplayValue('75000')).toBeTruthy();
+  });
+
+  it('with no receipted entries at all, fetches to zero rather than leaving a stale/manual figure unexplained', async () => {
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText(/Show advance/));
+    await waitFor(() => expect(screen.getByPlaceholderText('0').value).toBe('0'));
+  });
+});
