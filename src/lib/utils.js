@@ -1163,89 +1163,58 @@ export async function loadExistingInvoiceNumbers(db, table) {
   }
 }
 
-export function mapDbProformaInvoiceRow(row) {
+// ─── INVOICES (restructured 2026-08-22). Pro-Forma and Tax Invoice were
+// two fully separate documents/tables (proforma_invoices, tax_invoices),
+// each independently versioned -- merged into one "Invoices" UI with two
+// sub-tabs, same shape as Itinerary's Brief/Detailed: one table, doc_type
+// ('proforma'|'tax') distinguishing which flavor a version belongs to,
+// so query_id + doc_type is the stable grouping key for that flavor's own
+// version history (mirrors Itinerary's query_id + activeTab). Bill To and
+// Tour Details are shared UI state that gets embedded into whichever
+// flavor's version is saved, same self-contained-snapshot convention
+// every other document here already follows -- not a second, separately
+// synced table. ────────────────────────────────────────────────────────
+export function mapDbInvoiceRow(row) {
   return {
-    id: row.id, version: row.version, isFinal: row.is_final || false,
+    id: row.id, queryId: row.query_id, docType: row.doc_type,
+    version: row.version, isFinal: row.is_final || false,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
     invoiceNo: row.invoice_no || "", content: row.content || {},
   };
 }
 
-export async function loadProformaInvoiceVersions(db, queryId) {
+export async function loadInvoiceVersions(db, queryId, docType) {
   try {
-    const { data } = await db.from("proforma_invoices").select("*").eq("query_id", queryId).order("version", { ascending: true });
-    return (data || []).map(mapDbProformaInvoiceRow);
+    const { data } = await db.from("invoices").select("*").eq("query_id", queryId).eq("doc_type", docType).order("version", { ascending: true });
+    return (data || []).map(mapDbInvoiceRow);
   } catch (e) {
-    console.warn("Load proforma invoice versions failed:", e);
+    console.warn("Load invoice versions failed:", e);
     return [];
   }
 }
 
-export async function saveProformaInvoiceVersion(db, queryId, snap, createdBy) {
+export async function saveInvoiceVersion(db, queryId, docType, snap, createdBy) {
   try {
-    const { data, error } = await db.from("proforma_invoices").insert({
-      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
+    const { data, error } = await db.from("invoices").insert({
+      query_id: queryId, doc_type: docType, version: snap.version, is_final: false, note: snap.note || null,
       invoice_no: snap.invoiceNo || null, content: snap.content || {},
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };
     return { id: data && data[0] ? data[0].id : null, error: null };
   } catch (e) {
-    console.warn("Save proforma invoice version failed:", e);
+    console.warn("Save invoice version failed:", e);
     return { id: null, error: e.message || String(e) };
   }
 }
 
-export async function markProformaInvoiceVersionFinal(db, queryId, version) {
+export async function markInvoiceVersionFinal(db, queryId, docType, version) {
   try {
-    await db.from("proforma_invoices").eq("query_id", queryId).update({ is_final: false });
-    await db.from("proforma_invoices").eq("query_id", queryId).eq("version", version).update({ is_final: true });
+    await db.from("invoices").eq("query_id", queryId).eq("doc_type", docType).update({ is_final: false });
+    await db.from("invoices").eq("query_id", queryId).eq("doc_type", docType).eq("version", version).update({ is_final: true });
   } catch (e) {
-    console.warn("Mark proforma invoice version final failed:", e);
-  }
-}
-
-export function mapDbTaxInvoiceRow(row) {
-  return {
-    id: row.id, version: row.version, isFinal: row.is_final || false,
-    date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
-    createdAt: row.created_at, createdBy: row.created_by, note: row.note || "",
-    invoiceNo: row.invoice_no || "", content: row.content || {},
-  };
-}
-
-export async function loadTaxInvoiceVersions(db, queryId) {
-  try {
-    const { data } = await db.from("tax_invoices").select("*").eq("query_id", queryId).order("version", { ascending: true });
-    return (data || []).map(mapDbTaxInvoiceRow);
-  } catch (e) {
-    console.warn("Load tax invoice versions failed:", e);
-    return [];
-  }
-}
-
-export async function saveTaxInvoiceVersion(db, queryId, snap, createdBy) {
-  try {
-    const { data, error } = await db.from("tax_invoices").insert({
-      query_id: queryId, version: snap.version, is_final: false, note: snap.note || null,
-      invoice_no: snap.invoiceNo || null, content: snap.content || {},
-      created_by: isUuid(createdBy) ? createdBy : null,
-    });
-    if (error) return { id: null, error: error.message || String(error) };
-    return { id: data && data[0] ? data[0].id : null, error: null };
-  } catch (e) {
-    console.warn("Save tax invoice version failed:", e);
-    return { id: null, error: e.message || String(e) };
-  }
-}
-
-export async function markTaxInvoiceVersionFinal(db, queryId, version) {
-  try {
-    await db.from("tax_invoices").eq("query_id", queryId).update({ is_final: false });
-    await db.from("tax_invoices").eq("query_id", queryId).eq("version", version).update({ is_final: true });
-  } catch (e) {
-    console.warn("Mark tax invoice version final failed:", e);
+    console.warn("Mark invoice version final failed:", e);
   }
 }
 

@@ -89,9 +89,8 @@ function makeDb() {
 
 const DOCS = [
   ['MealPlanDocument', 'MealPlanDocument'],
-  ['TaxInvoice', 'TaxInvoice'],
   ['TourBriefingSheet', 'TourBriefingSheet'],
-  ['ProformaInvoice', 'ProformaInvoice'],
+  ['InvoiceGenerator', 'InvoiceGenerator'],
 ];
 
 describe('Word export is offered on every letterhead document', () => {
@@ -103,7 +102,7 @@ describe('Word export is offered on every letterhead document', () => {
       const Component = mod.default || mod[file];
       // payments is required by TaxInvoice (it reads payments[query.id]);
       // harmless for the others.
-      render(<Component query={fakeQuery} payments={{ [fakeQuery.id]: {} }} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x',name:'T'}} staff={[]}/>);
+      render(<Component query={fakeQuery} payments={{ [fakeQuery.id]: {} }} agents={[]} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x',name:'T'}} staff={[]}/>);
 
       // No leftover standalone print buttons.
       expect(screen.queryByText('🖨 Print / Export PDF')).toBeNull();

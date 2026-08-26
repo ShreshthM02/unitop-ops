@@ -19,7 +19,7 @@ import path from 'path';
 const FIXED_COMPONENTS = [
   'PLReport', 'UserManagementPanel', 'Itinerary', 'ExchangeOrderGenerator',
   'InAppChat', 'TourBriefingSheet', 'VendorMaster', 'QuotationGenerator',
-  'AgentLedgerPanel', 'TaxInvoice', 'ProformaInvoice', 'CostSheet',
+  'AgentLedgerPanel', 'InvoiceGenerator', 'CostSheet',
   'MealPlanDocument', 'EnhancedPaymentTracker', 'AgentMaster',
   'VendorLedgerPanel', 'DocumentRegistry',
 ];

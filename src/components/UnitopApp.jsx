@@ -13,12 +13,11 @@ import Itinerary from './Itinerary.jsx';
 import KanbanView from './KanbanView.jsx';
 import NewQueryModal from './NewQueryModal.jsx';
 import PLReport from './PLReport.jsx';
-import ProformaInvoice from './ProformaInvoice.jsx';
+import InvoiceGenerator from './InvoiceGenerator.jsx';
 import QueryDrawerWithQuote from './QueryDrawerWithQuote.jsx';
 import QuotationGenerator from './QuotationGenerator.jsx';
 import ReportsView from './ReportsView.jsx';
 import SmartSearch from './SmartSearch.jsx';
-import TaxInvoice from './TaxInvoice.jsx';
 import TeamView from './TeamView.jsx';
 import TemplatesHub from './TemplatesHub.jsx';
 import AdminPlaceLibrary from './AdminPlaceLibrary.jsx';
@@ -80,8 +79,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // toggle, not as two different things to open.
   const [showItinerary, setShowItinerary] = useState(null);
   const [showQuotation,  setShowQuotation]  = useState(null);
-  const [showProforma,   setShowProforma]   = useState(null);
-  const [showTaxInv,     setShowTaxInv]     = useState(null);
+  const [showInvoices,   setShowInvoices]   = useState(null); // { query, flavor: 'proforma'|'tax' } | null
   const [showPayments,   setShowPayments]   = useState(null);
   const [showPL,         setShowPL]         = useState(false);
   const [showVoucher,    setShowVoucher]    = useState(null);
@@ -119,9 +117,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       if(panel==="costsheet") setShowCostSheet(query);
       else if(panel==="itinerary" || panel==="detailedItinerary") setShowItinerary(query);
       else if(panel==="quotation") setShowQuotation(query);
-      else if(panel==="proforma")  setShowProforma(query);
+      else if(panel==="proforma")  setShowInvoices({query, flavor:"proforma"});
       else if(panel==="payments")  setShowPayments(query);
-      else if(panel==="taxinv")    setShowTaxInv(query);
+      else if(panel==="taxinv")    setShowInvoices({query, flavor:"tax"});
       else if(panel==="voucher")      setShowVoucher(query);
       else if(panel==="mealplan")     setShowMealPlan(query);
       else if(panel==="tourbriefing") setShowTourBrief(query);
@@ -515,11 +513,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showProforma||showTaxInv||showPayments||showPL||showVoucher||showAgents||showVendors||showMealPlan||showTourBrief;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showPL||showVoucher||showAgents||showVendors||showMealPlan||showTourBrief;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-      {[["📊","Cost Sheet",()=>setShowCostSheet(q)],["📖","Itinerary",()=>setShowItinerary(q)],["📋","Quotation",()=>setShowQuotation(q)],["🧾","Proforma",()=>setShowProforma(q)],["₹","Payments",()=>setShowPayments(q)],["🧾","Tax Inv.",()=>setShowTaxInv(q)],["🎫","Vouchers",()=>setShowVoucher(q)],["✕","Cancel",()=>setCancelTarget(q)]].map(([icon,label,fn])=>(
+      {[["📊","Cost Sheet",()=>setShowCostSheet(q)],["📖","Itinerary",()=>setShowItinerary(q)],["📋","Quotation",()=>setShowQuotation(q)],["🧾","Invoices",()=>setShowInvoices({query:q, flavor:"proforma"})],["₹","Payments",()=>setShowPayments(q)],["🎫","Vouchers",()=>setShowVoucher(q)],["✕","Cancel",()=>setCancelTarget(q)]].map(([icon,label,fn])=>(
       <button key={label} className="btn btn-ghost" style={{fontSize:10,padding:"4px 7px",color:label==="Cancel"?G.accent:undefined}}
         onClick={e=>{ if(stopProp)e.stopPropagation(); fn(); }}>{icon} {label}</button>
     ))}
@@ -711,8 +709,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
                     <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
                     <StatusBadge status={q.status}/>
-                    <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowProforma(q)}>🧾 Proforma</button>
-                    <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowTaxInv(q)}>🧾 Tax Inv.</button>
+                    <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowInvoices({query:q, flavor:"proforma"})}>🧾 Invoices</button>
                   </div>
                 ))}
               </div>
@@ -786,8 +783,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled} staff={staff}/>}
         {showItinerary && <Itinerary query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser} readOnly={showItinerary.cancelled}/>}
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled}/>}
-        {showProforma   && <ProformaInvoice query={showProforma} template={docTemplates.proforma} docSettings={docSettings} onClose={()=>setShowProforma(null)} currentUser={currentUser} readOnly={showProforma.cancelled}/>}
-        {showTaxInv     && <TaxInvoice query={showTaxInv} payments={payments} template={docTemplates.taxinvoice} docSettings={docSettings} onClose={()=>setShowTaxInv(null)} currentUser={currentUser} readOnly={showTaxInv.cancelled}/>}
+        {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}

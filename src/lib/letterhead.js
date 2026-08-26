@@ -648,10 +648,10 @@ export async function buildPaginatedLetterheadDocument({
 // the indent stays correct whatever the label says.
 export const ADDRESSEE_LABEL = "Kind Attention:";
 
-export function buildAddresseeBlock({ name, company, city, fontSizePt = 9.5, marginBottomPt = 0, labelBold = true } = {}) {
-  if (!name && !company && !city) return "";
+export function buildAddresseeBlock({ name, company, address, city, fontSizePt = 9.5, marginBottomPt = 0, labelBold = true } = {}) {
+  if (!name && !company && !address && !city) return "";
   const line = (text) => `<div style="font-size:${fontSizePt}pt;line-height:1.45">${text}</div>`;
-  const values = [name, company, city].filter(Boolean).map(line).join("");
+  const values = [name, company, address, city].filter(Boolean).map(line).join("");
   return `<div style="display:table;margin-bottom:${marginBottomPt}pt">`
     + `<div style="display:table-cell;vertical-align:top;white-space:nowrap;padding-right:6pt;font-size:${fontSizePt}pt;line-height:1.45;${labelBold ? "font-weight:bold" : ""}">${ADDRESSEE_LABEL}</div>`
     + `<div style="display:table-cell;vertical-align:top">${values}</div>`

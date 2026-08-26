@@ -61,13 +61,13 @@ describe('QuotationGenerator: migrated to the shared toggle hook and async pagin
   });
 });
 
-describe('ProformaInvoice: migrated to the shared toggle hook and async paginated print builder', () => {
+describe('InvoiceGenerator (Pro-Forma flavor): migrated to the shared toggle hook and async paginated print builder', () => {
   it('the toggle bar (now inside the Preview tab, not always visible) shows the single combined "Header + Footer on all pages" toggle, not two separate ones', async () => {
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: ProformaInvoice } = await import('../components/ProformaInvoice.jsx');
-    render(<ProformaInvoice query={fakeQuery} template={{}} onClose={()=>{}}/>);
+    const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} proformaTemplate={{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('👁 Preview'));
     expect(screen.getByText('Header + Footer on all pages')).toBeTruthy();
     expect(screen.queryByText('Header on all pages')).toBeNull();
@@ -78,8 +78,8 @@ describe('ProformaInvoice: migrated to the shared toggle hook and async paginate
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: ProformaInvoice } = await import('../components/ProformaInvoice.jsx');
-    render(<ProformaInvoice query={fakeQuery} template={{}} onClose={()=>{}}/>);
+    const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} proformaTemplate={{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('👁 Preview'));
     await waitFor(() => {
       const iframe = document.querySelector('iframe');
@@ -93,10 +93,10 @@ describe('ProformaInvoice: migrated to the shared toggle hook and async paginate
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: ProformaInvoice } = await import('../components/ProformaInvoice.jsx');
+    const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
     const originalOpen = window.open;
     window.open = vi.fn(() => ({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() }));
-    render(<ProformaInvoice query={fakeQuery} template={{}} onClose={()=>{}}/>);
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} proformaTemplate={{}} onClose={()=>{}}/>);
     // Print now lives inside the shared ExportMenu dropdown.
     fireEvent.click(screen.getAllByText('\u2b07 Export \u25be')[0]);
     expect(() => fireEvent.click(screen.getByText('📕 PDF'))).not.toThrow();

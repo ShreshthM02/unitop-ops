@@ -69,7 +69,7 @@ describe('nextInvoiceNo: the shared, collision-safe id generator now driving Que
   });
 });
 
-describe('TaxInvoice: docSettings key case mismatch fix (docSettings.taxInvoice never matched the real key "taxinvoice", so this prefix setting silently never applied since it was added)', () => {
+describe('InvoiceGenerator (Tax Invoice flavor): docSettings key case mismatch fix (docSettings.taxInvoice never matched the real key "taxinvoice", so this prefix setting silently never applied since it was added)', () => {
   const makeDb = () => ({
     from: vi.fn(() => {
       const builder = {
@@ -86,9 +86,9 @@ describe('TaxInvoice: docSettings key case mismatch fix (docSettings.taxInvoice 
     const db = makeDb();
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
-    const { default: TaxInvoice } = await import('../components/TaxInvoice.jsx');
+    const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
     const fakeQuery = { id: 'UTQ-2026-500', groupName: 'Prefix Fix Test' };
-    render(<TaxInvoice query={fakeQuery} payments={{}} template={{}} docSettings={{ taxinvoice: { prefix: 'GST' } }} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} taxinvoiceTemplate={{}} docSettings={{ taxinvoice: { prefix: 'GST' } }} initialFlavor="tax" onClose={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => {
       const input = screen.getByDisplayValue(new RegExp(`^GST-${new Date().getFullYear()}-`));
       expect(input).toBeTruthy();

@@ -618,6 +618,8 @@ export const DEFAULT_PROFORMA_TEMPLATE = {
   bankAccountNo: "1503002100024279",
   bankSwift: "PUNBINBBISB",
   bankAddress: "B-1, Community Centre, Janakpuri, New Delhi – 110058 (India)",
+  notes: "This is a Proforma Invoice. Final Tax Invoice will be issued upon confirmation.\n\nKindly arrange the advance payment at the earliest to enable us to proceed with reservations.",
+  signOff: "For Unitop Tours & Travel (P) Ltd.",
 };
 
 export const DEFAULT_TAXINVOICE_TEMPLATE = {
@@ -716,6 +718,8 @@ export const TEMPLATE_FIELD_SCHEMAS = {
     { key: "bankAccountNo", label: "Bank Account No.", type: "text" },
     { key: "bankSwift", label: "Swift Code", type: "text" },
     { key: "bankAddress", label: "Bank Address", type: "text" },
+    { key: "notes", label: "Notes (pre-filled, editable per invoice)", type: "textarea" },
+    { key: "signOff", label: "Sign-off Line (pre-filled, editable per invoice)", type: "text" },
   ],
   taxinvoice: [
     { key: "footerNote", label: "Footer Note", type: "text" },

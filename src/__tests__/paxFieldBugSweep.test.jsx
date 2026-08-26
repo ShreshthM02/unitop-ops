@@ -33,9 +33,9 @@ describe('The q.pax bug: paxDisplay now actually shows up everywhere it is suppo
     expect(await screen.findByDisplayValue('18 pax')).toBeTruthy();
   });
 
-  it('ProformaInvoice seeds its own pax field from paxDisplay, not the never-existent query.pax', async () => {
-    const { default: ProformaInvoice } = await import('../components/ProformaInvoice.jsx');
-    render(<ProformaInvoice query={queryWithPax} onClose={()=>{}}/>);
-    expect(screen.getAllByDisplayValue('18 pax').length).toBeGreaterThan(0);
+  it('InvoiceGenerator seeds its own pax field from paxDisplay, not the never-existent query.pax', async () => {
+    const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
+    render(<InvoiceGenerator query={queryWithPax} payments={{}} agents={[]} onClose={()=>{}}/>);
+    expect(await screen.findByDisplayValue('18 pax')).toBeTruthy();
   });
 });

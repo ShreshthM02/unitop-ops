@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TemplatesHub from '../components/TemplatesHub.jsx';
-import ProformaInvoice from '../components/ProformaInvoice.jsx';
-import TaxInvoice from '../components/TaxInvoice.jsx';
+import InvoiceGenerator from '../components/InvoiceGenerator.jsx';
 import MealPlanDocument from '../components/MealPlanDocument.jsx';
 import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
 import Itinerary from '../components/Itinerary.jsx';
@@ -80,9 +79,9 @@ describe('TemplatesHub save wiring (the actual bug)', () => {
 });
 
 describe('Documents actually apply their template prop', () => {
-  it('ProformaInvoice uses a custom bank name from its template prop', async () => {
+  it('InvoiceGenerator (Pro-Forma flavor) uses a custom bank name from its template prop', async () => {
     const customTemplate = { ...DEFAULT_DOC_TEMPLATES.proforma, bankName: 'HDFC Bank' };
-    const { container } = render(<ProformaInvoice query={fakeQuery} template={customTemplate} onClose={()=>{}}/>);
+    const { container } = render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} proformaTemplate={customTemplate} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('👁 Preview'));
     await waitFor(() => {
       const html = container.querySelector('iframe').getAttribute('srcdoc');
@@ -93,9 +92,9 @@ describe('Documents actually apply their template prop', () => {
     expect(html).not.toContain('Punjab National Bank');
   });
 
-  it('TaxInvoice uses a custom footer note and place of supply from its template prop', async () => {
+  it('InvoiceGenerator (Tax Invoice flavor) uses a custom footer note and place of supply from its template prop', async () => {
     const customTemplate = { footerNote: 'Custom jurisdiction note.', placeOfSupply: 'Mumbai (27)' };
-    const { container } = render(<TaxInvoice query={fakeQuery} payments={{}} template={customTemplate} onClose={()=>{}}/>);
+    const { container } = render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} taxinvoiceTemplate={customTemplate} initialFlavor="tax" onClose={()=>{}}/>);
     expect(screen.getByDisplayValue('Mumbai (27)')).toBeTruthy();
     fireEvent.click(screen.getByText('👁 Preview'));
     await waitFor(() => {
@@ -192,8 +191,8 @@ describe('Documents actually apply their template prop', () => {
   });
 
   it('every document falls back to sensible hardcoded defaults when no template prop is passed', () => {
-    expect(() => render(<ProformaInvoice query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
-    expect(() => render(<TaxInvoice query={fakeQuery} payments={{}} onClose={()=>{}}/>)).not.toThrow();
+    expect(() => render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} onClose={()=>{}}/>)).not.toThrow();
+    expect(() => render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} initialFlavor="tax" onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<MealPlanDocument query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<Itinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
