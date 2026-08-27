@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
-  LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock,
+  LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock, RichTextEditor,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
   DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
@@ -547,8 +547,8 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                       {["USD", "INR", "EUR", "GBP", "AUD", "CAD", "SGD", "AED", "THB"].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <div style={{ gridColumn: "1/-1" }}>{label("RE / Subject Line")}<input style={inp} value={pInv.subject} onChange={e => setP("subject", e.target.value)} /></div>
-                  <div style={{ gridColumn: "1/-1" }}>{label("Opening Line")}<input style={inp} value={pInv.openingLine} onChange={e => setP("openingLine", e.target.value)} /></div>
+                  <div style={{ gridColumn: "1/-1" }}>{label("RE / Subject Line")}<RichTextEditor value={pInv.subject} onChange={v => setP("subject", v)} minHeight={36}/></div>
+                  <div style={{ gridColumn: "1/-1" }}>{label("Opening Line")}<RichTextEditor value={pInv.openingLine} onChange={v => setP("openingLine", v)} minHeight={36}/></div>
                 </div>
 
                 {secHead("🧾 Line Items")}
@@ -594,10 +594,10 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                 </div>
 
                 {secHead("📝 Notes")}
-                <textarea style={{ ...inp, minHeight: 72, resize: "vertical", marginBottom: 14 }} value={pInv.notes} onChange={e => setP("notes", e.target.value)} />
+                <div style={{ marginBottom: 14 }}><RichTextEditor value={pInv.notes} onChange={v => setP("notes", v)} minHeight={72}/></div>
 
                 {secHead("✍ Sign-off")}
-                <textarea style={{ ...inp, minHeight: 110, resize: "vertical", lineHeight: 1.5, marginBottom: 14 }} value={pInv.signOff} onChange={e => setP("signOff", e.target.value)} />
+                <div style={{ marginBottom: 14 }}><RichTextEditor value={pInv.signOff} onChange={v => setP("signOff", v)} minHeight={110}/></div>
               </>
             ) : (
               <>
@@ -652,7 +652,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                 </div>
 
                 {secHead("📝 Notes")}
-                <textarea style={{ ...inp, minHeight: 52, resize: "vertical" }} value={tInv.notes} onChange={e => setT("notes", e.target.value)} placeholder="Any additional notes..." />
+                <RichTextEditor value={tInv.notes} onChange={v => setT("notes", v)} minHeight={52}/>
               </>
             )}
           </div>

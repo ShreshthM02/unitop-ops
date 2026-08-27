@@ -33,7 +33,7 @@ describe('#2 of the general backlog: Quotation signoff defaults to the actual in
     const fakeTemplate = { includes: [], excludes: [], monuments: [], showMonuments: true, greeting: '', openingLine: '', closingLine: '', signoff: '', monumentNote: '' };
     const query = { id: 'UTQ-2026-1900', groupName: 'Signoff Test', internalCorrespondent: 'Priya Sharma' };
     render(<QuotationGenerator query={query} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByDisplayValue(/Priya Sharma/)).toBeTruthy();
+    expect(await screen.findByText(/Priya Sharma/)).toBeTruthy();
   });
 
   it('falls back to the template default when internalCorrespondent is not set', async () => {
@@ -41,6 +41,6 @@ describe('#2 of the general backlog: Quotation signoff defaults to the actual in
     const fakeTemplate = { includes: [], excludes: [], monuments: [], showMonuments: true, greeting: '', openingLine: '', closingLine: '', signoff: 'Custom Template Default', monumentNote: '' };
     const query = { id: 'UTQ-2026-1901', groupName: 'No Correspondent Test' };
     render(<QuotationGenerator query={query} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByDisplayValue('Custom Template Default')).toBeTruthy();
+    expect(await screen.findByText('Custom Template Default')).toBeTruthy();
   });
 });

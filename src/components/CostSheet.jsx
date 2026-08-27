@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, db } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff }) {
   const n = v => parseFloat(v)||0;
@@ -173,6 +173,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // else the Cost Sheet pre-fills -- editing here does not write back to
   // the query itself).
   const [clientAgentName, setClientAgentName] = useState(query.agentCompany || query.groupName || query.clientName || "");
+  // Cost Sheet had no document-level Notes field at all (only per-row
+  // day/transport/handler notes) -- added 2026-08-27 as part of the
+  // shared rich-text rollout, matching the Notes/Remarks field every
+  // other document already has.
+  const [docNotes, setDocNotes] = useState("");
   const [assignedStaffName, setAssignedStaffName] = useState((staff||[]).find(s=>s.id===query.assignedTo)?.name || "");
 
   // Load previously saved versions for this tour file on mount. Continues
@@ -198,6 +203,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       setTlSlabs([]);
     }
     setClientAgentName(v.clientAgentName ?? (query.agentCompany||query.groupName||query.clientName||""));
+    setDocNotes(v.docNotes ?? "");
     setAssignedStaffName(v.assignedStaffName ?? ((staff||[]).find(s=>s.id===query.assignedTo)?.name||""));
     setViewingVersion(v.version);
   };
@@ -315,7 +321,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   };
 
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName, docNotes };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
     saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(({ id, error }) => {
       // saveCostSheetVersion now reports insert failures instead of
@@ -483,9 +489,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "",
         [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6])}` : "";
 
+    const notesBlock = docNotes ? `<div class="section-title" style="margin:14pt 0 6pt">Notes</div><div style="font-size:9pt">${docNotes}</div>` : "";
+
     return buildLetterheadDocument({
       title: `Cost Sheet — ${query.tourFileId||query.id} — v${currentVersionLabel}`,
-      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, tptBlock, lhBlock, exBlock, summaryBlock, tlSummaryBlock].filter(Boolean),
+      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, tptBlock, lhBlock, exBlock, summaryBlock, tlSummaryBlock, notesBlock].filter(Boolean),
       extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
@@ -1226,6 +1234,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
               </div>
             </>
           )}
+
+          {secH("Notes","📝")}
+          <RichTextEditor value={docNotes} onChange={setDocNotes} readOnly={readOnly}/>
         </fieldset>
 
         <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50,alignItems:"center"}}>

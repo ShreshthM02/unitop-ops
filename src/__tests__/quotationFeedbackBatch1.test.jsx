@@ -79,9 +79,11 @@ describe('Quotation feedback batch (2026-07-30): 1.1-1.6', () => {
     const labels = screen.getAllByText(/🏛 Monument Fees|📝 Remarks|💰 Cost Per Person/).map(el => el.textContent);
     expect(labels).toEqual(['🏛 Monument Fees', '📝 Remarks', '💰 Cost Per Person']);
     fireEvent.click(screen.getByText(/Show remarks/).closest('label').querySelector('input'));
-    const textarea = screen.getByPlaceholderText('Any additional notes for this quotation...');
-    fireEvent.change(textarea, { target: { value: 'Please confirm by Friday.' } });
-    expect(textarea.value).toBe('Please confirm by Friday.');
+    const editors = document.querySelectorAll('[contenteditable="true"]');
+    const editor = editors[1]; // [0]=Re:Line, [1]=Remarks, [2]=Closing, [3]=Sign-off
+    editor.innerHTML = 'Please confirm by Friday.';
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(editor.textContent).toBe('Please confirm by Friday.');
   });
 
   it('1.1: the paginated print HTML has real spacing between date/addressee/subject/greeting/opening line', async () => {
@@ -100,7 +102,10 @@ describe('Quotation feedback batch (2026-07-30): 1.1-1.6', () => {
     fireEvent.click(screen.getByText('+ Add Flight'));
     fireEvent.change(screen.getByPlaceholderText('e.g. Delhi / Varanasi — 6E 2134'), { target: { value: 'DEL-VNS 6E2134' } });
     fireEvent.click(screen.getByText(/Show remarks/).closest('label').querySelector('input'));
-    fireEvent.change(screen.getByPlaceholderText('Any additional notes for this quotation...'), { target: { value: 'Confirm by Friday' } });
+    const editors2 = document.querySelectorAll('[contenteditable="true"]');
+    const editor = editors2[1]; // [0]=Re:Line, [1]=Remarks, [2]=Closing, [3]=Sign-off
+    editor.innerHTML = 'Confirm by Friday';
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
     fireEvent.click(screen.getByText('👁 Preview'));
     await waitFor(() => {
       const iframe = document.querySelector('iframe[title="Print Preview"]');

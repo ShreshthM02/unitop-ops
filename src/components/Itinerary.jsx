@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -775,13 +775,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
               <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:3, display:"flex", alignItems:"center", gap:5 }}>
                 <ItemIcon name="pencil" size={11}/> Notes
               </div>
-              <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={remarksText} disabled={readOnly}
-                onChange={e=>setRemarksText(e.target.value)}
-                placeholder="A note or reminder for this document"/>
+              <RichTextEditor value={remarksText} onChange={setRemarksText} readOnly={readOnly} minHeight={64}/>
               <div style={{ fontSize:10, color:G.gray600, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.5px", margin:"12px 0 3px" }}>Closing Line / Sign-off</div>
-              <textarea style={{ ...inp, minHeight:64, resize:"vertical", lineHeight:1.5 }} value={closingText} disabled={readOnly}
-                onChange={e=>setClosingText(e.target.value)}
-                placeholder="Tour ends as you leave footprints and take memories."/>
+              <RichTextEditor value={closingText} onChange={setClosingText} readOnly={readOnly} minHeight={64}/>
             </div>
           </div>
         ) : (

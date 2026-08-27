@@ -1,7 +1,7 @@
 // Small shared helpers/components used across many components:
 // permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
 import { getWFStepStatus } from "./utils.js";
 
@@ -103,5 +103,53 @@ export function OtherInput({ value, onChange, placeholder="Please specify..." })
         fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:"#FFF9F8"}}
       value={value||""} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
     />
+  );
+}
+
+// ─── RichTextEditor (extracted 2026-08-27 from Exchange Order's Service
+// Details field, which was the first place this shipped) -- a small
+// contentEditable field with a Bold/Italic/Underline/Bullet-list toolbar,
+// no character limit. Deliberately shared across every document that
+// needs the same free-form formatted-text field (RE lines, notes,
+// remarks, closing paragraphs, sign-offs, opening lines, etc.) rather
+// than reimplemented per document. Exchange Order's own Service Details
+// field keeps its separate character/line fit-budget footer (that
+// belongs to Exchange Order's specific print-space constraint, not to
+// rich text editing in general) -- this shared version is the plain
+// editor without that budget UI, for every other document's use.
+//
+// The toolbar is deliberately understated -- thin border, light gray
+// text, no fill -- so it reads as a quiet editing affordance sitting
+// just above the field, not a loud, attention-grabbing control bar.
+export function RichTextEditor({ value, onChange, readOnly, minHeight = 90 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && ref.current.innerHTML !== (value || "")) ref.current.innerHTML = value || "";
+  }, [value]);
+  const exec = (cmd) => {
+    document.execCommand(cmd);
+    ref.current?.focus();
+    onChange(ref.current.innerHTML);
+  };
+  const btn = (lbl, cmd, title) => (
+    <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => exec(cmd)} title={title}
+      style={{ padding: "2px 7px", fontSize: 10, fontWeight: 500, border: `1px solid ${G.gray200}`, borderRadius: 4, background: "transparent", color: G.gray400, cursor: "pointer", marginRight: 3 }}>
+      {lbl}
+    </button>
+  );
+  return (
+    <div>
+      {!readOnly && (
+        <div style={{ marginBottom: 4 }}>
+          {btn("B", "bold", "Bold")}
+          {btn("I", "italic", "Italic")}
+          {btn("U", "underline", "Underline")}
+          {btn("List", "insertUnorderedList", "Bullet list")}
+        </div>
+      )}
+      <div ref={ref} contentEditable={!readOnly} suppressContentEditableWarning
+        onInput={() => onChange(ref.current.innerHTML)}
+        style={{ minHeight, padding: "8px 10px", border: `1px solid ${G.gray200}`, borderRadius: 6, fontSize: 12, lineHeight: 1.5, fontFamily: "'Inter',sans-serif", background: readOnly ? G.gray50 : G.white, outline: "none" }} />
+    </div>
   );
 }

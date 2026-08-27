@@ -155,33 +155,42 @@ describe('Documents actually apply their template prop', () => {
     // real exported PDF. Empty is the only default that cannot collide.
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Detailed'));
-    const field = screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.');
-    expect(field.value).toBe('');
-    fireEvent.change(field, { target: { value: 'Safe travels, and see you again soon.' } });
-    expect(screen.getByDisplayValue('Safe travels, and see you again soon.')).toBeTruthy();
+    // [0]=Notes (remarksText), [1]=Closing Line / Sign-off (closingText) --
+    // the only two RichTextEditor fields on this form.
+    const editors = document.querySelectorAll('[contenteditable="true"]');
+    const field = editors[1];
+    expect(field.textContent).toBe('');
+    field.innerHTML = 'Safe travels, and see you again soon.';
+    fireEvent(field, new Event('input', { bubbles: true }));
+    expect(field.textContent).toBe('Safe travels, and see you again soon.');
   });
 
   it('Brief now offers its own closing line too, independent of Detailed\u2019s, also empty by default', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     // Starts on Brief by default -- its closing field is right there too.
-    const briefField = screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.');
-    expect(briefField.value).toBe('');
-    fireEvent.change(briefField, { target: { value: 'Brief-only sign-off.' } });
+    const editors = document.querySelectorAll('[contenteditable="true"]');
+    const briefField = editors[1];
+    expect(briefField.textContent).toBe('');
+    briefField.innerHTML = 'Brief-only sign-off.';
+    fireEvent(briefField, new Event('input', { bubbles: true }));
     fireEvent.click(screen.getByText('Detailed'));
     // Detailed still shows its own untouched (empty) default -- editing
     // Brief's did not leak into Detailed's.
-    expect(screen.getByPlaceholderText('Tour ends as you leave footprints and take memories.').value).toBe('');
-    expect(screen.queryByDisplayValue('Brief-only sign-off.')).toBeNull();
+    const editorsAfter = document.querySelectorAll('[contenteditable="true"]');
+    expect(editorsAfter[1].textContent).toBe('');
+    expect(screen.queryByText('Brief-only sign-off.')).toBeNull();
   });
 
   it('each flavor offers its own Notes field, positioned above the closing line', () => {
     render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
     expect(screen.getByText('Notes')).toBeTruthy();
-    const notesField = screen.getByPlaceholderText('A note or reminder for this document');
-    fireEvent.change(notesField, { target: { value: 'Confirm veg meal request.' } });
-    expect(screen.getByDisplayValue('Confirm veg meal request.')).toBeTruthy();
+    const editors = document.querySelectorAll('[contenteditable="true"]');
+    const notesField = editors[0];
+    notesField.innerHTML = 'Confirm veg meal request.';
+    fireEvent(notesField, new Event('input', { bubbles: true }));
+    expect(screen.getByText('Confirm veg meal request.')).toBeTruthy();
     fireEvent.click(screen.getByText('Detailed'));
-    expect(screen.queryByDisplayValue('Confirm veg meal request.')).toBeNull();
+    expect(screen.queryByText('Confirm veg meal request.')).toBeNull();
   });
 
   it('every document falls back to sensible hardcoded defaults when no template prop is passed', () => {

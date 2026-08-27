@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildQuotationDocxBlob, buildAddresseeBlock, ExportMenu, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildQuotationDocxBlob, buildAddresseeBlock, ExportMenu, RichTextEditor, db } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -585,7 +585,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           {secTitle("📌 Subject")}
           <div style={{ marginBottom:8 }}>
             <label style={labelStyle}>Re: Line</label>
-            <input style={inputStyle} value={q.refLine} onChange={e=>setF("refLine",e.target.value)}/>
+            <RichTextEditor value={q.refLine} onChange={v=>setF("refLine",v)} minHeight={40}/>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:8 }}>
             <div><label style={labelStyle}>Travel Period</label>
@@ -764,8 +764,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </label>
           </div>
           {q.showRemarks && (
-            <textarea style={{...inputStyle, minHeight:52, resize:"vertical"}}
-              value={q.remarks} onChange={e=>setF("remarks",e.target.value)} placeholder="Any additional notes for this quotation..."/>
+            <RichTextEditor value={q.remarks} onChange={v=>setF("remarks",v)}/>
           )}
 
           {/* ── PRICE SLABS ── */}
@@ -815,13 +814,11 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           {secTitle("✍ Closing")}
           <div style={{ marginBottom:8 }}>
             <label style={labelStyle}>Closing paragraph</label>
-            <textarea style={{...inputStyle, minHeight:52, resize:"vertical"}}
-              value={q.closingLine} onChange={e=>setF("closingLine",e.target.value)}/>
+            <RichTextEditor value={q.closingLine} onChange={v=>setF("closingLine",v)}/>
           </div>
           <div>
             <label style={labelStyle}>Sign-off</label>
-            <textarea style={{...inputStyle, minHeight:68, resize:"vertical"}}
-              value={q.signoff} onChange={e=>setF("signoff",e.target.value)}/>
+            <RichTextEditor value={q.signoff} onChange={v=>setF("signoff",v)}/>
           </div>
 
           <div style={{ height:24 }} />

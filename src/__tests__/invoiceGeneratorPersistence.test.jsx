@@ -120,20 +120,29 @@ describe('InvoiceGenerator: Addressee vs Billed To -- kept as two separate block
 describe('InvoiceGenerator: Pro-Forma content fixes', () => {
   it('subject line does not duplicate "pax" when paxDisplay already includes it', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    const subjectInput = await screen.findByDisplayValue(/GROUP FROM/);
-    expect(subjectInput.value).not.toMatch(/pax.*PAX|PAX.*pax/i);
-    expect((subjectInput.value.match(/pax/gi) || []).length).toBeLessThanOrEqual(1);
+    // Pro-Forma RichTextEditor order: [0]=subject, [1]=openingLine, [2]=notes, [3]=signOff
+    await waitFor(() => {
+      expect(document.querySelectorAll('[contenteditable="true"]')[0]?.textContent).toMatch(/GROUP FROM/);
+    });
+    const subjectInput = document.querySelectorAll('[contenteditable="true"]')[0];
+    expect(subjectInput.textContent).not.toMatch(/pax.*PAX|PAX.*pax/i);
+    expect((subjectInput.textContent.match(/pax/gi) || []).length).toBeLessThanOrEqual(1);
   });
 
   it('opening line is editable and pre-filled from the template', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{ asDesiredLine: 'CUSTOM OPENING LINE' }} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByDisplayValue('CUSTOM OPENING LINE')).toBeTruthy();
+    await waitFor(() => {
+      expect(document.querySelectorAll('[contenteditable="true"]')[1]?.textContent).toBe('CUSTOM OPENING LINE');
+    });
   });
 
   it('notes and sign-off are pre-filled from the template, not hardcoded', async () => {
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{ notes: 'Template notes here', signOff: 'For Custom Co.' }} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByDisplayValue('Template notes here')).toBeTruthy();
-    expect(screen.getByDisplayValue('For Custom Co.')).toBeTruthy();
+    await waitFor(() => {
+      const editors = document.querySelectorAll('[contenteditable="true"]');
+      expect(editors[2]?.textContent).toBe('Template notes here');
+      expect(editors[3]?.textContent).toBe('For Custom Co.');
+    });
   });
 
   it('travel date is shown as an arrival-to-departure range in dd/mm/yyyy', async () => {
@@ -204,8 +213,12 @@ describe('InvoiceGenerator: RE line omitted entirely when the subject is blank',
     const realOpen = window.open;
     window.open = () => ({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
     render(<InvoiceGenerator query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
-    const subjectInput = await screen.findByDisplayValue(/GROUP FROM/);
-    fireEvent.change(subjectInput, { target: { value: '' } });
+    await waitFor(() => {
+      expect(document.querySelectorAll('[contenteditable="true"]')[0]?.textContent).toMatch(/GROUP FROM/);
+    });
+    const subjectInput = document.querySelectorAll('[contenteditable="true"]')[0];
+    subjectInput.innerHTML = '';
+    subjectInput.dispatchEvent(new Event('input', { bubbles: true }));
     fireEvent.click(screen.getAllByText(/⬇ Export/)[0]);
     fireEvent.click(await screen.findByText('📕 PDF'));
     await waitFor(() => expect(captured.html).toBeTruthy());
