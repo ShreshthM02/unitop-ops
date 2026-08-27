@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db } = Lib;
 
 function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO, currentUser }) {
   const deleteEntry = () => {
@@ -11,52 +11,49 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
 
   const printReceipt = () => {
     const ci = COMPANY_INFO;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<title>Receipt ${e.receipt||""}</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  body{font-family:'Inter',Arial,sans-serif;font-size:10pt;color:#1a1a1a;background:#fff}
-  .page{width:148mm;min-height:210mm;margin:0 auto;padding:10mm 12mm}
-  .lh-logo{height:70pt;width:auto;display:block;margin:0 auto 4pt}
-  .lh-name{font-family:'Playfair Display',serif;font-size:13pt;font-weight:700;color:#1A3A52;text-align:center;letter-spacing:0.5pt}
-  .lh-addr{font-size:7.5pt;color:#555;text-align:center;line-height:1.6;margin-top:2pt}
-  .rule{height:2pt;border:none;background:linear-gradient(to right,#cb0f0f,#061bb0);margin:6pt 0;border-radius:1pt}
-  .title{font-family:'Playfair Display',serif;font-size:15pt;font-weight:700;color:#1A3A52;text-align:center;margin:10pt 0 6pt;text-transform:uppercase;letter-spacing:1pt}
+    // Same field mapping InvoiceGenerator uses for this query shape --
+    // query.travelDateFrom does not exist on a real loaded query object,
+    // the arrival date is stored under the plain `travelDate` key.
+    const fromRaw = query.travelDate;
+    const toRaw = query.travelDateTo;
+    const dmySlash = (iso) => formatDateDMY(iso).replace(/-/g, "/");
+    const dateRange = () => {
+      const fromIsDate = isIsoDateString(fromRaw);
+      const toIsDate = isIsoDateString(toRaw);
+      if (fromIsDate && toIsDate) return `${dmySlash(fromRaw)} - ${dmySlash(toRaw)}`;
+      if (fromIsDate) return dmySlash(fromRaw);
+      return fromRaw || "TBC";
+    };
+    const clientAgency = `${query.clientName || query.groupName || "—"}${query.agentCompany ? ` / ${query.agentCompany}` : ""}`;
+    const tourName = query.groupName || query.clientName || "—";
+
+    const extraHeadCSS = `
+  .title{font-family:'Playfair Display',serif;font-size:15pt;font-weight:700;color:#1A3A52;text-align:center;margin:4pt 0 6pt;text-transform:uppercase;letter-spacing:1pt}
   .rcpt-no{text-align:center;font-size:9pt;color:#8B1A1A;font-weight:700;margin-bottom:10pt}
   .party{background:#f8f9fa;border:1pt solid #e5e7eb;border-radius:4pt;padding:8pt 10pt;margin-bottom:10pt}
   .party-lbl{font-size:7pt;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1pt;margin-bottom:3pt}
   .party-name{font-size:11pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif}
-  .party-det{font-size:8.5pt;color:#555;margin-top:2pt}
+  .party-det{font-size:8.5pt;color:#555;margin-top:2pt;line-height:1.6}
   table{width:100%;border-collapse:collapse;margin-bottom:8pt}
   th{background:#1A3A52;color:#fff;font-size:8pt;font-weight:700;padding:5pt 7pt;text-align:left}
   td{padding:5pt 7pt;border-bottom:0.5pt solid #e5e7eb;font-size:9pt;vertical-align:top}
   tr:nth-child(even) td{background:#f9fafb}
   .amount-row{background:#1A3A52!important;color:#fff;font-weight:700;font-size:10pt}
   .amount-row td{color:#fff;border:none;padding:7pt}
-  .footer-rule{height:0.75pt;border:none;background:linear-gradient(to right,#cb0f0f,#061bb0);margin-top:14pt}
-  .footer{font-size:7.5pt;color:#888;text-align:center;margin-top:5pt}
+  .receipt-disclaimer{font-size:7.5pt;color:#888;text-align:center;margin-top:14pt}
   .stamp-area{margin-top:18pt;display:flex;justify-content:space-between;align-items:flex-end;font-size:8pt;color:#555}
-  @media print{body{margin:0}.page{width:100%}@page{margin:0;size:A5}}
-</style></head><body>
-<div class="page">
-  <img src="${LOGO_B64}" class="lh-logo" alt="Unitop Tours"/>
-  <div class="lh-name">${ci.name}</div>
-  <div class="lh-addr">${ci.address}<br/>
-    Tel: ${ci.phone} &nbsp;|&nbsp; ${ci.email} &nbsp;|&nbsp; ${ci.web}<br/>
-    GSTIN: ${ci.gstin} &nbsp;|&nbsp; PAN: ${ci.pan}
-  </div>
-  <div class="rule"></div>
+`;
+
+    const bodyHTML = `
   <div class="title">Payment Receipt</div>
   <div class="rcpt-no">${e.receipt||"RCP-"+e.id}</div>
 
   <div class="party">
     <div class="party-lbl">Received From</div>
-    <div class="party-name">${query.groupName||query.clientName||"—"}</div>
+    <div class="party-name">${clientAgency}</div>
     <div class="party-det">
-      ${query.agentCompany?`Via: ${query.agentCompany}<br/>`:""}
-      Tour File: ${query.tourFileId||query.id} &nbsp;|&nbsp; ${query.destination||query.sector||""}
-      ${query.paxDisplay?` &nbsp;|&nbsp; ${query.paxDisplay} pax`:""}
+      ${tourName} | ${dateRange()}<br/>
+      ${query.tourFileId||query.id} | ${query.destination||query.sector||"—"} | ${query.paxDisplay||"—"}
     </div>
   </div>
 
@@ -84,13 +81,16 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     </div>
   </div>
 
-  <div class="footer-rule"></div>
-  <div class="footer">This is a computer-generated receipt. &nbsp;|&nbsp; ${ci.name} &nbsp;|&nbsp; GSTIN: ${ci.gstin}</div>
-</div>
-<script>window.onload=()=>{window.print();}</script>
-</body></html>`;
-    const w = window.open("", "_blank", "width=700,height=900");
-    if (w) { w.document.write(html); w.document.close(); }
+  <div class="receipt-disclaimer">This is a computer-generated receipt. &nbsp;|&nbsp; ${ci.name} &nbsp;|&nbsp; GSTIN: ${ci.gstin}</div>
+`;
+
+    const html = buildLetterheadDocument({
+      title: `Receipt ${e.receipt||""}`,
+      extraHeadCSS,
+      bodyBlocks: [bodyHTML],
+      orientation: "portrait",
+    });
+    printHTML(html);
     logAudit(db, query.id, currentUser?.name, `Payment receipt printed: ${e.receipt||"n/a"} (${e.inCurrency||"INR"} ${e.amount})`);
   };
 
