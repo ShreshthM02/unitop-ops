@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TemplatesHub from '../components/TemplatesHub.jsx';
 import InvoiceGenerator from '../components/InvoiceGenerator.jsx';
-import MealPlanDocument from '../components/MealPlanDocument.jsx';
 import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
 import Itinerary from '../components/Itinerary.jsx';
 import { DEFAULT_DOC_TEMPLATES } from '../lib/constants.js';
@@ -103,11 +102,6 @@ describe('Documents actually apply their template prop', () => {
     });
   });
 
-  it('MealPlanDocument uses a custom default heading from its template prop', () => {
-    render(<MealPlanDocument query={fakeQuery} template={{ defaultHeading: 'Custom Meal Heading' }} onClose={()=>{}}/>);
-    expect(screen.getByDisplayValue('Custom Meal Heading')).toBeTruthy();
-  });
-
   it('TourBriefingSheet uses custom opening line and footer text from its template prop', async () => {
     const customTemplate = { openingLine: 'Custom opening line.', footerText: 'Custom footer block.' };
     const { container } = render(<TourBriefingSheet query={fakeQuery} template={customTemplate} onClose={()=>{}}/>);
@@ -193,7 +187,6 @@ describe('Documents actually apply their template prop', () => {
   it('every document falls back to sensible hardcoded defaults when no template prop is passed', () => {
     expect(() => render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<InvoiceGenerator query={fakeQuery} payments={{}} agents={[]} initialFlavor="tax" onClose={()=>{}}/>)).not.toThrow();
-    expect(() => render(<MealPlanDocument query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<TourBriefingSheet query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
     expect(() => render(<Itinerary query={fakeQuery} onClose={()=>{}}/>)).not.toThrow();
   });

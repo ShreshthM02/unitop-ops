@@ -20,7 +20,7 @@ const FIXED_COMPONENTS = [
   'PLReport', 'UserManagementPanel', 'Itinerary', 'ExchangeOrderGenerator',
   'InAppChat', 'TourBriefingSheet', 'VendorMaster', 'QuotationGenerator',
   'AgentLedgerPanel', 'InvoiceGenerator', 'CostSheet',
-  'MealPlanDocument', 'EnhancedPaymentTracker', 'AgentMaster',
+  'EnhancedPaymentTracker', 'AgentMaster',
   'VendorLedgerPanel', 'DocumentRegistry',
 ];
 

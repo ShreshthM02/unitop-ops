@@ -555,7 +555,6 @@ export const DOC_TYPES = [
   {id:"costsheet",    icon:"📊",label:"Cost Sheet",              formats:["PDF","XLSX"]},
   {id:"brief_itin",   icon:"🗺", label:"Brief Itinerary",         formats:["PDF","DOCX"]},
   {id:"detail_itin",  icon:"📅",label:"Detailed Itinerary",      formats:["PDF","DOCX"]},
-  {id:"mealplan",     icon:"🍽", label:"Meal Plan",               formats:["PDF","DOCX"]},
   {id:"tourbriefing", icon:"📄",label:"Tour Briefing Sheet",     formats:["PDF","DOCX"]},
   {id:"exchange",     icon:"🎫",label:"Exchange Order",           formats:["PDF"]},
   {id:"proforma",     icon:"🧾",label:"Proforma Invoice",        formats:["PDF","DOCX"]},
@@ -580,7 +579,6 @@ export const DEFAULT_DOC_SETTINGS = {
   brief_itin:   { serial:1, prefix:"BI",  pattern:"{prefix}-{seq}-{group}",        label:"Brief Itinerary",     formats:["PDF","DOCX"] },
   detail_itin:  { serial:1, prefix:"DI",  pattern:"{prefix}-{seq}-{group}",        label:"Detailed Itinerary",  formats:["PDF","DOCX"] },
   monument:     { serial:1, prefix:"ML",  pattern:"{prefix}-{seq}-{group}",        label:"Monument List",       formats:["PDF","DOCX"] },
-  mealplan:     { serial:1, prefix:"MP",  pattern:"{prefix}-{seq}-{group}-{date}", label:"Meal Plan",           formats:["PDF","DOCX"] },
   tourbriefing: { serial:1, prefix:"TB",  pattern:"{prefix}-{seq}-{tourfile}",     label:"Tour Briefing Sheet", formats:["PDF","DOCX"] },
   exchange:     { serial:1, prefix:"EO",  pattern:"{prefix}-{year}-{seq}",         label:"Exchange Order",      formats:["PDF (Shareable)","PDF (Printable)"] },
   proforma:     { serial:1, prefix:"PI",  pattern:"{prefix}-{year}-{seq}-{group}", label:"Proforma Invoice",    formats:["PDF","DOCX"] },
@@ -627,9 +625,11 @@ export const DEFAULT_TAXINVOICE_TEMPLATE = {
   placeOfSupply: "Delhi (07)",
 };
 
-export const DEFAULT_MEALPLAN_TEMPLATE = {
-  defaultHeading: "Meal Plan",
-};
+// DEFAULT_MEALPLAN_TEMPLATE removed 2026-08-22 -- Meal Plan folded into
+// Tour Briefing Sheet as one more section (see MealPlanDocument.jsx's
+// removal), so its heading is no longer independently template-
+// configurable; it matches TBS's own convention of hardcoded section
+// headings instead.
 
 export const DEFAULT_TOURBRIEFING_TEMPLATE = {
   openingLine: "As desired, please find service details as under: -",
@@ -699,7 +699,6 @@ export const DEFAULT_DOC_TEMPLATES = {
   quotation: DEFAULT_QUOT_TEMPLATE,
   proforma: DEFAULT_PROFORMA_TEMPLATE,
   taxinvoice: DEFAULT_TAXINVOICE_TEMPLATE,
-  mealplan: DEFAULT_MEALPLAN_TEMPLATE,
   tourbriefing: DEFAULT_TOURBRIEFING_TEMPLATE,
   brief_itin: DEFAULT_ITINERARY_TEMPLATE,
   detail_itin: DEFAULT_ITINERARY_TEMPLATE,
@@ -724,9 +723,6 @@ export const TEMPLATE_FIELD_SCHEMAS = {
   taxinvoice: [
     { key: "footerNote", label: "Footer Note", type: "text" },
     { key: "placeOfSupply", label: "Default Place of Supply", type: "text" },
-  ],
-  mealplan: [
-    { key: "defaultHeading", label: "Default Document Heading", type: "text" },
   ],
   tourbriefing: [
     { key: "openingLine", label: "Opening Line", type: "text" },

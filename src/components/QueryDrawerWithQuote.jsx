@@ -116,7 +116,6 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
     {icon:"₹", label:"Payments",          panel:"payments"},
     {icon:"🎫",label:"Exchange Orders",   panel:"voucher"},
     {icon:"📋",label:"Tour Briefing Sheet",panel:"tourbriefing"},
-    {icon:"🍽",label:"Meal Plan",         panel:"mealplan"},
     {icon:"📁",label:"Uploads",            panel:"docregistry"},
   ];
   const docs = isCaseFile ? caseFileDocs : queryDocs;

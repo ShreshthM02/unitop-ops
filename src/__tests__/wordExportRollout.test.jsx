@@ -88,7 +88,6 @@ function makeDb() {
 }
 
 const DOCS = [
-  ['MealPlanDocument', 'MealPlanDocument'],
   ['TourBriefingSheet', 'TourBriefingSheet'],
   ['InvoiceGenerator', 'InvoiceGenerator'],
 ];
@@ -149,7 +148,7 @@ describe('Itinerary offers distinct Brief and Detailed exports, not the generic 
 });
 
 describe('buildPrintHTML(asBlocks) returns content instead of built HTML', () => {
-  it('MealPlanDocument exposes its bodyBlocks and toggle state for the Word path', async () => {
+  it('a table-block document shape (Day/header/rows, matching Meal Plan\'s old shape and Tour Briefing Sheet\'s Meal Plan section today) exposes bodyBlocks and toggle state for the Word path', async () => {
     vi.doMock('../lib/supabase.js', () => ({ db: makeDb(), realtimeClient: null }));
     vi.resetModules();
     const { buildDocxBlobFromBodyBlocks: build } = await import('../lib/wordFromBlocks.js');

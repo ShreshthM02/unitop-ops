@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, db } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -8,7 +8,8 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const ALL_SECTIONS = [
     {id:"meta",label:"Header / Meta"},{id:"hotels",label:"Hotels"},{id:"flights",label:"Flights"},
     {id:"trains",label:"Trains"},{id:"transport",label:"Transport"},{id:"guides",label:"Tour Facilitators"},
-    {id:"others",label:"Other Services"},{id:"programme",label:"Programme"},{id:"contacts",label:"Contact List"},
+    {id:"others",label:"Other Services"},{id:"programme",label:"Programme"},{id:"mealplan",label:"Meal Plan"},
+    {id:"contacts",label:"Contact List"},
   ];
   const [printOrder,setPrintOrder]=useState(ALL_SECTIONS.map(s=>s.id));
   const [printEnabled,setPrintEnabled]=useState(Object.fromEntries(ALL_SECTIONS.map(s=>[s.id,true])));
@@ -62,6 +63,15 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [programme,setProgramme]=useState([{id:1,date:"",day:"",itinerary:"",programme:"",breakfast:"",lunch:"",dinner:""}]);
   const updP=(i,f,v)=>setProgramme(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [progNotes,setProgNotes]=useState("");
+  // Meal Plan, folded in as one more section (2026-08-22) -- previously
+  // MealPlanDocument.jsx, a fully standalone document with its own
+  // version history/table. Eliminated as a separate document per direct
+  // instruction: its day-by-day rows now live in this same content blob
+  // as every other TBS section, versioned together rather than
+  // separately.
+  const [mealDays,setMealDays]=useState([{id:1,day:"Day 1",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:2,day:"Day 2",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:3,day:"Day 3",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""}]);
+  const updM=(i,f,v)=>setMealDays(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
+  const [mealNotes,setMealNotes]=useState("");
   const [contacts,setContacts]=useState([{id:1,date:"",city:"",vendorType:"Hotel",vendorTypeOther:"",contactNo:"",address:""}]);
   const updC=(i,f,v)=>setContacts(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [contactNotes,setContactNotes]=useState("");
@@ -79,7 +89,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const currentContent = () => ({
     docDate, recipient, agentCo, agentCity, subject, intro, footer, metaNotes,
     hotels, hotelNotes, flights, flightNotes, trains, trainNotes, transport, transportNotes,
-    guides, guideNotes, otherSvcs, otherNotes, programme, progNotes, contacts, contactNotes,
+    guides, guideNotes, otherSvcs, otherNotes, programme, progNotes, mealDays, mealNotes, contacts, contactNotes,
     printOrder, printEnabled, pulledFromCostSheetVersion,
   });
 
@@ -107,6 +117,8 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     if (c.otherNotes!==undefined) setOtherNotes(c.otherNotes);
     if (c.programme) setProgramme(c.programme);
     if (c.progNotes!==undefined) setProgNotes(c.progNotes);
+    if (c.mealDays) setMealDays(c.mealDays);
+    if (c.mealNotes!==undefined) setMealNotes(c.mealNotes);
     if (c.contacts) setContacts(c.contacts);
     if (c.contactNotes!==undefined) setContactNotes(c.contactNotes);
     if (c.printOrder) setPrintOrder(c.printOrder);
@@ -137,9 +149,15 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
       const pulledHotels = extractTourBriefingHotelsFromCostSheetDays(source.days);
       const pulledProgramme = extractTourBriefingProgrammeFromCostSheetDays(source.days);
       const pulledTransport = extractTourBriefingTransportSummary(source.transports);
+      // Meal Plan's own pull, same source data/extraction as the old
+      // standalone MealPlanDocument used (extractItineraryFromCostSheetDays)
+      // -- otherwise this section would silently lose the auto-pull
+      // capability it had before being folded in here.
+      const pulledMeals = extractItineraryFromCostSheetDays(source.days);
       if (pulledHotels.length > 0) setHotels(pulledHotels);
       if (pulledProgramme.length > 0) setProgramme(pulledProgramme);
       if (pulledTransport) setTransport(pulledTransport);
+      if (pulledMeals.length > 0) setMealDays(pulledMeals.map((d, i) => ({ id: i + 1, day: d.day, date: "", itinerary: d.movement, breakfast: d.breakfast, lunch: d.lunch, dinner: d.dinner, notes: "" })));
       setPulledFromCostSheetVersion(source.version);
       setPullMessage(`Pulled from Cost Sheet v${source.version}.`);
     } catch (e) {
@@ -226,6 +244,22 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           rowsHTML: programme.map(p=>`<tr><td><b>${p.date||""}</b>${p.day?"<br/>("+p.day+")":""}</td><td><b style="color:#1A3A52">${p.itinerary||""}</b>${p.programme?"<br/><div style='white-space:pre-line'>"+p.programme+"</div>":""}</td><td>${p.breakfast||"X"}</td><td>${p.lunch||"X"}</td><td>${p.dinner||"X"}</td></tr>`) },
         progNotes?`<div style="font-style:italic;color:#555">${progNotes}</div>`:"",
       ] : [];
+      // Meal Plan heading matches the centered, bold document-heading
+      // convention used across other documents (e.g. Exchange Order/
+      // Invoices' category line), not the old standalone MealPlanDocument's
+      // left-aligned Georgia serif h2. Notes column only appears at all
+      // if at least one day actually has a note -- an all-empty column is
+      // just wasted width, not information.
+      case "mealplan": {
+        const hasNotes = mealDays.some(d=>d.notes);
+        return mealDays.some(d=>d.breakfast||d.lunch||d.dinner||d.itinerary) ? [
+          `<div style="text-align:center;font-weight:700;font-size:12pt;margin:12pt 0 6pt">Meal Plan</div>`,
+          { type:"table",
+            headerHTML:`<tr><th>Day</th><th>Date</th><th>Itinerary</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th>${hasNotes?"<th>Notes</th>":""}</tr>`,
+            rowsHTML: mealDays.map(d=>`<tr><td>${d.day||""}</td><td>${d.date||"—"}</td><td>${d.itinerary||"—"}</td><td>${d.breakfast||"—"}</td><td>${d.lunch||"—"}</td><td>${d.dinner||"—"}</td>${hasNotes?`<td>${d.notes||""}</td>`:""}</tr>`) },
+          mealNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${mealNotes}</div>`:"",
+        ] : [];
+      }
       case "contacts": return contacts.some(c=>c.contactNo||c.city) ? [
         `<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Contact List:</div>`,
         { type:"table", headerHTML:`<tr><th>Date</th><th>City</th><th>Type</th><th>Contact No.</th><th>Address</th></tr>`,
@@ -246,7 +280,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     // silently drift from what the PDF shows.
     const docArgs = {
       title: `Tour Briefing Sheet — ${query.groupName||query.clientName}`,
-      extraHeadCSS: `body{font-family:'Times New Roman',serif;}`,
+      extraHeadCSS: ``, // Inter is the shared letterhead's own default body font -- this override used to force Times New Roman here specifically.
       bodyBlocks: [...sectionsBlocks, footerNoteBlock, stampHTML],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
@@ -363,6 +397,23 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
               </div>}
               {activeTab==="others"&&<div>{otherSvcs.map((s,i)=><div key={s.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr 1fr auto",gap:6}}><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Date</div><input style={inp} value={s.date||""} onChange={e=>updO(i,"date",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Service Type</div><select style={inp} value={s.serviceType} onChange={e=>updO(i,"serviceType",e.target.value)}>{VENDOR_TYPES_TBS.map(t=><option key={t}>{t}</option>)}</select></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Description</div><input style={inp} value={s.description||""} onChange={e=>updO(i,"description",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Status</div><select style={inp} value={s.status} onChange={e=>updO(i,"status",e.target.value)}>{["Requested","Confirmed","Sold Out","On Waitlist","Cancelled"].map(st=><option key={st}>{st}</option>)}</select></div><div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setOtherSvcs(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setOtherSvcs(p=>[...p,{id:Date.now(),date:"",serviceType:"Activity",description:"",status:"Confirmed"}])}>+ Add Service</button><NoteField val={otherNotes} set={setOtherNotes}/></div>}
               {activeTab==="programme"&&<div>{programme.map((p,i)=><div key={p.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:8}}>{[["Date","date","text"],["Day","day","text"],["Breakfast","breakfast","text"],["Lunch","lunch","text"],["Dinner","dinner","text"]].map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={t} value={p[k]||""} onChange={e=>updP(i,k,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setProgramme(prev=>prev.filter((_,xi)=>xi!==i))}>✕</span></div></div><div style={{marginBottom:6}}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Itinerary (movement for the day)</div><textarea style={{...inp,minHeight:48,resize:"vertical"}} value={p.itinerary||""} onChange={e=>updP(i,"itinerary",e.target.value)} placeholder="e.g. DELHI – SRINAGAR (BY 6E 5339 AT 09:45 / 11:20)"/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Programme Details</div><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={p.programme||""} onChange={e=>updP(i,"programme",e.target.value)} placeholder="Morning After Breakfast...&#10;• Point 1&#10;• Point 2&#10;Overnight Stay at Hotel"/><div style={{fontSize:9,color:G.gray400,marginTop:3}}>Tip: start a line with • for bullet points</div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setProgramme(p=>[...p,{id:Date.now(),date:"",day:"",itinerary:"",programme:"",breakfast:"",lunch:"",dinner:""}])}>+ Add Day</button><NoteField val={progNotes} set={setProgNotes}/></div>}
+              {activeTab==="mealplan"&&<div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:8}}>
+                  <thead><tr style={{background:G.navy}}>{["Day","Date","Itinerary","☕ Breakfast","🍽 Lunch","🍛 Dinner","Notes",""].map(h=><th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                  <tbody>{mealDays.map((r,i)=><tr key={r.id} style={{background:i%2===0?G.white:G.gray50}}>
+                    <td style={{padding:"3px 4px"}}><input style={{...inp,width:52}} value={r.day} onChange={e=>updM(i,"day",e.target.value)}/></td>
+                    <td style={{padding:"3px 4px"}}><input style={{...inp,width:86}} type="date" value={r.date} onChange={e=>updM(i,"date",e.target.value)}/></td>
+                    <td style={{padding:"3px 4px",minWidth:120}}><input style={inp} value={r.itinerary||""} onChange={e=>updM(i,"itinerary",e.target.value)} placeholder="e.g. Delhi → Agra"/></td>
+                    <td style={{padding:"3px 4px"}}><input style={inp} value={r.breakfast} onChange={e=>updM(i,"breakfast",e.target.value)} placeholder="Venue"/></td>
+                    <td style={{padding:"3px 4px"}}><input style={inp} value={r.lunch} onChange={e=>updM(i,"lunch",e.target.value)} placeholder="Venue"/></td>
+                    <td style={{padding:"3px 4px"}}><input style={inp} value={r.dinner} onChange={e=>updM(i,"dinner",e.target.value)} placeholder="Venue"/></td>
+                    <td style={{padding:"3px 4px"}}><input style={inp} value={r.notes} onChange={e=>updM(i,"notes",e.target.value)}/></td>
+                    <td style={{padding:"3px 4px"}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setMealDays(p=>p.filter((_,xi)=>xi!==i))}>✕</span></td>
+                  </tr>)}</tbody>
+                </table>
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setMealDays(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""}])}>+ Add Day</button>
+                <NoteField val={mealNotes} set={setMealNotes}/>
+              </div>}
               {activeTab==="contacts"&&<div>{contacts.map((c,i)=><div key={c.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 2fr auto",gap:6}}><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Date</div><input style={inp} value={c.date||""} onChange={e=>updC(i,"date",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>City</div><input style={inp} value={c.city||""} onChange={e=>updC(i,"city",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vendor Type</div><select style={inp} value={c.vendorType} onChange={e=>updC(i,"vendorType",e.target.value)}>{VENDOR_TYPES_TBS.map(t=><option key={t}>{t}</option>)}</select>{c.vendorType==="Other"&&<input style={{...inp,marginTop:4}} value={c.vendorTypeOther||""} onChange={e=>updC(i,"vendorTypeOther",e.target.value)} placeholder="Specify..."/>}</div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Contact No.</div><input style={inp} value={c.contactNo||""} onChange={e=>updC(i,"contactNo",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Address</div><input style={inp} value={c.address||""} onChange={e=>updC(i,"address",e.target.value)}/></div><div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setContacts(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setContacts(p=>[...p,{id:Date.now(),date:"",city:"",vendorType:"Hotel",vendorTypeOther:"",contactNo:"",address:""}])}>+ Add Contact</button><NoteField val={contactNotes} set={setContactNotes}/></div>}
             </div>
           </>

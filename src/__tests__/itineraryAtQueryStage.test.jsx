@@ -32,7 +32,7 @@ describe('1.3 Itinerary is available at query stage, not only after tour-file co
     fireEvent.click(screen.getByText('📋 Docs'));
     expect(screen.getByText('Itinerary')).toBeTruthy();
     expect(screen.getByText('Invoices')).toBeTruthy();
-    expect(screen.getByText('Meal Plan')).toBeTruthy();
+    expect(screen.getByText('Tour Briefing Sheet')).toBeTruthy();
   });
 });
 

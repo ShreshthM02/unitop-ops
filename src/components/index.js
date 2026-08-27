@@ -12,7 +12,6 @@ export { default as InAppChat } from './InAppChat.jsx';
 export { default as Itinerary } from './Itinerary.jsx';
 export { default as KanbanView } from './KanbanView.jsx';
 export { default as LoginScreen } from './LoginScreen.jsx';
-export { default as MealPlanDocument } from './MealPlanDocument.jsx';
 export { default as NewQueryModal } from './NewQueryModal.jsx';
 export { default as OwnPasswordChange } from './OwnPasswordChange.jsx';
 export { default as PLReport } from './PLReport.jsx';

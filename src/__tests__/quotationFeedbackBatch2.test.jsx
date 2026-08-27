@@ -68,7 +68,6 @@ describe('2.5 TemplatesHub: picks up templates that arrive after mount', () => {
     const docs = [
       ['🧾 Proforma Invoice', 'Bank Name'],
       ['🧾 Tax Invoice', 'Footer Note'],
-      ['🍽 Meal Plan', 'Default Document Heading'],
       ['📄 Tour Briefing Sheet', 'Opening Line'],
       ['🗺 Brief Itinerary', 'Closing Tagline'],
       ['🎫 Exchange Order', 'Instruction Line'],

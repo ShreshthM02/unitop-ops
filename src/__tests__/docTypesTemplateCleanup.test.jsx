@@ -17,10 +17,10 @@ describe('DOC_TYPES (Templates section): stale "Monument / Activity List" entry 
   it('still includes every other real document type, untouched by the removal', () => {
     const ids = DOC_TYPES.map(d => d.id);
     expect(ids).toEqual(expect.arrayContaining([
-      'quotation', 'costsheet', 'brief_itin', 'detail_itin', 'mealplan',
+      'quotation', 'costsheet', 'brief_itin', 'detail_itin',
       'tourbriefing', 'exchange', 'proforma', 'taxinvoice', 'receipt',
     ]));
-    expect(ids.length).toBe(10);
+    expect(ids.length).toBe(9);
   });
 });
 
