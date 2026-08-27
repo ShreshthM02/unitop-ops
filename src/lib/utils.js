@@ -719,11 +719,14 @@ export function extractTourBriefingProgrammeFromCostSheetDays(csDays) {
 // description, not a table) -- e.g. "Mini Bus for DELHI; Large Coach
 // for SXR". Only summarizes what's actually there; an empty
 // transports[] returns "".
+// Cost Sheet transports[] -> Tour Briefing Sheet's Transport table rows
+// (Description/Quantity). Cost Sheet tracks vehicle type and sector but
+// not a vehicle count, so quantity is left blank for the user to fill in
+// rather than guessed.
 export function extractTourBriefingTransportSummary(transports) {
   return (transports || [])
     .filter(t => t.vehicleType || t.sector)
-    .map(t => `${t.vehicleType || "Vehicle"} for ${t.sector || "sector TBC"}`)
-    .join("; ");
+    .map(t => ({ description: `${t.vehicleType || "Vehicle"} for ${t.sector || "sector TBC"}`, quantity: "" }));
 }
 
 export function calcCostSheetSlabFinalPrice(snap, slab) {

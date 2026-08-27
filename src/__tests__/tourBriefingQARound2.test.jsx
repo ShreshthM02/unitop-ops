@@ -90,7 +90,7 @@ describe('3: tabs are ordered meta -> programme -> hotels -> flights -> trains -
     const tabBar = (await screen.findByText('Hotels')).parentElement;
     const labels = Array.from(tabBar.children).map(el => el.textContent);
     expect(labels.indexOf('Programme')).toBeLessThan(labels.indexOf('Hotels'));
-    expect(labels.indexOf('Hotels')).toBeLessThan(labels.indexOf('Flights'));
+    expect(labels.indexOf('Hotels')).toBeLessThan(labels.indexOf('Flight Details'));
     expect(labels.indexOf('Other Services')).toBeLessThan(labels.indexOf('Meal Plan'));
     expect(labels.indexOf('Meal Plan')).toBeLessThan(labels.indexOf('Contact List'));
   });
@@ -148,7 +148,7 @@ describe('4: Other Services is restructured into named, addable multi-item secti
 describe('5: date pickers added to Flights, Trains, and Contacts', () => {
   it('Flights date field is type="date"', async () => {
     renderTBS();
-    fireEvent.click(await screen.findByText('Flights'));
+    fireEvent.click(await screen.findByText('Flight Details'));
     const dateInput = document.querySelector('input[type="date"]');
     expect(dateInput).toBeTruthy();
   });
@@ -159,19 +159,12 @@ describe('5: date pickers added to Flights, Trains, and Contacts', () => {
     const dateInput = document.querySelector('input[type="date"]');
     expect(dateInput).toBeTruthy();
   });
-
-  it('Contacts date field is type="date"', async () => {
-    renderTBS();
-    fireEvent.click(await screen.findByText('Contact List'));
-    const dateInput = document.querySelector('input[type="date"]');
-    expect(dateInput).toBeTruthy();
-  });
 });
 
 describe('6: every section has an editable Section Label defaulting to its tab title, no yellow highlighting', () => {
   const tabs = [
     ['Hotels', 'hotels', 'Hotels'],
-    ['Flights', 'flights', 'Flights'],
+    ['Flight Details', 'flights', 'Flight Details'],
     ['Trains', 'trains', 'Trains'],
     ['Transport', 'transport', 'Transport'],
     ['Tour Facilitators', 'guides', 'Tour Facilitators'],
@@ -193,7 +186,7 @@ describe('6: every section has an editable Section Label defaulting to its tab t
     const realOpen = window.open;
     window.open = () => ({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
     renderTBS();
-    fireEvent.click(await screen.findByText('Flights'));
+    fireEvent.click(await screen.findByText('Flight Details'));
     const dateInput = document.querySelector('input[type="date"]');
     fireEvent.change(dateInput, { target: { value: '2026-09-01' } });
     const sectorInputs = screen.getAllByRole('textbox');

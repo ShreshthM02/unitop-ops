@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, db } = Lib;
 
-export default function TourBriefingSheet({ query, template, facilitators, onClose, currentUser, readOnly }) {
+export default function TourBriefingSheet({ query, template, facilitators, vendors, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
   const activeFacilitators = (facilitators || []).filter(f => f.active !== false);
   const ALL_SECTIONS = [
     {id:"meta",label:"Header / Meta"},{id:"programme",label:"Programme"},{id:"hotels",label:"Hotels"},
-    {id:"flights",label:"Flights"},{id:"trains",label:"Trains"},{id:"transport",label:"Transport"},
+    {id:"flights",label:"Flight Details"},{id:"trains",label:"Trains"},{id:"transport",label:"Transport"},
     {id:"guides",label:"Tour Facilitators"},{id:"others",label:"Other Services"},
     {id:"mealplan",label:"Meal Plan"},{id:"contacts",label:"Contact List"},
   ];
@@ -54,14 +54,18 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [trains,setTrains]=useState([{id:1,date:"",sector:"",trainNo:"",trainName:"",time:"",coach:""}]);
   const updT=(i,f,v)=>setTrains(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [trainNotes,setTrainNotes]=useState("");
-  const [transport,setTransport]=useState("");
+  // Restructured 2026-08-27 from a single free-text paragraph into a real
+  // multi-row table (Description/Quantity), matching every other
+  // section's row-based editing pattern -- direct instruction.
+  const [transport,setTransport]=useState([{id:1,description:"",quantity:""}]);
+  const updTr=(i,f,v)=>setTransport(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [transportNotes,setTransportNotes]=useState("");
-  const [guides,setGuides]=useState([{id:1,role:"",facilitatorId:"",name:"",phone:"",area:""}]);
+  const [guides,setGuides]=useState([{id:1,description:"",facilitatorId:"",name:"",contact:""}]);
   const updG=(i,f,v)=>setGuides(p=>p.map((r,xi)=>{
     if(xi!==i) return r;
     if(f==="facilitatorId"){
       const fac = activeFacilitators.find(x=>x.id===v);
-      return {...r, facilitatorId:v, name: fac?fac.name:"", phone: fac?fac.phone||"":r.phone, area: fac?fac.areas||"":r.area};
+      return {...r, facilitatorId:v, name: fac?fac.name:"", contact: fac?fac.contactPhone||"":r.contact};
     }
     return {...r,[f]:v};
   }));
@@ -92,8 +96,26 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const [mealDays,setMealDays]=useState([{id:1,day:"Day 1",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:2,day:"Day 2",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""},{id:3,day:"Day 3",date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""}]);
   const updM=(i,f,v)=>setMealDays(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
   const [mealNotes,setMealNotes]=useState("");
-  const [contacts,setContacts]=useState([{id:1,date:"",city:"",vendorType:"Hotel",vendorTypeOther:"",contactNo:"",address:""}]);
-  const updC=(i,f,v)=>setContacts(p=>p.map((r,xi)=>xi===i?{...r,[f]:v}:r));
+  // Restructured 2026-08-27 into named multi-item groups, same pattern as
+  // Other Services -- direct instruction. Each item's Name field has a
+  // quiet vendor-search button that looks up Vendor Master and
+  // auto-fills Contact/Address.
+  const [contactGroups,setContactGroups]=useState([{id:1,label:"Contact List",items:[{id:1,city:"",name:"",contact:"",address:"",vendorSearchOpen:false}]}]);
+  const updCGroupLabel=(gi,v)=>setContactGroups(p=>p.map((g,xi)=>xi===gi?{...g,label:v}:g));
+  const updCItem=(gi,ii,f,v)=>setContactGroups(p=>p.map((g,xi)=>xi===gi?{...g,items:g.items.map((it,xii)=>xii===ii?{...it,[f]:v}:it)}:g));
+  const pickVendorForContact=(gi,ii,vendorId)=>setContactGroups(p=>p.map((g,xi)=>{
+    if(xi!==gi) return g;
+    return {...g, items:g.items.map((it,xii)=>{
+      if(xii!==ii) return it;
+      const v = (vendors||[]).find(x=>x.id===vendorId);
+      if(!v) return {...it, vendorSearchOpen:false};
+      return {...it, name:v.name||v.company||"", contact:v.contactPhone||"", address:v.address||"", city: it.city||v.city||"", vendorSearchOpen:false};
+    })};
+  }));
+  const addCItem=(gi)=>setContactGroups(p=>p.map((g,xi)=>xi===gi?{...g,items:[...g.items,{id:Date.now(),city:"",name:"",contact:"",address:"",vendorSearchOpen:false}]}:g));
+  const removeCItem=(gi,ii)=>setContactGroups(p=>p.map((g,xi)=>xi===gi?{...g,items:g.items.filter((_,xii)=>xii!==ii)}:g));
+  const addCGroup=()=>setContactGroups(p=>[...p,{id:Date.now(),label:`Section ${p.length+1}`,items:[{id:Date.now()+1,city:"",name:"",contact:"",address:"",vendorSearchOpen:false}]}]);
+  const removeCGroup=(gi)=>setContactGroups(p=>p.filter((_,xi)=>xi!==gi));
   const [contactNotes,setContactNotes]=useState("");
 
   // Real version history, same pattern as the rest of the Document Chain
@@ -109,7 +131,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
   const currentContent = () => ({
     docDate, recipient, agentCo, agentCity, subject, intro, footer, metaNotes,
     hotels, hotelNotes, flights, flightNotes, trains, trainNotes, transport, transportNotes,
-    guides, guideNotes, otherGroups, programme, progNotes, mealDays, mealNotes, contacts, contactNotes,
+    guides, guideNotes, otherGroups, programme, progNotes, mealDays, mealNotes, contactGroups, contactNotes,
     sectionLabels, printOrder, printEnabled, pulledFromCostSheetVersion,
   });
 
@@ -140,7 +162,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
     if (c.progNotes!==undefined) setProgNotes(c.progNotes);
     if (c.mealDays) setMealDays(c.mealDays);
     if (c.mealNotes!==undefined) setMealNotes(c.mealNotes);
-    if (c.contacts) setContacts(c.contacts);
+    if (c.contactGroups) setContactGroups(c.contactGroups);
     if (c.contactNotes!==undefined) setContactNotes(c.contactNotes);
     if (c.printOrder) setPrintOrder(c.printOrder);
     if (c.printEnabled) setPrintEnabled(c.printEnabled);
@@ -177,7 +199,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
       const pulledMeals = extractItineraryFromCostSheetDays(source.days);
       if (pulledHotels.length > 0) setHotels(pulledHotels);
       if (pulledProgramme.length > 0) setProgramme(pulledProgramme);
-      if (pulledTransport) setTransport(pulledTransport);
+      if (pulledTransport.length > 0) setTransport(pulledTransport.map((t, i) => ({ id: i + 1, ...t })));
       // extractItineraryFromCostSheetDays is shared with Quotation, which
       // still expects/prints "Included" verbatim -- so the "At Hotel"
       // wording change (direct instruction, scoped to Tour Briefing
@@ -264,12 +286,22 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
       ] : [];
       case "trains": return trains.some(t=>t.sector) ? [
         heading(sectionLabels.trains),
-        { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Train No.</th><th>Name</th><th>Time</th><th>Coach</th></tr>`,
-          rowsHTML: trains.filter(t=>t.sector).map(t=>`<tr><td>${t.date}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td><td>${t.coach}</td></tr>`) },
+        { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Train No.</th><th>Name</th><th>Time</th></tr>`,
+          rowsHTML: trains.filter(t=>t.sector).map(t=>`<tr><td>${t.date}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td></tr>`) },
         trainNotes?`<div style="font-style:italic;color:#555">${trainNotes}</div>`:"",
       ] : [];
-      case "transport": return transport ? [heading(sectionLabels.transport)+`<p style="margin-bottom:10pt">${transport}</p>${transportNotes?`<div style="font-style:italic;color:#555">${transportNotes}</div>`:""}`] : [];
-      case "guides": return guides.some(g=>g.name) ? [`${heading(sectionLabels.guides)}<div>${guides.filter(g=>g.name).map(g=>`<p style="margin-bottom:3pt">${g.name}${g.phone?" ("+g.phone+")":""}${g.area?" for "+g.area:""}</p>`).join("")}</div>${guideNotes?`<div style="font-style:italic;color:#555">${guideNotes}</div>`:""}`] : [];
+      case "transport": return transport.some(t=>t.description) ? [
+        heading(sectionLabels.transport),
+        { type:"table", headerHTML:`<tr><th>Description</th><th>Quantity</th></tr>`,
+          rowsHTML: transport.filter(t=>t.description).map(t=>`<tr><td>${t.description}</td><td>${t.quantity||""}</td></tr>`) },
+        transportNotes?`<div style="font-style:italic;color:#555">${transportNotes}</div>`:"",
+      ] : [];
+      case "guides": return guides.some(g=>g.name) ? [
+        heading(sectionLabels.guides),
+        { type:"table", headerHTML:`<tr><th>Description</th><th>Name</th><th>Contact</th></tr>`,
+          rowsHTML: guides.filter(g=>g.name).map(g=>`<tr><td>${g.description||""}</td><td>${g.name}</td><td>${g.contact||""}</td></tr>`) },
+        guideNotes?`<div style="font-style:italic;color:#555">${guideNotes}</div>`:"",
+      ] : [];
       // Other Services, restructured into named groups -- each group
       // prints as its own labeled table (day/date/description only),
       // same Date-and-Day display convention as Programme (spec 1.5).
@@ -307,12 +339,18 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
           mealNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${mealNotes}</div>`:"",
         ] : [];
       }
-      case "contacts": return contacts.some(c=>c.contactNo||c.city) ? [
-        heading(sectionLabels.contacts),
-        { type:"table", headerHTML:`<tr><th>Date</th><th>City</th><th>Type</th><th>Contact No.</th><th>Address</th></tr>`,
-          rowsHTML: contacts.filter(c=>c.contactNo||c.city).map(c=>`<tr><td>${c.date||""}</td><td>${c.city||""}</td><td>${c.vendorType==="Other"?c.vendorTypeOther||"Other":c.vendorType}</td><td>${c.contactNo||""}</td><td>${c.address||""}</td></tr>`) },
-        contactNotes?`<div style="font-style:italic;color:#555">${contactNotes}</div>`:"",
-      ] : [];
+      case "contacts": {
+        const activeCGroups = contactGroups.filter(g=>g.items.some(it=>it.name||it.city));
+        if (activeCGroups.length === 0) return [];
+        const blocks = [];
+        activeCGroups.forEach(g => {
+          blocks.push(heading(g.label));
+          blocks.push({ type:"table", headerHTML:`<tr><th>City</th><th>Name</th><th>Contact</th><th>Address</th></tr>`,
+            rowsHTML: g.items.filter(it=>it.name||it.city).map(it=>`<tr><td>${it.city||""}</td><td>${it.name||""}</td><td>${it.contact||""}</td><td>${it.address||""}</td></tr>`) });
+        });
+        if (contactNotes) blocks.push(`<div style="font-style:italic;color:#555">${contactNotes}</div>`);
+        return blocks;
+      }
       default: return [];
     }
   };
@@ -431,24 +469,38 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
               {activeTab==="meta"&&<div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>{[["Date",docDate,setDocDate],["Recipient Name",recipient,setRecipient],["Agent Company",agentCo,setAgentCo],["Country / City",agentCity,setAgentCity]].map(([l,v,s])=><div key={l}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={v} onChange={e=>s(e.target.value)}/></div>)}<div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Subject</div><input style={inp} value={subject} onChange={e=>setSubject(e.target.value)}/></div><div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Opening Line</div><input style={inp} value={intro} onChange={e=>setIntro(e.target.value)}/></div><div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Footer</div><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={footer} onChange={e=>setFooter(e.target.value)}/></div></div><NoteField val={metaNotes} set={setMetaNotes}/></div>}
               {activeTab==="hotels"&&<div><SectionLabelField id="hotels"/>{hotels.map((h,i)=><div key={h.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 2fr 1fr 1fr auto",gap:6}}>{[["Check In","checkIn","date"],["Check Out","checkOut","date"],["City","city","text"],["Hotel Name","hotelName","text"],["Rooms","rooms","text"],["Status","bookingStatus","statussel"]].map(([l,f,t])=><div key={f}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div>{t==="statussel"?<select style={inp} value={h[f]||"Requested"} onChange={e=>updH(i,f,e.target.value)}>{["Requested","Confirmed","Waitlisted","Sold Out","Cancelled"].map(s=><option key={s}>{s}</option>)}</select>:<input style={inp} type={t} value={h[f]||""} onChange={e=>updH(i,f,e.target.value)}/>}</div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setHotels(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setHotels(p=>[...p,{id:Date.now(),checkIn:"",checkOut:"",city:"",hotelName:"",rooms:"",bookingStatus:"Requested"}])}>+ Add Hotel</button><NoteField val={hotelNotes} set={setHotelNotes}/></div>}
               {activeTab==="flights"&&<div><SectionLabelField id="flights"/>{flights.map((f,i)=><div key={f.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:8,marginBottom:8,background:G.gray50,padding:10,borderRadius:8,border:`1px solid ${G.gray200}`}}>{[["Date","date","date"],["Sector","sector","text"],["Flight No.","flightNo","text"],["Time","time","text"]].map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={t} value={f[k]||""} onChange={e=>updF(i,k,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setFlights(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setFlights(p=>[...p,{id:Date.now(),date:"",sector:"",flightNo:"",time:""}])}>+ Add Flight</button><NoteField val={flightNotes} set={setFlightNotes}/></div>}
-              {activeTab==="trains"&&<div><SectionLabelField id="trains"/>{trains.map((t,i)=><div key={t.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr 1fr auto",gap:6}}>{[["Date","date","date"],["Sector","sector","text"],["Train No.","trainNo","text"],["Train Name","trainName","text"],["Time","time","text"],["Coach / Class","coach","text"]].map(([l,f,tp])=><div key={f}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={tp} value={t[f]||""} onChange={e=>updT(i,f,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setTrains(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setTrains(p=>[...p,{id:Date.now(),date:"",sector:"",trainNo:"",trainName:"",time:"",coach:""}])}>+ Add Train</button><NoteField val={trainNotes} set={setTrainNotes}/></div>}
-              {activeTab==="transport"&&<div><SectionLabelField id="transport"/><div style={{fontSize:11,color:G.gray600,marginBottom:6}}>Describe the transport arrangement for this tour</div><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={transport} onChange={e=>setTransport(e.target.value)} placeholder="e.g. 05 Innova for Kashmir & Ladakh / 01 Aircon Coach for Delhi"/><NoteField val={transportNotes} set={setTransportNotes}/></div>}
+              {activeTab==="trains"&&<div><SectionLabelField id="trains"/>{trains.map((t,i)=><div key={t.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6}}>{[["Date","date","date"],["Sector","sector","text"],["Train No.","trainNo","text"],["Train Name","trainName","text"],["Time","time","text"]].map(([l,f,tp])=><div key={f}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={tp} value={t[f]||""} onChange={e=>updT(i,f,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setTrains(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setTrains(p=>[...p,{id:Date.now(),date:"",sector:"",trainNo:"",trainName:"",time:"",coach:""}])}>+ Add Train</button><NoteField val={trainNotes} set={setTrainNotes}/></div>}
+              {activeTab==="transport"&&<div>
+                <SectionLabelField id="transport"/>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:8}}>
+                  <thead><tr style={{background:G.navy}}>{["Description","Quantity",""].map(h=><th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                  <tbody>{transport.map((t,i)=><tr key={t.id} style={{background:i%2===0?G.white:G.gray50}}>
+                    <td style={{padding:"3px 4px",minWidth:220}}><input style={inp} value={t.description||""} onChange={e=>updTr(i,"description",e.target.value)} placeholder="e.g. Innova for Kashmir & Ladakh"/></td>
+                    <td style={{padding:"3px 4px",width:90}}><input style={inp} value={t.quantity||""} onChange={e=>updTr(i,"quantity",e.target.value)} placeholder="e.g. 05"/></td>
+                    <td style={{padding:"3px 4px"}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setTransport(p=>p.filter((_,xi)=>xi!==i))}>✕</span></td>
+                  </tr>)}</tbody>
+                </table>
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setTransport(p=>[...p,{id:Date.now(),description:"",quantity:""}])}>+ Add Transport</button>
+                <NoteField val={transportNotes} set={setTransportNotes}/>
+              </div>}
               {activeTab==="guides"&&<div>
                 <SectionLabelField id="guides"/>
                 {activeFacilitators.length===0 && <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:6,padding:"8px 12px",fontSize:11,color:"#92400E",marginBottom:10}}>No facilitators in the master list yet — add them under Master Data → Tour Facilitators, then they'll appear here to select.</div>}
-                {guides.map((g,i)=><div key={g.id} style={{display:"grid",gridTemplateColumns:"1fr 1.3fr 1fr 1fr auto",gap:8,marginBottom:8,background:G.gray50,padding:10,borderRadius:8,border:`1px solid ${G.gray200}`}}>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Role</div><input style={inp} value={g.role||""} onChange={e=>updG(i,"role",e.target.value)} placeholder="e.g. Chinese Speaking Guide"/></div>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Facilitator</div>
-                    <select style={inp} value={g.facilitatorId||""} onChange={e=>updG(i,"facilitatorId",e.target.value)}>
-                      <option value="">Select...</option>
-                      {activeFacilitators.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
-                  </div>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Phone</div><input style={inp} value={g.phone||""} onChange={e=>updG(i,"phone",e.target.value)}/></div>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Area / Cities</div><input style={inp} value={g.area||""} onChange={e=>updG(i,"area",e.target.value)}/></div>
-                  <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setGuides(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div>
-                </div>)}
-                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setGuides(p=>[...p,{id:Date.now(),role:"",facilitatorId:"",name:"",phone:"",area:""}])}>+ Add Tour Facilitator</button>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:8}}>
+                  <thead><tr style={{background:G.navy}}>{["Description","Name","Contact",""].map(h=><th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                  <tbody>{guides.map((g,i)=><tr key={g.id} style={{background:i%2===0?G.white:G.gray50}}>
+                    <td style={{padding:"3px 4px",minWidth:140}}><input style={inp} value={g.description||""} onChange={e=>updG(i,"description",e.target.value)} placeholder="e.g. Chinese Speaking Guide"/></td>
+                    <td style={{padding:"3px 4px",minWidth:150}}>
+                      <select style={inp} value={g.facilitatorId||""} onChange={e=>updG(i,"facilitatorId",e.target.value)}>
+                        <option value="">Select...</option>
+                        {activeFacilitators.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    </td>
+                    <td style={{padding:"3px 4px",minWidth:110}}><input style={inp} value={g.contact||""} onChange={e=>updG(i,"contact",e.target.value)}/></td>
+                    <td style={{padding:"3px 4px"}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setGuides(p=>p.filter((_,xi)=>xi!==i))}>✕</span></td>
+                  </tr>)}</tbody>
+                </table>
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setGuides(p=>[...p,{id:Date.now(),description:"",facilitatorId:"",name:"",contact:""}])}>+ Add Tour Facilitator</button>
                 <NoteField val={guideNotes} set={setGuideNotes}/>
               </div>}
               {activeTab==="others"&&<div>
@@ -471,7 +523,7 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
                 <button className="btn btn-ghost" style={{fontSize:11}} onClick={addOGroup}>+ Add Section</button>
                 <NoteField val={otherNotes} set={setOtherNotes}/>
               </div>}
-              {activeTab==="programme"&&<div><SectionLabelField id="programme"/>{programme.map((p,i)=><div key={p.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:8}}>{[["Date","date","text"],["Day","day","text"],["Breakfast","breakfast","text"],["Lunch","lunch","text"],["Dinner","dinner","text"]].map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={t} value={p[k]||""} onChange={e=>updP(i,k,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setProgramme(prev=>prev.filter((_,xi)=>xi!==i))}>✕</span></div></div><div style={{marginBottom:6}}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Itinerary (movement for the day)</div><textarea style={{...inp,minHeight:48,resize:"vertical"}} value={p.itinerary||""} onChange={e=>updP(i,"itinerary",e.target.value)} placeholder="e.g. DELHI – SRINAGAR (BY 6E 5339 AT 09:45 / 11:20)"/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Programme Details</div><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={p.programme||""} onChange={e=>updP(i,"programme",e.target.value)} placeholder="Morning After Breakfast...&#10;• Point 1&#10;• Point 2&#10;Overnight Stay at Hotel"/><div style={{fontSize:9,color:G.gray400,marginTop:3}}>Tip: start a line with • for bullet points</div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setProgramme(p=>[...p,{id:Date.now(),date:"",day:"",itinerary:"",programme:"",breakfast:"",lunch:"",dinner:""}])}>+ Add Day</button><NoteField val={progNotes} set={setProgNotes}/></div>}
+              {activeTab==="programme"&&<div><SectionLabelField id="programme"/>{programme.map((p,i)=><div key={p.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:8}}>{[["Date","date","date"],["Day","day","text"],["Breakfast","breakfast","text"],["Lunch","lunch","text"],["Dinner","dinner","text"]].map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><input style={inp} type={t} value={p[k]||""} onChange={e=>updP(i,k,e.target.value)}/></div>)}<div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setProgramme(prev=>prev.filter((_,xi)=>xi!==i))}>✕</span></div></div><div style={{marginBottom:6}}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Itinerary (movement for the day)</div><textarea style={{...inp,minHeight:48,resize:"vertical"}} value={p.itinerary||""} onChange={e=>updP(i,"itinerary",e.target.value)} placeholder="e.g. DELHI – SRINAGAR (BY 6E 5339 AT 09:45 / 11:20)"/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Programme Details</div><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={p.programme||""} onChange={e=>updP(i,"programme",e.target.value)} placeholder="Morning After Breakfast...&#10;• Point 1&#10;• Point 2&#10;Overnight Stay at Hotel"/><div style={{fontSize:9,color:G.gray400,marginTop:3}}>Tip: start a line with • for bullet points</div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setProgramme(p=>[...p,{id:Date.now(),date:"",day:"",itinerary:"",programme:"",breakfast:"",lunch:"",dinner:""}])}>+ Add Day</button><NoteField val={progNotes} set={setProgNotes}/></div>}
               {activeTab==="mealplan"&&<div>
                 <SectionLabelField id="mealplan"/>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:8}}>
@@ -490,7 +542,41 @@ export default function TourBriefingSheet({ query, template, facilitators, onClo
                 <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setMealDays(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",itinerary:"",breakfast:"",lunch:"",dinner:"",notes:""}])}>+ Add Day</button>
                 <NoteField val={mealNotes} set={setMealNotes}/>
               </div>}
-              {activeTab==="contacts"&&<div><SectionLabelField id="contacts"/>{contacts.map((c,i)=><div key={c.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 2fr auto",gap:6}}><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Date</div><input style={inp} type="date" value={c.date||""} onChange={e=>updC(i,"date",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>City</div><input style={inp} value={c.city||""} onChange={e=>updC(i,"city",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vendor Type</div><select style={inp} value={c.vendorType} onChange={e=>updC(i,"vendorType",e.target.value)}>{VENDOR_TYPES_TBS.map(t=><option key={t}>{t}</option>)}</select>{c.vendorType==="Other"&&<input style={{...inp,marginTop:4}} value={c.vendorTypeOther||""} onChange={e=>updC(i,"vendorTypeOther",e.target.value)} placeholder="Specify..."/>}</div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Contact No.</div><input style={inp} value={c.contactNo||""} onChange={e=>updC(i,"contactNo",e.target.value)}/></div><div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Address</div><input style={inp} value={c.address||""} onChange={e=>updC(i,"address",e.target.value)}/></div><div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setContacts(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div></div></div>)}<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setContacts(p=>[...p,{id:Date.now(),date:"",city:"",vendorType:"Hotel",vendorTypeOther:"",contactNo:"",address:""}])}>+ Add Contact</button><NoteField val={contactNotes} set={setContactNotes}/></div>}
+              {activeTab==="contacts"&&<div>
+                {contactGroups.map((g,gi)=><div key={g.id} style={{border:`1px solid ${G.gray200}`,borderRadius:8,padding:12,marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Section Label</div>
+                      <input style={inp} value={g.label} onChange={e=>updCGroupLabel(gi,e.target.value)}/>
+                    </div>
+                    {contactGroups.length>1 && <span style={{cursor:"pointer",color:G.gray400,fontSize:13,paddingTop:14}} onClick={()=>removeCGroup(gi)}>✕ Remove section</span>}
+                  </div>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:8}}>
+                    <thead><tr style={{background:G.navy}}>{["City","Name","Contact","Address",""].map(h=><th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                    <tbody>{g.items.map((it,ii)=><tr key={it.id} style={{background:ii%2===0?G.white:G.gray50}}>
+                      <td style={{padding:"3px 4px",width:100}}><input style={inp} value={it.city||""} onChange={e=>updCItem(gi,ii,"city",e.target.value)}/></td>
+                      <td style={{padding:"3px 4px",minWidth:150,position:"relative"}}>
+                        <div style={{display:"flex",gap:3}}>
+                          <input style={inp} value={it.name||""} onChange={e=>updCItem(gi,ii,"name",e.target.value)}/>
+                          <button type="button" title="Search Vendor Master" onClick={()=>updCItem(gi,ii,"vendorSearchOpen",!it.vendorSearchOpen)}
+                            style={{border:`1px solid ${G.gray200}`,background:G.white,color:G.gray400,borderRadius:4,fontSize:10,padding:"0 6px",cursor:"pointer"}}>🔍</button>
+                        </div>
+                        {it.vendorSearchOpen && <select autoFocus style={{...inp,position:"absolute",zIndex:5,marginTop:2}} size={6}
+                          onChange={e=>pickVendorForContact(gi,ii,e.target.value)} onBlur={()=>updCItem(gi,ii,"vendorSearchOpen",false)}>
+                          <option value="">Select a vendor...</option>
+                          {(vendors||[]).filter(v=>v.active!==false).map(v=><option key={v.id} value={v.id}>{v.name} ({v.type})</option>)}
+                        </select>}
+                      </td>
+                      <td style={{padding:"3px 4px",minWidth:110}}><input style={inp} value={it.contact||""} onChange={e=>updCItem(gi,ii,"contact",e.target.value)}/></td>
+                      <td style={{padding:"3px 4px",minWidth:150}}><input style={inp} value={it.address||""} onChange={e=>updCItem(gi,ii,"address",e.target.value)}/></td>
+                      <td style={{padding:"3px 4px"}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>removeCItem(gi,ii)}>✕</span></td>
+                    </tr>)}</tbody>
+                  </table>
+                  <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>addCItem(gi)}>+ Add Contact</button>
+                </div>)}
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={addCGroup}>+ Add Section</button>
+                <NoteField val={contactNotes} set={setContactNotes}/>
+              </div>}
             </div>
           </>
         ) : (

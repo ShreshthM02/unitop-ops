@@ -4,9 +4,9 @@ import TourBriefingSheet from '../components/TourBriefingSheet.jsx';
 
 const fakeQuery = { id: 'UTQ-2026-090', groupName: 'Facilitator Test Group', tourFileId: 'TF-2026-090' };
 const facilitators = [
-  { id: 'FAC-001', name: 'Prithvi', phone: '+91-9800000001', email: '', languages: 'English, Hindi', areas: 'Bodhgaya, Rajgir', notes: '', active: true },
-  { id: 'FAC-002', name: 'Ashutosh', phone: '+91-9800000002', email: '', languages: 'English, Thai', areas: 'Bodhgaya', notes: '', active: true },
-  { id: 'FAC-003', name: 'Retired Guide', phone: '', email: '', languages: '', areas: '', notes: '', active: false },
+  { id: 'FAC-001', name: 'Prithvi', contactPhone: '+91-9800000001', email: '', languages: 'English, Hindi', areas: 'Bodhgaya, Rajgir', notes: '', active: true },
+  { id: 'FAC-002', name: 'Ashutosh', contactPhone: '+91-9800000002', email: '', languages: 'English, Thai', areas: 'Bodhgaya', notes: '', active: true },
+  { id: 'FAC-003', name: 'Retired Guide', contactPhone: '', email: '', languages: '', areas: '', notes: '', active: false },
 ];
 
 // The preview HTML is now built asynchronously (buildPaginatedLetterheadDocument
@@ -42,13 +42,12 @@ describe('TourBriefingSheet: facilitator selection (replaces free-text name)', (
     expect(options).not.toContain('Retired Guide');
   });
 
-  it('selecting a facilitator auto-fills phone and area from the master record', () => {
+  it('selecting a facilitator auto-fills Contact from the master record\'s real contactPhone field (2026-08-27: previously read a "phone" field that never matched real vendor data\'s "contactPhone", so this silently never worked -- "Area" is no longer part of the 3-field Description/Name/Contact spec, so it is not auto-filled anymore)', () => {
     render(<TourBriefingSheet query={fakeQuery} facilitators={facilitators} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Tour Facilitators'));
     const select = document.querySelector('select');
     fireEvent.change(select, { target: { value: 'FAC-001' } });
     expect(screen.getByDisplayValue('+91-9800000001')).toBeTruthy();
-    expect(screen.getByDisplayValue('Bodhgaya, Rajgir')).toBeTruthy();
   });
 
   it('the selected facilitator\'s name reaches the print output (via the linked id, not free text)', async () => {

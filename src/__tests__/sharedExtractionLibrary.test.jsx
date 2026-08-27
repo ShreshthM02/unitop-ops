@@ -105,16 +105,19 @@ describe('extractTourBriefingProgrammeFromCostSheetDays: day/date/movement plus 
   });
 });
 
-describe('extractTourBriefingTransportSummary: a free-text summary line, not a table', () => {
-  it('joins vehicle+sector pairs into one readable line', () => {
+describe('extractTourBriefingTransportSummary: Description/Quantity table rows (2026-08-27 -- was a single joined free-text line, restructured to match Transport becoming a real multi-row table)', () => {
+  it('maps each transport entry to a {description, quantity} row, quantity left blank for the user to fill in', () => {
     const result = extractTourBriefingTransportSummary([
       { vehicleType: 'Mini Bus', sector: 'DELHI' },
       { vehicleType: 'Large Coach', sector: 'SXR' },
     ]);
-    expect(result).toBe('Mini Bus for DELHI; Large Coach for SXR');
+    expect(result).toEqual([
+      { description: 'Mini Bus for DELHI', quantity: '' },
+      { description: 'Large Coach for SXR', quantity: '' },
+    ]);
   });
-  it('returns an empty string for no transports', () => {
-    expect(extractTourBriefingTransportSummary([])).toBe('');
-    expect(extractTourBriefingTransportSummary(undefined)).toBe('');
+  it('returns an empty array for no transports', () => {
+    expect(extractTourBriefingTransportSummary([])).toEqual([]);
+    expect(extractTourBriefingTransportSummary(undefined)).toEqual([]);
   });
 });

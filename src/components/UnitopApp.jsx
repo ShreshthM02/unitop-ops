@@ -785,7 +785,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
-        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} vendors={vendors} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
