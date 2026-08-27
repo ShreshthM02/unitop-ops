@@ -50,7 +50,7 @@ describe('Tour Facilitator Report', () => {
 });
 
 describe('Payment Receipt: printing now logs to the audit trail (the one real gap found)', () => {
-  it('calls logAudit when the Receipt button is clicked', async () => {
+  it('calls logAudit when the receipt is actually printed from the review modal', async () => {
     const { default: EnhancedPaymentTracker } = await import('../components/EnhancedPaymentTracker.jsx');
     const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
     const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', amount: '5000', inCurrency: 'INR', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001' }], outgoing: [] } };
@@ -60,6 +60,8 @@ describe('Payment Receipt: printing now logs to the audit trail (the one real ga
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() } });
     mockDb.from.mockClear();
     fireEvent.click(screen.getByText(/🖨 Receipt/));
+    expect(mockDb.from).not.toHaveBeenCalledWith('query_audit'); // opening the review modal alone must not print/log yet
+    fireEvent.click(screen.getByText('🖨 Print'));
     expect(mockDb.from).toHaveBeenCalledWith('query_audit');
     openSpy.mockRestore();
   });
@@ -71,14 +73,19 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     agentCompany: 'ABC Travels', destination: 'Kerala', paxDisplay: '6',
     travelDate: '2026-09-01', travelDateTo: '2026-09-10',
   };
-  const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', amount: '5000', inCurrency: 'INR', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001' }], outgoing: [] } };
+  const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', amount: '5000', inCurrency: 'USD', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001' }], outgoing: [] } };
 
-  function printAndCapture() {
+  function openModalAndPrint({ toggleSignatureOff, toggleStampOn, editField } = {}) {
     let captured = {};
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: (html) => { captured.html = html; }, close: () => {} } });
-    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    const { unmount } = render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     fireEvent.click(screen.getByText(/🖨 Receipt/));
+    if (toggleSignatureOff) fireEvent.click(screen.getByText('Include client signature line'));
+    if (toggleStampOn) fireEvent.click(screen.getByText('Apply digital stamp'));
+    if (editField) fireEvent.change(screen.getByDisplayValue(editField.from), { target: { value: editField.to } });
+    fireEvent.click(screen.getByText('🖨 Print'));
     openSpy.mockRestore();
+    unmount(); // each call renders a fresh instance -- unmount so a second call in the same test doesn't leave two "🖨 Receipt" buttons in the DOM
     return captured.html;
   }
 
@@ -88,7 +95,7 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
   });
 
   it('uses A4 portrait, not the old A5 page size', () => {
-    const html = printAndCapture();
+    const html = openModalAndPrint();
     expect(html).toMatch(/size:\s*A4\s+portrait/);
     expect(html).not.toContain('size:A5');
   });
@@ -101,17 +108,56 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     // The company name legitimately still appears once, in the small
     // footer disclaimer and the signature block -- this only checks the
     // old standalone heading class is gone.
-    const html = printAndCapture();
+    const html = openModalAndPrint();
     expect(html).not.toContain('lh-name');
   });
 
-  it('Received From shows Client / Agency, Tour Name | date range in dd/mm/yyyy, and Tour File No. | Sector | Pax as three distinct lines', () => {
-    const html = printAndCapture();
-    // 1.3.1 Client / Agency
+  it('does not leak unscoped table/th/td/tr rules into the shared letterhead’s own wrapper table', () => {
+    // Every receipt-specific selector must be scoped under .rcpt -- a bare
+    // `table{...}` etc would apply document-wide, including to the outer
+    // .lh-doc wrapper table buildLetterheadDocument itself assembles the
+    // page from.
+    const html = openModalAndPrint();
+    expect(html).not.toContain('\n  table{');
+    expect(html).not.toContain('\n  th{');
+    expect(html).not.toContain('\n  td{');
+    expect(html).toContain('.rcpt table{');
+    expect(html).toContain('.rcpt th{');
+    expect(html).toContain('.rcpt td{');
+  });
+
+  it('Received From is pre-filled with Client / Agency, Tour Name | date range in dd/mm/yyyy, and Tour File No. | Sector | Pax as three distinct, editable lines -- and the headline does not duplicate the tour name shown below it', () => {
+    const html = openModalAndPrint();
+    // 1.3.1 Client / Agency -- client only, no groupName/tour-name fallback
     expect(html).toContain('Sharma Family / ABC Travels');
+    expect((html.match(/Sharma Kerala Tour/g) || []).length).toBe(1); // appears once, not duplicated into the headline too
     // 1.3.2 Tour Name | {Arrival Date} - {Departure Date} in dd/mm/yyyy
     expect(html).toContain('Sharma Kerala Tour | 01/09/2026 - 10/09/2026');
     // 1.3.3 Tour File No. | Sector | Pax
     expect(html).toContain('TF-1 | Kerala | 6');
+  });
+
+  it('Received From fields are pre-filled but editable before printing', () => {
+    const html = openModalAndPrint({ editField: { from: 'Sharma Family / ABC Travels', to: 'Edited Client Name' } });
+    expect(html).toContain('Edited Client Name');
+    expect(html).not.toContain('Sharma Family / ABC Travels');
+  });
+
+  it('shows amount as currency then amount, with no separate Currency row', () => {
+    const html = openModalAndPrint();
+    expect(html).toContain('USD 5,000.00');
+    expect(html).not.toContain('<td>Currency</td>');
+    expect(html).not.toContain('₹ 5,000.00'); // was hardcoded as INR regardless of the entry's real currency
+  });
+
+  it('client signature line and digital stamp are independent toggles, both off/on by default respectively', () => {
+    const defaultHtml = openModalAndPrint();
+    expect(defaultHtml).toContain('Client Signature');
+    expect(defaultHtml).not.toContain('alt="Digital Stamp"');
+
+    const softCopyHtml = openModalAndPrint({ toggleSignatureOff: true, toggleStampOn: true });
+    expect(softCopyHtml).not.toContain('Client Signature');
+    expect(softCopyHtml).toContain('alt="Digital Stamp"');
+    expect(softCopyHtml).toContain('For Unitop'); // Unitop's own signature block always stays
   });
 });

@@ -113,7 +113,6 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
     {icon:"🗺",label:"Itinerary",         panel:"itinerary"},
     {icon:"📋",label:"Quotation",         panel:"quotation"},
     {icon:"🧾",label:"Invoices",          panel:"proforma"},
-    {icon:"₹", label:"Payments",          panel:"payments"},
     {icon:"🎫",label:"Exchange Orders",   panel:"voucher"},
     {icon:"📋",label:"Tour Briefing Sheet",panel:"tourbriefing"},
     {icon:"📁",label:"Uploads",            panel:"docregistry"},
