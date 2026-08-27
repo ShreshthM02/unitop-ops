@@ -50,7 +50,7 @@ describe('TourBriefingSheet: real versioned persistence (Phase 0 of the Document
 
   it('loading a previously saved version populates recipient and subject into the draft', async () => {
     const versionRows = [
-      { version: 1, content: { recipient: 'Saved Recipient', subject: 'SAVED SUBJECT LINE', hotels: [], flights: [], trains: [], guides: [], otherSvcs: [], programme: [], contacts: [] }, is_final: false },
+      { version: 1, content: { recipient: 'Saved Recipient', subject: 'SAVED SUBJECT LINE', hotels: [], flights: [], trains: [], guides: [], otherGroups: [], programme: [], mealDays: [], contacts: [] }, is_final: false },
     ];
     const db = {
       from: vi.fn((t) => {

@@ -96,12 +96,12 @@ describe('extractTourBriefingHotelsFromCostSheetDays: consolidates by hotel with
   });
 });
 
-describe('extractTourBriefingProgrammeFromCostSheetDays: day/date/movement plus meal Included flags', () => {
+describe('extractTourBriefingProgrammeFromCostSheetDays: day/date/movement plus meal "At Hotel" flags (2026-08-27: was "Included", changed to "At Hotel" -- TBS-exclusive, so no shared-function collision with Quotation to worry about here)', () => {
   it('maps date, day, movement (as itinerary), and meal flags, leaving the narrative programme field blank', () => {
     const result = extractTourBriefingProgrammeFromCostSheetDays([
       { date: '2026-08-01', day: 'Day 1', movement: 'DEL-SXR', mealPlan: 'B/D' },
     ]);
-    expect(result[0]).toMatchObject({ date: '2026-08-01', day: 'Day 1', itinerary: 'DEL-SXR', programme: '', breakfast: 'Included', lunch: '', dinner: 'Included' });
+    expect(result[0]).toMatchObject({ date: '2026-08-01', day: 'Day 1', itinerary: 'DEL-SXR', programme: '', breakfast: 'At Hotel', lunch: '', dinner: 'At Hotel' });
   });
 });
 

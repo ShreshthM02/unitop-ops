@@ -70,7 +70,7 @@ describe('TourBriefingSheet: Meal Plan content fixes (1.1-1.4)', () => {
     expect(await screen.findByText('Section Notes (prints only if filled)')).toBeTruthy();
   });
 
-  it('1.2 + 1.4: the print output omits the Notes column when no day has one, and centers the heading', async () => {
+  it('1.2 + 6: the print output omits the Notes column when no day has one, and the heading matches every other section\'s plain style (no longer centered/standalone)', async () => {
     let captured = {};
     const realOpen = window.open;
     window.open = () => ({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
@@ -82,8 +82,29 @@ describe('TourBriefingSheet: Meal Plan content fixes (1.1-1.4)', () => {
     fireEvent.click(await screen.findByText('📕 PDF'));
     await waitFor(() => expect(captured.html).toBeTruthy());
     expect(captured.html).not.toContain('<th>Notes</th>');
-    expect(captured.html).toMatch(/text-align:center;font-weight:700;font-size:12pt[^>]*>Meal Plan</);
+    expect(captured.html).toContain('font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">Meal Plan:');
+    expect(captured.html).not.toContain('text-align:center;font-weight:700;font-size:12pt');
     window.open = realOpen;
+  });
+
+  it('1.5: Meal Plan\'s Date & Day column matches Programme\'s combined display, not two separate columns', async () => {
+    let captured = {};
+    const realOpen = window.open;
+    window.open = () => ({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
+    await openMealPlanTab();
+    const breakfastInputs = await screen.findAllByPlaceholderText('Venue');
+    fireEvent.change(breakfastInputs[0], { target: { value: 'Hotel Restaurant' } });
+    fireEvent.click(screen.getAllByText(/⬇ Export/)[0]);
+    fireEvent.click(await screen.findByText('📕 PDF'));
+    await waitFor(() => expect(captured.html).toBeTruthy());
+    expect(captured.html).toContain('<th>DATE & DAY</th>');
+    expect(captured.html).not.toContain('<th>Day</th>');
+    window.open = realOpen;
+  });
+
+  it('6: has an editable Section Label defaulting to "Meal Plan"', async () => {
+    await openMealPlanTab();
+    expect(await screen.findByDisplayValue('Meal Plan')).toBeTruthy();
   });
 
   it('1.2: the Notes column appears when at least one day has a note', async () => {

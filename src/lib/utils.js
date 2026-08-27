@@ -709,7 +709,7 @@ export function extractTourBriefingProgrammeFromCostSheetDays(csDays) {
     return {
       id: i + 1, date: d.date || "", day: d.day || "",
       itinerary: d.movement || "", programme: "",
-      breakfast: flags.breakfast ? "Included" : "", lunch: flags.lunch ? "Included" : "", dinner: flags.dinner ? "Included" : "",
+      breakfast: flags.breakfast ? "At Hotel" : "", lunch: flags.lunch ? "At Hotel" : "", dinner: flags.dinner ? "At Hotel" : "",
     };
   });
 }
