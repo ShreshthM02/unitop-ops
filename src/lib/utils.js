@@ -1158,6 +1158,61 @@ export async function markTourBriefingVersionFinal(db, queryId, version) {
   }
 }
 
+// ─── EDITOR DOCUMENTS (Phase 1, 2026-08-28) -- see the migration
+// (create_editor_documents) for the full design rationale: a free-form
+// A4 rich-text document, closest to a Word page, saved with a
+// user-given name. Unlike every other document here, a query can have
+// MULTIPLE independently-named Editor documents -- doc_key (generated
+// once at creation, e.g. crypto.randomUUID()) is the stable grouping
+// key for one named document's own version history, the same role
+// query_id + doc_type plays for Invoices. ──────────────────────────────
+
+export function mapDbEditorDocumentRow(row) {
+  return {
+    id: row.id, queryId: row.query_id, docKey: row.doc_key, name: row.name,
+    version: row.version, isFinal: row.is_final, contentHtml: row.content_html,
+    createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+// All versions of every Editor document for a query, oldest first --
+// callers group by docKey themselves (the list view groups into one
+// entry per doc_key showing its latest version; the editor view filters
+// to one doc_key's own history for its VersionDropdown).
+export async function loadEditorDocuments(db, queryId) {
+  try {
+    const { data } = await db.from("editor_documents").select("*").eq("query_id", queryId).order("version", { ascending: true });
+    return (data || []).map(mapDbEditorDocumentRow);
+  } catch (e) {
+    console.warn("Load editor documents failed:", e);
+    return [];
+  }
+}
+
+export async function saveEditorDocumentVersion(db, queryId, docKey, snap, createdBy) {
+  try {
+    const { data, error } = await db.from("editor_documents").insert({
+      query_id: queryId, doc_key: docKey, name: snap.name || "Untitled Document",
+      version: snap.version, is_final: false, content_html: snap.contentHtml || "",
+      created_by: isUuid(createdBy) ? createdBy : null,
+    });
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
+  } catch (e) {
+    console.warn("Save editor document version failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function markEditorDocumentVersionFinal(db, queryId, docKey, version) {
+  try {
+    await db.from("editor_documents").eq("query_id", queryId).eq("doc_key", docKey).update({ is_final: false });
+    await db.from("editor_documents").eq("query_id", queryId).eq("doc_key", docKey).eq("version", version).update({ is_final: true });
+  } catch (e) {
+    console.warn("Mark editor document version final failed:", e);
+  }
+}
+
 // ─── PRO-FORMA + TAX INVOICE (real versioned history -- Phase 0 of the
 // Document Chain plan, and the FINAL two documents in it, deliberately
 // last given their compliance weight). Found and fixed along the way:

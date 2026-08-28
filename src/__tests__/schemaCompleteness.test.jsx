@@ -4,7 +4,7 @@ import {
   saveCostSheetVersion, saveQuotationVersion, saveTourExecutionToDB,
   savePaymentsToDB, saveVendorToDB, saveAgentToDB, saveQueryServices, saveDocRegistry,
   saveMealPlanVersion, saveItineraryVersion, saveExchangeOrderVersion, saveTourBriefingVersion,
-  saveInvoiceVersion,
+  saveInvoiceVersion, saveEditorDocumentVersion,
 } from '../lib/utils.js';
 
 // ─── THE ACTUAL BUG CLASS THIS FILE EXISTS TO PREVENT ────────────────────
@@ -146,6 +146,16 @@ describe('Schema completeness: tour_briefings (saveTourBriefingVersion) -- NEW t
     await saveTourBriefingVersion(db, 'UTQ-1', { version: 1 }, null);
     const call = calls.find(c => c.table === 'tour_briefings');
     assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'tour_briefings');
+  });
+});
+
+describe('Schema completeness: editor_documents (saveEditorDocumentVersion) -- NEW table, migration applied 2026-08-28', () => {
+  const EXPECTED_COLUMNS = ['query_id', 'doc_key', 'name', 'version', 'is_final', 'content_html', 'created_by'];
+  it('every real column has a corresponding key in the save payload', async () => {
+    const { db, calls } = capturingDb();
+    await saveEditorDocumentVersion(db, 'UTQ-1', 'doc-key-1', { version: 1 }, null);
+    const call = calls.find(c => c.table === 'editor_documents');
+    assertCoversSchema(call.payload, EXPECTED_COLUMNS, [], 'editor_documents');
   });
 });
 
