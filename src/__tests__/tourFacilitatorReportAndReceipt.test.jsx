@@ -62,7 +62,7 @@ describe('Payment Receipt: printing now logs to the audit trail (the one real ga
     fireEvent.click(screen.getByText(/🖨 Receipt/));
     expect(mockDb.from).not.toHaveBeenCalledWith('query_audit'); // opening the review modal alone must not print/log yet
     fireEvent.click(screen.getByText('🖨 Print'));
-    expect(mockDb.from).toHaveBeenCalledWith('query_audit');
+    await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('query_audit'));
     openSpy.mockRestore();
   });
 });
@@ -75,7 +75,7 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
   };
   const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', amount: '5000', inCurrency: 'USD', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001' }], outgoing: [] } };
 
-  function openModalAndPrint({ toggleSignatureOff, toggleStampOn, editField } = {}) {
+  async function openModalAndPrint({ toggleSignatureOff, toggleStampOn, editField } = {}) {
     let captured = {};
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: (html) => { captured.html = html; }, close: () => {} } });
     const { unmount } = render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
@@ -84,6 +84,7 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     if (toggleStampOn) fireEvent.click(screen.getByText('Apply digital stamp'));
     if (editField) fireEvent.change(screen.getByDisplayValue(editField.from), { target: { value: editField.to } });
     fireEvent.click(screen.getByText('🖨 Print'));
+    await waitFor(() => expect(captured.html).toBeTruthy()); // printReceipt is now async (buildPaginatedLetterheadDocument awaits a DOM measurement pass)
     openSpy.mockRestore();
     unmount(); // each call renders a fresh instance -- unmount so a second call in the same test doesn't leave two "🖨 Receipt" buttons in the DOM
     return captured.html;
@@ -94,13 +95,13 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     ({ default: EnhancedPaymentTracker } = await import('../components/EnhancedPaymentTracker.jsx'));
   });
 
-  it('uses A4 portrait, not the old A5 page size', () => {
-    const html = openModalAndPrint();
+  it('uses A4 portrait, not the old A5 page size', async () => {
+    const html = await openModalAndPrint();
     expect(html).toMatch(/size:\s*A4\s+portrait/);
     expect(html).not.toContain('size:A5');
   });
 
-  it('does not print the company name as a separate text heading -- the shared letterhead logo alone carries the brand', () => {
+  it('does not print the company name as a separate text heading -- the shared letterhead logo alone carries the brand', async () => {
     // The old hand-rolled header had a dedicated `.lh-name` heading showing
     // the company name in large Playfair Display text directly under the
     // logo. The shared letterhead header (used by every other document)
@@ -108,16 +109,16 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     // The company name legitimately still appears once, in the small
     // footer disclaimer and the signature block -- this only checks the
     // old standalone heading class is gone.
-    const html = openModalAndPrint();
+    const html = await openModalAndPrint();
     expect(html).not.toContain('lh-name');
   });
 
-  it('does not leak unscoped table/th/td/tr rules into the shared letterhead’s own wrapper table', () => {
+  it('does not leak unscoped table/th/td/tr rules into the shared letterhead’s own wrapper table', async () => {
     // Every receipt-specific selector must be scoped under .rcpt -- a bare
     // `table{...}` etc would apply document-wide, including to the outer
     // .lh-doc wrapper table buildLetterheadDocument itself assembles the
     // page from.
-    const html = openModalAndPrint();
+    const html = await openModalAndPrint();
     expect(html).not.toContain('\n  table{');
     expect(html).not.toContain('\n  th{');
     expect(html).not.toContain('\n  td{');
@@ -126,8 +127,8 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     expect(html).toContain('.rcpt td{');
   });
 
-  it('Received From is pre-filled with Client / Agency, Tour Name | date range in dd/mm/yyyy, and Tour File No. | Sector | Pax as three distinct, editable lines -- and the headline does not duplicate the tour name shown below it', () => {
-    const html = openModalAndPrint();
+  it('Received From is pre-filled with Client / Agency, Tour Name | date range in dd/mm/yyyy, and Tour File No. | Sector | Pax as three distinct, editable lines -- and the headline does not duplicate the tour name shown below it', async () => {
+    const html = await openModalAndPrint();
     // 1.3.1 Client / Agency -- client only, no groupName/tour-name fallback
     expect(html).toContain('Sharma Family / ABC Travels');
     expect((html.match(/Sharma Kerala Tour/g) || []).length).toBe(1); // appears once, not duplicated into the headline too
@@ -137,31 +138,31 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     expect(html).toContain('TF-1 | Kerala | 6');
   });
 
-  it('Received From fields are pre-filled but editable before printing', () => {
-    const html = openModalAndPrint({ editField: { from: 'Sharma Family / ABC Travels', to: 'Edited Client Name' } });
+  it('Received From fields are pre-filled but editable before printing', async () => {
+    const html = await openModalAndPrint({ editField: { from: 'Sharma Family / ABC Travels', to: 'Edited Client Name' } });
     expect(html).toContain('Edited Client Name');
     expect(html).not.toContain('Sharma Family / ABC Travels');
   });
 
-  it('receipt number is a row inside the payment-details table, not a standalone heading', () => {
-    const html = openModalAndPrint();
+  it('receipt number is a row inside the payment-details table, not a standalone heading', async () => {
+    const html = await openModalAndPrint();
     expect(html).toContain('<td>Receipt No.</td><td style="text-align:right;font-weight:600;color:#8B1A1A">RCP-2026-001</td>');
     expect(html).not.toContain('class="rcpt-no"');
   });
 
-  it('shows amount as currency then amount, with no separate Currency row', () => {
-    const html = openModalAndPrint();
+  it('shows amount as currency then amount, with no separate Currency row', async () => {
+    const html = await openModalAndPrint();
     expect(html).toContain('USD 5,000.00');
     expect(html).not.toContain('<td>Currency</td>');
     expect(html).not.toContain('₹ 5,000.00'); // was hardcoded as INR regardless of the entry's real currency
   });
 
-  it('client signature line and digital stamp are independent toggles, both off/on by default respectively', () => {
-    const defaultHtml = openModalAndPrint();
+  it('client signature line and digital stamp are independent toggles, both off/on by default respectively', async () => {
+    const defaultHtml = await openModalAndPrint();
     expect(defaultHtml).toContain('Client Signature');
     expect(defaultHtml).not.toContain('alt="Digital Stamp"');
 
-    const softCopyHtml = openModalAndPrint({ toggleSignatureOff: true, toggleStampOn: true });
+    const softCopyHtml = await openModalAndPrint({ toggleSignatureOff: true, toggleStampOn: true });
     expect(softCopyHtml).not.toContain('Client Signature');
     expect(softCopyHtml).toContain('alt="Digital Stamp"');
     expect(softCopyHtml).toContain('For Unitop'); // Unitop's own signature block always stays
@@ -237,5 +238,18 @@ describe('Payment entries are amendable with version history, and P&L/summary no
     const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', inCurrency: 'USD', amount: '500', amountINR: '', date: '2026-08-01', mode: 'SWIFT', receipt: 'RCP-1', version: 1, history: [] }], outgoing: [] } };
     render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     expect(screen.getByText(/INR amount not set/)).toBeTruthy();
+  });
+
+  it('P&L tab has no separate ROE input of its own -- it uses the single ROE set in Tour Value, so the two can never disagree', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { tourValue: 5000, currency: 'US $', roeUsed: 90, entries: [], outgoing: [] } };
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText('📊 P&L'));
+    // Tour Value (INR) in P&L = 5000 * 90 = 450,000, matching the Tour Value section's own ROE with no second input to diverge from
+    expect(screen.getAllByText(/₹ 4,50,000|₹ 450,000/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Adjust ROE to recalculate in INR')).toBeFalsy();
+    // Only one ROE input exists anywhere in the tracker (Tour Value section's)
+    const roeInputs = screen.getAllByDisplayValue('90');
+    expect(roeInputs.length).toBe(1);
   });
 });

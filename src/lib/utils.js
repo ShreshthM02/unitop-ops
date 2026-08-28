@@ -116,6 +116,22 @@ export function blankPaymentRecord(queryId) {
   return { queryId, tourValue: "", currency: "US $", roeUsed: 90, tourValueINR: "", entries: [], outgoing: [] };
 }
 
+// The actual INR contribution of one incoming payment entry, for every
+// INR-denominated total anywhere in the app (EnhancedPaymentTracker's
+// own Received/Balance Due/Progress summary and P&L tab, and the
+// Finance-tab Payment Summary card in QueryDrawerWithQuote). INR entries
+// need no conversion; a foreign-currency entry contributes 0 until its
+// real amountINR (from the bank credit advice/FIRC) has been entered --
+// summing the raw foreign-currency `amount` as if it were INR was a
+// real, confirmed bug (a USD 2,000 entry showing up as "received:
+// ₹2,000"). Shared here, not duplicated per component, precisely so two
+// places computing "how much has been received in INR" can't quietly
+// disagree with each other.
+export function entryINR(e) {
+  if (!e.inCurrency || e.inCurrency === "INR") return parseFloat(e.amount) || 0;
+  return parseFloat(e.amountINR) || 0;
+}
+
 export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
   const map = {};
   (payRows || []).forEach(p => {

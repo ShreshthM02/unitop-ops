@@ -773,6 +773,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             costSheetExists={costSheetExists.has(activeQuery.id)}
             quotationExists={quotationExists.has(activeQuery.id)}
             hasPayments={(payments[activeQuery.id]?.entries || []).length > 0 || (payments[activeQuery.id]?.outgoing || []).length > 0}
+            payments={payments[activeQuery.id]}
             currentUser={currentUser}
           />
         )}

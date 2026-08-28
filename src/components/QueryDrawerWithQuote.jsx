@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const autoDetected = getAutoDetectedSteps({
@@ -571,14 +571,23 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {tab==="finance"&&isCaseFile&&(
             <div>
               {sec("Payment Summary")}
-              <div style={{background:G.gray50,borderRadius:8,padding:12,marginBottom:12}}>
-                {[["Tour Value","$2,850",G.gray800],["Received","$2,100","#059669"],["Balance Due","$750",G.accent]].map(([l,v,c])=>(
-                  <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                    <span style={{fontSize:12,color:G.gray600}}>{l}</span>
-                    <span style={{fontSize:13,fontWeight:600,color:c}}>{v}</span>
+              {(()=>{
+                const pt = payments || {};
+                const tourValueINR = (parseFloat(pt.tourValue)||0) * (parseFloat(pt.roeUsed)||1);
+                const received = (pt.entries||[]).reduce((s,e)=>s+entryINR(e),0);
+                const balanceDue = tourValueINR - received;
+                const fmt = n => "₹ " + Math.round(n).toLocaleString();
+                return (
+                  <div style={{background:G.gray50,borderRadius:8,padding:12,marginBottom:12}}>
+                    {[["Tour Value",fmt(tourValueINR),G.gray800],["Received",fmt(received),"#059669"],["Balance Due",fmt(balanceDue),balanceDue>0?G.accent:"#059669"]].map(([l,v,c])=>(
+                      <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{fontSize:12,color:G.gray600}}>{l}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:c}}>{v}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
               <button className="convert-case-btn" style={{background:"#6C3483"}} onClick={()=>openPanel("payments")}>
                 ₹ Open Full Payment Tracker & P&L
               </button>

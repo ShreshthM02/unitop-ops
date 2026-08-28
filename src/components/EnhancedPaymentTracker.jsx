@@ -1,18 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR } = Lib;
 
-// The actual INR contribution of one incoming entry, for every
-// INR-denominated total in this component (received/balance/progress,
-// P&L). INR entries need no conversion; a foreign-currency entry
-// contributes 0 until its real amountINR (from the bank credit
-// advice/FIRC) has been entered -- summing the raw foreign-currency
-// `amount` as if it were INR was a real, confirmed bug (a USD 2,000
-// entry showing up as "received: ₹2,000").
-function entryINR(e) {
-  if (!e.inCurrency || e.inCurrency === "INR") return parseFloat(e.amount) || 0;
-  return parseFloat(e.amountINR) || 0;
-}
+// entryINR() moved to src/lib/utils.js so QueryDrawerWithQuote's Finance-tab
+// summary can share the exact same formula -- see there for the comment.
 
 function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO, currentUser }) {
   const deleteEntry = () => {
@@ -114,7 +105,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     setShowReceiptModal(true);
   };
 
-  const printReceipt = () => {
+  const printReceipt = async () => {
     const ci = COMPANY_INFO;
     const currencyLabel = e.inCurrency==="Other" ? (e.currOther||"Other") : e.inCurrency;
     const amountFormatted = parseFloat(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -194,11 +185,11 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   </div>
 `;
 
-    const html = buildLetterheadDocument({
+    const html = await buildPaginatedLetterheadDocument({
       title: `Receipt ${e.receipt||""}`,
       extraHeadCSS,
       bodyBlocks: [bodyHTML],
-      orientation: "portrait",
+      headerFooterAllPages: true, // engages real DOM-measured pagination so the footer sits at the true bottom of the page, not just appended after the content
     });
     printHTML(html);
     logAudit(db, query.id, currentUser?.name, `Payment receipt printed: ${e.receipt||"n/a"} (${e.inCurrency||"INR"} ${e.amount})`);
@@ -389,7 +380,6 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
-  const [plRoe, setPlRoe] = useState(pt.roeUsed||90);
   const [newIn, setNewIn] = useState({ type:"advance", inCurrency:"INR", amount:"", amountINR:"", date:"", mode:"Remittance", ref:"", note:"", modeOther:"", currOther:"" });
   const [newOut, setNewOut] = useState({ vendor:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"", receiptName:"" });
   const setF=(k,v)=>setPt(p=>({...p,[k]:v}));
@@ -593,16 +583,13 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
             <div>
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:11,fontWeight:600,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>P&L for this Tour File</div>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                  <span style={{fontSize:12,color:G.gray600}}>ROE (₹ per unit):</span>
-                  <input style={{padding:"5px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:80,textAlign:"right",outline:"none"}}
-                    type="number" value={plRoe} onChange={e=>setPlRoe(Number(e.target.value))}/>
-                  <span style={{fontSize:11,color:G.gray400}}>Adjust ROE to recalculate in INR</span>
+                <div style={{fontSize:11,color:G.gray400,marginBottom:14}}>
+                  Uses the ROE set in Tour Value above (₹{pt.roeUsed||0} per unit) -- adjust it there to recalculate here too, so this and the summary above never disagree.
                 </div>
               </div>
               {/* Revenue */}
               {(()=>{
-                const tourValINR = (parseFloat(pt.tourValue)||0) * plRoe;
+                const tourValINR = (parseFloat(pt.tourValue)||0) * (parseFloat(pt.roeUsed)||1);
                 const totalIncome = pt.entries.reduce((s,e)=>s+entryINR(e),0);
                 const totalCost   = (pt.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
                 const grossProfit = tourValINR - totalCost;
