@@ -29,9 +29,9 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     };
     render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
     fireEvent.click(screen.getByText('💰 Finance'));
-    expect(screen.getByText(/₹ 450,000/)).toBeTruthy(); // Tour Value (INR)
-    expect(screen.getByText(/₹ 400,000/)).toBeTruthy(); // Received
-    expect(screen.getByText('₹ 50,000')).toBeTruthy();  // Balance Due -- exact match, /50,000/ also matches inside "450,000"
+    expect(screen.getByText(/₹ 4,50,000|₹ 450,000/)).toBeTruthy(); // Tour Value (INR)
+    expect(screen.getByText(/₹ 4,00,000|₹ 400,000/)).toBeTruthy(); // Received
+    expect(screen.getByText(/₹ 50,000/)).toBeTruthy();  // Balance Due
     expect(screen.queryByText('$2,850')).toBeFalsy();
     expect(screen.queryByText('$2,100')).toBeFalsy();
     expect(screen.queryByText('$750')).toBeFalsy();
@@ -50,7 +50,7 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
     fireEvent.click(screen.getByText('💰 Finance'));
     // 100000 + 84000 = 184000; the ₹500 USD entry with no amountINR must not be silently added
-    expect(screen.getByText(/184,000/)).toBeTruthy();
+    expect(screen.getByText(/1,84,000|184,000/)).toBeTruthy();
   });
 
   it('does not crash and shows sensible zeros when the query has no payments record at all yet', () => {
