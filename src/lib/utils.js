@@ -128,8 +128,8 @@ export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
     if (!map[e.query_id]) map[e.query_id] = blankPaymentRecord(e.query_id);
     map[e.query_id].entries.push({
       id: e.id, type: e.type, inCurrency: e.in_currency, currOther: e.curr_other,
-      amount: e.amount, date: e.date, mode: e.mode, modeOther: e.mode_other,
-      ref: e.ref, note: e.note, receipt: e.receipt,
+      amount: e.amount, amountINR: e.amount_inr, date: e.date, mode: e.mode, modeOther: e.mode_other,
+      ref: e.ref, note: e.note, receipt: e.receipt, version: e.version || 1, history: e.history || [],
     });
   });
   (outgoingRows || []).forEach(o => {
@@ -162,6 +162,7 @@ export async function savePaymentsToDB(db, queryId, data) {
         id: e.id, query_id: queryId, type: e.type, in_currency: e.inCurrency,
         curr_other: e.currOther, amount: parseFloat(e.amount) || null, date: e.date || null,
         mode: e.mode, mode_other: e.modeOther, ref: e.ref, note: e.note, receipt: e.receipt,
+        amount_inr: parseFloat(e.amountINR) || null, version: e.version || 1, history: e.history || [],
       });
     }
     const { data: dbIncoming } = await db.from("payment_incoming").select("id").eq("query_id", queryId);

@@ -203,7 +203,7 @@ describe('Schema completeness: payments + payment_incoming + payment_outgoing (s
     const { db, calls } = capturingDb();
     await savePaymentsToDB(db, 'UTQ-1', { entries: [{ id: 1 }] });
     const call = calls.find(c => c.table === 'payment_incoming');
-    assertCoversSchema(call.payload, ['id','query_id','type','in_currency','curr_other','amount','date','mode','mode_other','ref','note','receipt'], [], 'payment_incoming');
+    assertCoversSchema(call.payload, ['id','query_id','type','in_currency','curr_other','amount','date','mode','mode_other','ref','note','receipt','amount_inr','version','history'], [], 'payment_incoming');
   });
 
   it('payment_outgoing: every real column has a corresponding key (when at least one entry exists)', async () => {

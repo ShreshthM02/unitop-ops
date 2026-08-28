@@ -2,11 +2,70 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db } = Lib;
 
+// The actual INR contribution of one incoming entry, for every
+// INR-denominated total in this component (received/balance/progress,
+// P&L). INR entries need no conversion; a foreign-currency entry
+// contributes 0 until its real amountINR (from the bank credit
+// advice/FIRC) has been entered -- summing the raw foreign-currency
+// `amount` as if it were INR was a real, confirmed bug (a USD 2,000
+// entry showing up as "received: ₹2,000").
+function entryINR(e) {
+  if (!e.inCurrency || e.inCurrency === "INR") return parseFloat(e.amount) || 0;
+  return parseFloat(e.amountINR) || 0;
+}
+
 function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query, pt, setPt, onUpdatePayments, LOGO_B64, COMPANY_INFO, currentUser }) {
   const deleteEntry = () => {
     const updated = { ...pt, entries: pt.entries.filter(x => x.id !== e.id) };
     setPt(updated);
     onUpdatePayments(query.id, updated, `Payment entry deleted: ${e.inCurrency||""} ${e.amount} (receipt ${e.receipt||"n/a"})`);
+  };
+
+  // ─── Amend (edit) with version history ───────────────────────────────
+  // A receipt is amendable after the fact -- most commonly to fill in or
+  // correct amountINR once the real bank credit note/FIRC arrives, but
+  // any field can be corrected. Every edit snapshots the entry's PRIOR
+  // field values into its own `history` array (oldest first) before
+  // applying the new ones, and bumps `version`. This is separate from
+  // the query_audit trail: history is the actual prior data (what did
+  // this entry used to say), audit trail is the human-readable log (who
+  // changed what, when) -- onUpdatePayments already logs that via its
+  // own auditAction parameter, same as add/delete.
+  const EDIT_FIELDS = ["type","inCurrency","currOther","amount","amountINR","date","mode","modeOther","ref","note"];
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  const openEditModal = () => {
+    const form = {};
+    EDIT_FIELDS.forEach(k => { form[k] = e[k] ?? ""; });
+    setEditForm(form);
+    setShowEditModal(true);
+  };
+  const setEF = (k,v) => setEditForm(f => ({ ...f, [k]: v }));
+
+  const FIELD_LABELS = { type:"Type", inCurrency:"Currency", currOther:"Currency (other)", amount:"Amount",
+    amountINR:"Amount in INR", date:"Date", mode:"Mode", modeOther:"Mode (other)", ref:"Reference", note:"Note" };
+
+  const saveEdit = () => {
+    const changed = EDIT_FIELDS.filter(k => String(e[k] ?? "") !== String(editForm[k] ?? ""));
+    if (changed.length === 0) { setShowEditModal(false); return; }
+    const oldSnapshot = {};
+    EDIT_FIELDS.forEach(k => { oldSnapshot[k] = e[k] ?? ""; });
+    oldSnapshot.version = e.version || 1;
+    oldSnapshot.editedAt = new Date().toISOString();
+    oldSnapshot.editedBy = currentUser?.name || "";
+
+    const updatedEntry = {
+      ...e, ...editForm,
+      version: (e.version || 1) + 1,
+      history: [...(e.history || []), oldSnapshot],
+    };
+    const updated = { ...pt, entries: pt.entries.map(x => x.id === e.id ? updatedEntry : x) };
+    setPt(updated);
+    const changeSummary = changed.map(k => `${FIELD_LABELS[k]} ${e[k]||"—"}→${editForm[k]||"—"}`).join(", ");
+    onUpdatePayments(query.id, updated, `Payment entry amended (receipt ${e.receipt||"n/a"}, v${e.version||1}→v${updatedEntry.version}): ${changeSummary}`);
+    setShowEditModal(false);
   };
 
   // Default Received From text, pre-filled into the review modal below
@@ -71,7 +130,6 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     // its own class for this reason.
     const extraHeadCSS = `
   .rcpt .title{font-family:'Playfair Display',serif;font-size:15pt;font-weight:700;color:#1A3A52;text-align:center;margin:4pt 0 6pt;text-transform:uppercase;letter-spacing:1pt}
-  .rcpt .rcpt-no{text-align:center;font-size:9pt;color:#8B1A1A;font-weight:700;margin-bottom:10pt}
   .rcpt .party{background:#f8f9fa;border:1pt solid #e5e7eb;border-radius:4pt;padding:8pt 10pt;margin-bottom:10pt}
   .rcpt .party-lbl{font-size:7pt;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1pt;margin-bottom:3pt}
   .rcpt .party-name{font-size:11pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif}
@@ -99,7 +157,6 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     const bodyHTML = `
   <div class="rcpt">
     <div class="title">Payment Receipt</div>
-    <div class="rcpt-no">${e.receipt||"RCP-"+e.id}</div>
 
     <div class="party">
       <div class="party-lbl">Received From</div>
@@ -113,6 +170,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
     <table>
       <thead><tr><th>Description</th><th style="text-align:right">Details</th></tr></thead>
       <tbody>
+        <tr><td>Receipt No.</td><td style="text-align:right;font-weight:600;color:#8B1A1A">${e.receipt||"RCP-"+e.id}</td></tr>
         <tr><td>Payment Type</td><td style="text-align:right;font-weight:600">${TYPE_LABELS[e.type]||e.type}</td></tr>
         <tr><td>Date Received</td><td style="text-align:right">${e.date||"—"}</td></tr>
         <tr><td>Mode of Payment</td><td style="text-align:right">${e.mode==="Other"?e.modeOther||"Other":e.mode}</td></tr>
@@ -162,10 +220,19 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
               {TYPE_LABELS[e.type]||e.type}
             </span>
             <span style={{fontSize:13,fontWeight:700,color:"#059669"}}>
-              ₹ {parseFloat(e.amount||0).toLocaleString("en-IN")}
-              {e.inCurrency && e.inCurrency!=="INR" && <span style={{fontSize:10,color:G.gray400,fontWeight:400}}> ({e.inCurrency==="Other"?e.currOther:e.inCurrency})</span>}
+              {e.inCurrency==="Other"?e.currOther:e.inCurrency||"INR"} {parseFloat(e.amount||0).toLocaleString("en-IN")}
             </span>
+            {e.inCurrency && e.inCurrency!=="INR" && (
+              e.amountINR
+                ? <span style={{fontSize:10,color:G.gray400,fontWeight:400}}>≈ ₹ {parseFloat(e.amountINR).toLocaleString("en-IN")}</span>
+                : <span style={{fontSize:10,color:"#B45309",fontWeight:600,background:"#FEF3C7",padding:"1px 6px",borderRadius:8}}>⚠ INR amount not set</span>
+            )}
             {e.receipt && <span style={{fontSize:10,color:G.gray400,fontFamily:"monospace"}}>{e.receipt}</span>}
+            {e.version > 1 && (
+              <span onClick={()=>setShowHistoryModal(true)}
+                style={{fontSize:10,color:"#1A5276",background:"#EBF5FB",padding:"1px 7px",borderRadius:8,cursor:"pointer",fontWeight:600}}
+                title="View edit history">v{e.version}</span>
+            )}
           </div>
           <div style={{fontSize:11,color:G.gray600}}>
             {e.date} · {e.mode==="Other"?e.modeOther||"Other":e.mode}
@@ -174,6 +241,11 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
           {e.note && <div style={{fontSize:11,color:G.gray400,marginTop:2,fontStyle:"italic"}}>{e.note}</div>}
         </div>
         <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
+          <button onClick={openEditModal}
+            style={{background:"#F5F3FF",border:"1px solid #DDD6FE",color:"#5B21B6",borderRadius:5,
+              padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            ✏ Amend
+          </button>
           <button onClick={openReceiptModal}
             style={{background:"#EBF5FB",border:"1px solid #A9CCE3",color:"#1A5276",borderRadius:5,
               padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
@@ -185,6 +257,89 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
         </div>
       </div>
     </div>
+
+    {showEditModal && editForm && (
+      <div className="modal-overlay">
+        <div className="modal" style={{width:480}}>
+          <div className="modal-head">
+            <div className="modal-title">Amend Payment Entry</div>
+            <div className="modal-sub">{e.receipt||"RCP-"+e.id} · currently v{e.version||1}</div>
+          </div>
+          <div className="modal-body">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div><div style={rcptLabelStyle}>Type</div>
+                <select style={rcptInputStyle} value={editForm.type} onChange={ev=>setEF("type",ev.target.value)}>
+                  {Object.entries(TYPE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div><div style={rcptLabelStyle}>Date</div>
+                <input style={rcptInputStyle} type="date" value={editForm.date} onChange={ev=>setEF("date",ev.target.value)}/>
+              </div>
+              <div><div style={rcptLabelStyle}>Currency</div>
+                <select style={rcptInputStyle} value={editForm.inCurrency} onChange={ev=>setEF("inCurrency",ev.target.value)}>
+                  {["INR","USD","EUR","GBP","AUD","SGD","THB","NTD","Other"].map(c=><option key={c}>{c}</option>)}
+                </select>
+                {editForm.inCurrency==="Other" && <input style={{...rcptInputStyle,marginTop:4}} value={editForm.currOther} onChange={ev=>setEF("currOther",ev.target.value)} placeholder="Specify currency..."/>}
+              </div>
+              <div><div style={rcptLabelStyle}>Amount</div>
+                <input style={{...rcptInputStyle,textAlign:"right"}} type="number" value={editForm.amount} onChange={ev=>setEF("amount",ev.target.value)}/>
+              </div>
+              {editForm.inCurrency!=="INR" && (
+                <div style={{gridColumn:"1/-1"}}><div style={rcptLabelStyle}>Amount in INR (as actually credited)</div>
+                  <input style={{...rcptInputStyle,textAlign:"right"}} type="number" value={editForm.amountINR} onChange={ev=>setEF("amountINR",ev.target.value)} placeholder="From the bank credit advice / FIRC"/>
+                  <div style={{fontSize:10.5,color:G.gray400,marginTop:4}}>Used for P&L and balance-due -- the exchange-house rate, not a general market rate.</div>
+                </div>
+              )}
+              <div><div style={rcptLabelStyle}>Mode</div>
+                <select style={rcptInputStyle} value={editForm.mode} onChange={ev=>setEF("mode",ev.target.value)}>
+                  {["Remittance","SWIFT","NEFT/RTGS","Cheque","Cash","Credit Card","Other"].map(m=><option key={m}>{m}</option>)}
+                </select>
+                {editForm.mode==="Other" && <input style={{...rcptInputStyle,marginTop:4}} value={editForm.modeOther} onChange={ev=>setEF("modeOther",ev.target.value)} placeholder="Specify mode..."/>}
+              </div>
+              <div><div style={rcptLabelStyle}>Reference</div>
+                <input style={rcptInputStyle} value={editForm.ref} onChange={ev=>setEF("ref",ev.target.value)}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}><div style={rcptLabelStyle}>Note</div>
+                <input style={rcptInputStyle} value={editForm.note} onChange={ev=>setEF("note",ev.target.value)}/>
+              </div>
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={()=>setShowEditModal(false)}>Cancel</button>
+            <div style={{flex:1}}/>
+            <button className="btn btn-primary" onClick={saveEdit}>Save Amendment</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {showHistoryModal && (
+      <div className="modal-overlay">
+        <div className="modal" style={{width:480}}>
+          <div className="modal-head">
+            <div className="modal-title">Edit History</div>
+            <div className="modal-sub">{e.receipt||"RCP-"+e.id} · v{e.version||1} (current)</div>
+          </div>
+          <div className="modal-body">
+            {[...(e.history||[])].reverse().map((h,i) => (
+              <div key={i} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:G.gray600,marginBottom:6}}>
+                  v{h.version} — {h.editedBy||"Unknown"}{h.editedAt?` · ${new Date(h.editedAt).toLocaleString("en-IN")}`:""}
+                </div>
+                <div style={{fontSize:11,color:G.gray600,lineHeight:1.7}}>
+                  {EDIT_FIELDS.filter(k=>h[k]).map(k=>(
+                    <div key={k}><span style={{color:G.gray400}}>{FIELD_LABELS[k]}:</span> {h[k]}</div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={()=>setShowHistoryModal(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {showReceiptModal && (
       <div className="modal-overlay">
@@ -235,7 +390,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
   const [plRoe, setPlRoe] = useState(pt.roeUsed||90);
-  const [newIn, setNewIn] = useState({ type:"advance", inCurrency:"INR", amount:"", date:"", mode:"Remittance", ref:"", note:"", modeOther:"", currOther:"" });
+  const [newIn, setNewIn] = useState({ type:"advance", inCurrency:"INR", amount:"", amountINR:"", date:"", mode:"Remittance", ref:"", note:"", modeOther:"", currOther:"" });
   const [newOut, setNewOut] = useState({ vendor:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"", receiptName:"" });
   const setF=(k,v)=>setPt(p=>({...p,[k]:v}));
   const setNI=(k,v)=>setNewIn(p=>({...p,[k]:v}));
@@ -254,7 +409,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
     });
   }, [query.id]);
 
-  const totalIn  = pt.entries.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const totalIn  = pt.entries.reduce((s,e)=>s+entryINR(e),0);
   const totalOut = (pt.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
   const tourValueINR = (parseFloat(pt.tourValue)||0)*(parseFloat(pt.roeUsed)||1);
   const balance = tourValueINR - totalIn;
@@ -263,9 +418,15 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const addIncoming = () => {
     if(!newIn.amount||!newIn.date) return;
     const receiptNo = `RCP-${new Date().getFullYear()}-${String(pt.entries.length+1).padStart(3,"0")}`;
-    const updated = {...pt, tourValueINR, entries:[...pt.entries, {...newIn,id:Date.now(),receipt:receiptNo}]};
+    // INR entries need no separate conversion -- amountINR just mirrors
+    // amount. FC entries use whatever was entered in the "Amount in INR
+    // (as credited)" field, which may be blank at first if the bank
+    // credit note/FIRC hasn't arrived yet; it's correctable later via
+    // Amend, same as every other field on this entry.
+    const amountINR = newIn.inCurrency==="INR" ? newIn.amount : (newIn.amountINR||"");
+    const updated = {...pt, tourValueINR, entries:[...pt.entries, {...newIn,amountINR,id:Date.now(),receipt:receiptNo,version:1,history:[]}]};
     setPt(updated); onUpdatePayments(query.id, updated, `Payment received: ${newIn.inCurrency} ${newIn.amount} (${TYPE_LABELS[newIn.type]||newIn.type}, receipt ${receiptNo})`);
-    setNewIn({type:"advance",inCurrency:"INR",amount:"",date:"",mode:"Remittance",ref:"",note:"",modeOther:"",currOther:""});
+    setNewIn({type:"advance",inCurrency:"INR",amount:"",amountINR:"",date:"",mode:"Remittance",ref:"",note:"",modeOther:"",currOther:""});
   };
 
   const addOutgoing = () => {
@@ -373,6 +534,13 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                     );
                   })}
                 </div>
+                {newIn.inCurrency!=="INR" && (
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Amount in INR (as credited)</div>
+                    <input style={{...inp,textAlign:"right"}} type="number" value={newIn.amountINR} onChange={e=>setNI("amountINR",e.target.value)} placeholder="From the bank credit advice / FIRC, if known yet"/>
+                    <div style={{fontSize:9.5,color:G.gray400,marginTop:3}}>Used for P&amp;L and balance-due, not the receipt itself. Leave blank if not yet known -- correctable later via Amend.</div>
+                  </div>
+                )}
                 <button className="btn btn-success" onClick={addIncoming} style={{fontSize:12}}>✓ Record & Generate Receipt</button>
               </div>
             </>
@@ -435,7 +603,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
               {/* Revenue */}
               {(()=>{
                 const tourValINR = (parseFloat(pt.tourValue)||0) * plRoe;
-                const totalIncome = pt.entries.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+                const totalIncome = pt.entries.reduce((s,e)=>s+entryINR(e),0);
                 const totalCost   = (pt.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
                 const grossProfit = tourValINR - totalCost;
                 const netProfit   = totalIncome - totalCost;
@@ -465,7 +633,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                       <div style={{fontSize:10,color:G.gray600,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Breakdown</div>
                       {[
                         ["Revenue (tour value)",tourValINR,G.navy],
-                        ...pt.entries.map(e=>[`Income: ${e.receipt||""} (${e.type})`,parseFloat(e.amount)||0,"#059669"]),
+                        ...pt.entries.map(e=>[`Income: ${e.receipt||""} (${e.type})${e.inCurrency&&e.inCurrency!=="INR"?!e.amountINR?" — INR amount not set, excluded":` (${e.inCurrency} ${e.amount} @ actual credit)`:""}`,entryINR(e),"#059669"]),
                         ...(pt.outgoing||[]).map(e=>[`Cost: ${e.vendor}`,-parseFloat(e.amount)||0,G.accent]),
                       ].map(([l,v,c],i)=>(
                         <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${G.gray100}`}}>

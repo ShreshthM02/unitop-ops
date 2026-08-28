@@ -37,12 +37,13 @@ describe('savePaymentsToDB', () => {
 
   it('upserts every current incoming entry with correct field mapping', async () => {
     const { db, calls } = makeMockDb();
-    const entry = { id: 111, type: 'advance', inCurrency: 'INR', currOther: '', amount: '50000', date: '2026-01-01', mode: 'Remittance', modeOther: '', ref: 'X', note: 'n', receipt: 'RCP-1' };
+    const entry = { id: 111, type: 'advance', inCurrency: 'INR', currOther: '', amount: '50000', amountINR: '50000', date: '2026-01-01', mode: 'Remittance', modeOther: '', ref: 'X', note: 'n', receipt: 'RCP-1', version: 2, history: [{ amount: '40000' }] };
     await savePaymentsToDB(db, 'UTQ-001', { entries: [entry], outgoing: [] });
     const entryUpsert = calls.upserts.find(u => u.table === 'payment_incoming');
     expect(entryUpsert.row).toEqual({
       id: 111, query_id: 'UTQ-001', type: 'advance', in_currency: 'INR', curr_other: '',
       amount: 50000, date: '2026-01-01', mode: 'Remittance', mode_other: '', ref: 'X', note: 'n', receipt: 'RCP-1',
+      amount_inr: 50000, version: 2, history: [{ amount: '40000' }],
     });
   });
 

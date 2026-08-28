@@ -143,6 +143,12 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     expect(html).not.toContain('Sharma Family / ABC Travels');
   });
 
+  it('receipt number is a row inside the payment-details table, not a standalone heading', () => {
+    const html = openModalAndPrint();
+    expect(html).toContain('<td>Receipt No.</td><td style="text-align:right;font-weight:600;color:#8B1A1A">RCP-2026-001</td>');
+    expect(html).not.toContain('class="rcpt-no"');
+  });
+
   it('shows amount as currency then amount, with no separate Currency row', () => {
     const html = openModalAndPrint();
     expect(html).toContain('USD 5,000.00');
@@ -159,5 +165,77 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
     expect(softCopyHtml).not.toContain('Client Signature');
     expect(softCopyHtml).toContain('alt="Digital Stamp"');
     expect(softCopyHtml).toContain('For Unitop'); // Unitop's own signature block always stays
+  });
+});
+
+describe('Payment entries are amendable with version history, and P&L/summary now sum the real INR credited', () => {
+  let EnhancedPaymentTracker;
+  beforeAll(async () => {
+    ({ default: EnhancedPaymentTracker } = await import('../components/EnhancedPaymentTracker.jsx'));
+  });
+
+  it('editing an entry increments its version, records the prior snapshot in history, and describes the change for the audit trail', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', inCurrency: 'INR', amount: '5000', amountINR: '5000', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001', version: 1, history: [] }], outgoing: [] } };
+    let captured = null;
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={(id,data,desc)=>{captured={id,data,desc};}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+
+    fireEvent.click(screen.getByText('✏ Amend'));
+    fireEvent.change(screen.getByDisplayValue('5000'), { target: { value: '5500' } });
+    fireEvent.click(screen.getByText('Save Amendment'));
+
+    expect(captured).toBeTruthy();
+    const updatedEntry = captured.data.entries[0];
+    expect(updatedEntry.amount).toBe('5500');
+    expect(updatedEntry.version).toBe(2);
+    expect(updatedEntry.history.length).toBe(1);
+    expect(updatedEntry.history[0].amount).toBe('5000'); // prior value preserved in history
+    expect(updatedEntry.history[0].editedBy).toBe('Priya');
+    expect(captured.desc).toMatch(/amended/i);
+    expect(captured.desc).toContain('5000');
+    expect(captured.desc).toContain('5500');
+  });
+
+  it('an unchanged edit (Cancel, or Save with nothing altered) does not bump the version or touch history', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', inCurrency: 'INR', amount: '5000', amountINR: '5000', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-2026-001', version: 1, history: [] }], outgoing: [] } };
+    let called = false;
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{called=true;}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText('✏ Amend'));
+    fireEvent.click(screen.getByText('Save Amendment'));
+    expect(called).toBe(false);
+  });
+
+  it('shows a version badge that opens the history modal once an entry has been amended', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { entries: [{
+      id: 1, type: 'advance', inCurrency: 'USD', amount: '1000', amountINR: '82000', date: '2026-08-01', mode: 'SWIFT', receipt: 'RCP-2026-001', version: 2,
+      history: [{ version: 1, amount: '900', amountINR: '75000', inCurrency: 'USD', editedBy: 'Priya', editedAt: '2026-08-02T10:00:00.000Z' }],
+    }], outgoing: [] } };
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    expect(screen.queryByText('v1')).toBeFalsy(); // no badge before any amendment happened in this render's initial state check
+    fireEvent.click(screen.getByText('v2'));
+    expect(screen.getByText('Edit History')).toBeTruthy();
+    expect(screen.getByText(/900/)).toBeTruthy(); // the prior (v1) amount shows in the history panel
+  });
+
+  it('summary and P&L sum the real INR credited for foreign-currency entries, not the raw foreign amount, and exclude FC entries with no amountINR yet', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { tourValue: 10000, currency: 'US $', roeUsed: 90, entries: [
+      { id: 1, type: 'advance', inCurrency: 'INR', amount: '50000', amountINR: '50000', date: '2026-08-01', mode: 'NEFT', receipt: 'RCP-1', version: 1, history: [] },
+      { id: 2, type: 'second', inCurrency: 'USD', amount: '1000', amountINR: '84000', date: '2026-08-05', mode: 'SWIFT', receipt: 'RCP-2', version: 1, history: [] },
+      { id: 3, type: 'third', inCurrency: 'USD', amount: '500', amountINR: '', date: '2026-08-10', mode: 'SWIFT', receipt: 'RCP-3', version: 1, history: [] }, // no amountINR yet -- must NOT count as ₹500
+    ], outgoing: [] } };
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    // 50000 (INR) + 84000 (USD entry's real credited INR) = 134000; the third entry's raw USD 500 must not silently count as ₹500
+    expect(screen.getByText(/134,000|1,34,000/)).toBeTruthy();
+    expect(screen.queryByText(/^₹ 500$/)).toBeFalsy();
+  });
+
+  it('flags a foreign-currency entry with no amountINR set on the row itself', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { entries: [{ id: 1, type: 'advance', inCurrency: 'USD', amount: '500', amountINR: '', date: '2026-08-01', mode: 'SWIFT', receipt: 'RCP-1', version: 1, history: [] }], outgoing: [] } };
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    expect(screen.getByText(/INR amount not set/)).toBeTruthy();
   });
 });

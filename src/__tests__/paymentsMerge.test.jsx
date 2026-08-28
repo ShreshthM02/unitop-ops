@@ -43,4 +43,19 @@ describe('mergePaymentsRows', () => {
     expect(result['A'].entries[0].amount).toBe(100);
     expect(result['B'].entries[0].amount).toBe(200);
   });
+
+  it('maps amount_inr, version, and history through, defaulting version to 1 and history to [] when absent', () => {
+    const incomingWithHistory = [
+      { id: 1, query_id: 'A', type: 'advance', in_currency: 'USD', amount: 100, amount_inr: 8500, date: '', mode: '', ref: '', note: '', receipt: '', version: 3, history: [{ amount: 90, editedAt: '2026-01-01' }] },
+    ];
+    const incomingWithoutHistory = [
+      { id: 2, query_id: 'B', type: 'advance', in_currency: 'INR', amount: 200, date: '', mode: '', ref: '', note: '', receipt: '' },
+    ];
+    const result = mergePaymentsRows([], [...incomingWithHistory, ...incomingWithoutHistory], []);
+    expect(result['A'].entries[0].amountINR).toBe(8500);
+    expect(result['A'].entries[0].version).toBe(3);
+    expect(result['A'].entries[0].history).toEqual([{ amount: 90, editedAt: '2026-01-01' }]);
+    expect(result['B'].entries[0].version).toBe(1);
+    expect(result['B'].entries[0].history).toEqual([]);
+  });
 });
