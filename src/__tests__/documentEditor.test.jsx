@@ -125,3 +125,79 @@ describe('DocumentEditor component', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('DocumentEditor toolbar reactivity and new controls', () => {
+  const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+
+  beforeEach(() => { vi.resetModules(); });
+
+  function mockDbWithDocs(rows = []) {
+    return { db: { from: () => ({
+      select: () => ({ eq: () => ({ order: async () => ({ data: rows, error: null }) }) }),
+      insert: async () => ({ data: [{ id: 'new-row' }], error: null }),
+    }) } };
+  }
+
+  async function openBlankEditor() {
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDbWithDocs().db, realtimeClient: null }));
+    const { default: DocumentEditor } = await import('../components/DocumentEditor.jsx');
+    render(<DocumentEditor query={query} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText('+ New Document')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ New Document'));
+    await waitFor(() => expect(screen.getByTitle('Undo')).toBeTruthy());
+  }
+
+  it('undo becomes enabled after an edit, and disabled again after undoing it -- the toolbar reactively tracks editor state (shouldRerenderOnTransaction)', async () => {
+    await openBlankEditor();
+    expect(screen.getByTitle('Undo')).toBeDisabled();
+    fireEvent.click(screen.getByTitle('Insert table')); // a real content mutation, guaranteed to push a history step
+    await waitFor(() => expect(screen.getByTitle('Undo')).not.toBeDisabled());
+    fireEvent.click(screen.getByTitle('Undo'));
+    await waitFor(() => expect(screen.getByTitle('Undo')).toBeDisabled());
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('has five independent letterhead toggles: Header, Footer, Page number, Digital stamp, Print on Letterhead', async () => {
+    await openBlankEditor();
+    expect(screen.getByText('Header')).toBeTruthy();
+    expect(screen.getByText('Footer')).toBeTruthy();
+    expect(screen.getByText('Page number')).toBeTruthy();
+    expect(screen.getByText('Digital stamp')).toBeTruthy();
+    expect(screen.getByText(/Print on Letterhead/)).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('has font family and font size selectors, defaulting to no override (Playfair/Inter apply via page CSS, not forced per-selection)', async () => {
+    await openBlankEditor();
+    expect(screen.getByTitle('Font')).toBeTruthy();
+    expect(screen.getByTitle('Font size')).toBeTruthy();
+    expect(screen.getByTitle('Font').value).toBe('');
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('highlight color swatch picker offers multiple colors, not just an on/off toggle', async () => {
+    await openBlankEditor();
+    fireEvent.click(screen.getByTitle('Highlight color'));
+    expect(screen.getByTitle('#FEF08A')).toBeTruthy();
+    expect(screen.getByTitle('#BFDBFE')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('text color swatch picker is present, separate from highlight', async () => {
+    await openBlankEditor();
+    expect(screen.getByTitle('Text color')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('table toolbar (merge/split/header row/column/shading) only appears once the cursor is inside a table', async () => {
+    await openBlankEditor();
+    expect(screen.queryByTitle('Merge cells')).toBeFalsy();
+    fireEvent.click(screen.getByTitle('Insert table'));
+    await waitFor(() => expect(screen.getByTitle('Merge cells')).toBeTruthy());
+    expect(screen.getByTitle('Split cell')).toBeTruthy();
+    expect(screen.getByTitle('Toggle header row')).toBeTruthy();
+    expect(screen.getByTitle('Toggle header column')).toBeTruthy();
+    expect(screen.getByTitle('Cell shading')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
