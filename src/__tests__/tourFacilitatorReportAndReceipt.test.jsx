@@ -36,12 +36,6 @@ describe('Tour Facilitator Report', () => {
     expect(screen.getByText(/Tour Facilitator Report/)).toBeTruthy();
   });
 
-  it('appears in the Operations category report list', async () => {
-    const { default: ReportsView } = await import('../components/ReportsView.jsx');
-    render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={tourExecutions}/>);
-    expect(screen.getByText(/Tour Facilitator Report/)).toBeTruthy();
-  });
-
   it('lists each real facilitator assignment with the resolved vendor name, excluding cancelled tours and unassigned rows', async () => {
     const { default: ReportsView } = await import('../components/ReportsView.jsx');
     render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={tourExecutions}/>);
