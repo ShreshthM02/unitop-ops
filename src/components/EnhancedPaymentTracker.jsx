@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency } = Lib;
 
 // entryINR() moved to src/lib/utils.js so QueryDrawerWithQuote's Finance-tab
 // summary can share the exact same formula -- see there for the comment.
@@ -405,6 +405,20 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const balance = tourValueINR - totalIn;
   const pct = tourValueINR>0 ? Math.round(totalIn/tourValueINR*100) : 0;
 
+  // FC view of the Payment Summary: native amounts only, no conversion.
+  // Clients almost always pay in the tour's own quoted currency, so this
+  // sums entries that match it directly -- entries paid in a different
+  // currency are excluded here (not converted/guessed at) and flagged,
+  // since the INR view (entryINR-based, above) is the one complete,
+  // always-accurate total regardless of currency mix.
+  const [viewCurrency, setViewCurrency] = useState("FC");
+  const tourCurrencyLabel = currencyLabel(pt.currency, pt.currOther);
+  const matchingEntries = pt.entries.filter(e=>entryMatchesTourCurrency(e, pt.currency, pt.currOther));
+  const otherCurrencyEntries = pt.entries.filter(e=>!entryMatchesTourCurrency(e, pt.currency, pt.currOther));
+  const receivedFC = matchingEntries.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const tourValueFC = parseFloat(pt.tourValue)||0;
+  const balanceFC = tourValueFC - receivedFC;
+
   const addIncoming = () => {
     if(!newIn.amount||!newIn.date) return;
     const receiptNo = `RCP-${new Date().getFullYear()}-${String(pt.entries.length+1).padStart(3,"0")}`;
@@ -465,14 +479,35 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
           </div>
 
           {/* Summary */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-            {[["Tour (INR)","₹ "+Math.round(tourValueINR).toLocaleString(),G.navy],["Received","₹ "+Math.round(totalIn).toLocaleString(),"#059669"],["Balance Due","₹ "+Math.round(balance).toLocaleString(),balance>0?G.accent:"#059669"],["Paid Out","₹ "+Math.round(totalOut).toLocaleString(),"#6B21A8"]].map(([l,v,c])=>(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Payment Summary</div>
+            <div style={{display:"flex",border:`1px solid ${G.gray200}`,borderRadius:6,overflow:"hidden"}}>
+              {["FC","INR"].map(v=>(
+                <div key={v} onClick={()=>setViewCurrency(v)} style={{padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",
+                  background:viewCurrency===v?G.navy:G.white,color:viewCurrency===v?G.white:G.gray600}}>
+                  {v==="FC"?tourCurrencyLabel:"INR"}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:6}}>
+            {(viewCurrency==="FC"
+              ? [["Tour Value",tourCurrencyLabel+" "+tourValueFC.toLocaleString(),G.navy],["Received",tourCurrencyLabel+" "+Math.round(receivedFC).toLocaleString(),"#059669"],["Balance Due",tourCurrencyLabel+" "+Math.round(balanceFC).toLocaleString(),balanceFC>0?G.accent:"#059669"],["Paid Out","₹ "+Math.round(totalOut).toLocaleString(),"#6B21A8"]]
+              : [["Tour (INR)","₹ "+Math.round(tourValueINR).toLocaleString(),G.navy],["Received","₹ "+Math.round(totalIn).toLocaleString(),"#059669"],["Balance Due","₹ "+Math.round(balance).toLocaleString(),balance>0?G.accent:"#059669"],["Paid Out","₹ "+Math.round(totalOut).toLocaleString(),"#6B21A8"]]
+            ).map(([l,v,c])=>(
               <div key={l} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10}}>
                 <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div>
                 <div style={{fontSize:14,fontWeight:700,color:c}}>{v}</div>
               </div>
             ))}
           </div>
+          {viewCurrency==="FC" && otherCurrencyEntries.length>0 && (
+            <div style={{fontSize:10.5,color:"#B45309",background:"#FEF3C7",borderRadius:6,padding:"5px 10px",marginBottom:14}}>
+              ⚠ {otherCurrencyEntries.length} {otherCurrencyEntries.length===1?"entry":"entries"} paid in a different currency
+              ({[...new Set(otherCurrencyEntries.map(e=>currencyLabel(e.inCurrency,e.currOther)))].join(", ")}) not shown here — switch to INR for the complete total.
+            </div>
+          )}
+          {viewCurrency==="FC" && otherCurrencyEntries.length===0 && <div style={{marginBottom:14}}/>}
 
           {/* Progress */}
           <div style={{marginBottom:14}}>

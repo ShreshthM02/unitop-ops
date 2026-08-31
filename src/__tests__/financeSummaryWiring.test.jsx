@@ -19,7 +19,7 @@ const baseProps = {
 };
 
 describe('Finance tab Payment Summary card is wired to the real payments record, not hardcoded demo values', () => {
-  it('shows the real Tour Value (INR), Received, and Balance Due computed from the payments record', () => {
+  it('shows the real Tour Value (INR), Received, and Balance Due computed from the payments record, once switched to INR view', () => {
     const payments = {
       tourValue: 5000, currency: 'US $', roeUsed: 90, // Tour Value (INR) = 450,000
       entries: [
@@ -29,6 +29,7 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     };
     render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
     fireEvent.click(screen.getByText('💰 Finance'));
+    fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV'));
     expect(screen.getByText(/₹ 4,50,000|₹ 450,000/)).toBeTruthy(); // Tour Value (INR)
     expect(screen.getByText(/₹ 4,00,000|₹ 400,000/)).toBeTruthy(); // Received
     expect(screen.getByText(/₹ 50,000/)).toBeTruthy();  // Balance Due
@@ -37,7 +38,7 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     expect(screen.queryByText('$750')).toBeFalsy();
   });
 
-  it('sums the real INR credited for foreign-currency entries, not the raw foreign amount', () => {
+  it('sums the real INR credited for foreign-currency entries, not the raw foreign amount, once switched to INR view', () => {
     const payments = {
       tourValue: 5000, currency: 'US $', roeUsed: 90,
       entries: [
@@ -49,6 +50,7 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     };
     render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
     fireEvent.click(screen.getByText('💰 Finance'));
+    fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV'));
     // 100000 + 84000 = 184000; the ₹500 USD entry with no amountINR must not be silently added
     expect(screen.getByText(/1,84,000|184,000/)).toBeTruthy();
   });
@@ -57,6 +59,33 @@ describe('Finance tab Payment Summary card is wired to the real payments record,
     render(<QueryDrawerWithQuote {...baseProps} payments={undefined}/>);
     fireEvent.click(screen.getByText('💰 Finance'));
     expect(screen.getByText('Payment Summary')).toBeTruthy();
+    fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV'));
     expect(screen.getAllByText(/₹ 0/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('Finance tab Payment Summary: FC/INR toggle, defaulted to FC (clients almost always pay in the tour’s own quoted currency)', () => {
+  it('defaults to showing figures in the tour’s own quoted currency (FC), not INR', () => {
+    const payments = { tourValue: 5000, currency: 'US $', roeUsed: 90, entries: [{ id: 1, type: 'advance', inCurrency: 'USD', amount: '4000', amountINR: '336000' }], outgoing: [] };
+    render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
+    fireEvent.click(screen.getByText('💰 Finance'));
+    expect(screen.getByText('USD 5,000')).toBeTruthy(); // Tour Value shown natively, not converted
+    expect(screen.getByText('USD 4,000')).toBeTruthy(); // Received shown natively
+    expect(screen.queryByText(/336,000/)).toBeFalsy(); // INR figure not shown until toggled
+  });
+
+  it('excludes entries paid in a different currency from the FC total and flags them, rather than guessing a conversion', () => {
+    const payments = {
+      tourValue: 5000, currency: 'US $', roeUsed: 90,
+      entries: [
+        { id: 1, type: 'advance', inCurrency: 'USD', amount: '3000', amountINR: '252000' },
+        { id: 2, type: 'second', inCurrency: 'INR', amount: '50000', amountINR: '50000' },
+      ],
+      outgoing: [],
+    };
+    render(<QueryDrawerWithQuote {...baseProps} payments={payments}/>);
+    fireEvent.click(screen.getByText('💰 Finance'));
+    expect(screen.getByText('USD 3,000')).toBeTruthy(); // only the matching-currency entry counted
+    expect(screen.getByText(/different currency/)).toBeTruthy();
   });
 });

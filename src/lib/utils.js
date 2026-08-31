@@ -132,6 +132,27 @@ export function entryINR(e) {
   return parseFloat(e.amountINR) || 0;
 }
 
+// Tour Value's own currency picker uses "US $" as its label for US
+// Dollars; an incoming payment entry's currency picker uses "USD" for
+// the same real currency. Both need to resolve to the same canonical
+// label before a payment entry can be matched against the tour's own
+// quoted currency (the FC view of the Payment Summary) -- otherwise a
+// USD-quoted tour's own USD-paid entries would never match.
+export function currencyLabel(currency, currOther) {
+  if (currency === "Other") return (currOther || "Other").trim();
+  return currency === "US $" ? "USD" : currency;
+}
+
+// Whether an incoming payment entry was paid in the tour's own quoted
+// currency -- used for the FC view of the Payment Summary, which sums
+// entries natively (no conversion) rather than inventing a cross-rate
+// for entries paid in some other currency. Those get excluded from the
+// FC total rather than guessed at; the INR view (entryINR-based) always
+// has the complete, accurate total regardless of currency mix.
+export function entryMatchesTourCurrency(entry, tourCurrency, tourCurrOther) {
+  return currencyLabel(entry.inCurrency, entry.currOther) === currencyLabel(tourCurrency, tourCurrOther);
+}
+
 export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
   const map = {};
   (payRows || []).forEach(p => {

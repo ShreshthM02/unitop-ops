@@ -228,6 +228,7 @@ describe('Payment entries are amendable with version history, and P&L/summary no
       { id: 3, type: 'third', inCurrency: 'USD', amount: '500', amountINR: '', date: '2026-08-10', mode: 'SWIFT', receipt: 'RCP-3', version: 1, history: [] }, // no amountINR yet -- must NOT count as ₹500
     ], outgoing: [] } };
     render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV')); // summary now defaults to FC view; switch to INR to check the INR-total figures
     // 50000 (INR) + 84000 (USD entry's real credited INR) = 134000; the third entry's raw USD 500 must not silently count as ₹500
     expect(screen.getByText(/134,000|1,34,000/)).toBeTruthy();
     expect(screen.queryByText(/^₹ 500$/)).toBeFalsy();
@@ -251,5 +252,23 @@ describe('Payment entries are amendable with version history, and P&L/summary no
     // Only one ROE input exists anywhere in the tracker (Tour Value section's)
     const roeInputs = screen.getAllByDisplayValue('90');
     expect(roeInputs.length).toBe(1);
+  });
+
+  it('Payment Summary defaults to FC view, and toggling to INR shows the converted/complete totals instead', () => {
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    const payments = { 'UTQ-1': { tourValue: 5000, currency: 'US $', roeUsed: 90, entries: [
+      { id: 1, type: 'advance', inCurrency: 'USD', amount: '3000', amountINR: '252000', version: 1, history: [] },
+      { id: 2, type: 'second', inCurrency: 'INR', amount: '50000', amountINR: '50000', version: 1, history: [] },
+    ], outgoing: [] } };
+    render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    // Default FC view: Tour Value shown natively, Received only counts the USD-matching entry
+    expect(screen.getByText('USD 5,000')).toBeTruthy();
+    expect(screen.getAllByText('USD 3,000').length).toBeGreaterThan(0); // appears both on the entry row and the summary card
+    expect(screen.getByText(/different currency/)).toBeTruthy(); // the INR entry is flagged as excluded, not silently dropped
+
+    fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV'));
+    // INR view: complete total, both entries counted via entryINR (252000 + 50000 = 302000)
+    expect(screen.getByText(/302,000/)).toBeTruthy();
+    expect(screen.queryByText(/different currency/)).toBeFalsy();
   });
 });

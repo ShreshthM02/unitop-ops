@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
@@ -18,6 +18,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const canAdvance   = query.status!=="completed"&&!query.cancelled;
   const nextStatusMap= {new_query:"costing",costing:"operations",operations:"finance",finance:"completed"};
   const [tab, setTab]       = useState("info");
+  const [financeViewCurrency, setFinanceViewCurrency] = useState("FC");
   const [remark, setRemark] = useState("");
   const [editingQuery, setEditingQuery] = useState(false);
   const [showRecoverForm, setShowRecoverForm] = useState(false);
@@ -571,22 +572,49 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {/* ── FINANCE (tour file only) ── */}
           {tab==="finance"&&isCaseFile&&(
             <div>
-              {sec("Payment Summary")}
               {(()=>{
-                const pt = payments || {};
+                const pt = payments || blankPaymentRecord(query.id);
                 const tourValueINR = (parseFloat(pt.tourValue)||0) * (parseFloat(pt.roeUsed)||1);
                 const received = (pt.entries||[]).reduce((s,e)=>s+entryINR(e),0);
                 const balanceDue = tourValueINR - received;
-                const fmt = n => "₹ " + Math.round(n).toLocaleString();
+                const tourCurrencyLabel = currencyLabel(pt.currency, pt.currOther);
+                const matchingEntries = (pt.entries||[]).filter(e=>entryMatchesTourCurrency(e, pt.currency, pt.currOther));
+                const otherCurrencyEntries = (pt.entries||[]).filter(e=>!entryMatchesTourCurrency(e, pt.currency, pt.currOther));
+                const receivedFC = matchingEntries.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+                const tourValueFC = parseFloat(pt.tourValue)||0;
+                const balanceFC = tourValueFC - receivedFC;
+                const fmtINR = n => "₹ " + Math.round(n).toLocaleString();
+                const fmtFC = n => tourCurrencyLabel + " " + Math.round(n).toLocaleString();
+                const rows = financeViewCurrency==="FC"
+                  ? [["Tour Value",fmtFC(tourValueFC),G.gray800],["Received",fmtFC(receivedFC),"#059669"],["Balance Due",fmtFC(balanceFC),balanceFC>0?G.accent:"#059669"]]
+                  : [["Tour Value",fmtINR(tourValueINR),G.gray800],["Received",fmtINR(received),"#059669"],["Balance Due",fmtINR(balanceDue),balanceDue>0?G.accent:"#059669"]];
                 return (
-                  <div style={{background:G.gray50,borderRadius:8,padding:12,marginBottom:12}}>
-                    {[["Tour Value",fmt(tourValueINR),G.gray800],["Received",fmt(received),"#059669"],["Balance Due",fmt(balanceDue),balanceDue>0?G.accent:"#059669"]].map(([l,v,c])=>(
-                      <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                        <span style={{fontSize:12,color:G.gray600}}>{l}</span>
-                        <span style={{fontSize:13,fontWeight:600,color:c}}>{v}</span>
+                  <>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                      {sec("Payment Summary")}
+                      <div style={{display:"flex",border:`1px solid ${G.gray200}`,borderRadius:6,overflow:"hidden"}}>
+                        {["FC","INR"].map(v=>(
+                          <div key={v} onClick={()=>setFinanceViewCurrency(v)} style={{padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",
+                            background:financeViewCurrency===v?G.navy:G.white,color:financeViewCurrency===v?G.white:G.gray600}}>
+                            {v==="FC"?tourCurrencyLabel:"INR"}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                    <div style={{background:G.gray50,borderRadius:8,padding:12,marginBottom:6}}>
+                      {rows.map(([l,v,c])=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                          <span style={{fontSize:12,color:G.gray600}}>{l}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:c}}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {financeViewCurrency==="FC" && otherCurrencyEntries.length>0 && (
+                      <div style={{fontSize:10.5,color:"#B45309",background:"#FEF3C7",borderRadius:6,padding:"5px 10px",marginBottom:12}}>
+                        ⚠ {otherCurrencyEntries.length} {otherCurrencyEntries.length===1?"entry":"entries"} paid in a different currency not shown here — switch to INR for the complete total.
+                      </div>
+                    )}
+                  </>
                 );
               })()}
               <button className="convert-case-btn" style={{background:"#6C3483"}} onClick={()=>openPanel("payments")}>
