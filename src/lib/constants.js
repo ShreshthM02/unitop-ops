@@ -515,6 +515,26 @@ export const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep
 export const DEST_COLORS = ["#1A5276","#0E6655","#784212","#6C3483","#C0392B","#117A65","#1F618D","#7D6608","#5F6A6A","#1A5276","#2E86C1"];
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
+// ─── NATIONALITY ─────────────────────────────────────────────────────────────
+// A canonical, fixed list of demonyms -- picking from this instead of typing
+// free text is what stops "Taiwan"/"TAIWAN"/"Taiwanese" from being counted
+// as three different markets in the Nationality Mix report. "Other" reveals
+// a free-text field for anything genuinely not on the list, same pattern as
+// currency/vendor/mode-of-payment selects throughout this app.
+export const NATIONALITIES = [
+  "Indian","American","British","Canadian","Australian","German","French","Italian","Spanish","Dutch",
+  "Belgian","Swiss","Austrian","Swedish","Norwegian","Danish","Finnish","Irish","Portuguese","Greek",
+  "Polish","Czech","Hungarian","Romanian","Russian","Ukrainian","Turkish","Israeli",
+  "Chinese","Japanese","South Korean","Taiwanese","Hong Konger","Singaporean","Malaysian","Thai","Vietnamese",
+  "Indonesian","Filipino","Bangladeshi","Sri Lankan","Nepali","Bhutanese","Pakistani","Myanmar (Burmese)","Cambodian","Laotian",
+  "Mongolian","Kazakh","Uzbek",
+  "Mexican","Brazilian","Argentinian","Chilean","Colombian","Peruvian","Venezuelan","Ecuadorian","Uruguayan","Bolivian",
+  "South African","Egyptian","Moroccan","Kenyan","Nigerian",
+  "Saudi Arabian","Emirati","Qatari","Kuwaiti","Omani","Bahraini","Jordanian","Lebanese",
+  "New Zealander",
+  "Other",
+];
+
 export const ALL_REPORTS = [
   {id:"active_pipeline",     cat:"Operations",            icon:"📊",label:"Active Pipeline",             desc:"All active queries by stage, assigned staff, travel dates"},
   {id:"query_log",           cat:"Operations",            icon:"📋",label:"Query Log",                   desc:"Complete log of all queries — date, agent, sector, status"},
@@ -538,6 +558,8 @@ export const ALL_REPORTS = [
   {id:"gst_summary",         cat:"Compliance",            icon:"🧾",label:"GST Summary",                desc:"GST collected (IGST/CGST+SGST) per month — for filing"},
   {id:"invoice_register",    cat:"Compliance",            icon:"📄",label:"Invoice Register",           desc:"All proforma and tax invoices issued"},
   {id:"receipt_register",    cat:"Compliance",            icon:"₹", label:"Receipt Register",           desc:"All payment receipts issued"},
+  {id:"exchange_order_register", cat:"Compliance",        icon:"🎫",label:"Exchange Order Register",     desc:"Every Exchange Order ever generated — number, issue date, tour file, vendor"},
+  {id:"nationality_master",  cat:"Business Intelligence", icon:"🌍",label:"Nation-wise Master List",     desc:"Every query by nationality/market with date of generation and status"},
 ];
 
 // ─── TOUR BRIEFING SHEET ──────────────────────────────────────────────────────

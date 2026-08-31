@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES } = Lib;
 
 export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }) {
   const [form, setForm] = useState({
@@ -20,6 +20,12 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
     notes:"",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  // Whether the Nationality dropdown shows "Other" (a free-text value)
+  // vs a canonical pick -- seeded from the initial value so a legacy
+  // free-text entry (e.g. "TAIWAN" from before this dropdown existed)
+  // shows correctly as "Other" with its original text preserved, rather
+  // than forcing a rewrite of historical data.
+  const [natOtherMode, setNatOtherMode] = useState(() => !!form.nationality && !NATIONALITIES.includes(form.nationality));
 
   // Auto-fill from agent master
   const handleAgentSelect = (id) => {
@@ -30,6 +36,7 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
       set("agentCountry", agent.country);
       set("agentCity", agent.city);
       set("nationality", agent.market);
+      setNatOtherMode(!!agent.market && !NATIONALITIES.includes(agent.market));
       if (!form.correspondent) set("correspondent", agent.contactName);
     } else {
       set("agentId", "");
@@ -80,7 +87,15 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
             </div>
             <div>
               {sl("Nationality / Market")}
-              <input style={inp} value={form.nationality} onChange={e=>set("nationality",e.target.value)} placeholder="e.g. Thai, German, Colombian"/>
+              <select style={inp} value={natOtherMode ? "Other" : (form.nationality||"")}
+                onChange={e=>{
+                  if(e.target.value==="Other"){ setNatOtherMode(true); set("nationality",""); }
+                  else { setNatOtherMode(false); set("nationality", e.target.value); }
+                }}>
+                <option value="">Select nationality...</option>
+                {NATIONALITIES.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+              {natOtherMode && <OtherInput value={form.nationality} onChange={v=>set("nationality",v)} placeholder="Specify nationality..."/>}
             </div>
             <div>
               {sl("Query Source")}

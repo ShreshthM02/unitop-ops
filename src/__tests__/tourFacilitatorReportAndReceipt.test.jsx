@@ -36,6 +36,12 @@ describe('Tour Facilitator Report', () => {
     expect(screen.getByText(/Tour Facilitator Report/)).toBeTruthy();
   });
 
+  it('appears in the Operations category report list', async () => {
+    const { default: ReportsView } = await import('../components/ReportsView.jsx');
+    render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={tourExecutions}/>);
+    expect(screen.getByText(/Tour Facilitator Report/)).toBeTruthy();
+  });
+
   it('lists each real facilitator assignment with the resolved vendor name, excluding cancelled tours and unassigned rows', async () => {
     const { default: ReportsView } = await import('../components/ReportsView.jsx');
     render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={tourExecutions}/>);
@@ -46,6 +52,46 @@ describe('Tour Facilitator Report', () => {
     expect(screen.getAllByText('Prithvi').length).toBe(1);
     expect(screen.getByText('North Kerala')).toBeTruthy();
     expect(screen.getByText('TF-1')).toBeTruthy();
+  });
+
+  it('shows Travel Date as {Arrival} - {Departure} in dd/mm/yyyy, and Days computed from those same dates (not the separately hand-entered nights field)', async () => {
+    const rangedQueries = [
+      { id: 'UTQ-4', tourFileId: 'TF-4', groupName: 'Group D', destination: 'Kerala', travelDate: '2026-09-01', travelDateTo: '2026-09-10', nights: 999, cancelled: false },
+    ];
+    const rangedExec = { 'UTQ-4': { facilitators: [{ id: 1, vendorId: 'v1', sector: '' }] } };
+    const { default: ReportsView } = await import('../components/ReportsView.jsx');
+    render(<ReportsView queries={rangedQueries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={rangedExec}/>);
+    fireEvent.click(screen.getByText(/Tour Facilitator Report/));
+    await waitFor(() => expect(screen.getByText('01/09/2026 - 10/09/2026')).toBeTruthy());
+    // 1-10 Sep inclusive = 10 days -- must come from the dates, not the (deliberately wrong, 999) nights field
+    expect(screen.getByText('10')).toBeTruthy();
+    expect(screen.queryByText('999')).toBeFalsy();
+  });
+});
+
+describe('Active Pipeline report shows Tour File ID once a query has been converted, matching the live Kanban board', () => {
+  it('shows the Tour File ID, not the original Query ID, once tourFileId is set', async () => {
+    const queries = [
+      { id: 'UTQ-9', tourFileId: 'TF-9', groupName: 'Converted Group', destination: 'Goa', status: 'finance', cancelled: false },
+      { id: 'UTQ-10', groupName: 'Still A Query', destination: 'Kerala', status: 'new', cancelled: false },
+    ];
+    const { default: ReportsView } = await import('../components/ReportsView.jsx');
+    render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={[]} tourExecutions={{}}/>);
+    fireEvent.click(screen.getByText(/Active Pipeline/));
+    await waitFor(() => expect(screen.getByText('TF-9')).toBeTruthy());
+    expect(screen.queryByText('UTQ-9')).toBeFalsy(); // shows TF-9, not the original query id, once converted
+    expect(screen.getByText('UTQ-10')).toBeTruthy(); // still shows the query id for one not yet converted
+  });
+});
+
+describe('Seasonality report includes actually-operated tour files per month, not just query volume', () => {
+  it('has Tour Files and Operated columns alongside Queries', async () => {
+    const { default: ReportsView } = await import('../components/ReportsView.jsx');
+    render(<ReportsView queries={[]} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={[]} tourExecutions={{}}/>);
+    fireEvent.click(screen.getByText(/Seasonality Report/));
+    await waitFor(() => expect(screen.getByText('Queries')).toBeTruthy());
+    expect(screen.getByText('Tour Files')).toBeTruthy();
+    expect(screen.getByText('Operated')).toBeTruthy();
   });
 });
 

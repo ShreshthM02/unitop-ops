@@ -1,12 +1,22 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, isIsoDateString, formatDateDMY, db, entryINR, loadAllExchangeOrders, groupExchangeOrderVersions } = Lib;
 
 export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions }) {
   const can = useCan(currentUser);
   const [selectedReport, setSelectedReport] = useState(null);
   const [filterCat, setFilterCat] = useState("All");
   const [search, setSearch] = useState("");
+  // Exchange Orders live in their own table, not part of the queries/
+  // payments props this view already has -- loaded on demand only when
+  // that specific report is opened, not app-wide.
+  const [exchangeOrders, setExchangeOrders] = useState([]);
+  const [eoLoading, setEoLoading] = useState(false);
+  useEffect(() => {
+    if (selectedReport?.id !== "exchange_order_register") return;
+    setEoLoading(true);
+    loadAllExchangeOrders(db).then(rows => { setExchangeOrders(rows); setEoLoading(false); });
+  }, [selectedReport?.id]);
 
   if(!can("pl_report")) return (
     <div style={{textAlign:"center",padding:48,color:G.gray400}}>
@@ -27,7 +37,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
     switch(id) {
       case "active_pipeline":
         return queries.filter(q=>!q.cancelled&&q.status!=="completed").map(q=>({
-          "Query ID":q.id,"Group":q.groupName||q.clientName,"Agent":q.agentCompany||"—",
+          "ID":q.tourFileId||q.id,"Group":q.groupName||q.clientName,"Agent":q.agentCompany||"—",
           "Sector":q.destination||q.sector||"—","Status":q.status,"Travel Date":q.travelDate||"TBC","Pax":q.paxDisplay||"—",
         }));
       case "query_log":
@@ -76,13 +86,33 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           facilitators.forEach(f => {
             if (!f.vendorId) return; // skip rows where no facilitator was actually assigned yet
             const vendor = (vendors||[]).find(v=>v.id===f.vendorId);
+            // {Arrival Date} - {Departure Date} in dd/mm/yyyy, and Days
+            // computed from those same two dates -- not the separately
+            // hand-entered `nights` field, which can drift out of sync
+            // with the actual travel dates. formatDateDMY renders
+            // dd-mm-yyyy with hyphens; slash-swap to match the dd/mm/yyyy
+            // spec here, same as the Payment Receipt's date range.
+            const fromRaw = q.travelDate, toRaw = q.travelDateTo;
+            const fromIsDate = isIsoDateString(fromRaw), toIsDate = isIsoDateString(toRaw);
+            const dmySlash = (iso) => formatDateDMY(iso).replace(/-/g, "/");
+            let travelDateDisplay = "TBC", days = "—";
+            if (fromIsDate && toIsDate) {
+              travelDateDisplay = `${dmySlash(fromRaw)} - ${dmySlash(toRaw)}`;
+              const msPerDay = 24*60*60*1000;
+              const dayCount = Math.round((new Date(toRaw) - new Date(fromRaw)) / msPerDay) + 1;
+              days = dayCount > 0 ? dayCount : "—";
+            } else if (fromIsDate) {
+              travelDateDisplay = dmySlash(fromRaw);
+            } else if (q.travelMonth) {
+              travelDateDisplay = q.travelMonth;
+            }
             rows.push({
               "Facilitator": vendor?.name || "Unknown",
               "Tour File": q.tourFileId || q.id,
               "Group / Client": q.groupName || q.clientName || "—",
               "Sector": f.sector || q.destination || q.sector || "—",
-              "Travel Date": q.travelDate || q.travelMonth || "TBC",
-              "Nights": q.nights || "—",
+              "Travel Date": travelDateDisplay,
+              "Days": days,
             });
           });
         });
@@ -112,9 +142,46 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
         return Array.from({length:12},(_,i)=>{
           const d=new Date(nowD.getFullYear(),nowD.getMonth()-11+i,1);
           const label=d.toLocaleDateString("en-IN",{month:"short",year:"2-digit"});
-          const count=queries.filter(q=>{const qd=new Date(q.date||"");return qd.getFullYear()===d.getFullYear()&&qd.getMonth()===d.getMonth()&&!q.cancelled;}).length;
-          return {"Month":label,"Queries":count};
+          // Queries/Tour Files: by query CREATION month -- when the
+          // demand came in.
+          const monthQueries = queries.filter(q=>{const qd=new Date(q.date||"");return qd.getFullYear()===d.getFullYear()&&qd.getMonth()===d.getMonth()&&!q.cancelled;});
+          const count = monthQueries.length;
+          const tourFiles = monthQueries.filter(q=>q.tourFileId).length;
+          // Operated: by TRAVEL date month and status===completed -- when
+          // the tour actually ran, not when it was booked. A different
+          // axis from the two counts above, and often a different month
+          // entirely for a tour booked well ahead of its travel date.
+          const operated = queries.filter(q=>{
+            if(q.cancelled||q.status!=="completed"||!isIsoDateString(q.travelDate)) return false;
+            const td=new Date(q.travelDate);
+            return td.getFullYear()===d.getFullYear()&&td.getMonth()===d.getMonth();
+          }).length;
+          return {"Month":label,"Queries":count,"Tour Files":tourFiles,"Operated":operated};
         });
+      }
+      case "exchange_order_register": {
+        const dmySlash = (iso) => isIsoDateString(iso) ? formatDateDMY(iso).replace(/-/g, "/") : (iso||"—");
+        return groupExchangeOrderVersions(exchangeOrders).map(g => {
+          const query = queries.find(q=>q.id===g.latest.queryId);
+          const vendor = (vendors||[]).find(v=>v.id===g.latest.vendorId);
+          return {
+            "Exchange Order No.": g.orderNo,
+            "Issue Date": dmySlash(g.latest.order?.issueDate),
+            "Tour File Number": query?.tourFileId || g.latest.order?.tourNo || query?.id || "—",
+            "Vendor": vendor?.name || g.latest.order?.drawnOn || "—",
+          };
+        }).sort((a,b)=>a["Exchange Order No."].localeCompare(b["Exchange Order No."]));
+      }
+      case "nationality_master": {
+        const dmySlash = (iso) => isIsoDateString(iso) ? formatDateDMY(iso).replace(/-/g, "/") : (iso||"—");
+        return queries.filter(q=>q.nationality).map(q=>({
+          "Nationality / Market": q.nationality,
+          "Query ID": q.id,
+          "Tour File": q.tourFileId || "—",
+          "Group / Client": q.groupName || q.clientName || "—",
+          "Date of Generation": dmySlash(q.date),
+          "Status": q.cancelled ? "CANCELLED" : q.status,
+        })).sort((a,b)=>a["Nationality / Market"].localeCompare(b["Nationality / Market"])||a["Date of Generation"].localeCompare(b["Date of Generation"]));
       }
       default:
         return [{Note:"Data will populate as you use the system and add queries, tour files and payments."}];
@@ -153,17 +220,29 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
             <div style={{fontSize:11,color:G.gray400,marginTop:2}}>{report.desc}</div>
           </div>
           <button className="btn btn-ghost" style={{fontSize:11}} onClick={async()=>{
-            const XLSX=await loadXLSX();
-            const ws=XLSX.utils.json_to_sheet(data);
-            const wb=XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb,ws,report.label.slice(0,31));
-            const blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-            saveBlob(blob,`${report.id}.xlsx`);
+            if(!data.length) return;
+            const ExcelJS = (await import("exceljs")).default;
+            const wb = new ExcelJS.Workbook();
+            wb.creator = "Unitop Ops"; wb.created = new Date();
+            const sheet = wb.addWorksheet(report.label.slice(0,31));
+            const cols = Object.keys(data[0]);
+            sheet.columns = cols.map(c=>({header:c, key:c, width:Math.max(12,c.length+2)}));
+            sheet.getRow(1).font = {bold:true,color:{argb:"FFFFFFFF"}};
+            sheet.getRow(1).fill = {type:"pattern",pattern:"solid",fgColor:{argb:"FF0D1B2A"}};
+            data.forEach(row=>sheet.addRow(row));
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `${report.id}.xlsx`; a.click();
+            URL.revokeObjectURL(url);
           }}>📥 XLSX</button>
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>exportPDF(report)}>🖨 PDF</button>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"12px 18px"}}>
-          {data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>No data yet</div>:(
+          {report.id==="exchange_order_register" && eoLoading
+            ? <div style={{textAlign:"center",padding:32,color:G.gray400}}>Loading…</div>
+            : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>No data yet</div>:(
             <div style={{overflowX:"auto"}}>
               <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>{data.length} record{data.length!==1?"s":""}</div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:500}}>

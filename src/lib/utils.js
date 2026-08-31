@@ -1065,6 +1065,20 @@ export async function loadExchangeOrdersForVendor(db, vendorId) {
   }
 }
 
+// Every version row of every EO across every tour file -- used by the
+// Exchange Orders Register report, which needs the full population, not
+// scoped to one tour file or one vendor like the two loaders above.
+// Callers group with groupExchangeOrderVersions the same way those do.
+export async function loadAllExchangeOrders(db) {
+  try {
+    const { data } = await db.from("exchange_orders").select("*").order("version", { ascending: true });
+    return (data || []).map(mapDbExchangeOrderRow);
+  } catch (e) {
+    console.warn("Load all exchange orders failed:", e);
+    return [];
+  }
+}
+
 // Full version history for one specific EO (by its stable order_no) --
 // used to drive that EO's own VersionDropdown when opened for edit.
 export async function loadExchangeOrderVersionHistory(db, orderNo) {
