@@ -268,7 +268,7 @@ describe('Payment entries are amendable with version history, and P&L/summary no
 
     fireEvent.click(screen.getByText((content, el) => content === 'INR' && el.tagName === 'DIV'));
     // INR view: complete total, both entries counted via entryINR (252000 + 50000 = 302000)
-    expect(screen.getByText(/302,000/)).toBeTruthy();
+    expect(screen.getByText(/3,02,000|302,000/)).toBeTruthy();
     expect(screen.queryByText(/different currency/)).toBeFalsy();
   });
 });
