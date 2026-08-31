@@ -14,7 +14,6 @@ export { default as KanbanView } from './KanbanView.jsx';
 export { default as LoginScreen } from './LoginScreen.jsx';
 export { default as NewQueryModal } from './NewQueryModal.jsx';
 export { default as OwnPasswordChange } from './OwnPasswordChange.jsx';
-export { default as PLReport } from './PLReport.jsx';
 export { default as InvoiceGenerator } from './InvoiceGenerator.jsx';
 export { default as QueryDrawerWithQuote } from './QueryDrawerWithQuote.jsx';
 export { default as QuotationGenerator } from './QuotationGenerator.jsx';

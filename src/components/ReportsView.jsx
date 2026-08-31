@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, isIsoDateString, formatDateDMY, db, entryINR, loadAllExchangeOrders, groupExchangeOrderVersions } = Lib;
 
-export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions }) {
+export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions, onOpenQuery }) {
   const can = useCan(currentUser);
   const [selectedReport, setSelectedReport] = useState(null);
   const [filterCat, setFilterCat] = useState("All");
@@ -39,17 +39,20 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
         return queries.filter(q=>!q.cancelled&&q.status!=="completed").map(q=>({
           "ID":q.tourFileId||q.id,"Group":q.groupName||q.clientName,"Agent":q.agentCompany||"—",
           "Sector":q.destination||q.sector||"—","Status":q.status,"Travel Date":q.travelDate||"TBC","Pax":q.paxDisplay||"—",
+          __queryRef:q,
         }));
       case "query_log":
         return queries.map(q=>({
           "Query ID":q.id,"Date":q.date,"Group":q.groupName||q.clientName,
           "Agent":q.agentCompany||"—","Sector":q.destination||q.sector||"—",
           "Status":q.cancelled?"CANCELLED":q.status,"Tour File":q.tourFileId||"—",
+          __queryRef:q,
         }));
       case "cancellations":
         return queries.filter(q=>q.cancelled).map(q=>({
           "Query ID":q.id,"Group":q.groupName||q.clientName,"Agent":q.agentCompany||"—",
           "Sector":q.destination||q.sector||"—","Stage":q.status,"Reason":q.cancellationReason||"—",
+          __queryRef:q,
         }));
       case "pl_summary":
         return queries.filter(q=>!q.cancelled).map(q=>{
@@ -60,7 +63,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           return {"Tour File":q.tourFileId||q.id,"Group":q.groupName||q.clientName,"Sector":q.destination||q.sector||"—",
             "Tour Value (₹)":Math.round(tv).toLocaleString(),"Received (₹)":Math.round(rc).toLocaleString(),
             "Costs (₹)":Math.round(co).toLocaleString(),"Profit (₹)":Math.round(tv-co).toLocaleString(),
-            "Margin":tv>0?Math.round((tv-co)/tv*100)+"%":"—"};
+            "Margin":tv>0?Math.round((tv-co)/tv*100)+"%":"—",__queryRef:q};
         });
       case "agent_revenue": {
         const aMap={};
@@ -113,6 +116,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
               "Sector": f.sector || q.destination || q.sector || "—",
               "Travel Date": travelDateDisplay,
               "Days": days,
+              __queryRef:q,
             });
           });
         });
@@ -169,6 +173,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
             "Issue Date": dmySlash(g.latest.order?.issueDate),
             "Tour File Number": query?.tourFileId || g.latest.order?.tourNo || query?.id || "—",
             "Vendor": vendor?.name || g.latest.order?.drawnOn || "—",
+            __queryRef:query,
           };
         }).sort((a,b)=>a["Exchange Order No."].localeCompare(b["Exchange Order No."]));
       }
@@ -181,6 +186,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           "Group / Client": q.groupName || q.clientName || "—",
           "Date of Generation": dmySlash(q.date),
           "Status": q.cancelled ? "CANCELLED" : q.status,
+          __queryRef:q,
         })).sort((a,b)=>a["Nationality / Market"].localeCompare(b["Nationality / Market"])||a["Date of Generation"].localeCompare(b["Date of Generation"]));
       }
       default:
@@ -191,7 +197,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   const exportPDF = (report) => {
     const data=getReportData(report.id);
     if(!data.length) return;
-    const cols=Object.keys(data[0]);
+    const cols=Object.keys(data[0]).filter(c=>c!=="__queryRef");
     const today=new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
     const win=window.open("","_blank");
     win.document.write(`<!DOCTYPE html><html><head><title>${report.label}</title>
@@ -210,7 +216,13 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
 
   const ReportPreview = ({report}) => {
     const data=getReportData(report.id);
-    const cols=data.length?Object.keys(data[0]):[];
+    const cols=data.length?Object.keys(data[0]).filter(c=>c!=="__queryRef"):[];
+    // A cell is a clickable ID/Tour-File reference when the row carries a
+    // resolved query and the cell's own value is that query's id or
+    // tour file id -- covers every "ID"/"Query ID"/"Tour File" column
+    // across every report generically, without hand-listing column names
+    // per report.
+    const isIdCell = (row,c) => row.__queryRef && (row[c]===row.__queryRef.id || row[c]===row.__queryRef.tourFileId);
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:`1px solid ${G.gray200}`,display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -225,11 +237,10 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
             const wb = new ExcelJS.Workbook();
             wb.creator = "Unitop Ops"; wb.created = new Date();
             const sheet = wb.addWorksheet(report.label.slice(0,31));
-            const cols = Object.keys(data[0]);
             sheet.columns = cols.map(c=>({header:c, key:c, width:Math.max(12,c.length+2)}));
             sheet.getRow(1).font = {bold:true,color:{argb:"FFFFFFFF"}};
             sheet.getRow(1).fill = {type:"pattern",pattern:"solid",fgColor:{argb:"FF0D1B2A"}};
-            data.forEach(row=>sheet.addRow(row));
+            data.forEach(row=>sheet.addRow(cols.reduce((r,c)=>({...r,[c]:row[c]}),{})));
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
             const url = URL.createObjectURL(blob);
@@ -251,7 +262,13 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
                 </tr></thead>
                 <tbody>{data.slice(0,50).map((row,i)=>(
                   <tr key={i} style={{background:i%2===0?G.white:G.gray50}}>
-                    {cols.map(c=><td key={c} style={{padding:"6px 8px",borderBottom:`1px solid ${G.gray100}`,fontSize:11}}>{row[c]??<span style={{color:G.gray400}}>—</span>}</td>)}
+                    {cols.map(c=><td key={c} style={{padding:"6px 8px",borderBottom:`1px solid ${G.gray100}`,fontSize:11}}>
+                      {row[c]==null
+                        ? <span style={{color:G.gray400}}>—</span>
+                        : isIdCell(row,c) && onOpenQuery
+                          ? <span onClick={()=>onOpenQuery(row.__queryRef)} style={{color:"#1A5276",fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>{row[c]}</span>
+                          : row[c]}
+                    </td>)}
                   </tr>
                 ))}</tbody>
               </table>

@@ -83,7 +83,13 @@ export default function AgentLedgerPanel({ agent, queries, payments, onClose }) 
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:600}}>{q.groupName||q.clientName}</div>
-                    <div style={{fontSize:11,color:G.gray400}}>{q.id}{q.tourFileId?" · 📁 "+q.tourFileId:""} · {q.sector||q.destination||""}</div>
+                    <div style={{fontSize:11,color:G.gray400}}>
+                      <span onClick={()=>{document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:q}})); onClose();}}
+                        style={{color:"#1A5276",fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>{q.id}</span>
+                      {q.tourFileId && <> · 📁 <span onClick={()=>{document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:q}})); onClose();}}
+                        style={{color:"#1A5276",fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>{q.tourFileId}</span></>}
+                      {" · "}{q.sector||q.destination||""}
+                    </div>
                   </div>
                   <StatusBadge status={q.status}/>
                 </div>

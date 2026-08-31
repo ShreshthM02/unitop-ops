@@ -17,7 +17,7 @@ import path from 'path';
 // pixel width.
 
 const FIXED_COMPONENTS = [
-  'PLReport', 'UserManagementPanel', 'Itinerary', 'ExchangeOrderGenerator',
+  'UserManagementPanel', 'Itinerary', 'ExchangeOrderGenerator',
   'InAppChat', 'TourBriefingSheet', 'VendorMaster', 'QuotationGenerator',
   'AgentLedgerPanel', 'InvoiceGenerator', 'CostSheet',
   'EnhancedPaymentTracker', 'AgentMaster',

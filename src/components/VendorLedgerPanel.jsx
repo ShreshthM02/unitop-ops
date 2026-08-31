@@ -82,7 +82,11 @@ export default function VendorLedgerPanel({ vendor, queries, allPayments, onClos
                     <span style={{ fontSize:10, padding:"2px 8px", borderRadius:10,
                       background:"#DCFCE7", color:"#166534", fontWeight:600 }}>✓ Settled</span>
                   )}
-                  {e.tourFileId&&<span style={{ fontSize:10, color:G.navy, fontWeight:600,
+                  {e.tourFileId&&<span onClick={()=>{
+                      const q = (queries||[]).find(q=>q.id===e.queryId);
+                      if(q){ document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:q}})); onClose(); }
+                    }}
+                    style={{ fontSize:10, color:G.navy, fontWeight:600, cursor:"pointer", textDecoration:"underline",
                     background:"#EBF5FB", padding:"2px 7px", borderRadius:10 }}>📁 {e.tourFileId}</span>}
                 </div>
                 <div style={{ fontSize:13, fontWeight:700, color:G.navy }}>₹ {parseFloat(e.amount||0).toLocaleString()}</div>

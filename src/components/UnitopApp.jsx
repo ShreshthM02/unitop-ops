@@ -12,7 +12,6 @@ import InAppChat from './InAppChat.jsx';
 import Itinerary from './Itinerary.jsx';
 import KanbanView from './KanbanView.jsx';
 import NewQueryModal from './NewQueryModal.jsx';
-import PLReport from './PLReport.jsx';
 import InvoiceGenerator from './InvoiceGenerator.jsx';
 import QueryDrawerWithQuote from './QueryDrawerWithQuote.jsx';
 import QuotationGenerator from './QuotationGenerator.jsx';
@@ -81,9 +80,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showQuotation,  setShowQuotation]  = useState(null);
   const [showInvoices,   setShowInvoices]   = useState(null); // { query, flavor: 'proforma'|'tax' } | null
   const [showPayments,   setShowPayments]   = useState(null);
-  const [showPL,         setShowPL]         = useState(false);
-  const [showVoucher,    setShowVoucher]    = useState(null);
   const [showTourBrief,  setShowTourBrief]  = useState(null);
+  const [showVoucher,    setShowVoucher]    = useState(null);
   const [showEditor,     setShowEditor]     = useState(null);
   const [showAgents,     setShowAgents]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
@@ -127,6 +125,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     };
     document.addEventListener("unitop-open", handler);
     return ()=>document.removeEventListener("unitop-open", handler);
+  },[]);
+
+  // A Query ID / Tour File ID clicked from OUTSIDE this component's own
+  // tree (Agent Ledger and Vendor Ledger panels are rendered as App.jsx's
+  // siblings of UnitopApp, not its children, so they can't call
+  // setActiveQuery directly) opens that query's drawer here, the same
+  // custom-event bridge the panel-open buttons above already use.
+  useEffect(()=>{
+    const handler = (e) => setActiveQuery(e.detail.query);
+    document.addEventListener("unitop-activate-query", handler);
+    return ()=>document.removeEventListener("unitop-activate-query", handler);
   },[]);
 
   const can = useCan(currentUser);
@@ -514,7 +523,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showPL||showVoucher||showAgents||showVendors||showTourBrief||showEditor;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showVendors||showTourBrief||showEditor;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -747,7 +756,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             )}
 
             {view==="reports" && (
-              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions}/>
+              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions} onOpenQuery={setActiveQuery}/>
             )}
 
           </div>{/* end content */}
@@ -787,7 +796,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled}/>}
         {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
-        {showPL         && <PLReport queries={queries} payments={payments} onClose={()=>setShowPL(false)}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
         {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} vendors={vendors} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
         {showEditor     && <DocumentEditor query={showEditor} onClose={()=>setShowEditor(null)} currentUser={currentUser} readOnly={showEditor.cancelled}/>}

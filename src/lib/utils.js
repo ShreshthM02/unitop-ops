@@ -1453,6 +1453,17 @@ export function formatDateDMY(isoDate) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+// dd/mm/yyyy (slashes) version of formatDateDMY -- the app-wide display
+// convention (per direct spec: "throughout the app, date format to be
+// dd/mm/yyyy"), vs. formatDateDMY's own dd-mm-yyyy (hyphens), which some
+// documents' print output still uses deliberately (e.g. matching a
+// reference letterhead PDF). Non-ISO values (a "TBC" placeholder, a plain
+// month name for an unconfirmed date) pass through unchanged, same
+// fallback behaviour as formatDateDMY itself.
+export function formatDateSlash(isoDate) {
+  return formatDateDMY(isoDate).replace(/-/g, "/");
+}
+
 // ─── WORKFLOW PROGRESS (real auto-detection, not pipeline-stage guessing) ──
 // The old system marked steps done purely because the query reached a given
 // pipeline stage (e.g. "Operations" instantly checked off Vouchers Issued
