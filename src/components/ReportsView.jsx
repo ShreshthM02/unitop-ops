@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
+import { ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, isIsoDateString, formatDateDMY, db, entryINR, loadAllExchangeOrders, groupExchangeOrderVersions } = Lib;
+
+const filterSelectStyle = { padding:"4px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:11,
+  fontFamily:"'Inter',sans-serif", color:G.gray800, background:G.white, outline:"none" };
 
 export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions, onOpenQuery }) {
   const can = useCan(currentUser);
@@ -18,6 +22,29 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
     loadAllExchangeOrders(db).then(rows => { setExchangeOrders(rows); setEoLoading(false); });
   }, [selectedReport?.id]);
 
+  // 1.1: filters on top, applied to the underlying queries BEFORE any
+  // report's own data logic runs -- one filter set drives every report
+  // uniformly (including aggregated ones like Sector Performance: "only
+  // Agent X's queries" changes what gets aggregated, not just which
+  // output rows show). Deliberately persists across switching between
+  // reports rather than resetting each time, so "show me everything for
+  // this agent" stays in effect while browsing.
+  const [rf, setRf] = useState({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"" });
+  const sectorOptions = [...new Set(queries.map(q=>q.destination||q.sector).filter(Boolean))].sort();
+  const agentOptions = [...new Set(queries.map(q=>q.agentCompany).filter(Boolean))].sort();
+  const statusOptions = [...new Set(queries.map(q=>q.cancelled?"CANCELLED":q.status).filter(Boolean))].sort();
+  const filteredQueries = queries.filter(q => {
+    if (rf.sector && (q.destination||q.sector)!==rf.sector) return false;
+    if (rf.agent && q.agentCompany!==rf.agent) return false;
+    if (rf.status && (q.cancelled?"CANCELLED":q.status)!==rf.status) return false;
+    if (rf.dateFrom && (!q.date || q.date < rf.dateFrom)) return false;
+    if (rf.dateTo && (!q.date || q.date > rf.dateTo)) return false;
+    return true;
+  });
+  const rfActive = !!(rf.sector||rf.agent||rf.status||rf.dateFrom||rf.dateTo);
+  const clearFilters = () => setRf({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"" });
+  const allQueriesUnfiltered = queries; // exchange_order_register resolves its Tour File Number against every query, not just filtered ones -- EO Register has no Sector/Status of its own to filter by; captured here, outside getReportData, so the shadowed `queries` inside it doesn't hide this reference too
+
   if(!can("pl_report")) return (
     <div style={{textAlign:"center",padding:48,color:G.gray400}}>
       <div style={{fontSize:32,marginBottom:8}}>🔒</div>
@@ -33,6 +60,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   });
 
   const getReportData = (id) => {
+    const queries = filteredQueries; // shadows the outer prop -- every case below becomes filter-aware automatically
     const now = new Date();
     switch(id) {
       case "active_pipeline":
@@ -80,6 +108,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           "Agent":a.agent,"Queries":a.queries,"Tour Files":a.tourFiles,
           "Revenue (₹)":Math.round(a.rev).toLocaleString(),"Received (₹)":Math.round(a.rec).toLocaleString(),
           "Outstanding (₹)":Math.round(a.rev-a.rec).toLocaleString(),
+          __chartLabel:a.agent, __chartValue:Math.round(a.rev),
         }));
       }
       case "tour_facilitator_report": {
@@ -134,12 +163,13 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           "Sector":s.sector,"Queries":s.queries,"Tour Files":s.tourFiles,
           "Revenue (₹)":Math.round(s.rev).toLocaleString(),
           "Conversion":s.queries>0?Math.round(s.tourFiles/s.queries*100)+"%":"—",
+          __chartLabel:s.sector, __chartValue:s.queries,
         }));
       }
       case "nationality_mix": {
         const nMap={};
         queries.filter(q=>!q.cancelled&&q.nationality).forEach(q=>{nMap[q.nationality]=(nMap[q.nationality]||0)+1;});
-        return Object.entries(nMap).sort((a,b)=>b[1]-a[1]).map(([nat,cnt])=>({"Nationality/Market":nat,"Queries":cnt}));
+        return Object.entries(nMap).sort((a,b)=>b[1]-a[1]).map(([nat,cnt])=>({"Nationality/Market":nat,"Queries":cnt,__chartLabel:nat,__chartValue:cnt}));
       }
       case "seasonality": {
         const nowD=new Date();
@@ -166,7 +196,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
       case "exchange_order_register": {
         const dmySlash = (iso) => isIsoDateString(iso) ? formatDateDMY(iso).replace(/-/g, "/") : (iso||"—");
         return groupExchangeOrderVersions(exchangeOrders).map(g => {
-          const query = queries.find(q=>q.id===g.latest.queryId);
+          const query = allQueriesUnfiltered.find(q=>q.id===g.latest.queryId);
           const vendor = (vendors||[]).find(v=>v.id===g.latest.vendorId);
           return {
             "Exchange Order No.": g.orderNo,
@@ -197,7 +227,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   const exportPDF = (report) => {
     const data=getReportData(report.id);
     if(!data.length) return;
-    const cols=Object.keys(data[0]).filter(c=>c!=="__queryRef");
+    const cols=Object.keys(data[0]).filter(c=>!c.startsWith("__"));
     const today=new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
     const win=window.open("","_blank");
     win.document.write(`<!DOCTYPE html><html><head><title>${report.label}</title>
@@ -214,9 +244,64 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
     win.document.close(); setTimeout(()=>win.print(),400);
   };
 
+const CHART_COLORS = ["#1A5276","#C0392B","#0E6655","#7D6608","#4A235A","#1B4F72","#78281F","#145A32","#784212","#117A65"];
+
+// 1.2: charts wherever applicable, tabular data beneath -- but only
+// where a chart genuinely aids understanding. A report earns a chart by
+// carrying __chartValue/__chartLabel on its rows (every aggregated-by-
+// category report: Agent-wise Revenue, Sector Performance, Nationality
+// Mix), or by being Seasonality specifically (a real time series with
+// three metrics, handled as its own case below). Flat list/log/register
+// reports have no natural single metric to chart and are deliberately
+// left as tables only.
+function ReportChart({ reportId, data }) {
+  if (reportId === "seasonality" && data.length) {
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke={G.gray100}/>
+          <XAxis dataKey="Month" fontSize={10}/>
+          <YAxis fontSize={10} allowDecimals={false}/>
+          <Tooltip/>
+          <Legend wrapperStyle={{fontSize:11}}/>
+          <Line type="monotone" dataKey="Queries" stroke={CHART_COLORS[0]} strokeWidth={2}/>
+          <Line type="monotone" dataKey="Tour Files" stroke={CHART_COLORS[1]} strokeWidth={2}/>
+          <Line type="monotone" dataKey="Operated" stroke={CHART_COLORS[2]} strokeWidth={2}/>
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+  if (!data.length || data[0].__chartValue == null) return null;
+  const chartData = data.map(d => ({ name: d.__chartLabel, value: d.__chartValue }));
+  if (reportId === "nationality_mix") {
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <PieChart>
+          <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={{fontSize:10}}>
+            {chartData.map((_,i) => <Cell key={i} fill={CHART_COLORS[i%CHART_COLORS.length]}/>)}
+          </Pie>
+          <Tooltip/>
+          <Legend wrapperStyle={{fontSize:11}}/>
+        </PieChart>
+      </ResponsiveContainer>
+    );
+  }
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" stroke={G.gray100}/>
+        <XAxis dataKey="name" fontSize={10} interval={0} angle={-20} textAnchor="end" height={50}/>
+        <YAxis fontSize={10}/>
+        <Tooltip/>
+        <Bar dataKey="value" fill={G.navy}/>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
   const ReportPreview = ({report}) => {
     const data=getReportData(report.id);
-    const cols=data.length?Object.keys(data[0]).filter(c=>c!=="__queryRef"):[];
+    const cols=data.length?Object.keys(data[0]).filter(c=>!c.startsWith("__")):[];
     // A cell is a clickable ID/Tour-File reference when the row carries a
     // resolved query and the cell's own value is that query's id or
     // tour file id -- covers every "ID"/"Query ID"/"Tour File" column
@@ -250,11 +335,32 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           }}>📥 XLSX</button>
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>exportPDF(report)}>🖨 PDF</button>
         </div>
+        <div style={{padding:"10px 18px",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+          <span style={{fontSize:10,color:G.gray400,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Filters</span>
+          <select value={rf.sector} onChange={e=>setRf(f=>({...f,sector:e.target.value}))} style={filterSelectStyle}>
+            <option value="">Sector: All</option>
+            {sectorOptions.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={rf.agent} onChange={e=>setRf(f=>({...f,agent:e.target.value}))} style={filterSelectStyle}>
+            <option value="">Agent: All</option>
+            {agentOptions.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={rf.status} onChange={e=>setRf(f=>({...f,status:e.target.value}))} style={filterSelectStyle}>
+            <option value="">Status: All</option>
+            {statusOptions.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <span style={{fontSize:10,color:G.gray400}}>Query date:</span>
+          <input type="date" value={rf.dateFrom} onChange={e=>setRf(f=>({...f,dateFrom:e.target.value}))} style={filterSelectStyle}/>
+          <span style={{fontSize:10,color:G.gray400}}>to</span>
+          <input type="date" value={rf.dateTo} onChange={e=>setRf(f=>({...f,dateTo:e.target.value}))} style={filterSelectStyle}/>
+          {rfActive && <button onClick={clearFilters} className="btn btn-ghost" style={{fontSize:10,padding:"4px 9px"}}>✕ Clear filters</button>}
+        </div>
         <div style={{flex:1,overflowY:"auto",padding:"12px 18px"}}>
           {report.id==="exchange_order_register" && eoLoading
             ? <div style={{textAlign:"center",padding:32,color:G.gray400}}>Loading…</div>
-            : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>No data yet</div>:(
+            : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>{rfActive?"No records match the current filters":"No data yet"}</div>:(
             <div style={{overflowX:"auto"}}>
+              <ReportChart reportId={report.id} data={data}/>
               <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>{data.length} record{data.length!==1?"s":""}</div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:500}}>
                 <thead><tr style={{background:G.navy}}>

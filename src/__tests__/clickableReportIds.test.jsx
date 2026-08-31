@@ -51,8 +51,9 @@ describe('Report ID/Tour File cells open the query drawer on click', () => {
     const onOpenQuery = vi.fn();
     render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={[]} tourExecutions={{}} onOpenQuery={onOpenQuery}/>);
     fireEvent.click(screen.getByText(/Sector Performance/));
-    await waitFor(() => expect(screen.getByText('Kerala')).toBeTruthy());
-    fireEvent.click(screen.getByText('Kerala'));
+    await waitFor(() => expect(screen.getAllByText('Kerala').length).toBeGreaterThan(0));
+    const cell = screen.getAllByText('Kerala').find(el => el.tagName !== 'OPTION');
+    fireEvent.click(cell);
     expect(onOpenQuery).not.toHaveBeenCalled();
   });
 

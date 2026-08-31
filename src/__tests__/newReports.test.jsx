@@ -41,7 +41,7 @@ describe('Nation-wise Master List report', () => {
     await waitFor(() => expect(screen.getByText('German')).toBeTruthy());
     expect(screen.getByText('Thai')).toBeTruthy();
     expect(screen.getByText('01/08/2026')).toBeTruthy();
-    expect(screen.getByText('CANCELLED')).toBeTruthy();
+    expect(screen.getAllByText('CANCELLED').length).toBeGreaterThan(0); // appears in the data cell (and, separately, as a filter dropdown option)
     expect(screen.getAllByText('German').length + screen.getAllByText('Thai').length).toBe(2); // UTQ-2 (no nationality) excluded
   });
 });
