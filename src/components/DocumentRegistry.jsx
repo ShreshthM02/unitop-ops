@@ -73,10 +73,12 @@ export function DocumentRegistry({ query, onClose }) {
               <div>
                 <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Category</div>
                 <select style={inp} value={form.category} onChange={e=>setF("category",e.target.value)}>{DOC_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+                {form.category==="Other"&&<OtherInput value={form.categoryOther||""} onChange={v=>setF("categoryOther",v)} placeholder="Specify category..."/>}
               </div>
               <div>
                 <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Received From</div>
                 <select style={inp} value={form.from} onChange={e=>setF("from",e.target.value)}>{DOC_FROM.map(f=><option key={f}>{f}</option>)}</select>
+                {form.from==="Other"&&<OtherInput value={form.fromOther||""} onChange={v=>setF("fromOther",v)} placeholder="Specify source..."/>}
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr",gap:8,marginBottom:8}}>
@@ -116,8 +118,8 @@ export function DocumentRegistry({ query, onClose }) {
                       <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:600}}>{d.status}</span>
                     </div>
                     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:4}}>
-                      <span style={{fontSize:11,color:G.gray600}}>📂 {d.category}</span>
-                      <span style={{fontSize:11,color:G.gray600}}>📨 {d.from}</span>
+                      <span style={{fontSize:11,color:G.gray600}}>📂 {d.category==="Other"?(d.categoryOther||"Other"):d.category}</span>
+                      <span style={{fontSize:11,color:G.gray600}}>📨 {d.from==="Other"?(d.fromOther||"Other"):d.from}</span>
                       <span style={{fontSize:11,color:G.gray400}}>🗓 {formatDateSlash(d.date)}</span>
                     </div>
                     {d.driveLink&&<a href={d.driveLink} target="_blank" rel="noopener noreferrer"
@@ -179,6 +181,8 @@ export function DocRegistryInline({ queryId, tourFileId, currentUser, readOnly }
             <input style={inp} type="date" value={form.date} onChange={e=>setF("date",e.target.value)}/>
             <select style={inp} value={form.status} onChange={e=>setF("status",e.target.value)}>{DOC_STATUS.map(s=><option key={s}>{s}</option>)}</select>
           </div>
+          {form.category==="Other"&&<OtherInput value={form.categoryOther||""} onChange={v=>setF("categoryOther",v)} placeholder="Specify category..."/>}
+          {form.from==="Other"&&<OtherInput value={form.fromOther||""} onChange={v=>setF("fromOther",v)} placeholder="Specify source..."/>}
           <input style={{...inp,marginBottom:8}} value={form.driveLink} onChange={e=>setF("driveLink",e.target.value)} placeholder="Google Drive link (optional)..."/>
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setAdding(false)}>Cancel</button>
@@ -195,7 +199,7 @@ export function DocRegistryInline({ queryId, tourFileId, currentUser, readOnly }
               <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:ss.bg,color:ss.color,fontWeight:600}}>{d.status}</span>
             </div>
             <div style={{display:"flex",gap:10,fontSize:11,color:G.gray400,flexWrap:"wrap"}}>
-              <span>📂 {d.category}</span><span>📨 {d.from}</span><span>🗓 {formatDateSlash(d.date)}</span>
+              <span>📂 {d.category==="Other"?(d.categoryOther||"Other"):d.category}</span><span>📨 {d.from==="Other"?(d.fromOther||"Other"):d.from}</span><span>🗓 {formatDateSlash(d.date)}</span>
             </div>
             {d.driveLink&&<a href={d.driveLink} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#1A5276",background:"#EBF5FB",padding:"2px 7px",borderRadius:5,textDecoration:"none",display:"inline-block",marginTop:4}}>🔗 Open in Drive</a>}
           </div>

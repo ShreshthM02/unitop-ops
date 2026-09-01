@@ -11,7 +11,7 @@ export const DOC_CATEGORIES = [
   "Flight Ticket","Train Ticket","Hotel Voucher","Transport Voucher",
   "Proforma Invoice","Tax Invoice","Payment Receipt","Insurance",
   "Passport Copy","Guest List","Itinerary (Client)","Tour Briefing Sheet",
-  "Agent Contract","Miscellaneous",
+  "Agent Contract","Miscellaneous","Other",
 ];
 export const DOC_STATUS = ["Pending","Received","Verified","Shared with Client","Archived"];
 export const DOC_FROM   = ["Foreign Agent","Client","Hotel","Airline","Transport Provider","Embassy/Visa","Internal","Other"];

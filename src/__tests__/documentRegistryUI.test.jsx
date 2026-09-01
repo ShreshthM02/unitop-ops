@@ -57,3 +57,37 @@ describe('DocRegistryInline: tour_file_id now actually passed through (found by 
     expect(upsertSpy.mock.calls[0][0].tour_file_id).toBe('TF-1');
   });
 });
+
+describe('Document type and source have an "Other" option that reveals a free-text field', () => {
+  it('DocRegistryInline: selecting "Other" for Category reveals a text field; the typed text is what displays afterward', async () => {
+    render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:1,name:'Priya'}} readOnly={false}/>);
+    fireEvent.click(screen.getByText('+ Log Document'));
+    fireEvent.change(screen.getByPlaceholderText('Document name...'), { target: { value: 'A weird one-off document' } });
+    const selects = document.querySelectorAll('select');
+    fireEvent.change(selects[0], { target: { value: 'Other' } }); // Category select
+    expect(screen.getByPlaceholderText('Specify category...')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Specify category...'), { target: { value: 'Customs Declaration' } });
+    fireEvent.click(screen.getByText('Log'));
+    await waitFor(() => expect(screen.getByText(/Customs Declaration/)).toBeTruthy());
+  });
+
+  it('DocRegistryInline: selecting "Other" for Received From reveals its own text field, independent of Category', async () => {
+    render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:1,name:'Priya'}} readOnly={false}/>);
+    fireEvent.click(screen.getByText('+ Log Document'));
+    fireEvent.change(screen.getByPlaceholderText('Document name...'), { target: { value: 'Doc B' } });
+    const selects = document.querySelectorAll('select');
+    fireEvent.change(selects[1], { target: { value: 'Other' } }); // Received From select
+    expect(screen.getByPlaceholderText('Specify source...')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('Specify category...')).toBeFalsy(); // Category wasn't touched, stays hidden
+    fireEvent.change(screen.getByPlaceholderText('Specify source...'), { target: { value: 'Local Tour Guide' } });
+    fireEvent.click(screen.getByText('Log'));
+    await waitFor(() => expect(screen.getByText(/Local Tour Guide/)).toBeTruthy());
+  });
+
+  it('does not show either free-text field for a normal (non-Other) selection', async () => {
+    render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:1,name:'Priya'}} readOnly={false}/>);
+    fireEvent.click(screen.getByText('+ Log Document'));
+    expect(screen.queryByPlaceholderText('Specify category...')).toBeFalsy();
+    expect(screen.queryByPlaceholderText('Specify source...')).toBeFalsy();
+  });
+});
