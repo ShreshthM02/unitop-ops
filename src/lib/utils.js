@@ -585,7 +585,7 @@ export async function saveAppSetting(db, key, value) {
 
 export function mapDbDocRegistryRow(row) {
   return {
-    id: row.id, name: row.name, category: row.category, from: row.from,
+    id: row.id, name: row.name, category: row.category, categoryOther: row.category_other, from: row.from, fromOther: row.from_other,
     date: row.date, status: row.status, driveLink: row.drive_link,
     notes: row.notes, addedAt: row.added_at,
   };
@@ -610,7 +610,7 @@ export async function saveDocRegistry(db, queryId, docs, tourFileId) {
     for (const d of docs) {
       await db.from("document_registry").upsert({
         id: d.id, query_id: queryId, tour_file_id: tourFileId || null, name: d.name, category: d.category,
-        from: d.from, date: d.date || null, status: d.status,
+        category_other: d.categoryOther || null, from: d.from, from_other: d.fromOther || null, date: d.date || null, status: d.status,
         drive_link: d.driveLink, notes: d.notes,
       });
     }
