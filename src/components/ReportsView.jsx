@@ -6,7 +6,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 const filterSelectStyle = { padding:"4px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:11,
   fontFamily:"'Inter',sans-serif", color:G.gray800, background:G.white, outline:"none" };
 
-export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions, onOpenQuery }) {
+export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions, staff, onOpenQuery }) {
   const can = useCan(currentUser);
   const [selectedReport, setSelectedReport] = useState(null);
   const [filterCat, setFilterCat] = useState("All");
@@ -17,7 +17,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   const [exchangeOrders, setExchangeOrders] = useState([]);
   const [eoLoading, setEoLoading] = useState(false);
   useEffect(() => {
-    if (selectedReport?.id !== "exchange_order_register") return;
+    if (!["exchange_order_register","vendor_payables"].includes(selectedReport?.id)) return;
     setEoLoading(true);
     loadAllExchangeOrders(db).then(rows => { setExchangeOrders(rows); setEoLoading(false); });
   }, [selectedReport?.id]);
@@ -76,7 +76,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   const applyRowLevelFilters = (reportId, rows) => {
     let out = rows;
     if (rf.facilitator && reportId==="tour_facilitator_report") out = out.filter(r=>r["Facilitator"]===rf.facilitator);
-    if (rf.vendor && reportId==="exchange_order_register") out = out.filter(r=>r["Vendor"]===rf.vendor);
+    if (rf.vendor && ["exchange_order_register","vendor_payables"].includes(reportId)) out = out.filter(r=>r["Vendor"]===rf.vendor);
     return out;
   };
   const rfActiveForReport = (applicable) => applicable.some(k => {
@@ -260,6 +260,128 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           __queryRef:q,
         })).sort((a,b)=>a["Nationality / Market"].localeCompare(b["Nationality / Market"])||a["Date of Generation"].localeCompare(b["Date of Generation"]));
       }
+      case "workload": {
+        const wMap = {};
+        (staff||[]).forEach(s => { wMap[s.id] = { name: s.name, active: 0, tourFiles: 0, completed: 0 }; });
+        queries.filter(q=>!q.cancelled && q.assignedTo).forEach(q => {
+          if (!wMap[q.assignedTo]) wMap[q.assignedTo] = { name: "Unassigned", active: 0, tourFiles: 0, completed: 0 };
+          if (q.status === "completed") wMap[q.assignedTo].completed++;
+          else wMap[q.assignedTo].active++;
+          if (q.tourFileId) wMap[q.assignedTo].tourFiles++;
+        });
+        return Object.values(wMap).filter(w=>w.active||w.tourFiles||w.completed).sort((a,b)=>b.active-a.active).map(w=>({
+          "Staff": w.name, "Active Queries": w.active, "Tour Files": w.tourFiles, "Completed": w.completed,
+          __chartLabel: w.name, __chartValue: w.active,
+        }));
+      }
+      case "tour_file_status": {
+        const dmySlash = (iso) => isIsoDateString(iso) ? formatDateDMY(iso).replace(/-/g, "/") : (iso||"—");
+        return queries.filter(q=>q.tourFileId && !q.cancelled && q.status!=="completed").map(q=>({
+          "Tour File": q.tourFileId, "Group": q.groupName||q.clientName||"—", "Sector": q.destination||q.sector||"—",
+          "Stage": q.status, "Travel Date": dmySlash(q.travelDate)||q.travelMonth||"TBC", "Pax": q.paxDisplay||"—",
+          __queryRef: q,
+        })).sort((a,b)=>a["Tour File"].localeCompare(b["Tour File"]));
+      }
+      case "conversion_rate": {
+        const nowD = new Date();
+        return Array.from({length:12},(_,i)=>{
+          const d = new Date(nowD.getFullYear(), nowD.getMonth()-11+i, 1);
+          const label = d.toLocaleDateString("en-IN",{month:"short",year:"2-digit"});
+          const monthQueries = queries.filter(q=>{const qd=new Date(q.date||"");return qd.getFullYear()===d.getFullYear()&&qd.getMonth()===d.getMonth()&&!q.cancelled;});
+          const total = monthQueries.length;
+          const converted = monthQueries.filter(q=>q.tourFileId).length;
+          const rate = total>0 ? Math.round(converted/total*100) : 0;
+          return {"Month":label, "Queries":total, "Converted":converted, "Conversion %":rate+"%", __chartLabel:label, __chartValue:rate};
+        });
+      }
+      case "outstanding_payments": {
+        return queries.filter(q=>!q.cancelled).map(q=>{
+          const pt = payments[q.id];
+          const tv = (parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);
+          const rc = (pt?.entries||[]).reduce((s,e)=>s+entryINR(e),0);
+          return {q, tv, rc, balance: tv-rc};
+        }).filter(r=>r.balance>0.5).map(({q,tv,rc,balance})=>({
+          "Tour File": q.tourFileId||q.id, "Group": q.groupName||q.clientName||"—", "Agent": q.agentCompany||"—",
+          "Sector": q.destination||q.sector||"—", "Tour Value (₹)": Math.round(tv).toLocaleString(),
+          "Received (₹)": Math.round(rc).toLocaleString(), "Balance Due (₹)": Math.round(balance).toLocaleString(),
+          __queryRef: q, __chartLabel: q.tourFileId||q.id, __chartValue: Math.round(balance),
+        })).sort((a,b)=>b.__chartValue-a.__chartValue);
+      }
+      case "vendor_payables": {
+        const vMap = {};
+        groupExchangeOrderVersions(exchangeOrders).forEach(g => {
+          if (g.latest.order?.settled) return; // only unsettled EOs are payable
+          const vendor = (vendors||[]).find(v=>v.id===g.latest.vendorId);
+          const vName = vendor?.name || g.latest.order?.drawnOn || "Unknown";
+          if (!vMap[vName]) vMap[vName] = { vendor: vName, count: 0 };
+          vMap[vName].count++;
+        });
+        return Object.values(vMap).sort((a,b)=>b.count-a.count).map(v=>({
+          "Vendor": v.vendor, "Unsettled Exchange Orders": v.count,
+          __chartLabel: v.vendor, __chartValue: v.count,
+        }));
+      }
+      case "season_pl": {
+        const nowD = new Date();
+        const fyStartYear = nowD.getMonth() >= 3 ? nowD.getFullYear() : nowD.getFullYear()-1; // Indian FY starts April
+        return Array.from({length:12},(_,i)=>{
+          const d = new Date(fyStartYear, 3+i, 1);
+          const label = d.toLocaleDateString("en-IN",{month:"short",year:"2-digit"});
+          const monthQueries = queries.filter(q=>{
+            if (q.cancelled) return false;
+            const qd = new Date(q.date||"");
+            return qd.getFullYear()===d.getFullYear() && qd.getMonth()===d.getMonth();
+          });
+          let revenue=0, costs=0;
+          monthQueries.forEach(q=>{
+            const pt = payments[q.id];
+            revenue += (parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);
+            costs += (pt?.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+          });
+          return {"Month":label,"Queries":monthQueries.length,"Revenue (₹)":Math.round(revenue).toLocaleString(),
+            "Costs (₹)":Math.round(costs).toLocaleString(),"Profit (₹)":Math.round(revenue-costs).toLocaleString(),
+            __revenue:Math.round(revenue), __costs:Math.round(costs), __profit:Math.round(revenue-costs)};
+        });
+      }
+      case "pl_detailed": {
+        return queries.filter(q=>!q.cancelled).map(q=>{
+          const pt = payments[q.id];
+          const tv = (parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);
+          const entries = pt?.entries||[];
+          // "Detailed" here means actual cash realized so far (received minus
+          // paid out), a complementary view to pl_summary's booked/expected
+          // profit (tour value minus costs) -- not a duplicate of it.
+          const advance = entries.filter(e=>e.type==="advance").reduce((s,e)=>s+entryINR(e),0);
+          const balanceRec = entries.filter(e=>e.type!=="advance").reduce((s,e)=>s+entryINR(e),0);
+          const totalRec = advance+balanceRec;
+          const costs = (pt?.outgoing||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+          const profit = totalRec-costs;
+          const margin = totalRec>0?Math.round(profit/totalRec*100):0;
+          return {"Tour File":q.tourFileId||q.id,"Group":q.groupName||q.clientName||"—","Sector":q.destination||q.sector||"—",
+            "Tour Value (₹)":Math.round(tv).toLocaleString(),"Advance (₹)":Math.round(advance).toLocaleString(),
+            "Balance Received (₹)":Math.round(balanceRec).toLocaleString(),"Total Received (₹)":Math.round(totalRec).toLocaleString(),
+            "Total Costs (₹)":Math.round(costs).toLocaleString(),"Profit (₹)":Math.round(profit).toLocaleString(),
+            "Margin":margin+"%", __queryRef:q};
+        }).sort((a,b)=>a["Tour File"].localeCompare(b["Tour File"]));
+      }
+      case "revenue_monthly": {
+        const nowD = new Date();
+        return Array.from({length:12},(_,i)=>{
+          const d = new Date(nowD.getFullYear(), nowD.getMonth()-11+i, 1);
+          const label = d.toLocaleDateString("en-IN",{month:"short",year:"2-digit"});
+          let total=0, count=0;
+          queries.forEach(q=>{
+            const pt = payments[q.id];
+            (pt?.entries||[]).forEach(e=>{
+              if (!e.date) return;
+              const ed = new Date(e.date);
+              if (ed.getFullYear()===d.getFullYear() && ed.getMonth()===d.getMonth()) { total+=entryINR(e); count++; }
+            });
+          });
+          return {"Month":label,"Amount Received (₹)":Math.round(total).toLocaleString(),"Entries":count,
+            __chartLabel:label,__chartValue:Math.round(total)};
+        });
+      }
       default:
         return [{Note:"Data will populate as you use the system and add queries, tour files and payments."}];
     }
@@ -308,6 +430,26 @@ function ReportChart({ reportId, data }) {
           <Line type="monotone" dataKey="Queries" stroke={CHART_COLORS[0]} strokeWidth={2}/>
           <Line type="monotone" dataKey="Tour Files" stroke={CHART_COLORS[1]} strokeWidth={2}/>
           <Line type="monotone" dataKey="Operated" stroke={CHART_COLORS[2]} strokeWidth={2}/>
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+  if (reportId === "season_pl" && data.length) {
+    // Revenue/Costs/Profit are formatted currency strings for the table
+    // (comma grouping) -- charted from the hidden raw numeric fields
+    // (__revenue/__costs/__profit) computed alongside them instead.
+    const chartData = data.map(d => ({ Month: d["Month"], Revenue: d.__revenue, Costs: d.__costs, Profit: d.__profit }));
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke={G.gray100}/>
+          <XAxis dataKey="Month" fontSize={10}/>
+          <YAxis fontSize={10}/>
+          <Tooltip/>
+          <Legend wrapperStyle={{fontSize:11}}/>
+          <Line type="monotone" dataKey="Revenue" stroke={CHART_COLORS[0]} strokeWidth={2}/>
+          <Line type="monotone" dataKey="Costs" stroke={CHART_COLORS[1]} strokeWidth={2}/>
+          <Line type="monotone" dataKey="Profit" stroke={CHART_COLORS[2]} strokeWidth={2}/>
         </LineChart>
       </ResponsiveContainer>
     );
@@ -432,7 +574,7 @@ function ReportChart({ reportId, data }) {
           </div>
         )}
         <div style={{flex:1,overflowY:"auto",padding:"12px 18px"}}>
-          {report.id==="exchange_order_register" && eoLoading
+          {["exchange_order_register","vendor_payables"].includes(report.id) && eoLoading
             ? <div style={{textAlign:"center",padding:32,color:G.gray400}}>Loading…</div>
             : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>{rfActiveForReport(activeFilters)?"No records match the current filters":"No data yet"}</div>:(
             <div style={{overflowX:"auto"}}>

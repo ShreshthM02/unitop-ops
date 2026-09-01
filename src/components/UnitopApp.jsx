@@ -756,7 +756,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             )}
 
             {view==="reports" && (
-              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions} onOpenQuery={setActiveQuery}/>
+              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions} staff={staff} onOpenQuery={setActiveQuery}/>
             )}
 
           </div>{/* end content */}
