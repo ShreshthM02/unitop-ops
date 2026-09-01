@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose }) {
   const [selected,setSelected]=useState(null);
@@ -123,7 +123,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                                     {a.cancelled&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>Cancelled</span>}
                                     <span style={{fontSize:12,fontWeight:700,color:G.navy}}>📁 {a.tourFileId}</span>
                                   </div>
-                                  <div style={{fontSize:11,color:G.gray600}}>{a.groupName} · {a.sector} · {a.travelDate||"TBC"}</div>
+                                  <div style={{fontSize:11,color:G.gray600}}>{a.groupName} · {a.sector} · {formatDateSlash(a.travelDate)||"TBC"}</div>
                                   {a.notes&&<div style={{fontSize:11,color:G.gray400,marginTop:2}}>{a.notes}</div>}
                                 </div>
                               );
@@ -140,12 +140,15 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                             <div key={tfId} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}>
                               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                                 <div style={{flex:1}}>
-                                  <div style={{fontSize:12,fontWeight:700,color:G.navy}}>📁 {tfId}</div>
-                                  {q&&<div style={{fontSize:11,color:G.gray600}}>{q.groupName||q.clientName} · {q.destination||q.sector} · {q.travelDate||""}</div>}
+                                  <div style={{fontSize:12,fontWeight:700,color:G.navy}}>📁 {q
+                                    ? <span onClick={()=>document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:q}}))}
+                                        style={{cursor:"pointer",textDecoration:"underline"}}>{tfId}</span>
+                                    : tfId}</div>
+                                  {q&&<div style={{fontSize:11,color:G.gray600}}>{q.groupName||q.clientName} · {q.destination||q.sector} · {formatDateSlash(q.travelDate)}</div>}
                                 </div>
                                 <div style={{fontSize:13,fontWeight:700,color:G.navy}}>₹ {Math.round(total).toLocaleString()}</div>
                               </div>
-                              {entries.map((e,i)=>{const ts=PT_STYLE[e.paymentType||"cash"]||PT_STYLE.cash;return<div key={i} style={{display:"flex",gap:8,padding:"3px 0",borderTop:`1px solid ${G.gray100}`,fontSize:11,color:G.gray600}}><span style={{fontSize:9,padding:"1px 6px",borderRadius:8,background:ts.bg,color:ts.color,fontWeight:600}}>{ts.label}</span><span>₹ {parseFloat(e.amount||0).toLocaleString()}</span><span style={{color:G.gray400}}>{e.date||"—"} · {e.mode||"—"}</span></div>;})}
+                              {entries.map((e,i)=>{const ts=PT_STYLE[e.paymentType||"cash"]||PT_STYLE.cash;return<div key={i} style={{display:"flex",gap:8,padding:"3px 0",borderTop:`1px solid ${G.gray100}`,fontSize:11,color:G.gray600}}><span style={{fontSize:9,padding:"1px 6px",borderRadius:8,background:ts.bg,color:ts.color,fontWeight:600}}>{ts.label}</span><span>₹ {parseFloat(e.amount||0).toLocaleString()}</span><span style={{color:G.gray400}}>{formatDateSlash(e.date)||"—"} · {e.mode||"—"}</span></div>;})}
                             </div>
                           );
                         })}
@@ -173,7 +176,8 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                                   <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:order.settled?"#EAFAF1":"#FEF9E7",color:order.settled?"#0E6655":"#784212",fontWeight:600}}>{order.settled?"✓ Settled":"Unsettled"}</span>
                                   <span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:"#EBF5FB",color:"#154360",fontWeight:500}}>{svc?.label}</span>
                                 </div>
-                                <div style={{fontSize:11,color:G.gray600}}>{q?<>📁 {q.tourFileId||q.id} · {q.groupName||q.clientName}</>:"Tour file"} · {order.issueDate}</div>
+                                <div style={{fontSize:11,color:G.gray600}}>{q?<span onClick={()=>document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:q}}))}
+                                  style={{color:"#1A5276",fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>📁 {q.tourFileId||q.id} · {q.groupName||q.clientName}</span>:"Tour file"} · {formatDateSlash(order.issueDate)}</div>
                               </div>
                               <button className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>toggleEOSettled(group)}>{order.settled?"✗ Unsettle":"✓ Settle"}</button>
                               <button className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}} disabled={!q} onClick={()=>q&&setOpenEO({query:q,orderNo:group.orderNo})}>✏ Open</button>

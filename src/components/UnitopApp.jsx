@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
@@ -309,7 +309,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     const id = nextQueryId();
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
     const paxDisplay = form.paxKnown?`${form.paxExact} pax`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
-    const dateDisplay = form.dateKnown?`${formatDateDMY(form.travelDateFrom)}${form.travelDateTo?" → "+formatDateDMY(form.travelDateTo):""}`:`${form.travelMonth||""}${form.travelSeason?" · "+form.travelSeason:""} (TBC)`;
+    const dateDisplay = form.dateKnown?`${formatDateSlash(form.travelDateFrom)}${form.travelDateTo?" → "+formatDateSlash(form.travelDateTo):""}`:`${form.travelMonth||""}${form.travelSeason?" · "+form.travelSeason:""} (TBC)`;
     const newQ = {...form,id,type:"query",status:"new_query",
       clientName:form.groupName||form.agentCompany,
       destination:form.sector,nationality:form.nationality,
@@ -651,7 +651,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{flex:1}}>
                         {q.tourFileId&&<div style={{fontSize:11,fontWeight:700,color:G.navy,marginBottom:1}}>{q.tourFileId}</div>}
                         <div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div>
-                        <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector} · {q.travelDate||q.travelMonth||""}</div>
+                        <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector} · {formatDateSlash(q.travelDate)||q.travelMonth||""}</div>
                       </div>
                       <StatusBadge status={q.status}/>
                     </div>
@@ -671,7 +671,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{flex:1}}>
                         <div style={{fontSize:14,fontWeight:700,fontFamily:"'Playfair Display',serif"}}>{q.tourFileId}</div>
                         <div style={{fontSize:13,color:G.gray600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/> — {q.destination||q.sector}</div>
-                        <div style={{fontSize:11,color:G.gray400}}>Travel: {q.travelDate||q.travelMonth||"TBC"} · {q.paxDisplay} pax · {q.nights}N</div>
+                        <div style={{fontSize:11,color:G.gray400}}>Travel: {formatDateSlash(q.travelDate)||q.travelMonth||"TBC"} · {q.paxDisplay} pax · {q.nights}N</div>
                       </div>
                       <StatusBadge status={q.status}/>
                     </div>
@@ -717,7 +717,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               <div>
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
+                    <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
                     <StatusBadge status={q.status}/>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowInvoices({query:q, flavor:"proforma"})}>🧾 Invoices</button>
                   </div>
@@ -735,7 +735,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   return (
                     <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
+                        <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
                         <StatusBadge status={q.status}/>
                         <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowPayments(q)}>₹ Open Tracker</button>
                       </div>
@@ -832,7 +832,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}</div>
-                      <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector||""} · {q.travelDate||q.travelMonth||""}</div>
+                      <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector||""} · {formatDateSlash(q.travelDate)||q.travelMonth||""}</div>
                       {q.tourFileId&&<div style={{fontSize:10,color:G.navy,fontWeight:600,marginTop:2}}>📁 {q.tourFileId}</div>}
                     </div>
                     <StatusBadge status={q.status}/>

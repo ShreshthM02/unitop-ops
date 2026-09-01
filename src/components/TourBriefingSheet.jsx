@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, RichTextEditor, formatDateDMY, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, RichTextEditor, formatDateDMY, db, formatDateSlash } = Lib;
 
 export default function TourBriefingSheet({ query, template, facilitators, vendors, onClose, currentUser, readOnly }) {
   const tmpl = { ...DEFAULT_TOURBRIEFING_TEMPLATE, ...(template||{}) };
@@ -41,7 +41,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
   const [recipient,setRecipient]=useState(query.correspondent||"");
   const [agentCo,setAgentCo]=useState(query.agentCompany||"");
   const [agentCity,setAgentCity]=useState(query.agentCountry||"");
-  const [subject,setSubject]=useState(`GROUP FROM ${query.travelDate||""} x ${query.paxDisplay||""} PAX (REF. ${query.tourFileId||query.id})`);
+  const [subject,setSubject]=useState(`GROUP FROM ${formatDateSlash(query.travelDate)||""} x ${query.paxDisplay||""} PAX (REF. ${query.tourFileId||query.id})`);
   const [intro,setIntro]=useState(tmpl.openingLine);
   const [footer,setFooter]=useState(tmpl.footerText);
   const [metaNotes,setMetaNotes]=useState("");
@@ -275,19 +275,19 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
       case "hotels": return hotels.some(h=>h.hotelName) ? [
         heading(sectionLabels.hotels),
         { type:"table", headerHTML:`<tr><th>Check In</th><th>Check Out</th><th>City</th><th>Hotel Name</th><th>Rooms</th><th>Status</th></tr>`,
-          rowsHTML: hotels.filter(h=>h.hotelName||h.city).map(h=>`<tr><td>${formatDateDMY(h.checkIn)||""}</td><td>${formatDateDMY(h.checkOut)||""}</td><td>${h.city||""}</td><td>${h.hotelName||""}</td><td>${h.rooms||""}</td><td>${h.bookingStatus||"Requested"}</td></tr>`) },
+          rowsHTML: hotels.filter(h=>h.hotelName||h.city).map(h=>`<tr><td>${formatDateSlash(h.checkIn)||""}</td><td>${formatDateSlash(h.checkOut)||""}</td><td>${h.city||""}</td><td>${h.hotelName||""}</td><td>${h.rooms||""}</td><td>${h.bookingStatus||"Requested"}</td></tr>`) },
         hotelNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${hotelNotes}</div>`:"",
       ] : [];
       case "flights": return flights.some(f=>f.sector) ? [
         heading(sectionLabels.flights),
         { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Flight No.</th><th>Time</th></tr>`,
-          rowsHTML: flights.filter(f=>f.sector).map(f=>`<tr><td>${formatDateDMY(f.date)||""}</td><td>${f.sector}</td><td>${f.flightNo}</td><td>${f.time}</td></tr>`) },
+          rowsHTML: flights.filter(f=>f.sector).map(f=>`<tr><td>${formatDateSlash(f.date)||""}</td><td>${f.sector}</td><td>${f.flightNo}</td><td>${f.time}</td></tr>`) },
         flightNotes?`<div style="font-style:italic;color:#555">${flightNotes}</div>`:"",
       ] : [];
       case "trains": return trains.some(t=>t.sector) ? [
         heading(sectionLabels.trains),
         { type:"table", headerHTML:`<tr><th>Date</th><th>Sector</th><th>Train No.</th><th>Name</th><th>Time</th></tr>`,
-          rowsHTML: trains.filter(t=>t.sector).map(t=>`<tr><td>${formatDateDMY(t.date)||""}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td></tr>`) },
+          rowsHTML: trains.filter(t=>t.sector).map(t=>`<tr><td>${formatDateSlash(t.date)||""}</td><td>${t.sector}</td><td>${t.trainNo}</td><td>${t.trainName}</td><td>${t.time}</td></tr>`) },
         trainNotes?`<div style="font-style:italic;color:#555">${trainNotes}</div>`:"",
       ] : [];
       case "transport": return transport.some(t=>t.description) ? [
@@ -312,7 +312,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
         activeGroups.forEach(g => {
           blocks.push(heading(g.label));
           blocks.push({ type:"table", headerHTML:`<tr><th>Day</th><th>Date</th><th>Description</th></tr>`,
-            rowsHTML: g.items.filter(it=>it.description).map(it=>`<tr><td>${it.day||""}</td><td>${formatDateDMY(it.date)||""}</td><td>${it.description}</td></tr>`) });
+            rowsHTML: g.items.filter(it=>it.description).map(it=>`<tr><td>${it.day||""}</td><td>${formatDateSlash(it.date)||""}</td><td>${it.description}</td></tr>`) });
         });
         if (otherNotes) blocks.push(`<div style="font-style:italic;color:#555">${otherNotes}</div>`);
         return blocks;
@@ -320,7 +320,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
       case "programme": return programme.some(p=>p.itinerary||p.programme) ? [
         heading(sectionLabels.programme),
         { type:"table", headerHTML:`<tr><th>DATE & DAY</th><th>PROGRAMME</th><th>BREAKFAST</th><th>LUNCH</th><th>DINNER</th></tr>`,
-          rowsHTML: programme.map(p=>`<tr><td><b>${formatDateDMY(p.date)||""}</b>${p.day?"<br/>("+p.day+")":""}</td><td><b style="color:#1A3A52">${p.itinerary||""}</b>${p.programme?"<br/><div>"+p.programme+"</div>":""}</td><td>${p.breakfast||"X"}</td><td>${p.lunch||"X"}</td><td>${p.dinner||"X"}</td></tr>`) },
+          rowsHTML: programme.map(p=>`<tr><td><b>${formatDateSlash(p.date)||""}</b>${p.day?"<br/>("+p.day+")":""}</td><td><b style="color:#1A3A52">${p.itinerary||""}</b>${p.programme?"<br/><div>"+p.programme+"</div>":""}</td><td>${p.breakfast||"X"}</td><td>${p.lunch||"X"}</td><td>${p.dinner||"X"}</td></tr>`) },
         progNotes?`<div style="font-style:italic;color:#555">${progNotes}</div>`:"",
       ] : [];
       // Meal Plan's heading now matches every other section's convention
@@ -335,7 +335,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
           heading(sectionLabels.mealplan),
           { type:"table",
             headerHTML:`<tr><th>DATE & DAY</th><th>Itinerary</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th>${hasNotes?"<th>Notes</th>":""}</tr>`,
-            rowsHTML: mealDays.map(d=>`<tr><td><b>${formatDateDMY(d.date)||""}</b>${d.day?"<br/>("+d.day+")":""}</td><td>${d.itinerary||"—"}</td><td>${d.breakfast||"—"}</td><td>${d.lunch||"—"}</td><td>${d.dinner||"—"}</td>${hasNotes?`<td>${d.notes||""}</td>`:""}</tr>`) },
+            rowsHTML: mealDays.map(d=>`<tr><td><b>${formatDateSlash(d.date)||""}</b>${d.day?"<br/>("+d.day+")":""}</td><td>${d.itinerary||"—"}</td><td>${d.breakfast||"—"}</td><td>${d.lunch||"—"}</td><td>${d.dinner||"—"}</td>${hasNotes?`<td>${d.notes||""}</td>`:""}</tr>`) },
           mealNotes?`<div style="font-style:italic;color:#555;margin-top:4pt">${mealNotes}</div>`:"",
         ] : [];
       }

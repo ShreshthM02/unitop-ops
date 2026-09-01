@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, formatDateSlash } = Lib;
 
 // entryINR() moved to src/lib/utils.js so QueryDrawerWithQuote's Finance-tab
 // summary can share the exact same formula -- see there for the comment.
@@ -226,7 +226,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
             )}
           </div>
           <div style={{fontSize:11,color:G.gray600}}>
-            {e.date} · {e.mode==="Other"?e.modeOther||"Other":e.mode}
+            {formatDateSlash(e.date)} · {e.mode==="Other"?e.modeOther||"Other":e.mode}
             {e.ref && <span style={{fontFamily:"monospace",marginLeft:6,color:G.gray500}}>{e.ref}</span>}
           </div>
           {e.note && <div style={{fontSize:11,color:G.gray400,marginTop:2,fontStyle:"italic"}}>{e.note}</div>}
@@ -578,7 +578,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:600}}>{e.vendor}</div>
                     <div style={{fontSize:13,fontWeight:700,color:"#6B21A8"}}>₹ {parseFloat(e.amount).toLocaleString()}</div>
-                    <div style={{fontSize:11,color:G.gray600}}>{e.date} · {e.mode}{e.ref?" · "+e.ref:""}</div>
+                    <div style={{fontSize:11,color:G.gray600}}>{formatDateSlash(e.date)} · {e.mode}{e.ref?" · "+e.ref:""}</div>
                     {e.note&&<div style={{fontSize:11,color:G.gray400}}>{e.note}</div>}
                     {e.receiptName&&<div style={{fontSize:10,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,display:"inline-block",marginTop:3}}>📎 {e.receiptName}</div>}
                   </div>

@@ -16,7 +16,7 @@ describe('Dashboard: "Tour Calendar" widget now reflects live query edits, not a
     const editedQuery = { ...convertedQuery, groupName: 'Renamed After Edit', clientName: '', travelDate: '2026-09-15' };
     render(<Dashboard queries={[editedQuery]} onOpenQuery={()=>{}} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
     expect(screen.getAllByText(/Renamed After Edit/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/2026-09-15/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/15\/09\/2026/).length).toBeGreaterThan(0);
   });
 
   it('"Tours On Ground" stat reflects real operations-status queries, not an always-empty frozen filter', async () => {

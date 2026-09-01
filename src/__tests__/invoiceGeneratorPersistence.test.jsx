@@ -148,7 +148,7 @@ describe('InvoiceGenerator: Pro-Forma content fixes', () => {
   it('travel date is shown as an arrival-to-departure range in dd/mm/yyyy', async () => {
     const q = { ...fakeQuery, travelDate: '2026-09-01', travelDateTo: '2026-09-10' };
     render(<InvoiceGenerator query={q} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{}} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    expect(await screen.findByDisplayValue('01-09-2026 to 10-09-2026')).toBeTruthy();
+    expect(await screen.findByDisplayValue('01/09/2026 to 10/09/2026')).toBeTruthy();
   });
 
   it('has a Tour Name field, distinct from Tour Ref', async () => {

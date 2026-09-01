@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   SERVICE_TYPES, VENDOR_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G,
-  LOGO_B64, STAMP_B64, WATERMARK_TEXT, formatDateDMY,
+  LOGO_B64, STAMP_B64, WATERMARK_TEXT, formatDateDMY, formatDateSlash,
   loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo, groupExchangeOrderVersions,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
   DEFAULT_DOC_SETTINGS, logAudit, db,
@@ -344,7 +344,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     const svc = SERVICE_TYPES.find(s => s.id === order.serviceType);
     const svcLabel = order.serviceType === "others" && order.otherServiceType ? order.otherServiceType : (svc?.label || "Service");
     const hasArrDep = order.arrivalDate || order.departureDate;
-    const fD = (iso) => formatDateDMY(iso) || iso || "";
+    const fD = (iso) => formatDateSlash(iso) || iso || "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
     <style>
@@ -397,7 +397,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
     // blues (#061BB0 watermark vs #2E266D text) used through the last
     // few rounds.
     const TEXT_BLUE = "#061BB0";
-    const fD = (iso) => formatDateDMY(iso) || iso || "";
+    const fD = (iso) => formatDateSlash(iso) || iso || "";
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Exchange Order ${orderNo}</title>
     <style>
@@ -621,7 +621,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
                         <span style={{ fontSize: 10, color: G.gray400 }}>v{group.latest.version}{group.finalVersion && " ★"}</span>
                       </div>
                       <div style={{ fontSize: 12, color: G.gray800, fontWeight: 500 }}>{order.drawnOn}</div>
-                      <div style={{ fontSize: 11, color: G.gray600 }}>{formatDateDMY(order.issueDate) || order.issueDate} · {order.pax} pax</div>
+                      <div style={{ fontSize: 11, color: G.gray600 }}>{formatDateSlash(order.issueDate) || order.issueDate} · {order.pax} pax</div>
                     </div>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleGroupConfirmed(group)}>
                       {order.confirmed ? "✗ Unconfirm" : "✓ Confirm"}

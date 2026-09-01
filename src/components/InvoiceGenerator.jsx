@@ -4,7 +4,7 @@ const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
   LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock, RichTextEditor,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
-  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY, isIsoDateString,
+  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
   logAudit, db,
 } = Lib;
@@ -38,8 +38,8 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     const toRaw = query.travelDateTo;
     const fromIsDate = isIsoDateString(fromRaw);
     const toIsDate = isIsoDateString(toRaw);
-    if (fromIsDate && toIsDate) return `${formatDateDMY(fromRaw)} to ${formatDateDMY(toRaw)}`;
-    if (fromIsDate) return formatDateDMY(fromRaw);
+    if (fromIsDate && toIsDate) return `${formatDateSlash(fromRaw)} to ${formatDateSlash(toRaw)}`;
+    if (fromIsDate) return formatDateSlash(fromRaw);
     return fromRaw || "TBC";
   };
 
