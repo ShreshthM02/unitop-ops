@@ -40,10 +40,12 @@ describe('Tour Facilitator Report', () => {
     const { default: ReportsView } = await import('../components/ReportsView.jsx');
     render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={vendors} tourExecutions={tourExecutions}/>);
     fireEvent.click(screen.getByText(/Tour Facilitator Report/));
-    await waitFor(() => expect(screen.getByText('Prithvi')).toBeTruthy());
-    expect(screen.getByText('Anjali')).toBeTruthy();
-    // Only one Prithvi row should show -- the cancelled tour's assignment must not appear
-    expect(screen.getAllByText('Prithvi').length).toBe(1);
+    await waitFor(() => expect(screen.getAllByText('Prithvi').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Anjali').length).toBeGreaterThan(0);
+    // Only one Prithvi TABLE ROW should show -- the cancelled tour's assignment must not appear
+    // (Prithvi also now legitimately appears once more as a Facilitator filter dropdown option)
+    const prithviCells = screen.getAllByText('Prithvi').filter(el => el.tagName !== 'OPTION');
+    expect(prithviCells.length).toBe(1);
     expect(screen.getByText('North Kerala')).toBeTruthy();
     expect(screen.getByText('TF-1')).toBeTruthy();
   });

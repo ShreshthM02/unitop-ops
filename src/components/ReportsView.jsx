@@ -29,20 +29,61 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   // output rows show). Deliberately persists across switching between
   // reports rather than resetting each time, so "show me everything for
   // this agent" stays in effect while browsing.
-  const [rf, setRf] = useState({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"" });
+  // 1.1, reworked per direct feedback: a single generic filter bar applied
+  // uniformly to every report was actively wrong for several of them --
+  // filtering Agent-wise Revenue BY agent collapses its own point to one
+  // row, Sector Performance has the same problem with Sector, Exchange
+  // Order Register showed Sector/Agent/Status controls that silently did
+  // nothing (it has neither concept), and Tour Facilitator Report /
+  // Nationality Mix had no way to filter by the one thing that's actually
+  // their own subject. Each report now declares which filters apply to it
+  // (report.filters in constants.js); the bar renders only those.
+  const [rf, setRf] = useState({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"", nationality:"", cancellationReason:"", facilitator:"", vendor:"" });
   const sectorOptions = [...new Set(queries.map(q=>q.destination||q.sector).filter(Boolean))].sort();
   const agentOptions = [...new Set(queries.map(q=>q.agentCompany).filter(Boolean))].sort();
   const statusOptions = [...new Set(queries.map(q=>q.cancelled?"CANCELLED":q.status).filter(Boolean))].sort();
-  const filteredQueries = queries.filter(q => {
-    if (rf.sector && (q.destination||q.sector)!==rf.sector) return false;
-    if (rf.agent && q.agentCompany!==rf.agent) return false;
-    if (rf.status && (q.cancelled?"CANCELLED":q.status)!==rf.status) return false;
-    if (rf.dateFrom && (!q.date || q.date < rf.dateFrom)) return false;
-    if (rf.dateTo && (!q.date || q.date > rf.dateTo)) return false;
-    return true;
+  const nationalityOptions = [...new Set(queries.map(q=>q.nationality).filter(Boolean))].sort();
+  const cancellationReasonOptions = [...new Set(queries.map(q=>q.cancellationReason).filter(Boolean))].sort();
+  const facilitatorOptions = [...new Set((vendors||[]).filter(v=>v.type==="Tour Facilitator").map(v=>v.name).filter(Boolean))].sort();
+  const vendorOptions = [...new Set((vendors||[]).map(v=>v.name).filter(Boolean))].sort();
+
+  // Query-level filters -- reduce the underlying queries before any
+  // report's own data logic runs, so an aggregated report (Sector
+  // Performance, Seasonality) aggregates over the filtered set, not just
+  // hides output rows after the fact. Scoped to the CURRENT report's own
+  // declared filters -- e.g. if Sector was set while viewing Query Log,
+  // then the user switches to Sector Performance (which doesn't show a
+  // Sector control), that filter must NOT silently keep narrowing Sector
+  // Performance's aggregation with no visible control explaining why.
+  const filterQueriesForReport = (reportId) => {
+    const applicable = ALL_REPORTS.find(r=>r.id===reportId)?.filters || [];
+    return queries.filter(q => {
+      if (applicable.includes("sector") && rf.sector && (q.destination||q.sector)!==rf.sector) return false;
+      if (applicable.includes("agent") && rf.agent && q.agentCompany!==rf.agent) return false;
+      if (applicable.includes("status") && rf.status && (q.cancelled?"CANCELLED":q.status)!==rf.status) return false;
+      if (applicable.includes("dateRange") && rf.dateFrom && (!q.date || q.date < rf.dateFrom)) return false;
+      if (applicable.includes("dateRange") && rf.dateTo && (!q.date || q.date > rf.dateTo)) return false;
+      if (applicable.includes("nationality") && rf.nationality && q.nationality!==rf.nationality) return false;
+      if (applicable.includes("cancellationReason") && rf.cancellationReason && q.cancellationReason!==rf.cancellationReason) return false;
+      return true;
+    });
+  };
+  // Row-level filters -- Facilitator and Vendor don't reduce cleanly to a
+  // queries.filter(): a single query can have several facilitators (only
+  // some of which should survive the filter), and Exchange Order Register
+  // isn't query-shaped at the source at all. Applied to the report's own
+  // OUTPUT rows instead, only for the reports that declare them.
+  const applyRowLevelFilters = (reportId, rows) => {
+    let out = rows;
+    if (rf.facilitator && reportId==="tour_facilitator_report") out = out.filter(r=>r["Facilitator"]===rf.facilitator);
+    if (rf.vendor && reportId==="exchange_order_register") out = out.filter(r=>r["Vendor"]===rf.vendor);
+    return out;
+  };
+  const rfActiveForReport = (applicable) => applicable.some(k => {
+    if (k==="dateRange") return !!(rf.dateFrom||rf.dateTo);
+    return !!rf[k];
   });
-  const rfActive = !!(rf.sector||rf.agent||rf.status||rf.dateFrom||rf.dateTo);
-  const clearFilters = () => setRf({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"" });
+  const clearFilters = () => setRf({ sector:"", agent:"", status:"", dateFrom:"", dateTo:"", nationality:"", cancellationReason:"", facilitator:"", vendor:"" });
   const allQueriesUnfiltered = queries; // exchange_order_register resolves its Tour File Number against every query, not just filtered ones -- EO Register has no Sector/Status of its own to filter by; captured here, outside getReportData, so the shadowed `queries` inside it doesn't hide this reference too
 
   if(!can("pl_report")) return (
@@ -60,7 +101,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
   });
 
   const getReportData = (id) => {
-    const queries = filteredQueries; // shadows the outer prop -- every case below becomes filter-aware automatically
+    const queries = filterQueriesForReport(id); // shadows the outer prop -- every case below becomes filter-aware automatically, scoped to only the filters THIS report actually declares
     const now = new Date();
     switch(id) {
       case "active_pipeline":
@@ -300,7 +341,8 @@ function ReportChart({ reportId, data }) {
 }
 
   const ReportPreview = ({report}) => {
-    const data=getReportData(report.id);
+    const data=applyRowLevelFilters(report.id, getReportData(report.id));
+    const activeFilters = report.filters || [];
     const cols=data.length?Object.keys(data[0]).filter(c=>!c.startsWith("__")):[];
     // A cell is a clickable ID/Tour-File reference when the row carries a
     // resolved query and the cell's own value is that query's id or
@@ -335,30 +377,64 @@ function ReportChart({ reportId, data }) {
           }}>📥 XLSX</button>
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>exportPDF(report)}>🖨 PDF</button>
         </div>
-        <div style={{padding:"10px 18px",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
-          <span style={{fontSize:10,color:G.gray400,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Filters</span>
-          <select value={rf.sector} onChange={e=>setRf(f=>({...f,sector:e.target.value}))} style={filterSelectStyle}>
-            <option value="">Sector: All</option>
-            {sectorOptions.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={rf.agent} onChange={e=>setRf(f=>({...f,agent:e.target.value}))} style={filterSelectStyle}>
-            <option value="">Agent: All</option>
-            {agentOptions.map(a=><option key={a} value={a}>{a}</option>)}
-          </select>
-          <select value={rf.status} onChange={e=>setRf(f=>({...f,status:e.target.value}))} style={filterSelectStyle}>
-            <option value="">Status: All</option>
-            {statusOptions.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-          <span style={{fontSize:10,color:G.gray400}}>Query date:</span>
-          <input type="date" value={rf.dateFrom} onChange={e=>setRf(f=>({...f,dateFrom:e.target.value}))} style={filterSelectStyle}/>
-          <span style={{fontSize:10,color:G.gray400}}>to</span>
-          <input type="date" value={rf.dateTo} onChange={e=>setRf(f=>({...f,dateTo:e.target.value}))} style={filterSelectStyle}/>
-          {rfActive && <button onClick={clearFilters} className="btn btn-ghost" style={{fontSize:10,padding:"4px 9px"}}>✕ Clear filters</button>}
-        </div>
+        {activeFilters.length>0 && (
+          <div style={{padding:"10px 18px",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+            <span style={{fontSize:10,color:G.gray400,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px"}}>Filters</span>
+            {activeFilters.includes("sector") && (
+              <select value={rf.sector} onChange={e=>setRf(f=>({...f,sector:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Sector: All</option>
+                {sectorOptions.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("agent") && (
+              <select value={rf.agent} onChange={e=>setRf(f=>({...f,agent:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Agent: All</option>
+                {agentOptions.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("status") && (
+              <select value={rf.status} onChange={e=>setRf(f=>({...f,status:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Status: All</option>
+                {statusOptions.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("nationality") && (
+              <select value={rf.nationality} onChange={e=>setRf(f=>({...f,nationality:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Nationality: All</option>
+                {nationalityOptions.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("cancellationReason") && (
+              <select value={rf.cancellationReason} onChange={e=>setRf(f=>({...f,cancellationReason:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Reason: All</option>
+                {cancellationReasonOptions.map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("facilitator") && (
+              <select value={rf.facilitator} onChange={e=>setRf(f=>({...f,facilitator:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Facilitator: All</option>
+                {facilitatorOptions.map(f=><option key={f} value={f}>{f}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("vendor") && (
+              <select value={rf.vendor} onChange={e=>setRf(f=>({...f,vendor:e.target.value}))} style={filterSelectStyle}>
+                <option value="">Vendor: All</option>
+                {vendorOptions.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+            )}
+            {activeFilters.includes("dateRange") && (<>
+              <span style={{fontSize:10,color:G.gray400}}>Query date:</span>
+              <input type="date" value={rf.dateFrom} onChange={e=>setRf(f=>({...f,dateFrom:e.target.value}))} style={filterSelectStyle}/>
+              <span style={{fontSize:10,color:G.gray400}}>to</span>
+              <input type="date" value={rf.dateTo} onChange={e=>setRf(f=>({...f,dateTo:e.target.value}))} style={filterSelectStyle}/>
+            </>)}
+            {rfActiveForReport(activeFilters) && <button onClick={clearFilters} className="btn btn-ghost" style={{fontSize:10,padding:"4px 9px"}}>✕ Clear filters</button>}
+          </div>
+        )}
         <div style={{flex:1,overflowY:"auto",padding:"12px 18px"}}>
           {report.id==="exchange_order_register" && eoLoading
             ? <div style={{textAlign:"center",padding:32,color:G.gray400}}>Loading…</div>
-            : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>{rfActive?"No records match the current filters":"No data yet"}</div>:(
+            : data.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400}}>{rfActiveForReport(activeFilters)?"No records match the current filters":"No data yet"}</div>:(
             <div style={{overflowX:"auto"}}>
               <ReportChart reportId={report.id} data={data}/>
               <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>{data.length} record{data.length!==1?"s":""}</div>

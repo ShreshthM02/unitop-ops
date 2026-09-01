@@ -20,8 +20,8 @@ describe('Exchange Order Register report', () => {
     fireEvent.click(screen.getByText(/Exchange Order Register/));
     await waitFor(() => expect(screen.getByText('EO-2026-001')).toBeTruthy());
     expect(screen.getByText('EO-2026-002')).toBeTruthy();
-    expect(screen.getByText('Hotel Taj')).toBeTruthy(); // resolved via vendor_id
-    expect(screen.getByText('Custom Hotel Ltd')).toBeTruthy(); // fallback to drawnOn free text when no vendor_id
+    expect(screen.getAllByText('Hotel Taj').length).toBeGreaterThan(0); // resolved via vendor_id (also now a Vendor filter dropdown option)
+    expect(screen.getAllByText('Custom Hotel Ltd').length).toBeGreaterThan(0); // fallback to drawnOn free text when no vendor_id
     expect(screen.getByText('01/08/2026')).toBeTruthy(); // dd/mm/yyyy
     expect(screen.getByText('TF-1-CURRENT')).toBeTruthy(); // live tour file id from the query, not the stale snapshot
     vi.doUnmock('../lib/supabase.js');
@@ -38,10 +38,13 @@ describe('Nation-wise Master List report', () => {
     ];
     render(<ReportsView queries={queries} payments={{}} currentUser={{id:1,name:'Priya',role:'admin'}} vendors={[]} tourExecutions={{}}/>);
     fireEvent.click(screen.getByText(/Nation-wise Master List/));
-    await waitFor(() => expect(screen.getByText('German')).toBeTruthy());
-    expect(screen.getByText('Thai')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('German').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Thai').length).toBeGreaterThan(0);
     expect(screen.getByText('01/08/2026')).toBeTruthy();
     expect(screen.getAllByText('CANCELLED').length).toBeGreaterThan(0); // appears in the data cell (and, separately, as a filter dropdown option)
-    expect(screen.getAllByText('German').length + screen.getAllByText('Thai').length).toBe(2); // UTQ-2 (no nationality) excluded
+    // Exactly one TABLE cell each for German/Thai -- UTQ-2 (no nationality) excluded, and the Nationality filter dropdown's own options don't count
+    const germanCells = screen.getAllByText('German').filter(el => el.tagName !== 'OPTION');
+    const thaiCells = screen.getAllByText('Thai').filter(el => el.tagName !== 'OPTION');
+    expect(germanCells.length + thaiCells.length).toBe(2);
   });
 });
