@@ -6,13 +6,13 @@ describe('mapDbEditorDocumentRow / loadEditorDocuments', () => {
   it('maps every real editor_documents column to its app-object field', () => {
     const row = {
       id: 'row-1', query_id: 'UTQ-1', doc_key: 'key-1', name: 'Client Brief', version: 2,
-      is_final: true, content_html: '<p>hello</p>', created_by: 'staff-1',
+      is_final: true, content_html: '<p>hello</p>', comments: [{ id: 'c1', text: 'note' }], created_by: 'staff-1',
       created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-02T00:00:00Z',
     };
     const mapped = mapDbEditorDocumentRow(row);
     expect(mapped).toEqual({
       id: 'row-1', queryId: 'UTQ-1', docKey: 'key-1', name: 'Client Brief', version: 2,
-      isFinal: true, contentHtml: '<p>hello</p>', createdBy: 'staff-1',
+      isFinal: true, contentHtml: '<p>hello</p>', comments: [{ id: 'c1', text: 'note' }], createdBy: 'staff-1',
       createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-02T00:00:00Z',
     });
   });
@@ -46,6 +46,7 @@ describe('saveEditorDocumentVersion', () => {
     expect(call.payload.version).toBe(1);
     expect(call.payload.is_final).toBe(false);
     expect(call.payload.content_html).toBe('<p>x</p>');
+    expect(call.payload.comments).toEqual([]);
     expect(result.id).toBe('new-id');
   });
 

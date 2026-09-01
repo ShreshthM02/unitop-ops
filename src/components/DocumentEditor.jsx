@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { Mark, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
@@ -23,12 +24,17 @@ const { G, VersionDropdown, ExportMenu, buildPaginatedLetterheadDocument, buildD
 
 // Table cells/headers need a real backgroundColor attribute -- the base
 // extensions don't carry one, so cell shading had nowhere to persist.
+// borderColor similarly, for the cell-border picker added in Phase 2.
 const TableCell = BaseTableCell.extend({
   addAttributes() {
     return { ...this.parent?.(), backgroundColor: {
       default: null,
       parseHTML: el => el.style.backgroundColor || null,
       renderHTML: attrs => attrs.backgroundColor ? { style: `background-color:${attrs.backgroundColor}` } : {},
+    }, borderColor: {
+      default: null,
+      parseHTML: el => el.style.borderColor || null,
+      renderHTML: attrs => attrs.borderColor ? { style: `border-color:${attrs.borderColor};border-width:2px;border-style:solid` } : {},
     } };
   },
 });
@@ -38,6 +44,10 @@ const TableHeader = BaseTableHeader.extend({
       default: null,
       parseHTML: el => el.style.backgroundColor || null,
       renderHTML: attrs => attrs.backgroundColor ? { style: `background-color:${attrs.backgroundColor}` } : {},
+    }, borderColor: {
+      default: null,
+      parseHTML: el => el.style.borderColor || null,
+      renderHTML: attrs => attrs.borderColor ? { style: `border-color:${attrs.borderColor};border-width:2px;border-style:solid` } : {},
     } };
   },
 });
@@ -50,6 +60,29 @@ const ImageExt = ImageBase.extend({
       parseHTML: el => el.getAttribute('style'),
       renderHTML: attrs => attrs.style ? { style: attrs.style } : {},
     } };
+  },
+});
+
+// Phase 2: threaded inline comments -- a real, achievable alternative to
+// full Word-style track changes (accept/reject revision marks), which
+// would need a genuine diff/revision data model built from scratch. A
+// comment is a mark wrapping the anchored text with a stable commentId;
+// the comment's own text/author/timestamp/resolved-state lives in the
+// document's separate `comments` array (saved alongside content_html),
+// not in the mark itself -- marks only carry small attributes, and
+// comments need to be listable/resolvable independent of their anchor.
+const CommentMark = Mark.create({
+  name: 'comment',
+  addAttributes() {
+    return { commentId: {
+      default: null,
+      parseHTML: el => el.getAttribute('data-comment-id'),
+      renderHTML: attrs => attrs.commentId ? { 'data-comment-id': attrs.commentId } : {},
+    } };
+  },
+  parseHTML() { return [{ tag: 'span[data-comment-id]' }]; },
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { class: 'editor-comment-highlight' }), 0];
   },
 });
 
@@ -126,13 +159,16 @@ function TableToolbar({ editor }) {
       <SwatchPicker title="Cell shading" icon="🎨 Shade" colors={HIGHLIGHT_COLORS}
         onPick={(c) => editor.chain().focus().setCellAttribute("backgroundColor", c).run()}
         onClear={() => editor.chain().focus().setCellAttribute("backgroundColor", null).run()} />
+      <SwatchPicker title="Cell border" icon="▭ Border" colors={TEXT_COLORS}
+        onPick={(c) => editor.chain().focus().setCellAttribute("borderColor", c).run()}
+        onClear={() => editor.chain().focus().setCellAttribute("borderColor", null).run()} />
       <VSEP />
       <ToolbarButton title="Delete table" onClick={() => editor.chain().focus().deleteTable().run()}>✕ Delete Table</ToolbarButton>
     </div>
   );
 }
 
-function EditorToolbar({ editor, readOnly }) {
+function EditorToolbar({ editor, readOnly, onAddComment }) {
   if (!editor) return null;
   const addImage = useCallback(() => {
     const input = document.createElement("input");
@@ -206,6 +242,7 @@ function EditorToolbar({ editor, readOnly }) {
       <SwatchPicker title="Highlight color" icon="🖍" colors={HIGHLIGHT_COLORS}
         onPick={(c) => editor.chain().focus().toggleHighlight({ color: c }).run()}
         onClear={() => editor.chain().focus().unsetHighlight().run()} />
+      {onAddComment && <ToolbarButton title="Add comment" disabled={editor.state.selection.empty} onClick={onAddComment}>💬</ToolbarButton>}
       <VSEP />
       <ToolbarButton title="Align left" active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()}>⯇</ToolbarButton>
       <ToolbarButton title="Align center" active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()}>≡</ToolbarButton>
@@ -241,6 +278,7 @@ const EDITOR_EXTENSIONS = [
   ImageExt,
   Table.configure({ resizable: true }),
   TableRow, TableCell, TableHeader,
+  CommentMark,
 ];
 
 // A4 page, editing view -- full page (not the print content area, which
@@ -265,11 +303,14 @@ const PAGE_CSS = `
   .doc-editor-page .page-break::after{content:"Page Break";position:absolute;top:-9px;left:8px;background:#fff;
     font-size:8pt;color:#999;padding:0 4px}
   .doc-editor-page .selectedCell{background:rgba(37,99,235,0.08)}
+  .doc-editor-page .editor-comment-highlight{background:#FEF9C3;border-bottom:2px solid #EAB308;cursor:pointer}
+  .doc-editor-page .editor-comment-highlight.editor-comment-active{background:#FDE047}
+  .doc-editor-page .editor-comment-highlight.editor-comment-resolved{background:transparent;border-bottom:2px dotted #ccc}
 `;
 
-function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentUser, readOnly }) {
+function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentUser, readOnly, importedContent }) {
   const latest = existingVersions.length ? existingVersions[existingVersions.length - 1] : null;
-  const [name, setName] = useState(latest?.name || "Untitled Document");
+  const [name, setName] = useState(latest?.name || importedContent?.name || "Untitled Document");
   const [versions, setVersions] = useState(existingVersions);
   const [version, setVersion] = useState((latest?.version || 0) + 1);
   const [finalVersion, setFinalVersion] = useState(existingVersions.find(v => v.isFinal)?.version || null);
@@ -287,9 +328,30 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
   const [showPageNum, setShowPageNum] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
 
+  // Phase 2: threaded comments, saved alongside content_html as their
+  // own array (see saveEditorDocumentVersion). dirty tracks unsaved
+  // edits since the last successful save -- a real gap in Phase 1: 20
+  // minutes of editing lost to an accidental tab close with no warning
+  // at all. showFindReplace/find/replace drive the Find & Replace panel.
+  const [comments, setComments] = useState(latest?.comments || []);
+  const [activeCommentId, setActiveCommentId] = useState(null);
+  const [showComments, setShowComments] = useState(false);
+  const [dirty, setDirty] = useState(!!importedContent);
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [wordCount, setWordCount] = useState(0);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
   const editor = useEditor({
     extensions: EDITOR_EXTENSIONS,
-    content: latest?.contentHtml || "<p></p>",
+    content: latest?.contentHtml || importedContent?.html || "<p></p>",
     editable: !readOnly,
     // Without this, TipTap does not re-render the consuming component on
     // transactions -- every toolbar active/disabled state (bold, undo/
@@ -297,28 +359,112 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
     // updates, which is what "undo/redo malfunctioning" actually was:
     // editor.can().undo() was correct, but the button never re-read it.
     shouldRerenderOnTransaction: true,
+    onUpdate: ({ editor }) => {
+      setDirty(true);
+      const text = editor.getText().trim();
+      setWordCount(text ? text.split(/\s+/).length : 0);
+    },
+    onCreate: ({ editor }) => {
+      const text = editor.getText().trim();
+      setWordCount(text ? text.split(/\s+/).length : 0);
+    },
   });
 
   const loadVersionIntoDraft = (v) => {
     setViewingVersion(v.version);
     setName(v.name);
+    setComments(v.comments || []);
     editor?.commands.setContent(v.contentHtml || "<p></p>");
+    setDirty(false);
   };
 
   const saveVersion = async () => {
     if (!editor || saving) return;
     setSaving(true);
     const contentHtml = editor.getHTML();
-    const { error } = await saveEditorDocumentVersion(db, query.id, docKey, { name, contentHtml, version }, currentUser?.id);
+    const { error } = await saveEditorDocumentVersion(db, query.id, docKey, { name, contentHtml, comments, version }, currentUser?.id);
     if (!error) {
-      const newVersions = [...versions, { docKey, name, version, contentHtml, isFinal: false }];
+      const newVersions = [...versions, { docKey, name, version, contentHtml, comments, isFinal: false }];
       setVersions(newVersions);
       setVersion(v => v + 1);
       setViewingVersion(null);
+      setDirty(false);
       logAudit(db, query.id, currentUser?.name, `Editor document "${name}" saved (v${version})`);
       onSaved && onSaved();
     }
     setSaving(false);
+  };
+
+  // Find & Replace -- TipTap has no built-in find/replace. Walks each
+  // text node's own string (not the full doc's flattened text) since a
+  // match spanning two adjacent differently-formatted text runs is a
+  // real edge case not worth the complexity for a v1.
+  const findAllMatches = (query) => {
+    if (!editor || !query) return [];
+    const matches = [];
+    const q = query.toLowerCase();
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText) return;
+      const text = node.text.toLowerCase();
+      let idx = 0;
+      while ((idx = text.indexOf(q, idx)) !== -1) {
+        matches.push({ from: pos + idx, to: pos + idx + query.length });
+        idx += query.length;
+      }
+    });
+    return matches;
+  };
+  const [matchCursor, setMatchCursor] = useState(0);
+  const findNext = () => {
+    const matches = findAllMatches(findQuery);
+    if (!matches.length) return;
+    const idx = matchCursor % matches.length;
+    const m = matches[idx];
+    editor.chain().focus().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run();
+    setMatchCursor(idx + 1);
+  };
+  const replaceOne = () => {
+    const matches = findAllMatches(findQuery);
+    if (!matches.length) return;
+    const m = matches[0];
+    editor.chain().focus().insertContentAt({ from: m.from, to: m.to }, replaceQuery).run();
+  };
+  const replaceAll = () => {
+    const matches = findAllMatches(findQuery);
+    // Replace back-to-front so earlier match positions don't shift as
+    // later-in-document ones are replaced first.
+    [...matches].reverse().forEach(m => editor.chain().insertContentAt({ from: m.from, to: m.to }, replaceQuery).run());
+    editor.commands.focus();
+  };
+
+  // Comments -- see CommentMark above for why the anchor (a mark) and
+  // the comment's own data (this array) are kept separate.
+  const addComment = () => {
+    if (!editor || editor.state.selection.empty) return;
+    const text = window.prompt("Comment");
+    if (!text) return;
+    const commentId = crypto.randomUUID();
+    editor.chain().focus().setMark("comment", { commentId }).run();
+    setComments(cs => [...cs, { id: commentId, text, author: currentUser?.name || "", createdAt: new Date().toISOString(), resolved: false }]);
+    setDirty(true);
+  };
+  const resolveComment = (id) => { setComments(cs => cs.map(c => c.id===id ? { ...c, resolved: !c.resolved } : c)); setDirty(true); };
+  const deleteComment = (id) => {
+    setComments(cs => cs.filter(c => c.id !== id));
+    // Also strip the now-orphaned mark from the text -- resolving a
+    // comment leaves its highlight visible (dimmed) as a record it
+    // existed; deleting it removes the highlight entirely.
+    if (editor) {
+      const { state } = editor;
+      let from = null, to = null;
+      state.doc.descendants((node, pos) => {
+        if (from !== null) return;
+        const mark = node.marks?.find(m => m.type.name==="comment" && m.attrs.commentId===id);
+        if (mark) { from = pos; to = pos + node.nodeSize; }
+      });
+      if (from !== null) editor.chain().setTextSelection({ from, to }).unsetMark("comment").run();
+    }
+    setDirty(true);
   };
 
   const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin-top:10pt" alt="Stamp"/>` : "";
@@ -353,14 +499,14 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ background: G.navy, padding: "12px 18px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        <button onClick={onBack} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>← Documents</button>
+        <button onClick={()=>{ if(!dirty || window.confirm("You have unsaved changes. Leave without saving?")) onBack(); }} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>← Documents</button>
         <div style={{ flex: 1 }}>
           {readOnly
             ? <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display',serif" }}>{name}</div>
             : <input value={name} onChange={e => setName(e.target.value)}
                 style={{ background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,0.3)", color: "#fff",
                   fontSize: 16, fontWeight: 700, fontFamily: "'Playfair Display',serif", outline: "none", width: "100%", padding: "2px 0" }} />}
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1 }}>EDITOR · {versions.length > 0 ? `v${version - 1} saved` : "unsaved"}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1 }}>EDITOR · {versions.length > 0 ? `v${version - 1} saved` : "unsaved"}{dirty?" · unsaved changes":""}</div>
         </div>
         <VersionDropdown versions={versions} viewingVersion={viewingVersion} displayVersion={version} finalVersion={finalVersion}
           onSelectVersion={loadVersionIntoDraft}
@@ -370,7 +516,7 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
             logAudit(db, query.id, currentUser?.name, `Editor document "${name}" v${v.version} marked final`);
           }}
           readOnly={readOnly} G={G} />
-        {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" disabled={saving} style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", fontSize: 11 }}>💾 {saving ? "Saving…" : `Save v${version}`}</button>}
+        {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" disabled={saving} style={{ background: dirty?"rgba(234,179,8,0.35)":"rgba(255,255,255,0.1)", color: "#fff", border: "none", fontSize: 11 }}>💾 {saving ? "Saving…" : `Save v${version}`}</button>}
       </div>
       {!readOnly && (
         <div style={{ padding: "7px 18px", background: G.gray50, borderBottom: `1px solid ${G.gray200}`, display: "flex", gap: 16, flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
@@ -380,18 +526,56 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
           <Tog label="Digital stamp" val={showStamp} onToggle={() => setShowStamp(p => !p)} />
           <span style={{ width: 1, alignSelf: "stretch", background: G.gray200 }} />
           <Tog label="🖨 Print on Letterhead" val={printOnLetterhead} onToggle={() => setPrintOnLetterhead(p => !p)} />
+          <span style={{ width: 1, alignSelf: "stretch", background: G.gray200 }} />
+          <button onClick={()=>setShowFindReplace(s=>!s)} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px"}}>🔍 Find & Replace</button>
+          <button onClick={()=>setShowComments(s=>!s)} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px"}}>
+            💬 Comments{comments.filter(c=>!c.resolved).length>0?` (${comments.filter(c=>!c.resolved).length})`:""}
+          </button>
+          <span style={{fontSize:10,color:G.gray400,marginLeft:"auto"}}>{wordCount} word{wordCount===1?"":"s"}</span>
         </div>
       )}
-      <EditorToolbar editor={editor} readOnly={readOnly} />
+      {showFindReplace && !readOnly && (
+        <div style={{ padding: "8px 18px", background: "#EEF2FF", borderBottom: `1px solid ${G.gray200}`, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
+          <input value={findQuery} onChange={e=>{setFindQuery(e.target.value);setMatchCursor(0);}} placeholder="Find..."
+            style={{padding:"5px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:140}}/>
+          <button onClick={findNext} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px"}}>Find Next</button>
+          <input value={replaceQuery} onChange={e=>setReplaceQuery(e.target.value)} placeholder="Replace with..."
+            style={{padding:"5px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:140}}/>
+          <button onClick={replaceOne} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px"}}>Replace</button>
+          <button onClick={replaceAll} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px"}}>Replace All</button>
+          <span style={{fontSize:10,color:G.gray400}}>{findQuery?`${findAllMatches(findQuery).length} match(es)`:""}</span>
+          <button onClick={()=>setShowFindReplace(false)} className="btn btn-ghost" style={{fontSize:11,padding:"4px 9px",marginLeft:"auto"}}>✕</button>
+        </div>
+      )}
+      <EditorToolbar editor={editor} readOnly={readOnly} onAddComment={addComment} />
       <TableToolbar editor={editor} />
-      <div style={{ flex: 1, overflowY: "auto", background: G.gray100 }}>
+      {!readOnly && <div style={{padding:"5px 14px",background:"#FFFBEB",borderBottom:`1px solid ${G.gray200}`,fontSize:10,color:G.gray600,display:editor&&editor.state.selection.empty?"none":"block"}}>
+        Select text, then use 🖍 Highlight or 💬 Comments to mark it up.
+      </div>}
+      <div style={{ flex: 1, overflowY: "auto", background: G.gray100, display:"flex" }}>
         <style>{PAGE_CSS}</style>
-        <div className="doc-editor-page">
+        <div className="doc-editor-page" style={{flex:1}}>
           <EditorContent editor={editor} />
         </div>
+        {showComments && (
+          <div style={{width:260,flexShrink:0,borderLeft:`1px solid ${G.gray200}`,background:G.white,overflowY:"auto",padding:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Comments</div>
+            {comments.length===0 && <div style={{fontSize:11,color:G.gray400}}>Select text and click 💬 in the toolbar to add one.</div>}
+            {[...comments].sort((a,b)=>a.resolved-b.resolved).map(c=>(
+              <div key={c.id} style={{background:c.resolved?G.gray50:"#FEFCE8",border:`1px solid ${c.resolved?G.gray200:"#FDE047"}`,borderRadius:8,padding:10,marginBottom:8,opacity:c.resolved?0.6:1}}>
+                <div style={{fontSize:11,color:G.gray800,marginBottom:6,textDecoration:c.resolved?"line-through":"none"}}>{c.text}</div>
+                <div style={{fontSize:9,color:G.gray400,marginBottom:6}}>{c.author}{c.createdAt?" · "+new Date(c.createdAt).toLocaleDateString("en-IN"):""}</div>
+                <div style={{display:"flex",gap:6}}>
+                  {!readOnly && <button onClick={()=>resolveComment(c.id)} className="btn btn-ghost" style={{fontSize:9,padding:"2px 6px"}}>{c.resolved?"↺ Reopen":"✓ Resolve"}</button>}
+                  {!readOnly && <button onClick={()=>deleteComment(c.id)} className="btn btn-ghost" style={{fontSize:9,padding:"2px 6px"}}>🗑</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div style={{ padding: "10px 18px", borderTop: `1px solid ${G.gray200}`, display: "flex", gap: 10, flexShrink: 0, background: G.gray50 }}>
-        <button onClick={onBack} className="btn btn-ghost">Back</button>
+        <button onClick={()=>{ if(!dirty || window.confirm("You have unsaved changes. Leave without saving?")) onBack(); }} className="btn btn-ghost">Back</button>
         <div style={{ flex: 1 }} />
         {!readOnly && <button onClick={saveVersion} className="btn btn-primary" disabled={saving}>💾 {saving ? "Saving…" : `Save v${version}`}</button>}
         <ExportMenu G={G} actions={[
@@ -404,13 +588,33 @@ function EditorView({ query, docKey, existingVersions, onBack, onSaved, currentU
   );
 }
 
-function DocumentList({ query, docs, loading, onOpen, onNew, onClose }) {
+function DocumentList({ query, docs, loading, onOpen, onNew, onImport, onClose }) {
   // Group all version rows into one entry per docKey, showing its latest version.
   const grouped = {};
   docs.forEach(d => {
     if (!grouped[d.docKey] || d.version > grouped[d.docKey].version) grouped[d.docKey] = d;
   });
   const list = Object.values(grouped).sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
+  const handleImportClick = () => fileInputRef.current?.click();
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow importing the same filename again later
+    if (!file) return;
+    setImporting(true);
+    try {
+      const mammoth = (await import("mammoth")).default;
+      const arrayBuffer = await file.arrayBuffer();
+      const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+      const name = file.name.replace(/\.docx$/i, "");
+      onImport(html || "<p></p>", name);
+    } catch (err) {
+      window.alert("Could not read this Word file. Only .docx (not the older .doc format) is supported.");
+    }
+    setImporting(false);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -423,7 +627,11 @@ function DocumentList({ query, docs, loading, onOpen, onNew, onClose }) {
         <button onClick={onClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-        <button className="btn btn-success" onClick={onNew} style={{ marginBottom: 14 }}>+ New Document</button>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button className="btn btn-success" onClick={onNew}>+ New Document</button>
+          <button className="btn btn-ghost" onClick={handleImportClick} disabled={importing}>{importing?"Importing…":"📄 Import Word Document"}</button>
+          <input ref={fileInputRef} type="file" accept=".docx" onChange={handleFileChange} style={{display:"none"}}/>
+        </div>
         {loading && <div style={{ textAlign: "center", padding: "32px 0", color: G.gray400, fontSize: 12 }}>Loading documents…</div>}
         {!loading && list.length === 0 && (
           <div style={{ textAlign: "center", padding: "32px 0", color: G.gray400, fontSize: 12 }}>No documents yet — create one above.</div>
@@ -447,6 +655,7 @@ export default function DocumentEditor({ query, onClose, currentUser, readOnly }
   const [allDocs, setAllDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDocKey, setOpenDocKey] = useState(null);
+  const [importedContent, setImportedContent] = useState(null); // {html, name} | null -- prefills a brand-new document from an uploaded .docx
 
   const refresh = () => {
     setLoading(true);
@@ -454,9 +663,10 @@ export default function DocumentEditor({ query, onClose, currentUser, readOnly }
   };
   useEffect(refresh, [query.id]);
 
-  const openExisting = (docKey) => setOpenDocKey(docKey);
-  const openNew = () => setOpenDocKey(crypto.randomUUID());
-  const back = () => { setOpenDocKey(null); refresh(); };
+  const openExisting = (docKey) => { setImportedContent(null); setOpenDocKey(docKey); };
+  const openNew = () => { setImportedContent(null); setOpenDocKey(crypto.randomUUID()); };
+  const openImported = (html, name) => { setImportedContent({ html, name }); setOpenDocKey(crypto.randomUUID()); };
+  const back = () => { setOpenDocKey(null); setImportedContent(null); refresh(); };
 
   const existingVersionsForOpenDoc = allDocs.filter(d => d.docKey === openDocKey);
 
@@ -464,8 +674,8 @@ export default function DocumentEditor({ query, onClose, currentUser, readOnly }
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: G.white, width: "min(900px, 100vw)", height: "100vh", display: "flex", flexDirection: "column", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)" }}>
         {openDocKey
-          ? <EditorView query={query} docKey={openDocKey} existingVersions={existingVersionsForOpenDoc} onBack={back} onSaved={refresh} currentUser={currentUser} readOnly={readOnly} />
-          : <DocumentList query={query} docs={allDocs} loading={loading} onOpen={openExisting} onNew={openNew} onClose={onClose} />}
+          ? <EditorView query={query} docKey={openDocKey} existingVersions={existingVersionsForOpenDoc} onBack={back} onSaved={refresh} currentUser={currentUser} readOnly={readOnly} importedContent={importedContent} />
+          : <DocumentList query={query} docs={allDocs} loading={loading} onOpen={openExisting} onNew={openNew} onImport={openImported} onClose={onClose} />}
       </div>
     </div>
   );

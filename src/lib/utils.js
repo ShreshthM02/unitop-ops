@@ -1206,6 +1206,7 @@ export function mapDbEditorDocumentRow(row) {
   return {
     id: row.id, queryId: row.query_id, docKey: row.doc_key, name: row.name,
     version: row.version, isFinal: row.is_final, contentHtml: row.content_html,
+    comments: row.comments || [],
     createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -1229,6 +1230,7 @@ export async function saveEditorDocumentVersion(db, queryId, docKey, snap, creat
     const { data, error } = await db.from("editor_documents").insert({
       query_id: queryId, doc_key: docKey, name: snap.name || "Untitled Document",
       version: snap.version, is_final: false, content_html: snap.contentHtml || "",
+      comments: snap.comments || [],
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };
