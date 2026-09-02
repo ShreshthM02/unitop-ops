@@ -5,6 +5,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 export default function LoginScreen({ onSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
 
@@ -57,14 +58,24 @@ export default function LoginScreen({ onSuccess }) {
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:11, fontWeight:600, color:"#6B7280",
               textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6 }}>Password</div>
-            <input value={password} onChange={e=>setPassword(e.target.value)}
-              type="password" placeholder="••••••••"
-              style={{ width:"100%", padding:"10px 12px", border:"1px solid #E5E7EB",
-                borderRadius:8, fontSize:13, fontFamily:"'Inter',sans-serif",
-                outline:"none", color:"#1F2937", boxSizing:"border-box" }}
-              onFocus={e=>e.target.style.borderColor="#C0392B"}
-              onBlur={e=>e.target.style.borderColor="#E5E7EB"}
-              onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+            <div style={{ position:"relative" }}>
+              <input value={password} onChange={e=>setPassword(e.target.value)}
+                type={showPassword?"text":"password"} placeholder="••••••••"
+                style={{ width:"100%", padding:"10px 40px 10px 12px", border:"1px solid #E5E7EB",
+                  borderRadius:8, fontSize:13, fontFamily:"'Inter',sans-serif",
+                  outline:"none", color:"#1F2937", boxSizing:"border-box" }}
+                onFocus={e=>e.target.style.borderColor="#C0392B"}
+                onBlur={e=>e.target.style.borderColor="#E5E7EB"}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+              <button type="button" onClick={()=>setShowPassword(p=>!p)}
+                title={showPassword?"Hide password":"Show password"}
+                aria-label={showPassword?"Hide password":"Show password"}
+                style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
+                  background:"none", border:"none", cursor:"pointer", padding:6,
+                  fontSize:15, color:"#9CA3AF", lineHeight:1 }}>
+                {showPassword?"🙈":"👁"}
+              </button>
+            </div>
           </div>
 
           <button onClick={handleLogin} disabled={loading||!username||!password}
