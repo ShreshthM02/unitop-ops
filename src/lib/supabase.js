@@ -233,8 +233,17 @@ export const _supa = (() => {
       return data;
     },
     getStaffList: async () => {
+      // Was hardcoding `Authorization: Bearer ${key}` (the plain anon
+      // key) directly -- the one hand-written fetch call in this whole
+      // object that's a real table SELECT (every other call here is an
+      // RPC to a SECURITY DEFINER function, which doesn't need a real
+      // session header since it validates its own p_token internally).
+      // Once Phase 2 correctly removed anon's row-level access to
+      // staff, this call started failing for every user, every time,
+      // regardless of session freshness -- authHeaders() is what
+      // actually carries the real signed JWT when one exists.
       const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,active,last_login,permissions&order=name.asc`, {
-        headers:{ "apikey":key, "Authorization":`Bearer ${key}` }
+        headers: authHeaders(),
       });
       return r.ok ? await r.json() : [];
     },

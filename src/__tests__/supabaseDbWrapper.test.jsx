@@ -117,3 +117,35 @@ describe('Auth Phase 1: a real signed JWT is actually used once a session exists
     expect(stored.jwt).toBe('freshly.reissued.jwt');
   });
 });
+
+describe('User Management: the real, confirmed bug behind "staff never shows up"', () => {
+  // getStaffList() was the one hand-written fetch call in the whole auth
+  // object that hardcoded `Authorization: Bearer ${key}` (the plain
+  // anon key) directly, instead of using authHeaders() like every
+  // ordinary table read does. Every other call in this object is an RPC
+  // to a SECURITY DEFINER function (staff_login, validate_session,
+  // etc), which doesn't need a real session header since it validates
+  // its own p_token internally -- this one is a genuine table SELECT,
+  // subject to RLS, and RLS now requires a real authenticated session.
+  let originalFetch;
+  beforeEach(() => { originalFetch = global.fetch; });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('sends the real signed JWT once logged in, not the plain anon key', async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('rpc/staff_login')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          success: true, token: 'custom-hex-token', jwt: 'real.signed.jwt', expiry: '2026-12-01T00:00:00Z',
+          user: { id: 'staff-1', name: 'Priya', role: 'sales' },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    await db.auth.login('priya', 'whatever');
+
+    let capturedHeaders = null;
+    global.fetch = vi.fn((url, opts) => { capturedHeaders = opts?.headers; return Promise.resolve({ ok: true, json: async () => [] }); });
+    await db.auth.getStaffList();
+    expect(capturedHeaders.Authorization).toBe('Bearer real.signed.jwt');
+  });
+});
