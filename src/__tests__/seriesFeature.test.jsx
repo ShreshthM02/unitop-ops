@@ -244,3 +244,72 @@ describe('Cost Sheet: pre-fills day-wise structure from a referenced tour file w
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('Quotation: pre-fills itinerary/hotels from a referenced tour file’s Cost Sheet when this query has no Cost Sheet of its own yet', () => {
+  const fakeTemplate = { includes: [], excludes: [], monuments: [], showMonuments: true, greeting: '', openingLine: '', closingLine: '', signoff: '', monumentNote: '' };
+
+  function makeScopedDb({ refCostSheetRow }) {
+    return {
+      from: (table) => {
+        const builder = {
+          select: () => builder,
+          eq: (col, val) => ({
+            ...builder,
+            eq: (col2, val2) => ({ ...builder, order: async () => resolveFor(val, val2) }),
+            order: async () => resolveFor(val),
+          }),
+          order: async () => resolveFor(),
+          insert: async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null }),
+          update: async () => ({ data: [], error: null }),
+          then: (resolve) => resolve(resolveFor()),
+        };
+        function resolveFor(val) {
+          if (table === 'cost_sheets') {
+            // Keyed on the ACTUAL query_id being filtered for -- the bug
+            // that bit the Cost Sheet version of this same test: the new
+            // query itself must show as having NO cost sheet, only the
+            // reference query's own id should return real data.
+            return { data: val === 'UTQ-REF' ? [refCostSheetRow] : [], error: null };
+          }
+          return { data: [], error: null };
+        }
+        return builder;
+      },
+    };
+  }
+
+  it('pulls itinerary/hotel structure from the reference, but leaves pricing (slabs) empty for the user to set fresh', async () => {
+    const refCostSheetRow = {
+      id: 'cs-ref-1', version: 3, is_final: true, currency: 'US $',
+      days: [{ id: 1, day: 'Day 1', movement: 'DEL-AGRA', hotel: 'Taj View', notes: '' }],
+      slabs: [{ id: 's1', label: '10 pax', foc: 1 }], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [],
+      gst_pct: 5, markup_pct: 15, roe: 90,
+    };
+    const db = makeScopedDb({ refCostSheetRow });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    const newQuery = { id: 'UTQ-NEW', groupName: 'New Group', nights: 2, agentCompany: 'Fresh Agent Co', referenceQueryId: 'UTQ-REF' };
+    render(<QG query={newQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+
+    await waitFor(() => expect(screen.getByDisplayValue('DEL-AGRA')).toBeTruthy());
+    expect(screen.getByDisplayValue('Taj View')).toBeTruthy();
+    // attnCompany stays this query's OWN agent, not the reference's client
+    expect(screen.getByDisplayValue('Fresh Agent Co')).toBeTruthy();
+    // Slab pricing must NOT carry over from the reference
+    expect(screen.queryByDisplayValue('10 pax')).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('does nothing when the query has no referenceQueryId and no costSheetId (unrelated queries stay exactly as before)', async () => {
+    const db = makeScopedDb({ refCostSheetRow: null });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    const plainQuery = { id: 'UTQ-PLAIN', groupName: 'Plain Group', nights: 2 };
+    render(<QG query={plainQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByText(/⬇ Export/)).toBeTruthy());
+    expect(screen.queryByText(/Pulled from Cost Sheet/)).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

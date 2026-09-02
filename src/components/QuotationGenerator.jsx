@@ -160,6 +160,31 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     }
   };
 
+  // Referenced-tour-file fallback for a genuinely new query with no Cost
+  // Sheet of its own yet (the common case -- if it DID have one, the
+  // existing pullFromCostSheet path above already covers it, since a
+  // Cost Sheet created via its own reference pre-fill already carries
+  // this same structure through). Reuses pullFromCostSheet entirely
+  // rather than duplicating its extraction logic -- itinerary, hotels,
+  // monuments all come from the reference's Cost Sheet exactly the same
+  // way. Two things deliberately corrected straight after, though:
+  // slab pricing is cleared (the reference's old pricing is never
+  // right to carry over -- same principle as Cost Sheet's own
+  // reference pre-fill stripping hotelNetPP/singleSupp), and attnCompany
+  // is reset back to this query's own agent (a repeat itinerary pattern
+  // doesn't mean the same client booked it this time).
+  const pullFromReferenceTourFile = async () => {
+    if (!query.referenceQueryId) return;
+    const refVersions = await loadCostSheetVersions(db, query.referenceQueryId);
+    if (!refVersions.length) return;
+    const refMatch = refVersions.find(v => v.isFinal) || refVersions[refVersions.length - 1];
+    const applied = await pullFromCostSheet(refMatch);
+    if (applied) {
+      setQ(p => ({ ...p, slabs: [], pulledFromCostSheetVersion: null, attnCompany: query.agentCompany || "" }));
+      setPullMessage(`Pre-filled itinerary/hotels from ${query.referenceQueryId}'s Cost Sheet — pricing left for you to set fresh.`);
+    }
+  };
+
   // Load previously saved versions for this tour file, if any -- continues
   // editing from the latest saved version instead of starting fresh from
   // template defaults every time the Quotation is reopened.
@@ -173,6 +198,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         // version exists, this never fires again; only the explicit
         // button (or the staleness banner's re-pull) does.
         if (costSheetId) pullFromCostSheet();
+        else if (query.referenceQueryId) pullFromReferenceTourFile();
         return;
       }
       setVersions(loaded);
