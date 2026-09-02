@@ -4,7 +4,7 @@ const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
   LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock, RichTextEditor,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
-  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
+  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
   logAudit, db,
 } = Lib;
@@ -14,7 +14,7 @@ const inp = { padding: "6px 8px", border: `1px solid ${G.gray200}`, borderRadius
 const label = (t) => <div style={{ fontSize: 10, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{t}</div>;
 const secHead = (t) => <div style={{ background: G.navy, color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, fontWeight: 700, letterSpacing: "0.5px", margin: "14px 0 8px" }}>{t}</div>;
 
-export default function InvoiceGenerator({ query, payments, proformaTemplate, taxinvoiceTemplate, docSettings, agents, onClose, currentUser, readOnly, initialFlavor }) {
+export default function InvoiceGenerator({ query, payments, proformaTemplate, taxinvoiceTemplate, docSettings, onSaveDocSettings, agents, onClose, currentUser, readOnly, initialFlavor }) {
   const pTmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(proformaTemplate || {}) };
   const tTmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(taxinvoiceTemplate || {}) };
   const pt = payments ? payments[query.id] : null;
@@ -145,7 +145,6 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
   };
 
   const refreshVersions = (flavor) => {
-    const prefix = flavor === "proforma" ? (docSettings?.proforma?.prefix || "PI") : (docSettings?.taxinvoice?.prefix || "TI");
     Promise.all([
       loadInvoiceVersions(db, query.id, flavor),
       loadExistingInvoiceNumbers(db, "invoices"),
@@ -161,7 +160,12 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         setFinalVersion(null);
         setViewingVersion(null);
         const setF = flavor === "proforma" ? setP : setT;
-        setF("invoiceNo", nextInvoiceNo(prefix, existingNumbers));
+        const { number, updatedSettings } = nextDocNumber(docSettings, flavor === "proforma" ? "proforma" : "taxinvoice", {
+          group: query.groupName || query.clientName, sector: query.destination || query.sector,
+          id: query.id, tourfile: query.tourFileId,
+        });
+        setF("invoiceNo", number);
+        onSaveDocSettings && onSaveDocSettings(updatedSettings);
       }
     });
   };

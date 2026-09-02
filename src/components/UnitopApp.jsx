@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -297,7 +297,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     }
   };
 
-  const nextQueryId = () => nextInvoiceNo(docSettings.query?.prefix || "UTQ", queries.map(q=>q.id));
+  // Preview-only: used for the "Query Number (auto-assigned)" text shown
+  // in NewQueryModal before the user has saved anything. Deliberately
+  // never persists the bumped serial from nextDocNumber() -- only the
+  // real save (handleNewQuery, below) commits that increment. Both read
+  // the same current serial, so the preview and the actually-assigned
+  // id always agree as long as nothing else creates a query in between.
+  const nextQueryId = () => nextDocNumber(docSettings, "query", {}).number;
   const showToast = msg => setToast(msg);
   const updatePayments = (queryId, data, auditAction) => {
     setPayments(p => ({ ...p, [queryId]: data })); // optimistic local update, same as before
@@ -320,7 +326,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleNewQuery = async (form) => {
-    const id = nextQueryId();
+    const { number: id, updatedSettings } = nextDocNumber(docSettings, "query", { group: form.groupName, sector: form.sector });
+    saveDocSettings(updatedSettings);
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
     const paxDisplay = form.paxKnown?`${form.paxExact} pax`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
     const dateDisplay = form.dateKnown?`${formatDateSlash(form.travelDateFrom)}${form.travelDateTo?" → "+formatDateSlash(form.travelDateTo):""}`:`${form.travelMonth||""}${form.travelSeason?" · "+form.travelSeason:""} (TBC)`;
@@ -349,7 +356,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleConvertToCaseFile = (query) => {
-    const tourNum = nextInvoiceNo(docSettings.tourfile?.prefix || "TUR", queries.filter(q=>q.tourFileId).map(q=>q.tourFileId));
+    const { number: tourNum, updatedSettings } = nextDocNumber(docSettings, "tourfile", { group: query.groupName || query.clientName, sector: query.destination || query.sector, id: query.id });
+    saveDocSettings(updatedSettings);
     const now = new Date().toLocaleString("en-IN");
     const auditMsg = `Converted to Tour File — Tour No. ${tourNum} assigned`;
     const updQ = {...query,tourFileId:tourNum,audit:[...(query.audit||[]),{by:currentUser.name,at:now,action:auditMsg}]};
@@ -781,9 +789,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled} staff={staff}/>}
         {showItinerary && <Itinerary query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser} readOnly={showItinerary.cancelled}/>}
         {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled} onUpdateQuery={handleUpdateQuery}/>}
-        {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled}/>}
+        {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} onSaveDocSettings={saveDocSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
-        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
+        {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} docSettings={docSettings} onSaveDocSettings={saveDocSettings} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
         {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} vendors={vendors} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
         {showEditor     && <DocumentEditor query={showEditor} onClose={()=>setShowEditor(null)} currentUser={currentUser} readOnly={showEditor.cancelled}/>}
         {showUserMgmt  && can("user_management") && (

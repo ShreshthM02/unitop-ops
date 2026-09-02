@@ -3,6 +3,56 @@ export const nextInvoiceNo = (prefix, existing) => {
   return `${prefix}-${new Date().getFullYear()}-${String(Math.max(0,...nums)+1).padStart(3,"0")}`;
 };
 
+// Real pattern-based document numbering. Until now, Settings' rich
+// pattern editor ({prefix}/{seq}/{year}/{date}/{group}/{sector}/{id}/
+// {tourfile}) only ever fed a PREVIEW on the settings page itself --
+// nextInvoiceNo() (above) ignored the configured pattern entirely and
+// always produced a hardcoded {prefix}-{year}-{seq} shape, ALWAYS
+// deriving {seq} by parsing the last "-"-delimited segment of existing
+// numbers. That parsing approach can't survive a genuinely configurable
+// pattern (a {group}/{sector} segment can contain almost anything,
+// including things that look numeric), so this switches {seq} to a
+// real persistent counter (docSettings[type].serial) instead of being
+// derived from existing formatted text.
+//
+// {id} is a SMART placeholder, per direct spec: it resolves to the
+// tour file id once one exists, falling back to the query id
+// beforehand -- so a pattern using {id} doesn't need to be manually
+// switched to {tourfile} the moment a query converts. {tourfile} stays
+// available on its own for anyone who specifically wants blank-until-
+// converted behavior instead.
+export function formatDocPattern(pattern, ctx = {}) {
+  const now = ctx.date ? new Date(ctx.date) : new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const ddmmyyyy = `${dd}-${mm}-${now.getFullYear()}`;
+  const clean = (s) => String(s || "").trim().replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+  const smartId = ctx.tourfile || ctx.id || "";
+  return (pattern || "{prefix}-{seq}")
+    .replace(/\{prefix\}/g, ctx.prefix || "")
+    .replace(/\{seq\}/g, String(ctx.seq || 1).padStart(3, "0"))
+    .replace(/\{year\}/g, String(now.getFullYear()))
+    .replace(/\{date\}/g, ddmmyyyy)
+    .replace(/\{group\}/g, clean(ctx.group))
+    .replace(/\{sector\}/g, clean(ctx.sector))
+    .replace(/\{tourfile\}/g, ctx.tourfile || "")
+    .replace(/\{id\}/g, smartId);
+}
+
+// Generates the next number for one document type AND returns the
+// docSettings object with that type's serial bumped -- the caller is
+// responsible for actually persisting updatedSettings (via the same
+// saveDocSettings/saveAppSetting path every other settings change
+// already uses), the same way every other piece of app state here
+// works: this function never silently persists anything on its own.
+export function nextDocNumber(docSettings, docType, ctx = {}) {
+  const cfg = (docSettings && docSettings[docType]) || {};
+  const seq = cfg.serial || 1;
+  const number = formatDocPattern(cfg.pattern, { ...ctx, prefix: cfg.prefix, seq });
+  const updatedSettings = { ...docSettings, [docType]: { ...cfg, serial: seq + 1 } };
+  return { number, updatedSettings };
+}
+
 
 
 export function numToWords(n) {
@@ -1139,14 +1189,19 @@ export async function loadExchangeOrderVersionHistory(db, orderNo) {
 // tour file, not just this one (per direct spec: EO numbers are universally
 // auto-incremental across all tour files, same numbering mechanism as
 // nextInvoiceNo() already uses for Tax/Pro-forma Invoice).
-export async function nextExchangeOrderNo(db, prefix) {
+// Real pattern-aware Exchange Order numbering -- was wrapping the naive
+// nextInvoiceNo() (prefix-only, ignoring the configured pattern
+// entirely), the same limitation this whole round is fixing everywhere
+// else. Takes the live docSettings + generation context and returns
+// both the number and the settings with that type's serial bumped,
+// same contract as nextDocNumber() itself -- the caller persists it.
+export async function nextExchangeOrderNo(db, docSettings, ctx = {}) {
   try {
-    const { data } = await db.from("exchange_orders").select("order_no");
-    const existing = [...new Set((data || []).map(r => r.order_no).filter(Boolean))];
-    return nextInvoiceNo(prefix, existing);
+    return nextDocNumber(docSettings, "exchange", ctx);
   } catch (e) {
     console.warn("Generate next exchange order number failed:", e);
-    return `${prefix}-${new Date().getFullYear()}-001`;
+    const prefix = (docSettings?.exchange?.prefix) || "EO";
+    return { number: `${prefix}-${new Date().getFullYear()}-001`, updatedSettings: docSettings };
   }
 }
 

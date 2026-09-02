@@ -30,21 +30,25 @@ const fakeAgents = [{ id: 'AGT-1', company: 'NCH Holidays', country: 'Thailand',
 
 beforeEach(() => { mockDb.from.mockClear(); });
 
-describe('InvoiceGenerator: real, globally-safe invoice numbering (per flavor)', () => {
-  it('Pro-Forma computes its invoice number from existing saved numbers, not a local counter', async () => {
-    const existingRows = [{ invoice_no: 'PI-2026-005' }, { invoice_no: 'PI-2026-007' }, { invoice_no: 'TI-2026-999' }];
+describe('InvoiceGenerator: real, pattern-based invoice numbering (per flavor)', () => {
+  it('Pro-Forma computes its invoice number from docSettings.proforma\u2019s own persistent serial, not by parsing existing saved numbers', async () => {
+    // Superseded design, not just a superficial test update: numbering
+    // used to derive {seq} by parsing the trailing segment of every
+    // existing invoice number (existingRows here) -- replaced with a
+    // real persistent serial counter specifically because that parsing
+    // approach can't survive an arbitrary user-configured pattern (a
+    // {group}/{sector} segment can contain almost anything). This test
+    // now confirms the NEW behavior directly: the number comes from
+    // docSettings.proforma.serial and the configured pattern, and the
+    // bump gets persisted via onSaveDocSettings -- existing saved
+    // invoice numbers are irrelevant to what gets generated next.
     const db = {
-      from: vi.fn((t) => {
-        let selectArg = '*';
+      from: vi.fn(() => {
         const builder = {
-          select: (arg) => { selectArg = arg; return builder; },
-          eq: () => builder, order: () => builder,
+          select: () => builder, eq: () => builder, order: () => builder,
           insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
           update: vi.fn(async () => ({ data: [], error: null })),
-          // loadInvoiceVersions selects "*" (this query's own versions,
-          // scoped by query_id+doc_type, empty here) -- loadExistingInvoiceNumbers
-          // selects "invoice_no" (every invoice ever saved, globally).
-          then: (resolve) => resolve({ data: (t === 'invoices' && selectArg === 'invoice_no') ? existingRows : [], error: null }),
+          then: (resolve) => resolve({ data: [], error: null }),
         };
         return builder;
       }),
@@ -52,8 +56,13 @@ describe('InvoiceGenerator: real, globally-safe invoice numbering (per flavor)',
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: InvoiceGenerator2 } = await import('../components/InvoiceGenerator.jsx');
-    render(<InvoiceGenerator2 query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}} docSettings={{ proforma: { prefix: 'PI' }, taxinvoice: { prefix: 'TI' } }} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
-    await waitFor(() => expect(screen.getByDisplayValue('PI-2026-008')).toBeTruthy());
+    const onSaveDocSettings = vi.fn();
+    render(<InvoiceGenerator2 query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}}
+      docSettings={{ proforma: { prefix: 'PI', pattern: '{prefix}-{year}-{seq}', serial: 8 }, taxinvoice: { prefix: 'TI', serial: 1 } }}
+      onSaveDocSettings={onSaveDocSettings} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByDisplayValue(`PI-${new Date().getFullYear()}-008`)).toBeTruthy());
+    expect(onSaveDocSettings).toHaveBeenCalledWith(expect.objectContaining({ proforma: expect.objectContaining({ serial: 9 }) }));
+    vi.doUnmock('../lib/supabase.js');
   });
 });
 

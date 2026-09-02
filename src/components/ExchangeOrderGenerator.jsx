@@ -140,9 +140,8 @@ function RichTextEditor({ value, onChange, readOnly }) {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export default function ExchangeOrderGenerator({ query, template, vendors, onClose, currentUser, readOnly, initialOpenOrderNo }) {
+export default function ExchangeOrderGenerator({ query, template, vendors, docSettings, onSaveDocSettings, onClose, currentUser, readOnly, initialOpenOrderNo }) {
   const tmpl = { ...DEFAULT_EXCHANGE_TEMPLATE, ...(template || {}) };
-  const eoPrefix = (DEFAULT_DOC_SETTINGS.exchange && DEFAULT_DOC_SETTINGS.exchange.prefix) || "EO";
   const vendorList = vendors || [];
 
   const [tab, setTab] = useState(initialOpenOrderNo ? "repository" : "new"); // "new" | "repository"
@@ -234,7 +233,11 @@ export default function ExchangeOrderGenerator({ query, template, vendors, onClo
   const saveNewOrder = async () => {
     if (!form.drawnOn) return;
     setSaving(true);
-    const orderNo = await nextExchangeOrderNo(db, eoPrefix);
+    const { number: orderNo, updatedSettings } = await nextExchangeOrderNo(db, docSettings, {
+      group: query.groupName || query.clientName, sector: query.destination || query.sector,
+      id: query.id, tourfile: query.tourFileId,
+    });
+    onSaveDocSettings && onSaveDocSettings(updatedSettings);
     const vendorIdForSave = form.drawnOnVendorId === CUSTOM_VENDOR ? null : form.drawnOnVendorId;
     const { error } = await saveExchangeOrderVersion(db, orderNo, query.id, vendorIdForSave, { version: 1, order: form }, currentUser?.id);
     if (error) {
