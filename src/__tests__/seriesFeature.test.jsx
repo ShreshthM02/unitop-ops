@@ -313,3 +313,86 @@ describe('Quotation: pre-fills itinerary/hotels from a referenced tour file’s 
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+// Shared, properly query_id-scoped mock builder -- the lesson from the
+// Cost Sheet round's own mock bug: the NEW query must show as having no
+// Cost Sheet of its own, only the reference query's id should resolve
+// to real data.
+function makeReferenceScopedDb({ refQueryId, refCostSheetRow }) {
+  return {
+    from: (table) => {
+      const builder = {
+        select: () => builder,
+        eq: (col, val) => ({ ...builder, order: async () => resolveFor(val) }),
+        order: async () => resolveFor(),
+        insert: async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null }),
+        update: async () => ({ data: [], error: null }),
+        then: (resolve) => resolve(resolveFor()),
+      };
+      function resolveFor(val) {
+        if (table === 'cost_sheets') return { data: val === refQueryId ? [refCostSheetRow] : [], error: null };
+        return { data: [], error: null };
+      }
+      return builder;
+    },
+  };
+}
+
+describe('Itinerary: pre-fills from a referenced tour file’s Cost Sheet when this query has no final Cost Sheet of its own yet', () => {
+  it('pulls day-wise route/hotel from the reference', async () => {
+    const refCostSheetRow = { id: 'cs-ref-2', version: 2, is_final: true, days: [{ day: 'Day 1', movement: 'BOM-GOA', hotel: 'Beach Resort', mealPlan: 'CP' }] };
+    const db = makeReferenceScopedDb({ refQueryId: 'UTQ-REF-2', refCostSheetRow });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    const newQuery = { id: 'UTQ-NEW-2', groupName: 'New Group', nights: 1, referenceQueryId: 'UTQ-REF-2' };
+    render(<Itinerary query={newQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v2/)).toBeTruthy());
+    expect(screen.getByDisplayValue('BOM-GOA')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('does nothing without a referenceQueryId and no Cost Sheet of its own', async () => {
+    const db = makeReferenceScopedDb({ refQueryId: null, refCostSheetRow: null });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: Itinerary } = await import('../components/Itinerary.jsx');
+    const plainQuery = { id: 'UTQ-PLAIN-2', groupName: 'Plain Group', nights: 1 };
+    render(<Itinerary query={plainQuery} briefTemplate={{}} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await new Promise(r => setTimeout(r, 100));
+    expect(screen.queryByText(/Pulled from Cost Sheet/)).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
+
+describe('Tour Briefing Sheet: pre-fills from a referenced tour file’s Cost Sheet when this query has no final Cost Sheet of its own yet', () => {
+  it('pulls hotels/programme/meals from the reference', async () => {
+    const refCostSheetRow = {
+      id: 'cs-ref-3', version: 1, is_final: true,
+      days: [{ day: 'Day 1', movement: 'DEL-JAIPUR', hotel: 'Rambagh Palace', mealPlan: 'MAP', breakfast: true, lunch: false, dinner: true }],
+      transports: [],
+    };
+    const db = makeReferenceScopedDb({ refQueryId: 'UTQ-REF-3', refCostSheetRow });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: TourBriefingSheet } = await import('../components/TourBriefingSheet.jsx');
+    const newQuery = { id: 'UTQ-NEW-3', groupName: 'New Group', nights: 1, referenceQueryId: 'UTQ-REF-3' };
+    render(<TourBriefingSheet query={newQuery} template={{}} facilitators={[]} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v1/)).toBeTruthy());
+    fireEvent.click(screen.getByText('Hotels'));
+    expect(screen.getByDisplayValue('Rambagh Palace')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('does nothing without a referenceQueryId and no Cost Sheet of its own', async () => {
+    const db = makeReferenceScopedDb({ refQueryId: null, refCostSheetRow: null });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: TourBriefingSheet } = await import('../components/TourBriefingSheet.jsx');
+    const plainQuery = { id: 'UTQ-PLAIN-3', groupName: 'Plain Group', nights: 1 };
+    render(<TourBriefingSheet query={plainQuery} template={{}} facilitators={[]} onClose={()=>{}} currentUser={{id:'x'}}/>);
+    await new Promise(r => setTimeout(r, 100));
+    expect(screen.queryByText(/Pulled from Cost Sheet/)).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -182,7 +182,19 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       // day-by-day working set while you edit.
       if (loaded.length === 0) {
         loadFinalCostSheetVersion(db, query.id).then(finalV => {
-          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); }
+          if (finalV) { setFinalCostSheetVersion(finalV); pullFromCostSheet(finalV); return; }
+          // Referenced-tour-file fallback, same pattern as Cost Sheet's
+          // and Quotation's own reference pre-fill: only reached when
+          // this query genuinely has no Cost Sheet of its own yet. No
+          // pricing fields exist on the Itinerary at all, so unlike
+          // Quotation, pullFromCostSheet's own result needs no
+          // correction afterward -- day-wise route/hotel is the whole
+          // of what gets pulled either way.
+          if (!query.referenceQueryId) return;
+          loadCostSheetVersions(db, query.referenceQueryId).then(refVersions => {
+            if (!refVersions.length) return;
+            pullFromCostSheet(refVersions.find(v => v.isFinal) || refVersions[refVersions.length - 1]);
+          });
         });
         return;
       }

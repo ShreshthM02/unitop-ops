@@ -515,6 +515,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Work",items:[
       {id:"queries",      icon:"✉", label:"All Queries"},
       {id:"tourfiles",    icon:"📁",label:"Tour Files"},
+      {id:"series",       icon:"🔁",label:"Series"},
       {id:"cancelled",    icon:"✕", label:"Cancelled"},
       {id:"completed",    icon:"✅",label:"Completed"},
       {id:"team",         icon:"◎", label:"Team"},
@@ -523,7 +524,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Master Data",items:[
       {id:"agents",       icon:"🌐",label:"Agents / Clients"},
       {id:"vendors",      icon:"🏢",label:"Vendors"},
-      {id:"series",       icon:"🔁",label:"Series"},
     ]},
     {section:"Finance",items:[
       {id:"invoices",     icon:"🧾",label:"Invoices"},
