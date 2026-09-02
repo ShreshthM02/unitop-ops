@@ -37,7 +37,15 @@ export const _supa = (() => {
 
   const authHeaders = () => ({
     "apikey": key,
-    "Authorization": `Bearer ${_session?.access_token || key}`,
+    // Was `_session?.access_token`, a field that never existed on the
+    // stored session object (login() below stores `.token`/`.user` only)
+    // -- meaning every request silently fell through to the plain anon
+    // key regardless of login state, real bug, now fixed. `.jwt` is the
+    // real signed token staff_login() issues (Phase 1 of the auth fix,
+    // 2026-09) -- falls back to the anon key exactly as before until
+    // that lands, so this alone changes no behavior; it just stops
+    // silently discarding a real session the moment one exists.
+    "Authorization": `Bearer ${_session?.jwt || key}`,
     "Content-Type": "application/json",
     "Prefer": "return=representation",
   });
@@ -128,7 +136,13 @@ export const _supa = (() => {
         });
         const data = await r.json();
         if (!data.success) return { user: null, error: data.error || "Invalid credentials" };
-        _session = { token: data.token, user: data.user };
+        // `token`: the existing custom session identifier -- still used
+        // as-is by validate_session/logout/etc, which look it up against
+        // staff.session_token directly; unrelated to the JWT work.
+        // `jwt`: the real signed token (once staff_login issues one) that
+        // authHeaders() above actually sends as the Bearer token for
+        // every ordinary data request.
+        _session = { token: data.token, jwt: data.jwt, user: data.user };
         localStorage.setItem("unitop_session", JSON.stringify(_session));
         return { user: data.user, error: null };
       } catch(e) { return { user: null, error: "Cannot reach server. Check internet connection." }; }
@@ -163,7 +177,15 @@ export const _supa = (() => {
         });
         const data = await r.json();
         if (!data.valid) { _session = null; localStorage.removeItem("unitop_session"); return null; }
+        // data.jwt is freshly reissued on every validate call (matching
+        // the session's extended 12-hour window) -- without persisting
+        // it here, a page reload would keep using whatever jwt was
+        // stored at original login, possibly hours stale or expired,
+        // even though the underlying session itself was just confirmed
+        // valid and extended.
         _session.user = data.user;
+        _session.jwt = data.jwt;
+        localStorage.setItem("unitop_session", JSON.stringify(_session));
         return data.user;
       } catch(e) { return sess?.user || null; }
     },

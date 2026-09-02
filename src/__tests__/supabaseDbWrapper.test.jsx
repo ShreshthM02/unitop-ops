@@ -56,3 +56,64 @@ describe('db wrapper: gte()/lte() range filters -- root cause of a real bug wher
     expect(capturedUrl).toContain('population=gte.100000');
   });
 });
+
+describe('Auth Phase 1: a real signed JWT is actually used once a session exists, not silently discarded', () => {
+  // Root cause fixed here: authHeaders() checked `_session?.access_token`,
+  // a field that never existed on the stored session object (`.token`/
+  // `.user` only) -- so every request silently fell through to the plain
+  // anon key regardless of login state. Fixed to check `.jwt`, the real
+  // field staff_login()/validate_session() now actually return.
+  let originalFetch;
+  beforeEach(() => { originalFetch = global.fetch; localStorage.clear(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('before any login, ordinary requests use the anon key, not a fabricated Bearer value', async () => {
+    let capturedHeaders = null;
+    global.fetch = vi.fn((url, opts) => { capturedHeaders = opts?.headers; return Promise.resolve({ ok: true, json: async () => [] }); });
+    await db.from('queries').select('*');
+    expect(capturedHeaders.Authorization).toBe(`Bearer ${capturedHeaders.apikey}`);
+  });
+
+  it('after a successful login, ordinary requests send the real signed JWT as the Bearer token, not the anon key', async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('rpc/staff_login')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          success: true, token: 'custom-hex-token', jwt: 'real.signed.jwt', expiry: '2026-12-01T00:00:00Z',
+          user: { id: 'staff-1', name: 'Priya', role: 'sales' },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    const loginResult = await db.auth.login('priya', 'whatever');
+    expect(loginResult.user.name).toBe('Priya');
+
+    let capturedHeaders = null;
+    global.fetch = vi.fn((url, opts) => { capturedHeaders = opts?.headers; return Promise.resolve({ ok: true, json: async () => [] }); });
+    await db.from('queries').select('*');
+    expect(capturedHeaders.Authorization).toBe('Bearer real.signed.jwt');
+  });
+
+  it('validateSession persists the freshly reissued JWT, not just the user -- a page reload keeps using a live, non-expired token', async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('rpc/validate_session')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          valid: true, jwt: 'freshly.reissued.jwt', user: { id: 'staff-1', name: 'Priya', role: 'sales' },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    await db.auth.validateSession();
+
+    let capturedHeaders = null;
+    global.fetch = vi.fn((url, opts) => { capturedHeaders = opts?.headers; return Promise.resolve({ ok: true, json: async () => [] }); });
+    await db.from('queries').select('*');
+    expect(capturedHeaders.Authorization).toBe('Bearer freshly.reissued.jwt');
+
+    // Also persisted, so a real page reload (which reads localStorage,
+    // not this in-memory session) picks up the fresh token too.
+    const stored = JSON.parse(localStorage.getItem('unitop_session'));
+    expect(stored.jwt).toBe('freshly.reissued.jwt');
+  });
+});
