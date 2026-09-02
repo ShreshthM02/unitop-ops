@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { mapDbSeriesRow, loadSeries, saveSeries, mapDbQueryRow, buildQuerySavePayload } from '../lib/utils.js';
 import SeriesManagement from '../components/SeriesManagement.jsx';
 import NewQueryModal from '../components/NewQueryModal.jsx';
@@ -189,5 +189,58 @@ describe('QueryDrawerWithQuote: Series assignment in Tour Details', () => {
     render(<QueryDrawerWithQuote {...baseProps} series={seriesList} onUpdateQuery={onUpdateQuery}/>);
     fireEvent.change(screen.getByDisplayValue('Golden Triangle Winter'), { target: { value: '' } });
     expect(onUpdateQuery).toHaveBeenCalledWith('UTQ-2026-050', { seriesId: null });
+  });
+});
+
+describe('Cost Sheet: pre-fills day-wise structure from a referenced tour file when tour_execution has nothing (the common case for a genuinely new query)', () => {
+  it('pulls the reference tour file’s latest Cost Sheet structure -- route/hotel, not dates or pricing', async () => {
+    cleanup(); // rule out any prior test's un-torn-down render leaking into this document-wide query
+    const refCostSheetRow = {
+      version: 2, is_final: true,
+      days: [
+        { day: 'Day 1', date: '2026-03-01', movement: 'DEL-AGRA', mealPlan: 'CP', hotel: 'Taj View', hotelAlt: '', hotelPlan: 'CP', hotelNetPP: '5000', singleSupp: '1000', notes: 'Early check-in' },
+        { day: 'Day 2', date: '2026-03-02', movement: 'AGRA-JAIPUR', mealPlan: 'MAP', hotel: 'Rambagh', hotelAlt: '', hotelPlan: 'MAP', hotelNetPP: '8000', singleSupp: '2000', notes: '' },
+      ],
+    };
+    const mockDb = {
+      from: (table) => {
+        if (table === 'cost_sheets') {
+          return { select: () => ({ eq: (col, val) => ({ order: async () => ({
+            data: val === 'UTQ-OLD' ? [refCostSheetRow] : [], // only the REFERENCE query has an existing cost sheet -- the new query itself must not
+            error: null,
+          }) }) }) };
+        }
+        if (table === 'tour_execution') return { select: () => ({ eq: async () => ({ data: [], error: null }) }) };
+        return { select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) };
+      },
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { CostSheet } = await import('../components/CostSheet.jsx');
+    const newQuery = { id: 'UTQ-NEW', tourFileId: 'TF-NEW', groupName: 'New Group', nights: 2, referenceQueryId: 'UTQ-OLD' };
+    render(<CostSheet query={newQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+
+    await waitFor(() => expect(screen.getByDisplayValue('DEL-AGRA')).toBeTruthy());
+    expect(screen.getByDisplayValue('AGRA-JAIPUR')).toBeTruthy();
+    expect(screen.getByDisplayValue('Taj View')).toBeTruthy();
+    expect(screen.getByDisplayValue('Rambagh')).toBeTruthy();
+    // Dates and pricing must NOT carry over -- always instance-specific
+    expect(screen.queryByDisplayValue('2026-03-01')).toBeFalsy();
+    expect(screen.queryByDisplayValue('5000')).toBeFalsy();
+    expect(screen.queryByDisplayValue('8000')).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('does nothing when the query has no referenceQueryId (existing/unreferenced queries stay exactly as before)', async () => {
+    const mockDb = { from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) }) };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { CostSheet } = await import('../components/CostSheet.jsx');
+    const plainQuery = { id: 'UTQ-PLAIN', tourFileId: 'TF-PLAIN', groupName: 'Plain Group', nights: 2 };
+    render(<CostSheet query={plainQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    await new Promise(r => setTimeout(r, 100));
+    // No crash, no unexpected content -- just confirms the new branch is a no-op without a reference
+    expect(screen.getByText('Settings')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
   });
 });

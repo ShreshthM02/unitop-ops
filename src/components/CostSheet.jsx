@@ -230,7 +230,28 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
               hotel: d.hotelName || "", hotelAlt: "", hotelPlan: "CP",
               hotelNetPP: "", singleSupp: "", notes: d.notes || "",
             })));
+            return;
           }
+          // Series pre-fill: tour_execution is almost always empty for a
+          // genuinely new query (it doesn't exist yet at this pipeline
+          // stage), which is exactly when a referenced tour file is most
+          // useful. Pulls the reference's own latest Cost Sheet
+          // structure -- route and hotel names, not dates or pricing,
+          // which are always specific to this instance and could
+          // otherwise look authoritative while actually being stale.
+          if (!query.referenceQueryId) return;
+          loadCostSheetVersions(db, query.referenceQueryId).then(refVersions => {
+            if (!refVersions.length) return;
+            const refV = refVersions.find(v => v.isFinal) || refVersions[refVersions.length - 1];
+            if (!refV.days || !refV.days.length) return;
+            setDays(refV.days.map(d => ({
+              id: Date.now() + Math.random(),
+              day: d.day || "", date: "", movement: d.movement || "",
+              mealPlan: d.mealPlan || "B/L/D", mealCost: "",
+              hotel: d.hotel || "", hotelAlt: d.hotelAlt || "", hotelPlan: d.hotelPlan || "CP",
+              hotelNetPP: "", singleSupp: "", notes: d.notes || "",
+            })));
+          });
         });
         return;
       }
