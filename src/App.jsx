@@ -5,7 +5,6 @@ import { LoginScreen, UnitopApp, VendorLedgerPanel, AgentLedgerPanel } from './c
 
 export default function App() {
   const [loggedIn, setLoggedIn]           = useState(false);
-  const [demoMode, setDemoMode]           = useState(false);
   const [authLoading, setAuthLoading]     = useState(true);
   const [showVendorLedger, setShowVendorLedger] = useState(null);
   const [showAgentLedger,  setShowAgentLedger]  = useState(null);
@@ -32,10 +31,9 @@ export default function App() {
     );
   }
 
-  if (!loggedIn && !demoMode) {
+  if (!loggedIn) {
     return (
       <LoginScreen
-        onDemoMode={()=>setDemoMode(true)}
         onSuccess={(user)=>{ setLoggedIn(true); setCurrentUserData(user); }}
       />
     );
@@ -44,25 +42,12 @@ export default function App() {
   // Render the main app, passing ledger panel openers
   return (
     <>
-      {demoMode && (
-        <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:1000,
-          background:"#F59E0B", padding:"6px 16px", fontSize:11, fontWeight:600,
-          color:"#1F2937", textAlign:"center", letterSpacing:"0.5px" }}>
-          DEMO MODE — Data resets on refresh.{" "}
-          <a href="#" style={{color:"#1F2937",textDecoration:"underline"}}
-            onClick={e=>{e.preventDefault();setDemoMode(false);setLoggedIn(false);}}>
-            Sign in with Supabase →
-          </a>
-        </div>
-      )}
-      <div style={demoMode?{paddingTop:30}:{}}>
-        <UnitopApp
-          authUser={currentUserData}
-          onUpdateAuthUser={(user)=>setCurrentUserData(user)}
-          onOpenVendorLedger={(vendor, queries, payments) => setShowVendorLedger({vendor,queries,payments})}
-          onOpenAgentLedger={(agent, queries, payments) => setShowAgentLedger({agent,queries,payments})}
-        />
-      </div>
+      <UnitopApp
+        authUser={currentUserData}
+        onUpdateAuthUser={(user)=>setCurrentUserData(user)}
+        onOpenVendorLedger={(vendor, queries, payments) => setShowVendorLedger({vendor,queries,payments})}
+        onOpenAgentLedger={(agent, queries, payments) => setShowAgentLedger({agent,queries,payments})}
+      />
       {showVendorLedger && (
         <VendorLedgerPanel
           vendor={showVendorLedger.vendor}

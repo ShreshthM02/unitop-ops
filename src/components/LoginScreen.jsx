@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
 
-export default function LoginScreen({ onDemoMode, onSuccess }) {
+export default function LoginScreen({ onSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading]   = useState(false);
@@ -73,16 +73,6 @@ export default function LoginScreen({ onDemoMode, onSuccess }) {
               fontSize:14, fontWeight:600, cursor: username&&password?"pointer":"not-allowed",
               fontFamily:"'Inter',sans-serif", marginBottom:12, transition:"all .15s" }}>
             {loading ? "Signing in…" : "Sign In"}
-          </button>
-
-          <button onClick={onDemoMode}
-            style={{ width:"100%", padding:"10px", background:"transparent",
-              color:"#6B7280", border:"1px solid #E5E7EB", borderRadius:8,
-              fontSize:13, cursor:"pointer", fontFamily:"'Inter',sans-serif",
-              transition:"all .15s" }}
-            onMouseEnter={e=>{e.target.style.background="#F9FAFB";}}
-            onMouseLeave={e=>{e.target.style.background="transparent";}}>
-            Continue in Demo Mode →
           </button>
         </div>
 

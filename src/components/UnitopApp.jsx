@@ -142,6 +142,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
   // ── Load data from Supabase on mount ──────────────────────────────────────
   useEffect(() => {
+    // Demo Mode used to reach this exact point with no login at all --
+    // removed entirely (2026-09) rather than fixed, since it was unused
+    // and its removal was simpler and safer than making it genuinely
+    // isolated. authUser is now guaranteed once UnitopApp renders at
+    // all (App.jsx only renders it after a real login), but this guard
+    // stays as cheap insurance against ever mounting this component
+    // without one.
+    if (!authUser) { setDataLoading(false); return; }
     const loadData = async () => {
       try {
         // All 12 of these are independent of each other -- none needs
@@ -242,7 +250,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       }
     };
     loadData();
-  }, []);
+  }, [authUser]);
 
   // ── Realtime: reflect other users' query changes live, no refresh needed ──
   // Requires Realtime to be enabled for the `queries` table in Supabase
