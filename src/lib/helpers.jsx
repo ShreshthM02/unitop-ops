@@ -19,6 +19,18 @@ export function useCan(user) {
 }
 
 export function Avatar({ user, size = 28, onClick, style }) {
+  // avatarUrl (a real uploaded photo) takes priority over the color +
+  // initials fallback, which now only ever shows for someone who
+  // hasn't uploaded a photo -- both are still read from user.avatar/
+  // user.color, unchanged, so nothing here breaks for anyone without
+  // one.
+  if (user?.avatarUrl || user?.avatar_url) {
+    return (
+      <img src={user.avatarUrl || user.avatar_url} onClick={onClick} alt={user?.name || "avatar"}
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0,
+          ...(style||{}) }}/>
+    );
+  }
   return (
     <div onClick={onClick} style={{ width: size, height: size, borderRadius: "50%",
       background: user?.color || "#1A5276",

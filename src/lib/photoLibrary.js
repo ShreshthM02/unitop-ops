@@ -215,6 +215,37 @@ export async function uploadLibraryPhoto(client, db, { file, destination, label,
   }
 }
 
+export const AVATAR_BUCKET = "staff-avatars";
+
+// 3.2: a staff member's own profile photo. Deliberately NOT built on
+// uploadLibraryPhoto -- an avatar isn't tied to a destination and has
+// no equivalent of the photo_library table (no reuse-by-tagging concept
+// makes sense for a personal photo), so this is its own small function
+// rather than a forced fit into that one. Reuses the same resize
+// helper and the same real-Storage-client pattern.
+export async function uploadStaffAvatar(client, { file, staffId, resizeFn = defaultResizeImage }) {
+  if (!client || !client.storage) {
+    return { url: null, error: "Storage is not configured (VITE_SUPABASE_URL / VITE_SUPABASE_KEY missing)." };
+  }
+  if (!file) return { url: null, error: "No file selected." };
+  if (!staffId) return { url: null, error: "Missing staff id." };
+  const uploadFile = await resizeFn(file, { maxDim: 400, quality: 0.85 }).catch(() => file);
+  const ext = (String(file.name || "").split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `${staffId}/${Date.now()}.${ext}`;
+  try {
+    // upsert:true -- unlike library photos (kept forever, reused across
+    // documents), an old avatar is genuinely obsolete the moment a new
+    // one is set. No reason to accumulate every photo someone's ever
+    // uploaded of themselves.
+    const up = await client.storage.from(AVATAR_BUCKET).upload(path, uploadFile, { upsert: true });
+    if (up.error) return { url: null, error: up.error.message || String(up.error) };
+    const { data: pub } = client.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+    return { url: pub && pub.publicUrl, error: null };
+  } catch (e) {
+    return { url: null, error: e.message || String(e) };
+  }
+}
+
 // Removes the library row. The stored object is deliberately left in the
 // bucket: a brochure already exported and sent to a client may reference
 // that URL, and breaking a live link to reclaim a few kilobytes is a bad

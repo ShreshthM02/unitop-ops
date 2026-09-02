@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   suggestPhotoForDay, resolveDayImages, libraryDestinations,
   dayImageTextCandidates, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, defaultResizeImage, updateLibraryPhoto,
+  uploadStaffAvatar,
 } from '../lib/photoLibrary.js';
 
 const photo = (destination, url) => ({ id: destination, destination, url, label: '' });
@@ -266,5 +267,44 @@ describe('updateLibraryPhoto: editing a library entry\u2019s own metadata', () =
     const db = fakeUpdateDb({ error: { message: 'row not found' } });
     const { error } = await updateLibraryPhoto(db, 5, { destination: 'X' });
     expect(error).toContain('row not found');
+  });
+});
+
+describe('uploadStaffAvatar (3.2): real avatar photo upload', () => {
+  it('reports clearly when storage is not configured, rather than throwing on a null client', async () => {
+    const { error } = await uploadStaffAvatar(null, { file:{ name:'me.jpg' }, staffId:'staff-1' });
+    expect(error).toMatch(/not configured/i);
+  });
+
+  it('requires a file', async () => {
+    const { error } = await uploadStaffAvatar({ storage:{} }, { staffId:'staff-1' });
+    expect(error).toMatch(/no file/i);
+  });
+
+  it('requires a staffId', async () => {
+    const { error } = await uploadStaffAvatar({ storage:{} }, { file:{ name:'me.jpg' } });
+    expect(error).toMatch(/staff id/i);
+  });
+
+  it('uploads with upsert:true (unlike library photos) and returns the public URL', async () => {
+    const uploadSpy = vi.fn(async () => ({ error:null }));
+    const client = { storage: { from: () => ({
+      upload: uploadSpy,
+      getPublicUrl: () => ({ data:{ publicUrl:'https://x/staff-avatars/staff-1/123.jpg' } }),
+    }) } };
+    const { url, error } = await uploadStaffAvatar(client, { file:{ name:'me.jpg' }, staffId:'staff-1' });
+    expect(error).toBeNull();
+    expect(url).toBe('https://x/staff-avatars/staff-1/123.jpg');
+    expect(uploadSpy.mock.calls[0][2]).toMatchObject({ upsert: true });
+    expect(uploadSpy.mock.calls[0][0]).toMatch(/^staff-1\//); // scoped under the staff member's own id
+  });
+
+  it('surfaces a real storage error rather than swallowing it', async () => {
+    const client = { storage: { from: () => ({
+      upload: async () => ({ error: { message: 'Bucket quota exceeded' } }),
+    }) } };
+    const { url, error } = await uploadStaffAvatar(client, { file:{ name:'me.jpg' }, staffId:'staff-1' });
+    expect(url).toBeNull();
+    expect(error).toMatch(/quota/i);
   });
 });

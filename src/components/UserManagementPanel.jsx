@@ -195,11 +195,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
                       background:selected?.id===s.id?"#EBF5FB":G.white,
                       opacity:s.active?1:0.5 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ width:32, height:32, borderRadius:"50%", background:s.color||"#1A5276",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>
-                        {s.name?.slice(0,2).toUpperCase()||"??"}
-                      </div>
+                      <Avatar user={s} size={32} style={{fontSize:11}}/>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                         <div style={{ fontSize:10, color:G.gray400 }}>@{s.username}</div>
@@ -228,11 +224,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
                     {/* User header */}
                     <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16,
                       padding:"12px 14px", background:G.gray50, borderRadius:10 }}>
-                      <div style={{ width:48, height:48, borderRadius:"50%", background:selected.color||"#1A5276",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:16, fontWeight:700, color:"#fff", flexShrink:0 }}>
-                        {selected.name?.slice(0,2).toUpperCase()||"??"}
-                      </div>
+                      <Avatar user={selected} size={48} style={{fontSize:16}}/>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:15, fontWeight:700 }}>{selected.name}</div>
                         <div style={{ fontSize:12, color:G.gray400 }}>@{selected.username}</div>

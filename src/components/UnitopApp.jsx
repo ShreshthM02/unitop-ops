@@ -100,6 +100,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     name:   authUser.name,
     role:   authUser.role,
     avatar: authUser.name ? authUser.name.slice(0,2).toUpperCase() : "U",
+    avatarUrl: authUser.avatar_url || authUser.avatarUrl || null,
     color:  authUser.color || "#1A5276",
     permissions: authUser.permissions || {},
   } : USERS[0];

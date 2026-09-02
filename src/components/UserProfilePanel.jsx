@@ -1,11 +1,15 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db, realtimeClient, uploadStaffAvatar } = Lib;
 
 export default function UserProfilePanel({currentUser,onClose,onSave}){
   const [name,setName]=React.useState(currentUser.name||"");
   const [color,setColor]=React.useState(currentUser.color||"#1A5276");
+  const [avatarUrl,setAvatarUrl]=React.useState(currentUser.avatarUrl||currentUser.avatar_url||null);
+  const [uploadingPhoto,setUploadingPhoto]=React.useState(false);
+  const [photoError,setPhotoError]=React.useState("");
+  const fileInputRef=React.useRef(null);
   const [showPw,setShowPw]=React.useState(false);
   const [newPw,setNewPw]=React.useState("");
   const [confirmPw,setConfirmPw]=React.useState("");
@@ -14,10 +18,25 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
   const [saved,setSaved]=React.useState(false);
   const inp={padding:"8px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:13,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const [saveError,setSaveError]=React.useState("");
+  const handlePhotoChange=async(e)=>{
+    const file=e.target.files?.[0];
+    e.target.value=""; // allow re-picking the same file later
+    if(!file) return;
+    setPhotoError(""); setUploadingPhoto(true);
+    const { url, error } = await uploadStaffAvatar(realtimeClient, { file, staffId: currentUser.id });
+    if(error){ setPhotoError(error); setUploadingPhoto(false); return; }
+    // Saved immediately on upload, not deferred to the "Save Profile"
+    // button -- a photo is a single, self-contained action, unlike
+    // name/color which someone might still be adjusting.
+    const res = await db.auth.updateOwnProfile(name, color, url);
+    if(res?.success){ setAvatarUrl(url); if(onSave) onSave(res.user); }
+    else setPhotoError(res?.error||"Photo saved but profile update failed — try again");
+    setUploadingPhoto(false);
+  };
   const handleSave=async()=>{
     setSaveError(""); setSaving(true);
     try {
-      const res = await db.auth.updateOwnProfile(name, color);
+      const res = await db.auth.updateOwnProfile(name, color, avatarUrl);
       if (res?.success) {
         if(onSave) onSave(res.user);
         setSaved(true); setTimeout(()=>setSaved(false),2000);
@@ -30,16 +49,25 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
     setSaving(false);
   };
   const handlePwChange=async()=>{setPwError("");if(newPw.length<8){setPwError("Min 8 chars");return;}if(newPw!==confirmPw){setPwError("Don't match");return;}setSaving(true);try{const res=await db.auth.changePassword(currentUser.id,newPw);if(res?.success){setShowPw(false);setTimeout(async()=>{await db.auth.logout();window.location.reload();},1500);}else setPwError(res?.error||"Failed");}catch(e){setPwError(e.message);}setSaving(false);};
-  const initials=(name||"??").split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
   return(
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{position:"fixed",bottom:80,left:220,background:G.white,width:340,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:`1px solid ${G.gray200}`,overflow:"hidden",zIndex:200}}>
         <div style={{background:G.navy,padding:"20px 20px 16px",textAlign:"center"}}>
-          <div style={{width:64,height:64,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",margin:"0 auto 10px",border:"3px solid rgba(255,255,255,0.2)"}}>{initials}</div>
+          <div style={{position:"relative",width:64,height:64,margin:"0 auto 10px"}}>
+            <Avatar user={{name,color,avatarUrl}} size={64} style={{border:"3px solid rgba(255,255,255,0.2)",fontSize:22}}/>
+            <div onClick={()=>fileInputRef.current?.click()} title="Change photo"
+              style={{position:"absolute",bottom:-2,right:-2,width:22,height:22,borderRadius:"50%",background:G.white,
+                border:`2px solid ${G.navy}`,display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:11,cursor:uploadingPhoto?"wait":"pointer"}}>
+              {uploadingPhoto?"…":"📷"}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{display:"none"}}/>
+          </div>
           <div style={{fontSize:15,fontWeight:700,color:"#fff"}}>{name||currentUser.name}</div>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{currentUser.role}</div>
         </div>
         <div style={{padding:"16px 20px"}}>
+          {photoError&&<div style={{fontSize:11,color:"#991B1B",background:"#FEE2E2",borderRadius:5,padding:"5px 8px",marginBottom:10}}>{photoError}</div>}
           <div style={{marginBottom:12}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Display Name</div><input style={inp} value={name} onChange={e=>setName(e.target.value)}/></div>
           <div style={{marginBottom:14}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Avatar Colour</div><div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{AVATAR_COLORS.map(c=><div key={c} onClick={()=>setColor(c)} style={{width:26,height:26,borderRadius:"50%",background:c,cursor:"pointer",border:color===c?"3px solid #fff":"3px solid transparent",boxShadow:color===c?`0 0 0 2px ${c}`:"none"}}/>)}</div></div>
           {saveError&&<div style={{fontSize:11,color:"#991B1B",background:"#FEE2E2",borderRadius:5,padding:"5px 8px",marginBottom:8}}>{saveError}</div>}

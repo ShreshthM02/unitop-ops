@@ -219,11 +219,11 @@ export const _supa = (() => {
     // the cached session (both in memory and localStorage) so the change
     // is immediately reflected everywhere without needing a refresh, and
     // survives one.
-    updateOwnProfile: async (name, color) => {
+    updateOwnProfile: async (name, color, avatarUrl) => {
       const sess = await _supa.auth.getSession();
       const r = await fetch(`${url}/rest/v1/rpc/update_own_profile`, {
         method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
-        body: JSON.stringify({ p_token:sess?.token, p_name:name, p_color:color })
+        body: JSON.stringify({ p_token:sess?.token, p_name:name, p_color:color, p_avatar_url:avatarUrl })
       });
       const data = await r.json();
       if (data?.success && data.user && _session) {
@@ -242,7 +242,7 @@ export const _supa = (() => {
       // staff, this call started failing for every user, every time,
       // regardless of session freshness -- authHeaders() is what
       // actually carries the real signed JWT when one exists.
-      const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,active,last_login,permissions&order=name.asc`, {
+      const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,avatar,avatar_url,active,last_login,permissions&order=name.asc`, {
         headers: authHeaders(),
       });
       return r.ok ? await r.json() : [];
