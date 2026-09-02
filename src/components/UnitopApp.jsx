@@ -585,6 +585,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       if(item.id==="chat"){setShowChat(true);setSidebarOpen(false);return;}
                       if(item.id==="usermgmt"){setShowUserMgmt(true);setSidebarOpen(false);return;}
                       if(item.id==="series"){setShowSeries(true);setSidebarOpen(false);return;}
+                      if(item.id==="agents"){setShowAgents(true);setSidebarOpen(false);return;}
+                      if(item.id==="vendors"){setShowVendors(true);setSidebarOpen(false);return;}
                       setView(item.id);setSidebarOpen(false);
                     }}>
                     <span className="nav-icon">{item.icon}</span>{item.label}
@@ -692,38 +694,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <StatusBadge status={q.status}/>
                     </div>
                     <DocButtons q={q} stopProp={true}/>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {view==="agents" && (
-              <div>
-                <div style={{marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
-                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master data for all foreign agents and clients.</div>
-                  <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>setShowAgents(true)}>Open Full Agent Dashboard</button>
-                </div>
-                {agents.map(a=>(
-                  <div key={a.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowAgents(true)}>
-                    <div style={{fontSize:20}}>🌐</div>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country} · {a.market} · {a.contactName}</div></div>
-                    <button className="btn btn-ghost" style={{fontSize:11}}>View →</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {view==="vendors" && (
-              <div>
-                <div style={{marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
-                  <div style={{fontSize:13,color:G.gray600,flex:1}}>Master data for all vendors — hotels, restaurants, transport, tour facilitators, local handlers.</div>
-                  <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>setShowVendors(true)}>Open Full Vendor Dashboard</button>
-                </div>
-                {vendors.map(v=>(
-                  <div key={v.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowVendors(true)}>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}</div><div style={{fontSize:11,color:G.gray400}}>{v.type} · {v.city} · {v.contactName}</div></div>
-                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#EBF5FB",color:"#154360",fontWeight:600}}>{v.type}</span>
-                    <button className="btn btn-ghost" style={{fontSize:11}}>View →</button>
                   </div>
                 ))}
               </div>

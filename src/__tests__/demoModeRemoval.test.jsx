@@ -61,3 +61,31 @@ describe('UnitopApp: never fetches real data without a real logged-in user (the 
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('Master Data sidebar items open the full dashboard directly, no intermediate mini-list', () => {
+  it('clicking "Agents / Clients" opens AgentMaster directly', async () => {
+    const mockDb = { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }), auth: { getSession: async () => null } };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    const { default: UnitopApp } = await import('../components/UnitopApp.jsx');
+    render(<UnitopApp authUser={{id:'staff-1',name:'Priya',role:'admin'}} onUpdateAuthUser={()=>{}} onOpenVendorLedger={()=>{}} onOpenAgentLedger={()=>{}}/>);
+    await waitFor(() => expect(screen.getByText('Agents / Clients')).toBeTruthy());
+    fireEvent.click(screen.getByText('Agents / Clients'));
+    // AgentMaster's own panel header appears immediately -- no
+    // "Open Full Agent Dashboard" intermediate button/click needed.
+    expect(screen.queryByText('Open Full Agent Dashboard')).toBeFalsy();
+    expect(screen.getByText('+ New Agent')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('clicking "Vendors" opens VendorMaster directly', async () => {
+    const mockDb = { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }), auth: { getSession: async () => null } };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    const { default: UnitopApp } = await import('../components/UnitopApp.jsx');
+    render(<UnitopApp authUser={{id:'staff-1',name:'Priya',role:'admin'}} onUpdateAuthUser={()=>{}} onOpenVendorLedger={()=>{}} onOpenAgentLedger={()=>{}}/>);
+    await waitFor(() => expect(screen.getByText('Vendors')).toBeTruthy());
+    fireEvent.click(screen.getByText('Vendors'));
+    expect(screen.queryByText('Open Full Vendor Dashboard')).toBeFalsy();
+    expect(screen.getByText('+ New Vendor')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
