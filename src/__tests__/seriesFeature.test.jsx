@@ -120,22 +120,31 @@ describe('NewQueryModal: Series + reference tour file pre-fill', () => {
     expect(screen.queryByText(/Series \(optional\)/)).toBeFalsy();
   });
 
-  it('selecting a series reveals a reference tour file picker scoped to that series only', () => {
-    const otherSeriesQuery = { id: 'UTQ-3', tourFileId: 'TF-3', seriesId: 's-other' };
+  it('reference search works independently of series -- no series needs to be selected at all', () => {
+    const noSeriesQuery = { id: 'UTQ-3', tourFileId: 'TF-3', groupName: 'Unrelated Group' }; // no seriesId at all
+    render(<NewQueryModal onClose={()=>{}} onSave={()=>{}} nextId="UTQ-2" agents={[]} staff={[]} series={[]} queries={[noSeriesQuery]}/>);
+    fireEvent.change(screen.getByPlaceholderText(/Search by Tour File No/), { target: { value: 'TF-3' } });
+    expect(screen.getByText(/TF-3/)).toBeTruthy();
+  });
+
+  it('reference search matches by Tour File No. or group name, across every tour file, whether or not it is in a series', () => {
+    const otherSeriesQuery = { id: 'UTQ-3', tourFileId: 'TF-3', groupName: 'Some Other Group', seriesId: 's-other' };
     render(<NewQueryModal onClose={()=>{}} onSave={()=>{}} nextId="UTQ-2" agents={[]} staff={[]} series={activeSeries} queries={[referenceQuery, otherSeriesQuery]}/>);
-    fireEvent.change(screen.getByDisplayValue('Not part of a series'), { target: { value: 's1' } });
+    fireEvent.change(screen.getByPlaceholderText(/Search by Tour File No/), { target: { value: 'TF' } });
     expect(screen.getByText(/TF-1/)).toBeTruthy();
-    expect(screen.queryByText(/TF-3/)).toBeFalsy();
+    expect(screen.getByText(/TF-3/)).toBeTruthy(); // matches even though it's a DIFFERENT series entirely
   });
 
   it('applying a reference pre-fills sector/hotel/nationality/source/agent, leaving group name and pax untouched', () => {
     render(<NewQueryModal onClose={()=>{}} onSave={()=>{}} nextId="UTQ-2" agents={[]} staff={[]} series={activeSeries} queries={[referenceQuery]}/>);
-    fireEvent.change(screen.getByDisplayValue('Not part of a series'), { target: { value: 's1' } });
-    fireEvent.change(screen.getByDisplayValue('Start blank'), { target: { value: 'UTQ-1' } });
+    fireEvent.change(screen.getByPlaceholderText(/Search by Tour File No/), { target: { value: 'TF-1' } });
+    fireEvent.click(screen.getByText(/TF-1/));
     expect(screen.getByDisplayValue('Golden Triangle')).toBeTruthy(); // sector
     expect(screen.getByDisplayValue('ABC Travels')).toBeTruthy(); // agent company
     // Group name field must still be empty -- never pre-filled from a reference
     expect(screen.getByPlaceholderText('e.g. COL Group, Smith Family').value).toBe('');
+    // The reference is now shown as applied, with a way to clear it
+    expect(screen.getByText('✕ Clear')).toBeTruthy();
   });
 });
 

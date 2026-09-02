@@ -10,6 +10,7 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
     // creation. Not a live link -- editing this query afterward never
     // touches the reference, and vice versa.
     seriesId: "",
+    referenceQueryId: "",
     // 9.1 Source
     agentId: "", agentCompany:"", agentCountry:"", agentCity:"",
     correspondent:"", nationality:"",
@@ -26,15 +27,26 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
     notes:"",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const [referenceQueryId, setReferenceQueryId] = useState("");
+  const [referenceSearch, setReferenceSearch] = useState("");
   const activeSeries = (series||[]).filter(s=>s.active);
-  const seriesQueries = form.seriesId ? (queries||[]).filter(q=>q.seriesId===form.seriesId && !q.cancelled) : [];
+  // Independent of series entirely, per direct spec: a user should be
+  // able to reference any past tour file by number/name whether or not
+  // it -- or the query being created -- belongs to a series at all.
+  const referenceMatches = referenceSearch.trim() ? (queries||[]).filter(q=>{
+    if (q.cancelled) return false;
+    const needle = referenceSearch.trim().toLowerCase();
+    return (q.tourFileId||"").toLowerCase().includes(needle)
+      || q.id.toLowerCase().includes(needle)
+      || (q.groupName||q.clientName||"").toLowerCase().includes(needle);
+  }).slice(0,8) : [];
+  const referenceQuery = (queries||[]).find(q=>q.id===form.referenceQueryId);
+  const referenceLabel = referenceQuery ? `${referenceQuery.tourFileId||referenceQuery.id} — ${referenceQuery.groupName||referenceQuery.clientName||"—"}` : "";
   // Deliberately narrow: only the fields that genuinely tend to repeat
   // across a series (destination, hotel tier, market, how the booking
   // usually arrives) -- never dates, pax, group/client name, or
   // anything financial, which are always specific to this instance.
   const applyReference = (queryId) => {
-    setReferenceQueryId(queryId);
+    set("referenceQueryId", queryId);
     const ref = (queries||[]).find(q=>q.id===queryId);
     if (!ref) return;
     set("sector", ref.sector||ref.destination||"");
@@ -96,30 +108,49 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
           </div>
 
           {activeSeries.length > 0 && (
-            <div style={{marginBottom:14,background:"#F8FAFC",border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}>
+            <div style={{marginBottom:10,background:"#F8FAFC",border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}>
               <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>🔁 Series (optional)</div>
-              <select style={inp} value={form.seriesId} onChange={e=>{set("seriesId",e.target.value);setReferenceQueryId("");}}>
+              <select style={inp} value={form.seriesId} onChange={e=>set("seriesId",e.target.value)}>
                 <option value="">Not part of a series</option>
                 {activeSeries.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-              {form.seriesId && (
-                <div style={{marginTop:8}}>
-                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>
-                    Pre-fill from a past tour file in this series (optional)
-                  </div>
-                  {seriesQueries.length === 0 ? (
-                    <div style={{fontSize:11,color:G.gray400}}>No other queries in this series yet.</div>
-                  ) : (
-                    <select style={inp} value={referenceQueryId} onChange={e=>applyReference(e.target.value)}>
-                      <option value="">Start blank</option>
-                      {seriesQueries.map(q=><option key={q.id} value={q.id}>{q.tourFileId||q.id} — {q.groupName||q.clientName||"—"}</option>)}
-                    </select>
-                  )}
-                  {referenceQueryId && (
-                    <div style={{fontSize:10,color:G.gray400,marginTop:4}}>
-                      Sector, hotel category, nationality, source and agent pre-filled below — dates, pax and group name are left for you to set fresh.
+              <div style={{fontSize:10,color:G.gray400,marginTop:4}}>Just a tag for grouping/reporting — independent of the pre-fill below, which can reference any tour file whether or not it's in a series.</div>
+            </div>
+          )}
+
+          {(queries||[]).length > 0 && (
+            <div style={{marginBottom:14,background:"#F8FAFC",border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}>
+              <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>
+                📋 Pre-fill from a past tour file (optional)
+              </div>
+              {form.referenceQueryId ? (
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+                  <span style={{color:G.gray800}}>Referencing <b>{referenceLabel}</b></span>
+                  <button type="button" className="btn btn-ghost" style={{fontSize:10,padding:"3px 8px"}}
+                    onClick={()=>{set("referenceQueryId","");setReferenceSearch("");}}>✕ Clear</button>
+                </div>
+              ) : (
+                <>
+                  <input style={inp} value={referenceSearch} onChange={e=>setReferenceSearch(e.target.value)}
+                    placeholder="Search by Tour File No. or group name..."/>
+                  {referenceSearch.trim() && (
+                    <div style={{marginTop:6,maxHeight:160,overflowY:"auto",border:`1px solid ${G.gray200}`,borderRadius:6,background:G.white}}>
+                      {referenceMatches.length===0 && <div style={{padding:8,fontSize:11,color:G.gray400}}>No matching tour file found.</div>}
+                      {referenceMatches.map(q=>(
+                        <div key={q.id} onClick={()=>applyReference(q.id)}
+                          style={{padding:"7px 10px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${G.gray100}`}}
+                          onMouseEnter={e=>e.currentTarget.style.background=G.gray50}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <b>{q.tourFileId||q.id}</b> — {q.groupName||q.clientName||"—"} · {q.destination||q.sector||"—"}
+                        </div>
+                      ))}
                     </div>
                   )}
+                </>
+              )}
+              {form.referenceQueryId && (
+                <div style={{fontSize:10,color:G.gray400,marginTop:6}}>
+                  Sector, hotel category, nationality, source and agent pre-filled below — dates, pax and group name are left for you to set fresh.
                 </div>
               )}
             </div>

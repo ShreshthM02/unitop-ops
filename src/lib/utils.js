@@ -46,6 +46,7 @@ export function mapDbQueryRow(q) {
     ...q,
     id: q.id,
     seriesId: q.series_id,
+    referenceQueryId: q.reference_query_id,
     agentId: q.agent_id,
     agentCompany: q.agent_company,
     agentCountry: q.agent_country,
@@ -556,6 +557,7 @@ export function buildQuerySavePayload(q) {
   return {
     id:                  q.id,
     series_id:           isUuid(q.seriesId) ? q.seriesId : null,
+    reference_query_id:  q.referenceQueryId || null,
     agent_id:            isUuid(q.agentId) ? q.agentId : null,
     agent_company:       q.agentCompany,
     agent_country:       q.agentCountry,
