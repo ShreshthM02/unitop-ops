@@ -2,8 +2,14 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES } = Lib;
 
-export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }) {
+export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, series, queries }) {
   const [form, setForm] = useState({
+    // Series (optional) -- see docs/DATA_OWNERSHIP.md-style reasoning:
+    // this only tags the query into a group and, if a reference tour
+    // file is picked below, pre-fills a few starting fields once at
+    // creation. Not a live link -- editing this query afterward never
+    // touches the reference, and vice versa.
+    seriesId: "",
     // 9.1 Source
     agentId: "", agentCompany:"", agentCountry:"", agentCity:"",
     correspondent:"", nationality:"",
@@ -20,6 +26,28 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
     notes:"",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const [referenceQueryId, setReferenceQueryId] = useState("");
+  const activeSeries = (series||[]).filter(s=>s.active);
+  const seriesQueries = form.seriesId ? (queries||[]).filter(q=>q.seriesId===form.seriesId && !q.cancelled) : [];
+  // Deliberately narrow: only the fields that genuinely tend to repeat
+  // across a series (destination, hotel tier, market, how the booking
+  // usually arrives) -- never dates, pax, group/client name, or
+  // anything financial, which are always specific to this instance.
+  const applyReference = (queryId) => {
+    setReferenceQueryId(queryId);
+    const ref = (queries||[]).find(q=>q.id===queryId);
+    if (!ref) return;
+    set("sector", ref.sector||ref.destination||"");
+    set("nights", ref.nights||"");
+    set("hotelCat", ref.hotelCat||form.hotelCat);
+    set("nationality", ref.nationality||"");
+    setNatOtherMode(!!ref.nationality && !NATIONALITIES.includes(ref.nationality));
+    set("source", ref.source||form.source);
+    set("agentId", ref.agentId||"");
+    set("agentCompany", ref.agentCompany||"");
+    set("agentCountry", ref.agentCountry||"");
+    set("correspondent", ref.correspondent||"");
+  };
   // Whether the Nationality dropdown shows "Other" (a free-text value)
   // vs a canonical pick -- seeded from the initial value so a legacy
   // free-text entry (e.g. "TAIWAN" from before this dropdown existed)
@@ -66,6 +94,36 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff }
             <div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Query Number (auto-assigned)</div>
             <div className="query-num-preview">{nextId}</div>
           </div>
+
+          {activeSeries.length > 0 && (
+            <div style={{marginBottom:14,background:"#F8FAFC",border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}>
+              <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>🔁 Series (optional)</div>
+              <select style={inp} value={form.seriesId} onChange={e=>{set("seriesId",e.target.value);setReferenceQueryId("");}}>
+                <option value="">Not part of a series</option>
+                {activeSeries.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              {form.seriesId && (
+                <div style={{marginTop:8}}>
+                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>
+                    Pre-fill from a past tour file in this series (optional)
+                  </div>
+                  {seriesQueries.length === 0 ? (
+                    <div style={{fontSize:11,color:G.gray400}}>No other queries in this series yet.</div>
+                  ) : (
+                    <select style={inp} value={referenceQueryId} onChange={e=>applyReference(e.target.value)}>
+                      <option value="">Start blank</option>
+                      {seriesQueries.map(q=><option key={q.id} value={q.id}>{q.tourFileId||q.id} — {q.groupName||q.clientName||"—"}</option>)}
+                    </select>
+                  )}
+                  {referenceQueryId && (
+                    <div style={{fontSize:10,color:G.gray400,marginTop:4}}>
+                      Sector, hotel category, nationality, source and agent pre-filled below — dates, pax and group name are left for you to set fresh.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 9.1 Source */}
           {secHdr("🌐","Source")}

@@ -1,6 +1,7 @@
 // Barrel: re-exports every component so files can import from a single place.
 export { default as AgentLedgerPanel } from './AgentLedgerPanel.jsx';
 export { default as AgentMaster } from './AgentMaster.jsx';
+export { default as SeriesManagement } from './SeriesManagement.jsx';
 export { default as AllQueriesView } from './AllQueriesView.jsx';
 export { default as CancelModal } from './CancelModal.jsx';
 export { default as Dashboard } from './Dashboard.jsx';

@@ -5,7 +5,7 @@ import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, costSheetExists, quotationExists, hasPayments, payments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const autoDetected = getAutoDetectedSteps({
@@ -272,6 +272,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <span style={{display:"flex",alignItems:"center",gap:6}}>
                         {assignedUser&&<Avatar user={assignedUser} size={18}/>}{assignedUser?.name||"—"}
                       </span>
+                    </div>
+                    <div className="info-item" style={{gridColumn:"1/-1"}}><label>Series</label>
+                      <select value={query.seriesId||""} disabled={!onUpdateQuery}
+                        onChange={e=>onUpdateQuery && onUpdateQuery(query.id,{seriesId:e.target.value||null})}
+                        style={{padding:"3px 6px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",color:G.gray800,background:G.white}}>
+                        <option value="">Not part of a series</option>
+                        {(series||[]).filter(s=>s.active||s.id===query.seriesId).map(s=>
+                          <option key={s.id} value={s.id}>{s.name}{!s.active?" (inactive)":""}</option>
+                        )}
+                      </select>
                     </div>
                   </div>
                   {query.notes&&(

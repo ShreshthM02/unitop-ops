@@ -45,6 +45,7 @@ export function mapDbQueryRow(q) {
   return {
     ...q,
     id: q.id,
+    seriesId: q.series_id,
     agentId: q.agent_id,
     agentCompany: q.agent_company,
     agentCountry: q.agent_country,
@@ -483,6 +484,46 @@ export async function saveAgentToDB(db, agent) {
   }
 }
 
+// ─── SERIES ─────────────────────────────────────────────────────────────
+// A lightweight, named grouping for repeat/series tours (e.g. "Golden
+// Triangle Winter Departures"). Deliberately simple -- just a name and
+// an active flag -- not a rich template object; the actual pre-fill
+// mechanism works by referencing a specific PAST query within a series,
+// same "pull a snapshot once, then fully independent" pattern the rest
+// of this app's Document Chain already uses everywhere else.
+export function mapDbSeriesRow(row) {
+  return {
+    id: row.id, name: row.name, active: row.active, notes: row.notes || "",
+    createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export async function loadSeries(db) {
+  try {
+    const { data } = await db.from("series").select("*").order("name", { ascending: true });
+    return (data || []).map(mapDbSeriesRow);
+  } catch (e) {
+    console.warn("Load series failed:", e);
+    return [];
+  }
+}
+
+export async function saveSeries(db, series) {
+  const payload = { name: series.name, active: series.active !== false, notes: series.notes || null };
+  try {
+    if (series.id) {
+      const { error } = await db.from("series").upsert({ id: series.id, ...payload, updated_at: new Date().toISOString() });
+      return { id: series.id, error: error ? (error.message || String(error)) : null };
+    }
+    const { data, error } = await db.from("series").insert({ ...payload, created_by: isUuid(series.createdBy) ? series.createdBy : null });
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
+  } catch (e) {
+    console.warn("Save series failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
 // Validates a real Postgres uuid format (the standard 8-4-4-4-12 hex shape).
 export function isUuid(v) {
   return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -514,6 +555,7 @@ export function isIsoDateString(v) {
 export function buildQuerySavePayload(q) {
   return {
     id:                  q.id,
+    series_id:           isUuid(q.seriesId) ? q.seriesId : null,
     agent_id:            isUuid(q.agentId) ? q.agentId : null,
     agent_company:       q.agentCompany,
     agent_country:       q.agentCountry,

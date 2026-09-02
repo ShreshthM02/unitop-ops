@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries } = Lib;
 import AgentMaster from './AgentMaster.jsx';
+import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
 import CancelModal from './CancelModal.jsx';
 import Dashboard from './Dashboard.jsx';
@@ -39,6 +40,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [queries, setQueries]     = useState(INITIAL_QUERIES);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
+  const [series, setSeries]       = useState([]);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
   const [staff, setStaff]         = useState(USERS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
@@ -84,6 +86,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showVoucher,    setShowVoucher]    = useState(null);
   const [showEditor,     setShowEditor]     = useState(null);
   const [showAgents,     setShowAgents]     = useState(false);
+  const [showSeries,     setShowSeries]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
@@ -164,6 +167,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           { data: payData }, { data: inData }, { data: outData },
           { data: teData },
           { data: csIdData }, { data: quoteIdData },
+          seriesData,
         ] = await Promise.all([
           db.from("queries").select("*").order("created_at", {ascending:false}),
           db.from("query_audit").select("*").order("created_at", {ascending:true}),
@@ -185,9 +189,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           // full cost sheet/quotation content.
           db.from("cost_sheets").select("query_id"),
           db.from("quotations").select("query_id"),
+          loadSeries(db),
         ]);
         setCostSheetExists(new Set((csIdData||[]).map(r=>r.query_id)));
         setQuotationExists(new Set((quoteIdData||[]).map(r=>r.query_id)));
+        setSeries(seriesData);
 
         if (qData && qData.length > 0) {
           const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
@@ -517,6 +523,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Master Data",items:[
       {id:"agents",       icon:"🌐",label:"Agents / Clients"},
       {id:"vendors",      icon:"🏢",label:"Vendors"},
+      {id:"series",       icon:"🔁",label:"Series"},
     ]},
     {section:"Finance",items:[
       {id:"invoices",     icon:"🧾",label:"Invoices"},
@@ -531,7 +538,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showVendors||showTourBrief||showEditor;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showSeries||showVendors||showTourBrief||showEditor;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -577,6 +584,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     onClick={()=>{
                       if(item.id==="chat"){setShowChat(true);setSidebarOpen(false);return;}
                       if(item.id==="usermgmt"){setShowUserMgmt(true);setSidebarOpen(false);return;}
+                      if(item.id==="series"){setShowSeries(true);setSidebarOpen(false);return;}
                       setView(item.id);setSidebarOpen(false);
                     }}>
                     <span className="nav-icon">{item.icon}</span>{item.label}
@@ -790,6 +798,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}
             staff={staff}
+            series={series}
             costSheetExists={costSheetExists.has(activeQuery.id)}
             quotationExists={quotationExists.has(activeQuery.id)}
             hasPayments={(payments[activeQuery.id]?.entries || []).length > 0 || (payments[activeQuery.id]?.outgoing || []).length > 0}
@@ -811,6 +820,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
+        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>setShowSeries(false)}/>}
         {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
 
         {/* Cancel modal */}
@@ -851,7 +861,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>
         )}
 
-        {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents} staff={staff}/>}
+        {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents} staff={staff} series={series} queries={queries}/>}
         {toast && <Toast msg={toast} onDone={()=>setToast(null)}/>}
       </div>
     </>
