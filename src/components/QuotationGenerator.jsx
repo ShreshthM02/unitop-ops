@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildQuotationDocxBlob, buildAddresseeBlock, ExportMenu, RichTextEditor, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, db } = Lib;
 
-export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly }) {
+export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
 
   // Editable quotation fields (pre-filled from query)
@@ -312,7 +312,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     ...prev, monuments: prev.monuments.map((m,idx)=>idx===i?{...m,[field]:val}:m)
   }));
 
-  const buildPrintHTML = () => {
+  const buildPrintHTML = async (asBlocks) => {
     const stampHTMLQ = showStamp ? `<img src="${STAMP_B64}" style="height:70pt;width:auto;display:block;margin-bottom:4pt" alt="Stamp"/>` : '';
 
     // 1.1: real vertical gaps between date / addressee / subject / greeting /
@@ -405,7 +405,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
       </div>`;
 
-    return buildPaginatedLetterheadDocument({
+    const docArgs = {
       title: `Quotation — ${q.attnCompany}`,
       extraHeadCSS: `
         h2{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:0.8px;margin:22pt 0 8pt;border-bottom:1pt solid #ddd;padding-bottom:2pt;color:#1A3A52;}
@@ -428,7 +428,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       headerFooterAllPages,
       printOnLetterhead,
       showPageNum,
-    });
+    };
+    if (asBlocks) return docArgs;
+    return buildPaginatedLetterheadDocument(docArgs);
   };
 
   const printQuotation = async () => {
@@ -439,22 +441,18 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     setTimeout(()=>win.print(), 500);
   };
 
-  // 1.1: real .docx export -- new feature, the app previously only had
-  // Print/Export PDF. Applies the same 4 letterhead toggles as the PDF
-  // preview (see src/lib/wordLetterhead.js for how each maps onto Word's
-  // own header/footer/margin mechanics).
+  // 1.1: real .docx export. Was previously its own bespoke builder
+  // (wordExport.js) duplicating the PDF path's content by hand -- now
+  // reuses the exact same bodyBlocks buildPrintHTML already assembles
+  // for print, via the same shared converter every other document uses,
+  // so there's only ever one source of truth for what a Quotation says.
   const exportQuotationDocx = async () => {
-    {
-      const blob = await buildQuotationDocxBlob(q, { headerFooterAllPages, showPageNum, showStamp, printOnLetterhead });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Quotation - ${q.attnCompany || query.groupName || query.id}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    const args = await buildPrintHTML(true);
+    const blob = await buildDocxBlobFromBodyBlocks({
+      bodyBlocks: args.bodyBlocks,
+      toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+    });
+    await downloadDocx(blob, `Quotation - ${q.attnCompany || query.groupName || query.id}`);
   };
 
   // Preview now needs to reflect the same paginated output that will
@@ -516,6 +514,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               }
               setFinalVersion(v.version);markQuotationVersionFinal(db,query.id,v.version);
               logAudit(db,query.id,currentUser?.name,`Quotation v${v.version} marked final`);
+              // The Final Price Sheet's confirmed pax count is the real,
+              // locked-in number once a version is marked final -- more
+              // authoritative than whatever was guessed when the query was
+              // first created, so it flows back to the query's own
+              // paxDisplay (used throughout reports/documents) here rather
+              // than staying stranded on the quotation alone.
+              if (onUpdateQuery && v.confirmedPax) {
+                onUpdateQuery(query.id, { paxDisplay: `${v.confirmedPax} pax` });
+              }
             }}
             readOnly={readOnly}
             G={G}

@@ -7,7 +7,6 @@ export * from './helpers.jsx';
 export * from './utils.js';
 export * from './letterhead.js';
 export * from './wordLetterhead.js';
-export * from './wordExport.js';
 export * from './wordFromBlocks.js';
 export * from './brochure.js';
 export * from './routeMap.js';
