@@ -80,7 +80,7 @@ describe('saveVendorToDB', () => {
     expect(upsert).toHaveBeenCalledWith({
       id: 'VND-003', name: 'Prithvi', type: 'Tour Facilitator', city: '',
       contact_name: '', contact_phone: '+91-1234567890', contact_email: '', gstin: '', notes: '',
-      languages: 'English, Hindi', areas: 'Bodhgaya', active: true,
+      languages: 'English, Hindi', areas: 'Bodhgaya', active: true, rates: [],
     });
   });
 

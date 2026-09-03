@@ -13,6 +13,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [showInactive,setShowInactive]=useState(false);
   const [tab,setTab]=useState("profile");
   const [rates,setRates]=useState([]);
+  const [ratesSaveMsg,setRatesSaveMsg]=useState("");
 
   // Exchange Orders tab: every EO issued against the selected vendor,
   // across every tour file, grouped by its stable order_no. Unsettled
@@ -101,7 +102,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
       <div style={{background:G.white,width:"min(900px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Vendor Repository</div></div>
-          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);}}>+ New Vendor</button>}
+          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);setRates([]);}}>+ New Vendor</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -124,7 +125,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                 </select>
               </div>
             </div>
-            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates([]);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
+            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates(v.rates||[]);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {editing?(
@@ -203,7 +204,79 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       </div>
                     );
                   })()}
-                  {tab==="rates"&&<div><div style={{fontSize:12,color:G.gray600,marginBottom:10}}>Contracted rates for this vendor. Fields adapt to vendor type.</div>{rates.map((r,i)=>{const vtype=selected.type||"Hotel";const upd=(k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));const FIELDS={Hotel:[["Season","season","text"],["Room Type","roomType","text"],["Meal Plan","mealPlan","mealsel"],["Rate (₹)","ratePP","number"],["Single Supp (₹)","singleSupp","number"],["Tax %","taxPct","number"]],Restaurant:[["Season","season","text"],["Meal Type","mealType","mealtype"],["Price Per Head (₹)","ratePP","number"],["Tax %","taxPct","number"]],Transport:[["Season","season","text"],["Vehicle Type","vehicleType","vehsel"],["Rate/Day (₹)","ratePerDay","number"],["Rate/KM (₹)","ratePerKm","number"],["Capacity","capacity","number"]],"Tour Facilitator":[["Season","season","text"],["Language","language","text"],["Rate/Day (₹)","ratePP","number"],["Half Day (₹)","halfDay","number"]],"Activity Provider":[["Activity","activity","text"],["Rate PP (₹)","ratePP","number"],["Group Rate (₹)","groupRate","number"],["Min Pax","minPax","number"]],"Monument / Museum":[["Monument","activity","text"],["Foreign Rate (₹)","ratePP","number"],["Indian Rate (₹)","rateIndian","number"]]};const fields=FIELDS[vtype]||FIELDS.Hotel;return<div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:6,marginBottom:6}}>{fields.map(([l,k,t])=><div key={k}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div>{t==="mealsel"?<select style={{...inp,fontSize:11}} value={r[k]||"CP"} onChange={e=>upd(k,e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>:t==="mealtype"?<select style={{...inp,fontSize:11}} value={r[k]||"Lunch"} onChange={e=>upd(k,e.target.value)}>{["Breakfast","Lunch","Dinner","All Meals"].map(m=><option key={m}>{m}</option>)}</select>:t==="vehsel"?<select style={{...inp,fontSize:11}} value={r[k]||"Innova/SUV"} onChange={e=>upd(k,e.target.value)}>{["Sedan","Innova/SUV","Tempo Traveller","Mini Coach","Coach","Luxury Van"].map(v=><option key={v}>{v}</option>)}</select>:<input style={{...inp,textAlign:t==="number"?"right":"left",fontSize:11}} type={t} value={r[k]||""} onChange={e=>upd(k,e.target.value)}/>}</div>)}<span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"flex-end",paddingBottom:2}} onClick={()=>setRates(p=>p.filter((_,xi)=>xi!==i))}>✕</span></div><input style={{...inp,fontSize:11}} value={r.notes||""} onChange={e=>upd("notes",e.target.value)} placeholder="Notes..."/></div>;})} <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setRates(p=>[...p,{id:Date.now(),season:"Oct–Mar",notes:""}])}>+ Add Rate</button></div>}
+                  {tab==="rates"&&(()=>{
+                    const vtype=selected.type||"Hotel";
+                    const upd=(i,k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));
+                    // item 6: "Season" replaced with real Rates Applicable
+                    // From/Till date pickers, for every vendor type that
+                    // previously had Season. Activity Provider and
+                    // Monument/Museum never had Season, so no date range
+                    // for those -- not adding one they never asked for.
+                    const HAS_DATE_RANGE = ["Hotel","Restaurant","Transport","Tour Facilitator"];
+                    // item 7: tax toggle applied universally, replacing the
+                    // old plain "Tax %" number field wherever it existed
+                    // (Hotel, Restaurant) and adding real tax handling to
+                    // the vendor types that never had any (Transport, Tour
+                    // Facilitator, Activity Provider, Monument/Museum) --
+                    // "contracted rates" is a general concept, tax
+                    // applicability isn't specific to hotels/restaurants.
+                    const FIELDS={
+                      Hotel:[["Room Type","roomType","text"],["Meal Plan","mealPlan","mealsel"],["Rate (₹)","ratePP","number"],["Single Supp (₹)","singleSupp","number"]],
+                      Restaurant:[["Meal Type","mealType","mealtype"],["Price Per Head (₹)","ratePP","number"]],
+                      Transport:[["Vehicle Type","vehicleType","vehsel"],["Rate/Day (₹)","ratePerDay","number"],["Rate/KM (₹)","ratePerKm","number"],["Capacity","capacity","number"]],
+                      "Tour Facilitator":[["Language","language","text"],["Rate/Day (₹)","ratePP","number"],["Half Day (₹)","halfDay","number"]],
+                      "Activity Provider":[["Activity","activity","text"],["Rate PP (₹)","ratePP","number"],["Group Rate (₹)","groupRate","number"],["Min Pax","minPax","number"]],
+                      "Monument / Museum":[["Monument","activity","text"],["Foreign Rate (₹)","ratePP","number"],["Indian Rate (₹)","rateIndian","number"]],
+                    };
+                    const fields=FIELDS[vtype]||FIELDS.Hotel;
+                    const saveRates=async()=>{
+                      const updatedVendor={...selected,rates};
+                      await onSaveVendor(updatedVendor);
+                      setVendors(p=>p.map(v=>v.id===selected.id?updatedVendor:v));
+                      setSelected(updatedVendor);
+                      setRatesSaveMsg("Rates saved ✓");
+                      setTimeout(()=>setRatesSaveMsg(""),2500);
+                    };
+                    return (
+                      <div>
+                        <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>Contracted rates for this vendor. Fields adapt to vendor type.</div>
+                        {rates.map((r,i)=>(
+                          <div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:6,marginBottom:6}}>
+                              {HAS_DATE_RANGE.includes(vtype) && <>
+                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates From</div><input style={{...inp,fontSize:11}} type="date" value={r.ratesFrom||""} onChange={e=>upd(i,"ratesFrom",e.target.value)}/></div>
+                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates Till</div><input style={{...inp,fontSize:11}} type="date" value={r.ratesTill||""} onChange={e=>upd(i,"ratesTill",e.target.value)}/></div>
+                              </>}
+                              {fields.map(([l,k,t])=>(
+                                <div key={k}>
+                                  <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div>
+                                  {t==="mealsel"?<select style={{...inp,fontSize:11}} value={r[k]||"CP"} onChange={e=>upd(i,k,e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>
+                                  :t==="mealtype"?<select style={{...inp,fontSize:11}} value={r[k]||"Lunch"} onChange={e=>upd(i,k,e.target.value)}>{["Breakfast","Lunch","Dinner","All Meals"].map(m=><option key={m}>{m}</option>)}</select>
+                                  :t==="vehsel"?<select style={{...inp,fontSize:11}} value={r[k]||"Innova/SUV"} onChange={e=>upd(i,k,e.target.value)}>{["Sedan","Innova/SUV","Tempo Traveller","Mini Coach","Coach","Luxury Van"].map(v=><option key={v}>{v}</option>)}</select>
+                                  :<input style={{...inp,textAlign:t==="number"?"right":"left",fontSize:11}} type={t} value={r[k]||""} onChange={e=>upd(i,k,e.target.value)}/>}
+                                </div>
+                              ))}
+                              <div>
+                                <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Tax</div>
+                                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer",padding:"7px 0"}}>
+                                  <input type="checkbox" checked={!!r.taxExclusive} onChange={e=>upd(i,"taxExclusive",e.target.checked)} style={{accentColor:G.accent}}/>
+                                  Exclusive of tax
+                                </label>
+                              </div>
+                              {r.taxExclusive && <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Tax %</div><input style={{...inp,textAlign:"right",fontSize:11}} type="number" value={r.taxPct||""} onChange={e=>upd(i,"taxPct",e.target.value)} placeholder="e.g. 18"/></div>}
+                              <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"flex-end",paddingBottom:2}} onClick={()=>setRates(p=>p.filter((_,xi)=>xi!==i))}>✕</span>
+                            </div>
+                            <input style={{...inp,fontSize:11}} value={r.notes||""} onChange={e=>upd(i,"notes",e.target.value)} placeholder="Notes..."/>
+                          </div>
+                        ))}
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setRates(p=>[...p,{id:Date.now(),notes:""}])}>+ Add Rate</button>
+                          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={saveRates}>💾 Save Rates</button>}
+                          {ratesSaveMsg && <span style={{fontSize:11,color:"#059669",fontWeight:600}}>{ratesSaveMsg}</span>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {tab==="ledger"&&(()=>{const ledger=getLedger(selected);const committed=ledger.filter(e=>["voucher","cash"].includes(e.paymentType||"cash")).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);const paid=ledger.filter(e=>e.paymentType==="cash"||e.paymentType==="settle").reduce((s,e)=>s+(parseFloat(e.amount)||0),0);const payable=ledger.filter(e=>e.paymentType==="voucher"&&!e.settled).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return<div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>{[["Total Committed","₹ "+Math.round(committed).toLocaleString(),G.navy],["Total Paid","₹ "+Math.round(paid).toLocaleString(),"#059669"],["Outstanding","₹ "+Math.round(payable).toLocaleString(),payable>0?G.accent:"#059669"]].map(([l,v,c])=><div key={l} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>{l}</div><div style={{fontSize:16,fontWeight:700,color:c}}>{v}</div></div>)}</div>{ledger.length===0?<div style={{textAlign:"center",padding:32,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8}}>No transactions yet.</div>:ledger.map((e,i)=>{const ts=PT_STYLE[e.paymentType||"cash"]||PT_STYLE.cash;return<div key={i} style={{background:G.white,border:`1px solid ${e.paymentType==="voucher"&&!e.settled?"#FDE68A":G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:ts.bg,color:ts.color,fontWeight:600}}>{ts.label}</span>{e.paymentType==="voucher"&&!e.settled&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>⚠ Payable</span>}{e.tourFileId&&(()=>{const vq=queries.find(qq=>qq.tourFileId===e.tourFileId);return<span onClick={()=>vq&&document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:vq}}))} style={{fontSize:10,color:G.navy,fontWeight:600,background:"#EBF5FB",padding:"2px 7px",borderRadius:10,cursor:vq?"pointer":"default",textDecoration:vq?"underline":"none"}}>📁 {e.tourFileId}</span>;})()}<span style={{marginLeft:"auto",fontSize:13,fontWeight:700,color:G.navy}}>₹ {parseFloat(e.amount||0).toLocaleString()}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>{[["Tour File",e.tourFileId||"—"],["Client",e.clientName||"—"],["Sector",e.sector||"—"],["Date",e.date||"—"],["Mode",e.mode||"—"],["Reference",e.ref||"—"]].map(([l,v])=><div key={l}><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:1}}>{l}</div><div style={{fontSize:11,fontWeight:500}}>{v}</div></div>)}</div></div>;})}</div>;})()}
                   {tab==="eo"&&(()=>{
                     const sorted=[...eoGroups].sort((a,b)=>(a.latest.order.settled===b.latest.order.settled)?0:(a.latest.order.settled?1:-1));

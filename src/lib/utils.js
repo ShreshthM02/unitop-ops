@@ -295,6 +295,7 @@ export async function saveVendorToDB(db, vendor) {
       languages: vendor.languages,
       areas: vendor.areas,
       active: vendor.active !== false,
+      rates: vendor.rates || [],
     });
   } catch (e) { console.warn("Save vendor to DB failed:", e); }
 }

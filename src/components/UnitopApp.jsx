@@ -235,6 +235,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             contactName: v.contact_name, contactPhone: v.contact_phone,
             contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
             languages: v.languages, areas: v.areas, active: v.active,
+            rates: v.rates || [],
           })));
         }
         if (staffData && staffData.length > 0) {
