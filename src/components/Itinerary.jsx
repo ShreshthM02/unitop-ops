@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, db, realtimeClient } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, realtimeClient } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -32,7 +32,7 @@ const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64
 //
 // NOT GATED TO TOUR-FILE STAGE. Like Brief always was: itinerary content is
 // drafted while a query is still being won, not only after conversion.
-export default function Itinerary({ query, briefTemplate, detailTemplate, onClose, currentUser, readOnly }) {
+export default function Itinerary({ query, briefTemplate, detailTemplate, onClose, currentUser, readOnly, docSettings }) {
   const [docFlavor, setDocFlavor] = useState("brief"); // 'brief' | 'detailed'
   const [tourTitle, setTourTitle] = useState(query.destination || "");
   const [tagline, setTagline] = useState("");
@@ -418,7 +418,10 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(briefTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
-      title: `${tourTitle} — Brief Itinerary`,
+      // item 1: was tourTitle (the editable itinerary heading, e.g.
+      // "Golden Triangle Tour") -- Word's own filename used groupName
+      // instead, a genuinely different value from the same document.
+      title: buildDownloadFilename("Brief Itinerary", "brief_itin", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector }),
       bodyBlocks: [titleBlockFor("brief", tmpl.docHeading), ...buildDayBlocks("brief"), buildClosingBlock(tmpl, briefRemarks, briefClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
       extraHeadCSS: ITINERARY_FONT_CSS,
@@ -435,7 +438,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     });
     // 8: same fix as Quotation -- lead with the stable Tour File/Query
     // identifier, keep the group name for readability.
-    await downloadDocx(blob, `Brief Itinerary - ${query.tourFileId || query.id} - ${query.groupName||query.clientName||"Untitled"}`);
+    await downloadDocx(blob, args.title);
   };
   const printBrief = async () => printHTML(await buildBriefPrintHTML());
 
@@ -463,7 +466,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     const tmpl = { ...DEFAULT_ITINERARY_TEMPLATE, ...(detailTemplate || {}) };
     const stampHTML = showStamp ? `<img src="${STAMP_B64}" style="height:60pt;width:auto;display:block;margin:14pt auto 0" alt="Stamp"/>` : '';
     const docArgs = {
-      title: `${tourTitle} — Itinerary`,
+      title: buildDownloadFilename("Detailed Itinerary", "detail_itin", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector }),
       bodyBlocks: [titleBlockFor("detailed"), ...buildDetailedGlanceBlock(), ...buildDayBlocks("detailed"), buildClosingBlock(tmpl, detailedRemarks, detailedClosingText, stampHTML)],
       headerFooterAllPages, printOnLetterhead, showPageNum,
       extraHeadCSS: ITINERARY_FONT_CSS,
@@ -478,7 +481,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
     });
-    await downloadDocx(blob, `Detailed Itinerary - ${query.tourFileId || query.id} - ${query.groupName||query.clientName||"Untitled"}`);
+    await downloadDocx(blob, args.title);
   };
   const printDetailedInternal = async () => printHTML(await buildDetailedPrintHTML());
 

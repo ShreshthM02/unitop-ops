@@ -53,6 +53,40 @@ export function nextDocNumber(docSettings, docType, ctx = {}) {
   return { number, updatedSettings };
 }
 
+// Item 1: one shared filename builder, used for every export format
+// (PDF's <title> tag, Word's downloadDocx filename, Excel where
+// applicable) so the SAME document always produces the SAME filename
+// regardless of which format it's exported as -- the actual complaint
+// was that PDF and Word disagreed with each other and neither
+// reflected what's configured in Template Content settings.
+//
+// realNumber: pass the document's own already-generated, persisted
+// number when one genuinely exists (Invoice's invoiceNo, Exchange
+// Order's orderNo) -- that's the authoritative, already-correct value,
+// generated via the configured pattern at creation time. Never
+// recomputed here.
+//
+// For every other document type (Quotation, Cost Sheet, Itinerary,
+// Tour Briefing Sheet, etc), there is no real persisted number at all
+// -- only 5 of 12 configured document types were ever wired to real
+// numbering (see nextDocNumber's own history). Rather than keep using
+// an arbitrary hardcoded shape unrelated to settings, this computes
+// what the configured pattern WOULD produce for this document, using
+// formatDocPattern directly with the real available context -- a
+// stable, non-incrementing read (serial defaults to 1, never bumped,
+// since a filename isn't a persisted document number and doesn't need
+// one). If a document type has no pattern configured at all yet, falls
+// back to the stable tourfile/query identifier + group name.
+export function buildDownloadFilename(docLabel, docType, docSettings, ctx = {}, realNumber = null) {
+  if (realNumber) return `${docLabel} - ${realNumber}`;
+  const cfg = (docSettings && docSettings[docType]) || {};
+  if (cfg.pattern) {
+    const computed = formatDocPattern(cfg.pattern, { ...ctx, prefix: cfg.prefix, seq: cfg.serial || 1 });
+    if (computed) return `${docLabel} - ${computed}`;
+  }
+  return `${docLabel} - ${ctx.tourfile || ctx.id || "Untitled"}${ctx.group ? " - " + ctx.group : ""}`;
+}
+
 
 
 export function numToWords(n) {

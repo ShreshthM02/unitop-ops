@@ -4,7 +4,7 @@ const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
   LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock, RichTextEditor,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
-  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
+  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, buildDownloadFilename, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
   logAudit, db,
 } = Lib;
@@ -350,7 +350,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         </div>`;
 
     const docArgs = {
-      title: `Proforma Invoice ${pInv.invoiceNo}`,
+      title: buildDownloadFilename("Proforma Invoice", "proforma", docSettings, {}, pInv.invoiceNo),
       bodyBlocks: [addresseeBlock, partiesBlock, itemsBlock, totalsBlock, bankBlock, closingBlock],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
@@ -437,7 +437,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         <div style="font-size:8.5pt;color:#999;text-align:center;margin-top:14pt">${tTmpl.footerNote}<br/>${COMPANY_INFO.name} | ${COMPANY_INFO.gstin}</div>`;
 
     const docArgs = {
-      title: `Tax Invoice ${tInv.invoiceNo}`,
+      title: buildDownloadFilename("Tax Invoice", "taxinvoice", docSettings, {}, tInv.invoiceNo),
       bodyBlocks: [metaBlock, partiesBlock, itemsBlock, totalsBlock, closingBlock],
       headerFooterAllPages, printOnLetterhead, showPageNum,
     };
@@ -455,7 +455,11 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
       orientation: args.orientation,
     });
     const inv = docFlavor === "proforma" ? pInv : tInv;
-    await downloadDocx(blob, `${docFlavor === "proforma" ? "Proforma Invoice" : "Tax Invoice"} - ${inv.invoiceNo}`);
+    // item 1: reuses the exact same title buildPrintHTML already
+    // computed above (asBlocks mode returns docArgs directly), instead
+    // of a separately-formatted string here -- guarantees PDF and Word
+    // always agree.
+    await downloadDocx(blob, args.title);
   };
 
   const handlePrint = async () => {
