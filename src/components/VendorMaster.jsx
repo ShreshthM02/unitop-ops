@@ -42,6 +42,39 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"},{id:"eo",label:"Exchange Orders"}];
   const filtered=vendors.filter(v=>(showInactive||v.active!==false)&&(filterType==="All"||v.type===filterType)&&(!search||v.name?.toLowerCase().includes(search.toLowerCase())||v.city?.toLowerCase().includes(search.toLowerCase())));
+  const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
+  // Smart dashboard: reuses getVendorAssignmentHistory (already proven,
+  // real vendor.id-matched assignment data -- not a new computation) to
+  // build the same kind of at-a-glance summary as Agents. Deliberately
+  // NOT a financial total the way Agents get one: a vendor's own
+  // "value" isn't cleanly available without loading every Exchange
+  // Order across every vendor (only the SELECTED vendor's EOs are
+  // currently loaded here), so this sticks to what's genuinely and
+  // accurately available -- assignment counts and recency.
+  const vendorStats = useMemo(() => {
+    const map = new Map();
+    for (const v of vendors) {
+      const rows = getVendorAssignmentHistory(v.id, tourExecutions, queries).filter(r=>!r.cancelled);
+      const dates = rows.map(r=>r.travelDate).filter(Boolean).sort();
+      map.set(v.id, { assignmentCount: rows.length, lastActive: dates.length ? dates[dates.length-1] : null });
+    }
+    return map;
+  }, [vendors, tourExecutions, queries]);
+  const vendorTotals = useMemo(() => {
+    let activeVendors = 0, totalAssignments = 0;
+    for (const v of vendors) {
+      const s = vendorStats.get(v.id);
+      if (!s) continue;
+      totalAssignments += s.assignmentCount;
+      if (s.assignmentCount > 0) activeVendors++;
+    }
+    return { activeVendors, totalAssignments, totalVendors: vendors.length };
+  }, [vendors, vendorStats]);
+  const sortedFiltered = [...filtered].sort((a,b)=>{
+    if (sortBy==="name") return (a.name||"").localeCompare(b.name||"");
+    const sa=vendorStats.get(a.id), sb=vendorStats.get(b.id);
+    return (sb?.lastActive||"").localeCompare(sa?.lastActive||"") || (sb?.assignmentCount||0)-(sa?.assignmentCount||0);
+  });
   const getLedger=v=>{const entries=[];Object.entries(payments||{}).forEach(([qId,pt])=>{(pt.outgoing||[]).forEach(e=>{if((e.vendor||"").toLowerCase().includes((v.name||"").toLowerCase())){const q=queries.find(q=>q.id===qId);entries.push({...e,queryId:qId,tourFileId:q?.tourFileId,clientName:q?.groupName||q?.clientName,sector:q?.destination||q?.sector});}});});return entries.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));};
   const ROLE_STYLE={"Tour Facilitator":{bg:"#EAFAF1",color:"#0E6655"},"Local Handler":{bg:"#EBF5FB",color:"#1A5276"},"Transporter":{bg:"#F5EEF8",color:"#6C3483"}};
   const saveEdit=()=>{
@@ -66,17 +99,28 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);}}>+ New Vendor</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
+        <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Vendors</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{vendorTotals.totalVendors}</div></div>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Assignments</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{vendorTotals.activeVendors}</div></div>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Assignments</div><div style={{fontSize:16,fontWeight:700,color:"#166534"}}>{vendorTotals.totalAssignments}</div></div>
+        </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
           <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0}}>
             <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`}}>
               <input style={{...inp,padding:"6px 9px",marginBottom:6}} placeholder="Search vendors..." value={search} onChange={e=>setSearch(e.target.value)}/>
               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["All",...VENDOR_TYPES].map(t=><button key={t} onClick={()=>setFilterType(t)} style={{padding:"2px 7px",borderRadius:10,border:`1px solid ${filterType===t?G.accent:G.gray200}`,background:filterType===t?"#FDEDEC":G.white,color:filterType===t?G.accent:G.gray600,fontSize:10,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{t}</button>)}</div>
-              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer"}}>
-                <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} style={{accentColor:G.accent}}/>
-                Show inactive
-              </label>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer"}}>
+                  <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} style={{accentColor:G.accent}}/>
+                  Show inactive
+                </label>
+                <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inp,padding:"3px 4px",width:"auto",fontSize:10}} title="Sort vendors by">
+                  <option value="activity">Most active</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
             </div>
-            {filtered.map(v=><div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates([]);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div></div>)}
+            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates([]);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {editing?(

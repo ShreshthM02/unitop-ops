@@ -8,11 +8,43 @@ export default function AgentMaster({ agents, setAgents, queries, payments, onSa
   const [form,setForm]=useState({});
   const [tab,setTab]=useState("profile");
   const [search,setSearch]=useState("");
+  const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Query History"},{id:"ledger",label:"Financial Ledger"}];
   const agentQueries=a=>queries.filter(q=>q.agentCompany===a.company||q.agentId===a.id);
   const agentLedger=a=>agentQueries(a).map(q=>{const pt=payments[q.id];const tv=(parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);const rc=(pt?.entries||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{queryId:q.id,tourFileId:q.tourFileId,group:q.groupName||q.clientName,sector:q.destination||q.sector||"—",travelDate:q.travelDate||"—",status:q.status,tourVal:tv,received:rc,balance:tv-rc,entries:pt?.entries||[]};});
+  // Smart dashboard: an at-a-glance summary + per-agent activity signal,
+  // computed from data already available here (queries/payments) --
+  // no new data plumbing needed. mostRecentActivity drives both the
+  // default sort (busiest/most recent agents surface first, matching
+  // how you'd actually want to scan a list of ~dozens of agents) and
+  // a small "last active" line replacing the bare query count.
+  const agentStats = useMemo(() => {
+    const map = new Map();
+    for (const a of agents) {
+      const aq = agentQueries(a);
+      const totalValue = aq.reduce((s,q)=>{ const pt=payments[q.id]; return s + ((parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1)); }, 0);
+      const dates = aq.map(q=>q.travelDate).filter(Boolean).sort();
+      map.set(a.id, { queryCount: aq.length, totalValue, lastActive: dates.length ? dates[dates.length-1] : null });
+    }
+    return map;
+  }, [agents, queries, payments]);
+  const orgTotals = useMemo(() => {
+    let totalValue = 0, activeAgents = 0;
+    for (const a of agents) {
+      const s = agentStats.get(a.id);
+      if (!s) continue;
+      totalValue += s.totalValue;
+      if (s.queryCount > 0) activeAgents++;
+    }
+    return { totalValue, activeAgents, totalAgents: agents.length };
+  }, [agents, agentStats]);
   const filtered=agents.filter(a=>!search||a.company?.toLowerCase().includes(search.toLowerCase())||a.country?.toLowerCase().includes(search.toLowerCase()));
+  const sorted = [...filtered].sort((a,b)=>{
+    if (sortBy==="name") return (a.company||"").localeCompare(b.company||"");
+    const sa=agentStats.get(a.id), sb=agentStats.get(b.id);
+    return (sb?.lastActive||"").localeCompare(sa?.lastActive||"") || (sb?.queryCount||0)-(sa?.queryCount||0);
+  });
   const saveEdit=async()=>{
     if(form.id){
       setAgents(p=>p.map(a=>a.id===form.id?form:a));
@@ -35,10 +67,21 @@ export default function AgentMaster({ agents, setAgents, queries, payments, onSa
           <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({company:"",country:"",city:"",address:"",market:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:""});setEditing(true);setSelected(null);}}>+ New Agent</button>
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
+        <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Agents</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{orgTotals.totalAgents}</div></div>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Business</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{orgTotals.activeAgents}</div></div>
+          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Tour Value (INR)</div><div style={{fontSize:16,fontWeight:700,color:"#166534"}}>₹{Math.round(orgTotals.totalValue).toLocaleString("en-IN")}</div></div>
+        </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
           <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`}}><input style={{...inp,padding:"6px 9px"}} placeholder="Search agents..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-            <div style={{flex:1,overflowY:"auto"}}>{filtered.map(a=><div key={a.id} onClick={()=>{setSelected(a);setEditing(false);setTab("profile");}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===a.id?"#EBF5FB":G.white}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country}{a.market?" · "+a.market:""}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{agentQueries(a).length} queries</div></div>)}</div>
+            <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`,display:"flex",gap:6}}>
+              <input style={{...inp,padding:"6px 9px"}} placeholder="Search agents..." value={search} onChange={e=>setSearch(e.target.value)}/>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inp,padding:"6px 4px",width:"auto",fontSize:11}} title="Sort agents by">
+                <option value="activity">Most active</option>
+                <option value="name">Name</option>
+              </select>
+            </div>
+            <div style={{flex:1,overflowY:"auto"}}>{sorted.map(a=>{const s=agentStats.get(a.id);return(<div key={a.id} onClick={()=>{setSelected(a);setEditing(false);setTab("profile");}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===a.id?"#EBF5FB":G.white}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country}{a.market?" · "+a.market:""}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.queryCount||0} queries{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}</div>
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {editing?(
