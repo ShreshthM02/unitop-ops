@@ -73,12 +73,13 @@ describe('VendorMaster smart dashboard (1.2): real assignment-based summary, not
     'UTQ-2': { localHandlers: [{ vendorId: 'v1', sector: 'Delhi' }], transporters: [{ vendorId: 'v2', sector: 'Delhi' }], facilitators: [] },
   };
 
-  it('shows real aggregate totals -- total vendors, vendors with active assignments, total assignments', async () => {
+  it('shows real aggregate totals -- total vendors, vendors with active assignments (item 4: total assignments removed from this strip)', async () => {
     const { default: VendorMaster } = await import('../components/VendorMaster.jsx');
     render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={queries} tourExecutions={tourExecutions} onClose={()=>{}}/>);
     expect(screen.getByText('Total Vendors')).toBeTruthy();
-    expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1); // total vendors AND total assignments both happen to be 3
+    expect(screen.getByText('3')).toBeTruthy(); // total vendors
     expect(screen.getByText('2')).toBeTruthy(); // active vendors: v1 + v2, not v3
+    expect(screen.queryByText('Total Assignments')).toBeFalsy();
   });
 
   it('each vendor row shows a real last-active date from its actual assignment history', async () => {

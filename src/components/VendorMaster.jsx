@@ -61,14 +61,18 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
     return map;
   }, [vendors, tourExecutions, queries]);
   const vendorTotals = useMemo(() => {
-    let activeVendors = 0, totalAssignments = 0;
+    // item 4: Total Assignments removed from the summary strip per
+    // direct request -- no longer aggregated here either, since
+    // nothing reads it anymore. Per-vendor assignmentCount in
+    // vendorStats above stays -- still a natural byproduct of that
+    // computation and not dead.
+    let activeVendors = 0;
     for (const v of vendors) {
       const s = vendorStats.get(v.id);
       if (!s) continue;
-      totalAssignments += s.assignmentCount;
       if (s.assignmentCount > 0) activeVendors++;
     }
-    return { activeVendors, totalAssignments, totalVendors: vendors.length };
+    return { activeVendors, totalVendors: vendors.length };
   }, [vendors, vendorStats]);
   const sortedFiltered = [...filtered].sort((a,b)=>{
     if (sortBy==="name") return (a.name||"").localeCompare(b.name||"");
@@ -102,7 +106,6 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Vendors</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{vendorTotals.totalVendors}</div></div>
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Assignments</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{vendorTotals.activeVendors}</div></div>
-          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Assignments</div><div style={{fontSize:16,fontWeight:700,color:"#166534"}}>{vendorTotals.totalAssignments}</div></div>
         </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
           <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0}}>
