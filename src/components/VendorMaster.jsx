@@ -103,7 +103,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
       <div style={{background:G.white,width:"min(900px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Vendor Repository</div></div>
-          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);setRates([]);}}>+ New Vendor</button>}
+          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contacts:[],gstin:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);setRates([]);}}>+ New Vendor</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -136,7 +136,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Vendor Name</div><input style={inp} value={form.name||""} onChange={e=>setF("name",e.target.value)}/></div>
                   <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Type</div><select style={inp} value={form.type||"Hotel"} onChange={e=>setF("type",e.target.value)}>{VENDOR_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
                   <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>City</div><input style={inp} value={form.city||""} onChange={e=>setF("city",e.target.value)}/></div>
-                  {[["Contact Name","contactName"],["Phone","contactPhone"],["Email","contactEmail"],["Address","address"],["GSTIN","gstin"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
+                  {[["Address","address"],["GSTIN","gstin"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
                   {form.type==="Tour Facilitator" && [["Languages","languages","e.g. English, Thai"],["Areas / Cities Covered","areas","e.g. Bodhgaya, Rajgir"]].map(([l,k,ph])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)} placeholder={ph}/></div>)}
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Notes</div><textarea style={{...inp,minHeight:52,resize:"vertical"}} value={form.notes||""} onChange={e=>setF("notes",e.target.value)}/></div>
                   {form.id && <div style={{gridColumn:"1/-1"}}>
@@ -145,6 +145,18 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       Active (available to select elsewhere in the app)
                     </label>
                   </div>}
+                </div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Contact Persons</div>
+                  {(form.contacts||[]).map((c,i)=>(
+                    <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                      <input style={inp} placeholder="Name" value={c.name||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,name:e.target.value}:x))}/>
+                      <input style={inp} placeholder="Phone" value={c.phone||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,phone:e.target.value}:x))}/>
+                      <input style={inp} placeholder="Email" value={c.email||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,email:e.target.value}:x))}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setF("contacts",(form.contacts||[]).filter((_,xi)=>xi!==i))}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setF("contacts",[...(form.contacts||[]),{id:Date.now(),name:"",phone:"",email:""}])}>+ Add Contact</button>
                 </div>
                 <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" onClick={()=>setEditing(false)}>Cancel</button><button className="btn btn-primary" onClick={saveEdit}>Save Vendor</button></div>
               </div>
@@ -155,7 +167,15 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   <div style={{flex:1}}/>{can("vendors_edit") && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px"}} onClick={()=>{setForm({...selected});setEditing(true);}}>✏ Edit</button>}
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:16}}>
-                  {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy}}>{selected.name}</div><div style={{fontSize:12,color:G.accent,fontWeight:500,marginTop:2}}>{selected.type} · {selected.city}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{(selected.type==="Tour Facilitator"?[["Phone",selected.contactPhone],["Languages",selected.languages],["Areas Covered",selected.areas],["Status",selected.active===false?"Inactive":"Active"]]:[["Contact",selected.contactName],["Phone",selected.contactPhone],["Email",selected.contactEmail],["Address",selected.address],["GSTIN",selected.gstin]]).map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>{selected.notes&&<div style={{marginTop:12,background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{selected.notes}</div>}</div>}
+                  {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy}}>{selected.name}</div><div style={{fontSize:12,color:G.accent,fontWeight:500,marginTop:2}}>{selected.type} · {selected.city}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{(selected.type==="Tour Facilitator"?[["Languages",selected.languages],["Areas Covered",selected.areas],["Status",selected.active===false?"Inactive":"Active"]]:[["Address",selected.address],["GSTIN",selected.gstin]]).map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>
+                  <div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:14,marginBottom:6}}>Contact Persons</div>
+                  {(selected.contacts||[]).length===0?<div style={{fontSize:12,color:G.gray400}}>No contacts on file.</div>:(selected.contacts||[]).map(c=>(
+                    <div key={c.id} style={{background:G.gray50,borderRadius:8,padding:"8px 12px",marginBottom:6}}>
+                      <div style={{fontSize:13,fontWeight:600}}>{c.name||"—"}</div>
+                      <div style={{fontSize:11,color:G.gray600}}>{c.phone||"—"}{c.email?" · "+c.email:""}</div>
+                    </div>
+                  ))}
+                  {selected.notes&&<div style={{marginTop:12,background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{selected.notes}</div>}</div>}
                   {tab==="history"&&(()=>{
                     const assignmentsAll = getVendorAssignmentHistory(selected.id, tourExecutions, queries);
                     const assignments = assignmentsAll.filter(a=>isWithinPeriod(a.travelDate,periodFilter));

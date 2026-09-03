@@ -313,7 +313,29 @@ export async function savePaymentsToDB(db, queryId, data) {
 // every vendor type, including "Tour Facilitator" (individuals selected by
 // id in Tour Briefing Sheet rather than free-typed). Takes `db` as a
 // parameter for testability, same pattern as savePaymentsToDB.
+// New request: multiple contact persons for Agents and Vendors, each
+// with their own name+phone+email together (a real contact person is
+// one row, not three separate unlinked lists). Old single contact_name/
+// contact_phone/contact_email fields are kept, not dropped -- they're
+// the migration source: reconstructs a real contacts array from them
+// the first time an old-shape agent/vendor is loaded, so existing
+// contact info carries over instead of appearing blank. Pure, read-
+// only reconstruction -- never writes anything back on its own, only
+// the next real save (from either master data panel) persists the new
+// shape, same "never silently persist" rule this whole app follows.
+export function migrateContacts(entity) {
+  if (!entity) return [];
+  if (Array.isArray(entity.contacts) && entity.contacts.length > 0) return entity.contacts;
+  if (entity.contactName || entity.contactPhone || entity.contactEmail) {
+    return [{ id: Date.now(), name: entity.contactName || "", phone: entity.contactPhone || "", email: entity.contactEmail || "" }];
+  }
+  return [];
+}
+
 export async function saveVendorToDB(db, vendor) {
+  // Same contact_name/contact_phone/contact_email sync-from-primary
+  // treatment as saveAgentToDB above.
+  const primary = (vendor.contacts && vendor.contacts[0]) || {};
   try {
     await db.from("vendors").upsert({
       id: vendor.id,
@@ -321,9 +343,10 @@ export async function saveVendorToDB(db, vendor) {
       type: vendor.type,
       city: vendor.city,
       address: vendor.address,
-      contact_name: vendor.contactName,
-      contact_phone: vendor.contactPhone,
-      contact_email: vendor.contactEmail,
+      contact_name: primary.name || "",
+      contact_phone: primary.phone || "",
+      contact_email: primary.email || "",
+      contacts: vendor.contacts || [],
       gstin: vendor.gstin,
       notes: vendor.notes,
       languages: vendor.languages,
@@ -552,10 +575,21 @@ export async function loadFinalCostSheetVersion(db, queryId) {
 // (with its real id attached, if newly created) so the caller can update
 // its local state correctly.
 export async function saveAgentToDB(db, agent) {
+  // contact_name/contact_phone/contact_email stay in sync with the
+  // FIRST entry in contacts (the "primary" contact) -- several other
+  // parts of this app (AgentLedgerPanel, InvoiceGenerator,
+  // NewQueryModal, SmartSearch, Tour Briefing Sheet) still read these
+  // flat fields directly, and updating every one of them to the new
+  // array is real, separate scope beyond this request. Keeping them
+  // derived here means all of those keep working correctly with the
+  // primary contact, unchanged, while the new multi-contact UI works
+  // with the full list.
+  const primary = (agent.contacts && agent.contacts[0]) || {};
   const payload = {
     company: agent.company, country: agent.country, city: agent.city, address: agent.address,
-    market: agent.market, contact_name: agent.contactName, contact_phone: agent.contactPhone,
-    contact_email: agent.contactEmail, gstin: agent.gstin, notes: agent.notes, active: agent.active !== false,
+    market: agent.market, contact_name: primary.name || "", contact_phone: primary.phone || "",
+    contact_email: primary.email || "", gstin: agent.gstin, notes: agent.notes, active: agent.active !== false,
+    contacts: agent.contacts || [],
   };
   try {
     if (agent.id) {

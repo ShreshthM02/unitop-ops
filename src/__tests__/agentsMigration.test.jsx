@@ -15,13 +15,18 @@ describe('saveAgentToDB', () => {
   it('upserts an existing agent (has an id) with correct field mapping, keeping the same id', async () => {
     const upsert = vi.fn(async () => ({ data: [], error: null }));
     const db = { from: () => ({ upsert }) };
+    // item: multiple contact persons -- contact_name/contact_phone/
+    // contact_email now derive from contacts[0] (the "primary"
+    // contact), not from separate flat fields directly.
     const result = await saveAgentToDB(db, {
       id: 'existing-uuid', company: 'NCH Holidays', country: 'Thailand', city: 'Bangkok',
-      market: 'Thai', contactName: 'Pee', contactPhone: '123', contactEmail: 'a@b.com', notes: 'n', active: true,
+      market: 'Thai', contacts: [{ id: 1, name: 'Pee', phone: '123', email: 'a@b.com' }], notes: 'n', active: true,
     });
     expect(upsert).toHaveBeenCalledWith({
       id: 'existing-uuid', company: 'NCH Holidays', country: 'Thailand', city: 'Bangkok',
-      market: 'Thai', contact_name: 'Pee', contact_phone: '123', contact_email: 'a@b.com', notes: 'n', active: true,
+      market: 'Thai', contact_name: 'Pee', contact_phone: '123', contact_email: 'a@b.com',
+      contacts: [{ id: 1, name: 'Pee', phone: '123', email: 'a@b.com' }],
+      address: undefined, gstin: undefined, notes: 'n', active: true,
     });
     expect(result.id).toBe('existing-uuid'); // unchanged
   });

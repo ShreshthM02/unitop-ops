@@ -4,9 +4,9 @@ import VendorMaster from '../components/VendorMaster.jsx';
 import { saveVendorToDB } from '../lib/utils.js';
 
 const vendors = [
-  { id: 'VND-001', name: 'Saura Hotel', type: 'Hotel', city: 'Agra', contactName: 'Manager', contactPhone: '111', contactEmail: '', gstin: '', notes: '', active: true },
-  { id: 'VND-003', name: 'Prithvi', type: 'Tour Facilitator', contactPhone: '+91-9800000001', languages: 'English, Hindi', areas: 'Bodhgaya, Rajgir', active: true },
-  { id: 'VND-005', name: 'Retired Guide', type: 'Tour Facilitator', contactPhone: '', languages: '', areas: '', active: false },
+  { id: 'VND-001', name: 'Saura Hotel', type: 'Hotel', city: 'Agra', contacts: [{id:1,name:'Manager',phone:'111',email:''}], gstin: '', notes: '', active: true },
+  { id: 'VND-003', name: 'Prithvi', type: 'Tour Facilitator', contacts: [{id:1,name:'',phone:'+91-9800000001',email:''}], languages: 'English, Hindi', areas: 'Bodhgaya, Rajgir', active: true },
+  { id: 'VND-005', name: 'Retired Guide', type: 'Tour Facilitator', contacts: [], languages: '', areas: '', active: false },
 ];
 
 describe('VendorMaster: Tour Facilitator support', () => {
@@ -53,7 +53,7 @@ describe('VendorMaster: Tour Facilitator support', () => {
     fireEvent.change(screen.getByDisplayValue('+91-9800000001'), { target: { value: '+91-9999999999' } });
     fireEvent.click(screen.getByText('Save Vendor'));
     expect(onSaveVendor).toHaveBeenCalledTimes(1);
-    expect(onSaveVendor.mock.calls[0][0].contactPhone).toBe('+91-9999999999');
+    expect(onSaveVendor.mock.calls[0][0].contacts[0].phone).toBe('+91-9999999999');
   });
 
   it('creating a new vendor calls onSaveVendor with the new record', () => {
@@ -74,12 +74,14 @@ describe('saveVendorToDB', () => {
     const db = { from: () => ({ upsert }) };
     await saveVendorToDB(db, {
       id: 'VND-003', name: 'Prithvi', type: 'Tour Facilitator', city: '',
-      contactName: '', contactPhone: '+91-1234567890', contactEmail: '', gstin: '', notes: '',
+      contacts: [{ id: 1, name: '', phone: '+91-1234567890', email: '' }], gstin: '', notes: '',
       languages: 'English, Hindi', areas: 'Bodhgaya', active: true,
     });
     expect(upsert).toHaveBeenCalledWith({
       id: 'VND-003', name: 'Prithvi', type: 'Tour Facilitator', city: '',
-      contact_name: '', contact_phone: '+91-1234567890', contact_email: '', gstin: '', notes: '',
+      contact_name: '', contact_phone: '+91-1234567890', contact_email: '',
+      contacts: [{ id: 1, name: '', phone: '+91-1234567890', email: '' }],
+      address: undefined, gstin: '', notes: '',
       languages: 'English, Hindi', areas: 'Bodhgaya', active: true, rates: [],
     });
   });

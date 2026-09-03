@@ -69,7 +69,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
       <div style={{background:G.white,width:"min(900px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Agent & Client Repository</div></div>
-          {can("agents_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({company:"",country:"",city:"",address:"",market:"",contactName:"",contactPhone:"",contactEmail:"",gstin:"",notes:""});setEditing(true);setSelected(null);}}>+ New Agent</button>}
+          {can("agents_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({company:"",country:"",city:"",address:"",market:"",contacts:[],gstin:"",notes:""});setEditing(true);setSelected(null);}}>+ New Agent</button>}
           <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -93,8 +93,20 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 <div style={{fontSize:14,fontWeight:700,color:G.navy,marginBottom:14}}>{form.id?"Edit Agent":"New Agent"}</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Agency / Company Name</div><input style={inp} value={form.company||""} onChange={e=>setF("company",e.target.value)}/></div>
-                  {[["Country","country"],["City","city"],["Address","address"],["Market / Nationality","market"],["Contact Name","contactName"],["Contact Phone","contactPhone"],["Contact Email","contactEmail"],["GSTIN","gstin"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
+                  {[["Country","country"],["City","city"],["Address","address"],["Market / Nationality","market"],["GSTIN","gstin"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Notes</div><textarea style={{...inp,minHeight:52,resize:"vertical"}} value={form.notes||""} onChange={e=>setF("notes",e.target.value)}/></div>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Contact Persons</div>
+                  {(form.contacts||[]).map((c,i)=>(
+                    <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                      <input style={inp} placeholder="Name" value={c.name||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,name:e.target.value}:x))}/>
+                      <input style={inp} placeholder="Phone" value={c.phone||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,phone:e.target.value}:x))}/>
+                      <input style={inp} placeholder="Email" value={c.email||""} onChange={e=>setF("contacts",(form.contacts||[]).map((x,xi)=>xi===i?{...x,email:e.target.value}:x))}/>
+                      <span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>setF("contacts",(form.contacts||[]).filter((_,xi)=>xi!==i))}>✕</span>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setF("contacts",[...(form.contacts||[]),{id:Date.now(),name:"",phone:"",email:""}])}>+ Add Contact</button>
                 </div>
                 <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" onClick={()=>setEditing(false)}>Cancel</button><button className="btn btn-primary" onClick={saveEdit}>Save Agent</button></div>
               </div>
@@ -105,7 +117,15 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                   <div style={{flex:1}}/>{can("agents_edit") && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px"}} onClick={()=>{setForm({...selected});setEditing(true);}}>✏ Edit</button>}
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:16}}>
-                  {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy,marginBottom:4}}>{selected.company}</div><div style={{fontSize:12,color:G.gray600}}>{selected.country}{selected.city?" · "+selected.city:""}{selected.market?" · "+selected.market:""}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["Address",selected.address],["Contact",selected.contactName],["Phone",selected.contactPhone],["Email",selected.contactEmail],["GSTIN",selected.gstin],["Total Queries",agentQueries(selected).length+" queries"]].map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>{selected.notes&&<div style={{marginTop:12,background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{selected.notes}</div>}</div>}
+                  {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy,marginBottom:4}}>{selected.company}</div><div style={{fontSize:12,color:G.gray600}}>{selected.country}{selected.city?" · "+selected.city:""}{selected.market?" · "+selected.market:""}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["Address",selected.address],["GSTIN",selected.gstin],["Total Queries",agentQueries(selected).length+" queries"]].map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>
+                  <div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:14,marginBottom:6}}>Contact Persons</div>
+                  {(selected.contacts||[]).length===0?<div style={{fontSize:12,color:G.gray400}}>No contacts on file.</div>:(selected.contacts||[]).map(c=>(
+                    <div key={c.id} style={{background:G.gray50,borderRadius:8,padding:"8px 12px",marginBottom:6}}>
+                      <div style={{fontSize:13,fontWeight:600}}>{c.name||"—"}</div>
+                      <div style={{fontSize:11,color:G.gray600}}>{c.phone||"—"}{c.email?" · "+c.email:""}</div>
+                    </div>
+                  ))}
+                  {selected.notes&&<div style={{marginTop:12,background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{selected.notes}</div>}</div>}
                   {tab==="history"&&(()=>{
                     const filtered=agentQueries(selected).filter(q=>isWithinPeriod(q.travelDate,periodFilter));
                     return <div>

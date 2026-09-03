@@ -590,7 +590,7 @@ export const PATTERN_PLACEHOLDERS = [
   {key:"{group}",    desc:"Group / client name"},
   {key:"{date}",     desc:"Today's date (DD-MM-YYYY)"},
   {key:"{sector}",   desc:"Tour sector / destination"},
-  {key:"{id}",       desc:"Query ID"},
+  {key:"{id}",       desc:"Smart: Query ID before conversion, auto-switches to the Tour File number once converted"},
   {key:"{tourfile}", desc:"Tour File number"},
   {key:"{year}",     desc:"Current year (4-digit)"},
 ];
