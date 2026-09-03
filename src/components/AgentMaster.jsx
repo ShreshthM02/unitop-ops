@@ -30,14 +30,17 @@ export default function AgentMaster({ agents, setAgents, queries, payments, onSa
     return map;
   }, [agents, queries, payments]);
   const orgTotals = useMemo(() => {
-    let totalValue = 0, activeAgents = 0;
+    // item 2: totalValue removed from the summary strip per direct
+    // request -- no longer aggregated here either, since nothing reads
+    // it anymore. Per-agent totalValue in agentStats above stays --
+    // still a natural byproduct of that computation and not dead.
+    let activeAgents = 0;
     for (const a of agents) {
       const s = agentStats.get(a.id);
       if (!s) continue;
-      totalValue += s.totalValue;
       if (s.queryCount > 0) activeAgents++;
     }
-    return { totalValue, activeAgents, totalAgents: agents.length };
+    return { activeAgents, totalAgents: agents.length };
   }, [agents, agentStats]);
   const filtered=agents.filter(a=>!search||a.company?.toLowerCase().includes(search.toLowerCase())||a.country?.toLowerCase().includes(search.toLowerCase()));
   const sorted = [...filtered].sort((a,b)=>{
@@ -70,7 +73,6 @@ export default function AgentMaster({ agents, setAgents, queries, payments, onSa
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Agents</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{orgTotals.totalAgents}</div></div>
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Business</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{orgTotals.activeAgents}</div></div>
-          <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total Tour Value (INR)</div><div style={{fontSize:16,fontWeight:700,color:"#166534"}}>₹{Math.round(orgTotals.totalValue).toLocaleString("en-IN")}</div></div>
         </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
           <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column"}}>

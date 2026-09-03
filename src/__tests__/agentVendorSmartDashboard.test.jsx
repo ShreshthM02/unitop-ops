@@ -19,13 +19,13 @@ describe('AgentMaster smart dashboard (1.2): a real summary computed from existi
     'UTQ-3': { tourValue: '500', roeUsed: '1', entries: [] }, // INR already, roe 1
   };
 
-  it('shows real aggregate totals -- total agents, agents with active business, total INR value', () => {
+  it('shows real aggregate totals -- total agents, agents with active business (item 2: total tour value removed from this strip)', () => {
     render(<AgentMaster agents={agents} setAgents={()=>{}} queries={queries} payments={payments} onSaveAgent={()=>{}} onClose={()=>{}}/>);
     expect(screen.getByText('Total Agents')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy(); // total agents
     expect(screen.getByText('2')).toBeTruthy(); // active agents (ABC + XYZ, not Dormant)
-    // (1000*90) + (2000*90) + (500*1) = 270,500
-    expect(screen.getByText('₹2,70,500')).toBeTruthy();
+    expect(screen.queryByText('Total Tour Value (INR)')).toBeFalsy();
+    expect(screen.queryByText(/₹2,70,500/)).toBeFalsy();
   });
 
   it('each agent row shows a real last-active date, not just a bare query count', () => {
@@ -54,7 +54,7 @@ describe('AgentMaster smart dashboard (1.2): a real summary computed from existi
   it('handles a completely empty agents list without crashing', () => {
     render(<AgentMaster agents={[]} setAgents={()=>{}} queries={[]} payments={{}} onSaveAgent={()=>{}} onClose={()=>{}}/>);
     expect(screen.getByText('Total Agents')).toBeTruthy();
-    expect(screen.getByText('₹0')).toBeTruthy();
+    expect(screen.getAllByText('0').length).toBe(2); // total agents AND active agents, both correctly 0
   });
 });
 

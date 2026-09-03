@@ -47,6 +47,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
   const handleToggleActive = async (staff) => {
     const res = await db.auth.updatePermissions(staff.id, null, null, null, !staff.active);
     if (res.success) { showMsg(staff.active ? "User deactivated" : "User reactivated"); loadStaff(); }
+    else { showMsg("Error: " + (res.error||"Unknown")); }
   };
 
   const handlePermChange = async (staff, permKey, val) => {
@@ -56,7 +57,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
     if (res.success) {
       setStaffList(prev=>prev.map(s=>s.id===staff.id?{...s,permissions:{...s.permissions,[permKey]:val}}:s));
       setSelected(s=>s?{...s,permissions:{...s.permissions,[permKey]:val}}:s);
-    }
+    } else { showMsg("Error: " + (res.error||"Unknown")); }
   };
 
   const handleRoleChange = async (staff, newRole) => {
@@ -65,7 +66,7 @@ export function UserManagementPanel({ currentUser, onClose }) {
       setStaffList(prev=>prev.map(s=>s.id===staff.id?{...s,role:newRole}:s));
       setSelected(s=>s?{...s,role:newRole}:s);
       showMsg("Role updated ✓");
-    }
+    } else { showMsg("Error: " + (res.error||"Unknown")); }
   };
 
   const inp = { padding:"8px 10px", border:`1px solid ${G.gray200}`, borderRadius:6,
@@ -95,8 +96,8 @@ export function UserManagementPanel({ currentUser, onClose }) {
         </div>
 
         {toast && (
-          <div style={{ background:"#059669", color:"#fff", padding:"8px 20px",
-            fontSize:12, fontWeight:500, flexShrink:0 }}>✓ {toast}</div>
+          <div style={{ background: toast.startsWith("Error") ? "#B91C1C" : "#059669", color:"#fff", padding:"8px 20px",
+            fontSize:12, fontWeight:500, flexShrink:0 }}>{toast.startsWith("Error") ? "⚠" : "✓"} {toast}</div>
         )}
 
         <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
