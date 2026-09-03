@@ -476,7 +476,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
     });
-    await downloadDocx(blob, `Quotation - ${q.attnCompany || query.groupName || query.id}`);
+    // 8: was hardcoded to just the client/agent name -- no stable
+    // identifier at all, meaning two quotations for similarly-named
+    // clients (or a repeat client across different tours) were
+    // indistinguishable by filename alone. Now leads with the Tour File
+    // ID once converted, falling back to the Query ID beforehand --
+    // same "smart identifier" the {id} document-numbering placeholder
+    // already uses -- with the group name kept alongside for
+    // readability when browsing a folder of downloaded files.
+    await downloadDocx(blob, `Quotation - ${query.tourFileId || query.id} - ${q.attnCompany || query.groupName || "Untitled"}`);
   };
 
   // Preview now needs to reflect the same paginated output that will

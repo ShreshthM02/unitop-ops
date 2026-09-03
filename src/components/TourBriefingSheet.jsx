@@ -391,7 +391,8 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
     });
-    await downloadDocx(blob, `Tour Briefing Sheet - ${query.groupName||query.clientName}`);
+    // 8: same fix as Quotation/Itinerary.
+    await downloadDocx(blob, `Tour Briefing Sheet - ${query.tourFileId || query.id} - ${query.groupName||query.clientName||"Untitled"}`);
   };
 
   const handlePrint = async () => printHTML(await buildPrintHTML());

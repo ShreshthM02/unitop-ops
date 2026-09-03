@@ -433,7 +433,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
     });
-    await downloadDocx(blob, `Brief Itinerary - ${query.groupName||query.clientName}`);
+    // 8: same fix as Quotation -- lead with the stable Tour File/Query
+    // identifier, keep the group name for readability.
+    await downloadDocx(blob, `Brief Itinerary - ${query.tourFileId || query.id} - ${query.groupName||query.clientName||"Untitled"}`);
   };
   const printBrief = async () => printHTML(await buildBriefPrintHTML());
 
@@ -476,7 +478,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
     });
-    await downloadDocx(blob, `Detailed Itinerary - ${query.groupName||query.clientName}`);
+    await downloadDocx(blob, `Detailed Itinerary - ${query.tourFileId || query.id} - ${query.groupName||query.clientName||"Untitled"}`);
   };
   const printDetailedInternal = async () => printHTML(await buildDetailedPrintHTML());
 
