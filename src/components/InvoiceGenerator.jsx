@@ -14,7 +14,7 @@ const inp = { padding: "6px 8px", border: `1px solid ${G.gray200}`, borderRadius
 const label = (t) => <div style={{ fontSize: 10, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{t}</div>;
 const secHead = (t) => <div style={{ background: G.navy, color: "#fff", padding: "5px 10px", borderRadius: 5, fontSize: 11, fontWeight: 700, letterSpacing: "0.5px", margin: "14px 0 8px" }}>{t}</div>;
 
-export default function InvoiceGenerator({ query, payments, proformaTemplate, taxinvoiceTemplate, docSettings, onSaveDocSettings, agents, onClose, currentUser, readOnly, initialFlavor }) {
+export default function InvoiceGenerator({ query, payments, proformaTemplate, taxinvoiceTemplate, docSettings, onSaveDocSettings, agents, onClose, currentUser, readOnly, initialFlavor, signatures }) {
   const pTmpl = { ...DEFAULT_PROFORMA_TEMPLATE, ...(proformaTemplate || {}) };
   const tTmpl = { ...DEFAULT_TAXINVOICE_TEMPLATE, ...(taxinvoiceTemplate || {}) };
   const pt = payments ? payments[query.id] : null;
@@ -601,7 +601,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
                 <div style={{ marginBottom: 14 }}><RichTextEditor value={pInv.notes} onChange={v => setP("notes", v)} minHeight={72}/></div>
 
                 {secHead("✍ Sign-off")}
-                <div style={{ marginBottom: 14 }}><RichTextEditor value={pInv.signOff} onChange={v => setP("signOff", v)} minHeight={110}/></div>
+                <div style={{ marginBottom: 14 }}><RichTextEditor value={pInv.signOff} onChange={v => setP("signOff", v)} minHeight={110} signatures={signatures}/></div>
               </>
             ) : (
               <>

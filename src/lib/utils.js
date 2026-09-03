@@ -561,6 +561,46 @@ export async function loadSeries(db) {
   }
 }
 
+// Item 11: signatures library. Same simple shape as Series -- a flat,
+// named list anyone with template access can create/edit/delete, no
+// per-user ownership (deliberately started simple; see conversation --
+// personal signatures would be a separate, later addition if wanted).
+export async function loadSignatures(db) {
+  try {
+    const { data } = await db.from("signatures").select("*").order("name", { ascending: true });
+    return (data || []).map(r => ({ id: r.id, name: r.name, content: r.content_html || "" }));
+  } catch (e) {
+    console.warn("Load signatures failed:", e);
+    return [];
+  }
+}
+
+export async function saveSignature(db, sig) {
+  const payload = { name: sig.name, content_html: sig.content || "", updated_at: new Date().toISOString() };
+  try {
+    if (sig.id) {
+      const { error } = await db.from("signatures").upsert({ id: sig.id, ...payload });
+      return { id: sig.id, error: error ? (error.message || String(error)) : null };
+    }
+    const { data, error } = await db.from("signatures").insert({ ...payload, created_by: isUuid(sig.createdBy) ? sig.createdBy : null });
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
+  } catch (e) {
+    console.warn("Save signature failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function deleteSignature(db, id) {
+  try {
+    const { error } = await db.from("signatures").delete().eq("id", id);
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Delete signature failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
 export async function saveSeries(db, series) {
   const payload = { name: series.name, active: series.active !== false, notes: series.notes || null };
   try {

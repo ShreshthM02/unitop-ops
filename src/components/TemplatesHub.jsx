@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, loadSignatures, saveSignature, deleteSignature, db } = Lib;
 
 export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings}){
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
@@ -9,6 +9,28 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const [settings,setSettings]=React.useState(()=>({...DEFAULT_DOC_SETTINGS,...(docSettings||{})}));
   const [typo,setTypo]=React.useState(TYPOGRAPHY_DEFAULTS);
   React.useEffect(()=>{ loadAppSetting(db,"typography",TYPOGRAPHY_DEFAULTS).then(setTypo); },[]);
+  // Item 11: signatures library, loaded once on mount. Real Supabase
+  // CRUD (its own table, not app_settings -- a flat named list that
+  // grows/shrinks freely doesn't fit the fixed-shape settings pattern
+  // the way doc_templates/doc_numbering do), not deferred to save-all.
+  const [signatures,setSignatures]=React.useState([]);
+  const [sigDraft,setSigDraft]=React.useState(null); // {id?, name, content} currently being edited, or null
+  const [sigMsg,setSigMsg]=React.useState("");
+  const reloadSignatures=React.useCallback(()=>{ loadSignatures(db).then(setSignatures); },[]);
+  React.useEffect(()=>{ reloadSignatures(); },[reloadSignatures]);
+  const saveSigDraft=async()=>{
+    if(!sigDraft?.name?.trim()) return;
+    const {error}=await saveSignature(db,sigDraft);
+    if(error){ setSigMsg("Error: "+error); return; }
+    setSigDraft(null); setSigMsg("Signature saved ✓"); setTimeout(()=>setSigMsg(""),2500);
+    reloadSignatures();
+  };
+  const deleteSigConfirm=async(id)=>{
+    if(!window.confirm("Delete this signature? This cannot be undone.")) return;
+    const {error}=await deleteSignature(db,id);
+    if(error){ setSigMsg("Error: "+error); return; }
+    reloadSignatures();
+  };
   // Draft copy of ALL document templates (quotation, proforma, taxinvoice, ...),
   // seeded from the live value passed down from UnitopApp. Edits here stay
   // local until "Save All Settings" — same pattern as settings/typo above.
@@ -47,7 +69,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const prevFn=(d)=>{const s=settings[d];if(!s)return "";const now=new Date();const ddmmyyyy=`${String(now.getDate()).padStart(2,"0")}-${String(now.getMonth()+1).padStart(2,"0")}-${now.getFullYear()}`;return(s.pattern||"{prefix}-{seq}").replace("{prefix}",s.prefix||"DOC").replace("{seq}",String(s.serial||1).padStart(3,"0")).replace("{group}","NCH_Holidays").replace("{date}",ddmmyyyy).replace("{year}",now.getFullYear()).replace("{sector}","Golden_Triangle").replace("{tourfile}","TUR-2025-019");};
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const lbl={fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4,display:"block"};
-  const sideItems=[...DOC_TYPES,{id:"query",icon:"🔢",label:"Query ID"},{id:"tourfile",icon:"📁",label:"Tour File ID"},{id:"_typography",icon:"🎨",label:"Typography & Colours"}];
+  const sideItems=[...DOC_TYPES,{id:"query",icon:"🔢",label:"Query ID"},{id:"tourfile",icon:"📁",label:"Tour File ID"},{id:"_typography",icon:"🎨",label:"Typography & Colours"},{id:"_signatures",icon:"✒",label:"Signatures"}];
   // Bug fix: this used to look up only DOC_TYPES, which doesn't include
   // "query"/"tourfile" (they're separate, intentional sidebar entries
   // for id-numbering settings, not real document types). sm being
@@ -60,6 +82,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const cs=settings[selectedDoc]||{};
   const isSys=selectedDoc==="query"||selectedDoc==="tourfile";
   const isTypo=selectedDoc==="_typography";
+  const isSignatures=selectedDoc==="_signatures";
   const schema=TEMPLATE_FIELD_SCHEMAS[selectedDoc]; // undefined for costsheet/monument/receipt -> placeholder shown
   return(
     <div style={{display:"flex",height:"100%",minHeight:500,margin:"-16px -20px"}}>
@@ -101,7 +124,44 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
             </div>
           </div>
         )}
-        {!isTypo&&sm&&(
+        {isSignatures&&(
+          <div>
+            <div style={{fontSize:16,fontWeight:700,color:G.navy,fontFamily:"'Playfair Display',serif",marginBottom:6}}>✒ Signatures</div>
+            <div style={{fontSize:12,color:G.gray600,marginBottom:14}}>Named, reusable closing text. Pick one from the "✒ Signature" button inside any closing/sign-off field, then edit the inserted text freely -- it's pasted as real content, not a locked block.</div>
+            {sigMsg&&<div style={{fontSize:11,color:sigMsg.startsWith("Error")?"#B91C1C":"#059669",fontWeight:600,marginBottom:10}}>{sigMsg}</div>}
+            {signatures.length===0&&!sigDraft&&<div style={{textAlign:"center",padding:24,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8,marginBottom:14,fontSize:12}}>No signatures saved yet.</div>}
+            {signatures.map(sig=>(
+              <div key={sig.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <div style={{flex:1,fontSize:13,fontWeight:600,color:G.navy}}>{sig.name}</div>
+                  <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setSigDraft({...sig})}>✏ Edit</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,color:"#B91C1C"}} onClick={()=>deleteSigConfirm(sig.id)}>✕ Delete</button>
+                </div>
+                <div style={{fontSize:11,color:G.gray600}} dangerouslySetInnerHTML={{__html:sig.content}}/>
+              </div>
+            ))}
+            {sigDraft?(
+              <div style={{background:"#F8FAFC",border:`1px solid ${G.gray200}`,borderRadius:8,padding:14,marginTop:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:G.navy,marginBottom:10}}>{sigDraft.id?"Edit Signature":"New Signature"}</div>
+                <div style={{marginBottom:8}}>
+                  <label style={lbl}>Name</label>
+                  <input style={inp} value={sigDraft.name||""} onChange={e=>setSigDraft(p=>({...p,name:e.target.value}))} placeholder="e.g. Formal Sign-off, Priya's Signature"/>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={lbl}>Content</label>
+                  <RichTextEditor value={sigDraft.content||""} onChange={v=>setSigDraft(p=>({...p,content:v}))}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn btn-primary" style={{fontSize:12}} onClick={saveSigDraft}>💾 Save</button>
+                  <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setSigDraft(null)}>Cancel</button>
+                </div>
+              </div>
+            ):(
+              <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setSigDraft({name:"",content:""})}>+ New Signature</button>
+            )}
+          </div>
+        )}
+        {!isTypo&&!isSignatures&&sm&&(
           <div>
             <div style={{fontSize:16,fontWeight:700,color:G.navy,fontFamily:"'Playfair Display',serif",marginBottom:4}}>{sm.icon} {sm.label}</div>
             {sm.formats&&<div style={{fontSize:11,color:G.gray400,marginBottom:14}}>{sm.formats.join(" · ")}</div>}

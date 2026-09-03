@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -41,6 +41,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [queries, setQueries]     = useState(INITIAL_QUERIES);
   const [agents, setAgents]       = useState(INITIAL_AGENTS);
   const [series, setSeries]       = useState([]);
+  const [signatures, setSignatures] = useState([]);
   const [vendors, setVendors]     = useState(INITIAL_VENDORS);
   const [staff, setStaff]         = useState(USERS);
   const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
@@ -168,7 +169,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           { data: payData }, { data: inData }, { data: outData },
           { data: teData },
           { data: csIdData }, { data: quoteIdData },
-          seriesData,
+          seriesData, signaturesData,
         ] = await Promise.all([
           db.from("queries").select("*").order("created_at", {ascending:false}),
           db.from("query_audit").select("*").order("created_at", {ascending:true}),
@@ -177,8 +178,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           db.from("vendors").select("*").order("name", {ascending:true}),
           // Staff: only safe display columns, never password_hash/
           // session_token/permissions -- the client has no legitimate
-          // reason to hold those in memory.
-          db.from("staff").select("id,name,role,color,avatar,active").order("name", {ascending:true}),
+          // reason to hold those in memory. avatar_url added alongside
+          // this signatures work -- found missing here while touching
+          // this same query: without it, colleagues' real uploaded
+          // photos never showed anywhere in the app except User
+          // Management's own separate getStaffList() call, which
+          // already had it.
+          db.from("staff").select("id,name,role,color,avatar,avatar_url,active").order("name", {ascending:true}),
           loadAppSetting(db, "doc_numbering", DEFAULT_DOC_SETTINGS),
           loadAppSetting(db, "doc_templates", DEFAULT_DOC_TEMPLATES),
           db.from("payments").select("*"),
@@ -191,10 +197,12 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           db.from("cost_sheets").select("query_id"),
           db.from("quotations").select("query_id"),
           loadSeries(db),
+          loadSignatures(db),
         ]);
         setCostSheetExists(new Set((csIdData||[]).map(r=>r.query_id)));
         setQuotationExists(new Set((quoteIdData||[]).map(r=>r.query_id)));
         setSeries(seriesData);
+        setSignatures(signaturesData);
 
         if (qData && qData.length > 0) {
           const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
@@ -790,11 +798,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {/* PANELS */}
         {showCostSheet  && <CostSheet query={showCostSheet} onClose={()=>setShowCostSheet(null)} onProceedToQuotation={(costSheetId)=>{setPendingCostSheetId(costSheetId);setShowQuotation(showCostSheet);setShowCostSheet(null);}} currentUser={currentUser} readOnly={showCostSheet.cancelled} staff={staff}/>}
         {showItinerary && <Itinerary query={showItinerary} briefTemplate={docTemplates.brief_itin} detailTemplate={docTemplates.detail_itin} onClose={()=>setShowItinerary(null)} currentUser={currentUser} readOnly={showItinerary.cancelled}/>}
-        {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled} onUpdateQuery={handleUpdateQuery}/>}
-        {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} onSaveDocSettings={saveDocSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled}/>}
+        {showQuotation  && <QuotationGenerator query={showQuotation} template={docTemplates.quotation} costSheetId={pendingCostSheetId} onClose={()=>{setShowQuotation(null);setPendingCostSheetId(null);}} onSaved={()=>showToast("Quotation saved")} currentUser={currentUser} readOnly={showQuotation.cancelled} onUpdateQuery={handleUpdateQuery} signatures={signatures}/>}
+        {showInvoices   && <InvoiceGenerator query={showInvoices.query} payments={payments} proformaTemplate={docTemplates.proforma} taxinvoiceTemplate={docTemplates.taxinvoice} docSettings={docSettings} onSaveDocSettings={saveDocSettings} agents={agents} initialFlavor={showInvoices.flavor} onClose={()=>setShowInvoices(null)} currentUser={currentUser} readOnly={showInvoices.query.cancelled} signatures={signatures}/>}
         {showPayments   && <EnhancedPaymentTracker query={showPayments} payments={payments} onUpdatePayments={updatePayments} onClose={()=>setShowPayments(null)} readOnly={showPayments.cancelled} currentUser={currentUser}/>}
         {showVoucher    && <ExchangeOrderGenerator query={showVoucher} template={docTemplates.exchange} vendors={vendors} docSettings={docSettings} onSaveDocSettings={saveDocSettings} onClose={()=>setShowVoucher(null)} currentUser={currentUser} readOnly={showVoucher.cancelled}/>}
-        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} vendors={vendors} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled}/>}
+        {showTourBrief  && <TourBriefingSheet query={showTourBrief} template={docTemplates.tourbriefing} facilitators={vendors.filter(v=>v.type==="Tour Facilitator")} vendors={vendors} onClose={()=>setShowTourBrief(null)} currentUser={currentUser} readOnly={showTourBrief.cancelled} signatures={signatures}/>}
         {showEditor     && <DocumentEditor query={showEditor} onClose={()=>setShowEditor(null)} currentUser={currentUser} readOnly={showEditor.cancelled}/>}
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>

@@ -1,7 +1,7 @@
 // Small shared helpers/components used across many components:
 // permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
 import { getWFStepStatus } from "./utils.js";
 
@@ -133,8 +133,9 @@ export function OtherInput({ value, onChange, placeholder="Please specify..." })
 // The toolbar is deliberately understated -- thin border, light gray
 // text, no fill -- so it reads as a quiet editing affordance sitting
 // just above the field, not a loud, attention-grabbing control bar.
-export function RichTextEditor({ value, onChange, readOnly, minHeight = 90 }) {
+export function RichTextEditor({ value, onChange, readOnly, minHeight = 90, signatures }) {
   const ref = useRef(null);
+  const [sigOpen, setSigOpen] = useState(false);
   useEffect(() => {
     if (ref.current && ref.current.innerHTML !== (value || "")) ref.current.innerHTML = value || "";
   }, [value]);
@@ -149,14 +150,46 @@ export function RichTextEditor({ value, onChange, readOnly, minHeight = 90 }) {
       {lbl}
     </button>
   );
+  // Item 11: inserts the chosen signature's HTML at the current cursor
+  // position via the same execCommand mechanism the B/I/U/List buttons
+  // already use -- onMouseDown preventDefault on both the toggle and
+  // each signature button keeps focus (and the cursor position) inside
+  // the editable area the whole time, so this doesn't need to manually
+  // save/restore a selection. Pasted as real, editable content -- the
+  // person can immediately adjust it, never a locked block.
+  const stripHtml = (html) => { const d = document.createElement("div"); d.innerHTML = (html || "").replace(/<br\s*\/?>/gi, " ").replace(/<\/(p|div|li)>/gi, " "); return (d.textContent || "").replace(/\s+/g, " ").trim(); };
+  const insertSignature = (sig) => {
+    document.execCommand("insertHTML", false, sig.content);
+    ref.current?.focus();
+    onChange(ref.current.innerHTML);
+    setSigOpen(false);
+  };
   return (
-    <div>
+    <div style={{ position: "relative" }}>
       {!readOnly && (
-        <div style={{ marginBottom: 4 }}>
+        <div style={{ marginBottom: 4, display: "flex", alignItems: "center" }}>
           {btn("B", "bold", "Bold")}
           {btn("I", "italic", "Italic")}
           {btn("U", "underline", "Underline")}
           {btn("List", "insertUnorderedList", "Bullet list")}
+          {signatures && signatures.length > 0 && (
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setSigOpen(o => !o)} title="Insert a saved signature"
+              style={{ padding: "2px 7px", fontSize: 10, fontWeight: 500, border: `1px solid ${G.gray200}`, borderRadius: 4, background: sigOpen ? G.gray50 : "transparent", color: G.gray600, cursor: "pointer" }}>
+              ✒ Signature ▾
+            </button>
+          )}
+        </div>
+      )}
+      {sigOpen && (
+        <div style={{ position: "absolute", zIndex: 20, top: 26, left: 0, minWidth: 220, maxWidth: 320, background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 6, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", padding: 4 }}>
+          {signatures.map(sig => (
+            <button key={sig.id} type="button" onMouseDown={e => e.preventDefault()} onClick={() => insertSignature(sig)}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 8px", border: "none", borderRadius: 4, background: "transparent", cursor: "pointer", fontFamily: "'Inter',sans-serif" }}
+              onMouseEnter={e => e.currentTarget.style.background = G.gray50} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: G.gray800 }}>{sig.name}</div>
+              <div style={{ fontSize: 10, color: G.gray400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stripHtml(sig.content) || "(empty)"}</div>
+            </button>
+          ))}
         </div>
       )}
       <div ref={ref} contentEditable={!readOnly} suppressContentEditableWarning
