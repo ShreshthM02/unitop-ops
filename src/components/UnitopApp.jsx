@@ -798,7 +798,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
-        {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
+        {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
         {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>setShowSeries(false)}/>}
         {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
 

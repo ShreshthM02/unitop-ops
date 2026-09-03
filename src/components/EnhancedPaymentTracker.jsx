@@ -377,6 +377,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
 }
 
 export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose, readOnly, currentUser }) {
+  const can = useCan(currentUser);
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
@@ -537,6 +538,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                   query={query} pt={pt} setPt={setPt} onUpdatePayments={onUpdatePayments}
                   LOGO_B64={LOGO_B64} COMPANY_INFO={COMPANY_INFO} currentUser={currentUser}/>
               ))}
+              {can("payments_incoming") && (
               <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:8,padding:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#0E6655",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>+ Record Incoming Payment</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -568,6 +570,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                 )}
                 <button className="btn btn-success" onClick={addIncoming} style={{fontSize:12}}>✓ Record & Generate Receipt</button>
               </div>
+              )}
             </>
           )}
 
@@ -586,6 +589,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                     style={{background:"none",border:"none",cursor:"pointer",color:G.gray400,fontSize:18,padding:"0 4px",flexShrink:0}} title="Delete">✕</button>
                 </div>
               ))}
+              {can("payments_outgoing") && (
               <div style={{background:"#F5EEF8",border:"1px solid #D2B4DE",borderRadius:8,padding:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#6C3483",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>+ Record Outgoing / Vendor Payment</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -611,6 +615,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                 </div>
                 <button className="btn btn-primary" style={{background:"#6C3483",fontSize:12}} onClick={addOutgoing}>✓ Record Outgoing Payment</button>
               </div>
+              )}
             </>
           )}
 

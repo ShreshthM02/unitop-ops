@@ -11,19 +11,19 @@ const vendors = [
 
 describe('VendorMaster: Tour Facilitator support', () => {
   it('lists active vendors by default, hiding inactive ones', () => {
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     expect(screen.getByText('Prithvi')).toBeTruthy();
     expect(screen.queryByText(/Retired Guide/)).toBeNull();
   });
 
   it('shows inactive vendors when "Show inactive" is checked', () => {
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Show inactive'));
     expect(screen.getByText(/Retired Guide/)).toBeTruthy();
   });
 
   it('filtering by "Tour Facilitator" type shows only facilitators, not other vendor types', () => {
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     const filterButtons = screen.getAllByText('Tour Facilitator');
     fireEvent.click(filterButtons[0].closest('button'));
     expect(screen.getByText('Prithvi')).toBeTruthy();
@@ -31,7 +31,7 @@ describe('VendorMaster: Tour Facilitator support', () => {
   });
 
   it('editing a Tour Facilitator vendor shows Languages/Areas fields; editing a Hotel does not', () => {
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Prithvi'));
     fireEvent.click(screen.getByText('✏ Edit'));
     expect(screen.getByText('Languages')).toBeTruthy();
@@ -39,7 +39,7 @@ describe('VendorMaster: Tour Facilitator support', () => {
   });
 
   it('editing a Hotel vendor does not show Languages/Areas fields', () => {
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Saura Hotel'));
     fireEvent.click(screen.getByText('✏ Edit'));
     expect(screen.queryByText('Languages')).toBeNull();
@@ -47,7 +47,7 @@ describe('VendorMaster: Tour Facilitator support', () => {
 
   it('editing an existing vendor calls onSaveVendor with the updated record', () => {
     const onSaveVendor = vi.fn();
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onSaveVendor={onSaveVendor} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onSaveVendor={onSaveVendor} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Prithvi'));
     fireEvent.click(screen.getByText('✏ Edit'));
     fireEvent.change(screen.getByDisplayValue('+91-9800000001'), { target: { value: '+91-9999999999' } });
@@ -58,7 +58,7 @@ describe('VendorMaster: Tour Facilitator support', () => {
 
   it('creating a new vendor calls onSaveVendor with the new record', () => {
     const onSaveVendor = vi.fn();
-    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onSaveVendor={onSaveVendor} onClose={()=>{}}/>);
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onSaveVendor={onSaveVendor} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('+ New Vendor'));
     const nameLabel = screen.getByText('Vendor Name');
     fireEvent.change(nameLabel.parentElement.querySelector('input'), { target: { value: 'New Vendor Co' } });

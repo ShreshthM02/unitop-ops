@@ -8,6 +8,7 @@ import PricingTimeline from './PricingTimeline.jsx';
 export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
+  const can = useCan(currentUser);
   const autoDetected = getAutoDetectedSteps({
     hasCostSheet: costSheetExists,
     hasQuotation: quotationExists,
@@ -105,21 +106,26 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   // same as any day not yet filled in) rather than the whole document being
   // hidden.
   const queryDocs = [
-    {icon:"📊",label:"Cost Sheet",    panel:"costsheet"},
-    {icon:"🗺",label:"Itinerary",     panel:"itinerary"},
-    {icon:"📋",label:"Quotation",     panel:"quotation"},
+    {icon:"📊",label:"Cost Sheet",    panel:"costsheet", perm:"cost_sheet"},
+    {icon:"🗺",label:"Itinerary",     panel:"itinerary", perm:"itinerary"},
+    {icon:"📋",label:"Quotation",     panel:"quotation", perm:"quotation"},
   ];
   const caseFileDocs = [
-    {icon:"📊",label:"Cost Sheet",        panel:"costsheet"},
-    {icon:"🗺",label:"Itinerary",         panel:"itinerary"},
-    {icon:"📋",label:"Quotation",         panel:"quotation"},
-    {icon:"🧾",label:"Invoices",          panel:"proforma"},
-    {icon:"🎫",label:"Exchange Orders",   panel:"voucher"},
+    {icon:"📊",label:"Cost Sheet",        panel:"costsheet", perm:"cost_sheet"},
+    {icon:"🗺",label:"Itinerary",         panel:"itinerary", perm:"itinerary"},
+    {icon:"📋",label:"Quotation",         panel:"quotation", perm:"quotation"},
+    {icon:"🧾",label:"Invoices",          panel:"proforma", perm:"invoices"},
+    {icon:"🎫",label:"Exchange Orders",   panel:"voucher", perm:"exchange_orders"},
     {icon:"📋",label:"Tour Briefing Sheet",panel:"tourbriefing"},
     {icon:"📝",label:"Editor",            panel:"editor"},
     {icon:"📁",label:"Uploads",            panel:"docregistry"},
   ];
-  const docs = isCaseFile ? caseFileDocs : queryDocs;
+  // Hidden, not disabled, matching how every other permission-gated
+  // control in this app already behaves (New Query button, Templates/
+  // User Management sidebar sections, etc) -- a doc type with no perm
+  // key at all (Tour Briefing Sheet, Editor, Uploads) has no dedicated
+  // permission defined in ROLE_DEFAULTS, so it stays visible to everyone.
+  const docs = (isCaseFile ? caseFileDocs : queryDocs).filter(d => !d.perm || can(d.perm));
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -316,7 +322,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                         → Move to {KANBAN_COLS.find(c=>c.id===nextStatusMap[query.status])?.label}
                       </button>
                     )}
-                    {!query.cancelled&&(
+                    {!query.cancelled&&can("cancel_query")&&(
                       <button onClick={onCancel}
                         style={{width:"100%",padding:"8px",background:"#FFF5F5",color:"#C0392B",
                           border:"1px solid #FECACA",borderRadius:6,fontSize:12,fontWeight:500,

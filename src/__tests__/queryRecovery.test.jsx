@@ -12,7 +12,7 @@ const cancelledQuery = {
 const baseProps = {
   query: cancelledQuery, onClose: ()=>{}, onConvert: ()=>{}, onAdvance: ()=>{}, onGenerateQuote: ()=>{},
   onToggleWF: vi.fn(), onCancel: ()=>{}, onUpdateRemarks: ()=>{}, onUpdateQuery: ()=>{},
-  currentUser: { id:1, name:'Priya' }, costSheetExists: false, quotationExists: false, hasPayments: false,
+  currentUser: { id:1, name:'Priya', role:'admin' }, costSheetExists: false, quotationExists: false, hasPayments: false,
 };
 
 describe('Cancelled query drawer: locked down except recovery', () => {

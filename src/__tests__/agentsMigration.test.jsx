@@ -46,7 +46,7 @@ describe('AgentMaster: no longer invents a fake id for new agents', () => {
   it('creating a new agent calls onSaveAgent and adopts whatever id it returns', async () => {
     const onSaveAgent = vi.fn(async (agent) => ({ ...agent, id: 'real-uuid-from-db' }));
     const setAgents = vi.fn();
-    render(<AgentMaster agents={[]} setAgents={setAgents} queries={[]} payments={{}} onSaveAgent={onSaveAgent} onClose={()=>{}}/>);
+    render(<AgentMaster agents={[]} setAgents={setAgents} queries={[]} payments={{}} currentUser={{id:"admin-1",role:"admin"}} onSaveAgent={onSaveAgent} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('+ New Agent'));
     const nameLabel = screen.getByText('Agency / Company Name');
     fireEvent.change(nameLabel.parentElement.querySelector('input'), { target: { value: 'Brand New Agency' } });
