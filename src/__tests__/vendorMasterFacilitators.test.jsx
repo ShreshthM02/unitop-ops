@@ -123,7 +123,7 @@ describe('VendorMaster: Service History now shows real tour assignments (the act
     render(<VendorMaster vendors={[unassignedVendor]} setVendors={()=>{}} queries={[]} payments={{}} tourExecutions={{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Unassigned Person'));
     fireEvent.click(screen.getByText('Service History'));
-    expect(screen.getByText(/No tours assigned yet/)).toBeTruthy();
+    expect(screen.getByText(/No tours assigned in this period/)).toBeTruthy();
   });
 
   it('renders without crashing when payments/tourExecutions are not passed at all (defensive)', () => {

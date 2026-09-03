@@ -165,3 +165,69 @@ export function RichTextEditor({ value, onChange, readOnly, minHeight = 90 }) {
     </div>
   );
 }
+
+// Items 3/5: a bank-statement-style time-period filter, reused across
+// Agent Query History/Financial Ledger and Vendor Service History/
+// Contracted Rates/Financial Ledger/Exchange Orders -- one component,
+// one matching helper, six call sites, rather than six separate
+// implementations that would drift.
+export function isWithinPeriod(dateStr, filter) {
+  if (!filter || filter.preset === "all") return true;
+  if (!dateStr) return false; // no date at all -- can't place it in any period, so excluded once a period is actually selected
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return false;
+  if (filter.preset === "custom") {
+    if (filter.from && d < new Date(filter.from)) return false;
+    if (filter.to && d > new Date(filter.to + "T23:59:59")) return false;
+    return true;
+  }
+  const months = { "3m": 3, "6m": 6, "1y": 12 }[filter.preset];
+  if (!months) return true;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return d >= cutoff;
+}
+
+// For records with their OWN date RANGE rather than a single date
+// (Contracted Rates' "Rates From/Till") -- shown when that range
+// overlaps the selected period at all, not just when it starts within it.
+export function rangeOverlapsPeriod(fromStr, tillStr, filter) {
+  if (!filter || filter.preset === "all") return true;
+  if (!fromStr && !tillStr) return true; // no dates entered at all -- can't determine relevance, so never hidden by a date filter
+  const rangeFrom = fromStr ? new Date(fromStr) : null;
+  const rangeTill = tillStr ? new Date(tillStr) : null;
+  let periodFrom, periodTo;
+  if (filter.preset === "custom") {
+    periodFrom = filter.from ? new Date(filter.from) : null;
+    periodTo = filter.to ? new Date(filter.to + "T23:59:59") : null;
+  } else {
+    const months = { "3m": 3, "6m": 6, "1y": 12 }[filter.preset];
+    if (!months) return true;
+    periodFrom = new Date();
+    periodFrom.setMonth(periodFrom.getMonth() - months);
+    periodTo = null;
+  }
+  if (periodTo && rangeFrom && rangeFrom > periodTo) return false;
+  if (periodFrom && rangeTill && rangeTill < periodFrom) return false;
+  return true;
+}
+
+export function TimePeriodFilter({ value, onChange }) {
+  const filter = value || { preset: "all" };
+  const PRESETS = [["all","All time"],["3m","Past 3 months"],["6m","Past 6 months"],["1y","Past 1 year"],["custom","Custom range"]];
+  const selStyle = { padding: "5px 8px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 11, fontFamily: "'Inter',sans-serif", color: G.gray800, background: G.white };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <select value={filter.preset} onChange={e=>onChange({ ...filter, preset: e.target.value })} style={selStyle} title="Filter by time period">
+        {PRESETS.map(([id,label])=><option key={id} value={id}>{label}</option>)}
+      </select>
+      {filter.preset === "custom" && (
+        <>
+          <input type="date" value={filter.from||""} onChange={e=>onChange({...filter, from:e.target.value})} style={selStyle}/>
+          <span style={{ fontSize: 11, color: G.gray400 }}>to</span>
+          <input type="date" value={filter.to||""} onChange={e=>onChange({...filter, to:e.target.value})} style={selStyle}/>
+        </>
+      )}
+    </div>
+  );
+}

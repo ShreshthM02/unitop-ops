@@ -150,6 +150,6 @@ describe('VendorMaster (item 1): Financial Ledger tour file references are now c
     // No ledger entries in this fixture -- confirms the empty-ledger
     // state renders without crashing now that the clickable lookup
     // logic touches every entry.
-    expect(screen.getByText('No transactions yet.')).toBeTruthy();
+    expect(screen.getByText('No transactions in this period.')).toBeTruthy();
   });
 });

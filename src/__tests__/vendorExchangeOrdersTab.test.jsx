@@ -80,7 +80,7 @@ describe('VendorMaster: Exchange Orders tab', () => {
     render(<VendorMaster vendors={[vendor]} setVendors={()=>{}} queries={[query]} payments={{}} tourExecutions={{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText(vendor.name));
     fireEvent.click(screen.getByText('Exchange Orders'));
-    await waitFor(() => expect(screen.getByText(/No Exchange Orders issued to this vendor yet/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No Exchange Orders in this period/)).toBeTruthy());
   });
 
   it('"Open" opens the Exchange Order panel landed directly on that order', async () => {
