@@ -649,7 +649,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
-            {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings}/>}
+            {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings} onSignaturesChanged={()=>loadSignatures(db).then(setSignatures)}/>}
             {view==="place_library" && <AdminPlaceLibrary/>}
 
             {view==="cancelled" && (

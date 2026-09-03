@@ -144,6 +144,18 @@ export const _supa = (() => {
         // every ordinary data request.
         _session = { token: data.token, jwt: data.jwt, user: data.user };
         localStorage.setItem("unitop_session", JSON.stringify(_session));
+        // Real, definitive fix for item 2 (avatar upload RLS failure):
+        // realtimeClient (the actual supabase-js client, used for
+        // Storage uploads) was NEVER given this JWT anywhere -- it's a
+        // completely separate client from the hand-rolled REST wrapper
+        // above, which only ever attached the JWT to its OWN fetch
+        // calls via authHeaders(). realtimeClient's own auth state
+        // stayed at the plain anon key the whole time, for every
+        // session, regardless of who was logged in -- confirmed
+        // directly: staff-avatars' upload policy correctly requires
+        // authenticated, and Storage was never actually being called as
+        // anything but anon. Syncing it here so it's authenticated too.
+        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: data.token }).catch(()=>{});
         return { user: data.user, error: null };
       } catch(e) { return { user: null, error: "Cannot reach server. Check internet connection." }; }
     },
@@ -186,6 +198,12 @@ export const _supa = (() => {
         _session.user = data.user;
         _session.jwt = data.jwt;
         localStorage.setItem("unitop_session", JSON.stringify(_session));
+        // Same fix as login() above -- a session restored on page
+        // refresh (not a fresh login) needs realtimeClient synced too,
+        // otherwise every reload silently drops back to anon for
+        // Storage uploads even though the rest of the app correctly
+        // stays logged in.
+        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: sess.token }).catch(()=>{});
         return data.user;
       } catch(e) { return sess?.user || null; }
     },

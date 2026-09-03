@@ -173,7 +173,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
                                     <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:rs.bg,color:rs.color,fontWeight:600}}>{a.role}</span>
                                     {a.cancelled&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>Cancelled</span>}
-                                    <span style={{fontSize:12,fontWeight:700,color:G.navy}}>📁 {a.tourFileId}</span>
+                                    {(()=>{const aq=queries.find(qq=>qq.id===a.queryId);return<span onClick={()=>aq&&document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:aq}}))} style={{fontSize:12,fontWeight:700,color:aq?"#1A5276":G.navy,cursor:aq?"pointer":"default",textDecoration:aq?"underline":"none"}}>📁 {a.tourFileId}</span>;})()}
                                   </div>
                                   <div style={{fontSize:11,color:G.gray600}}>{a.groupName} · {a.sector} · {formatDateSlash(a.travelDate)||"TBC"}</div>
                                   {a.notes&&<div style={{fontSize:11,color:G.gray400,marginTop:2}}>{a.notes}</div>}

@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, loadSignatures, saveSignature, deleteSignature, db } = Lib;
 
-export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings}){
+export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings,onSignaturesChanged}){
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
   const [activePane,setActivePane]=React.useState("settings");
   const [settings,setSettings]=React.useState(()=>({...DEFAULT_DOC_SETTINGS,...(docSettings||{})}));
@@ -24,12 +24,23 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
     if(error){ setSigMsg("Error: "+error); return; }
     setSigDraft(null); setSigMsg("Signature saved ✓"); setTimeout(()=>setSigMsg(""),2500);
     reloadSignatures();
+    // Real bug found and fixed (item 6): this component's own
+    // signatures state was completely independent from UnitopApp's own
+    // copy, which is what actually gets passed down to Quotation/
+    // Invoice/Tour Briefing Sheet's signature pickers -- a newly
+    // created signature reloaded correctly HERE but never synced back
+    // to the parent, so it silently never showed up anywhere it could
+    // actually be inserted until a full app reload. Notifying the
+    // parent to refetch its own copy too, same as onSaveDocTemplates
+    // already does for templates.
+    onSignaturesChanged&&onSignaturesChanged();
   };
   const deleteSigConfirm=async(id)=>{
     if(!window.confirm("Delete this signature? This cannot be undone.")) return;
     const {error}=await deleteSignature(db,id);
     if(error){ setSigMsg("Error: "+error); return; }
     reloadSignatures();
+    onSignaturesChanged&&onSignaturesChanged();
   };
   // Draft copy of ALL document templates (quotation, proforma, taxinvoice, ...),
   // seeded from the live value passed down from UnitopApp. Edits here stay

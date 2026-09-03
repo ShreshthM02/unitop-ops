@@ -147,3 +147,50 @@ describe('Signature picker wired onto the three real target fields', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('item 6 (real fix): a newly saved signature now syncs back to the parent, not stuck in TemplatesHub\u2019s own independent copy', () => {
+  it('saving a signature calls onSignaturesChanged, so the parent (UnitopApp) can refetch its own copy -- the actual one passed down to every document\u2019s signature picker', async () => {
+    const db = { from: () => {
+      const builder = {
+        select: () => builder, order: async () => ({ data: [], error: null }),
+        insert: async (payload) => ({ data: [{ ...payload, id: 'new-sig' }], error: null }),
+      };
+      return builder;
+    } };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: TemplatesHub } = await import('../components/TemplatesHub.jsx');
+    const onSignaturesChanged = vi.fn();
+    render(<TemplatesHub docTemplates={{}} onSaveDocTemplates={()=>{}} docSettings={{}} setDocSettings={()=>{}} onSignaturesChanged={onSignaturesChanged}/>);
+    fireEvent.click(screen.getByText(/Signatures/));
+    await waitFor(() => expect(screen.getByText('No signatures saved yet.')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ New Signature'));
+    fireEvent.change(screen.getByPlaceholderText(/Formal Sign-off/), { target: { value: 'Test Sig' } });
+    fireEvent.click(screen.getByText('💾 Save'));
+    await waitFor(() => expect(onSignaturesChanged).toHaveBeenCalled());
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('deleting a signature also calls onSignaturesChanged', async () => {
+    const db = { from: () => {
+      const builder = {
+        select: () => builder, order: async () => ({ data: [{ id: 'sig-1', name: 'Existing', content_html: '<p>x</p>' }], error: null }),
+        delete: () => ({ eq: async () => ({ error: null }) }),
+      };
+      return builder;
+    } };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: TemplatesHub } = await import('../components/TemplatesHub.jsx');
+    const onSignaturesChanged = vi.fn();
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    render(<TemplatesHub docTemplates={{}} onSaveDocTemplates={()=>{}} docSettings={{}} setDocSettings={()=>{}} onSignaturesChanged={onSignaturesChanged}/>);
+    fireEvent.click(screen.getByText(/Signatures/));
+    await waitFor(() => expect(screen.getByText('Existing')).toBeTruthy());
+    fireEvent.click(screen.getByText('✕ Delete'));
+    await waitFor(() => expect(onSignaturesChanged).toHaveBeenCalled());
+    window.confirm = originalConfirm;
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

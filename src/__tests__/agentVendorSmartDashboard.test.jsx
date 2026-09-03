@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AgentMaster from '../components/AgentMaster.jsx';
 
 describe('AgentMaster smart dashboard (1.2): a real summary computed from existing data, no new plumbing', () => {
@@ -151,5 +151,22 @@ describe('VendorMaster (item 1): Financial Ledger tour file references are now c
     // state renders without crashing now that the clickable lookup
     // logic touches every entry.
     expect(screen.getByText('No transactions in this period.')).toBeTruthy();
+  });
+});
+
+describe('item 4 (real fix): Vendor Master Service History tour file badge was still not clickable -- missed in the earlier item 1 pass', () => {
+  it('clicking the tour file badge in Service History opens that query', async () => {
+    const { default: VendorMaster } = await import('../components/VendorMaster.jsx');
+    const vendors = [{ id: 'v1', name: 'Golden Cabs', type: 'Transport', active: true, rates: [] }];
+    const queries = [{ id: 'UTQ-77', tourFileId: 'TUR-2026-077', groupName: 'Service History Test', travelDate: '2026-05-01' }];
+    const tourExecutions = { 'UTQ-77': { transporters: [{ vendorId: 'v1', sector: 'Delhi' }], localHandlers: [], facilitators: [] } };
+    let captured = null;
+    document.addEventListener('unitop-activate-query', (e) => { captured = e.detail.query; });
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={queries} tourExecutions={tourExecutions} currentUser={{id:1,role:'admin'}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Golden Cabs'));
+    fireEvent.click(screen.getByText('Service History'));
+    await waitFor(() => expect(screen.getByText(/TUR-2026-077/)).toBeTruthy());
+    fireEvent.click(screen.getByText(/TUR-2026-077/));
+    expect(captured?.id).toBe('UTQ-77');
   });
 });
