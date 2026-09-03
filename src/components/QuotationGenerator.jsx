@@ -42,19 +42,19 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     trains: [], showTrains: false, trainsHeading: template.trainsHeading,
     // Remarks: single free-text field, optional display, same pattern.
     remarks: "", showRemarks: false, remarksHeading: template.remarksHeading,
-    greeting:  template.greeting,
-    openingLine: template.openingLine,
-    closingLine: template.closingLine,
-    // #2 of the general backlog: signoff defaults to the actual person
-    // handling this client (query.internalCorrespondent, set once at
-    // query creation) rather than a generic department-level signature,
-    // when that's been set -- falls back to the template's own default
-    // otherwise. Still a free-text field, fully editable per-document
-    // afterward, same as every other pre-filled-then-independent field
-    // in this app.
-    signoff: query.internalCorrespondent
-      ? `Thanks & Regards\n\n${query.internalCorrespondent}\nTour Deptt.\nUnitop Tours & Travel Pvt. Ltd.`
-      : template.signoff,
+    // 2.2/2.3: greeting+openingLine and closingLine+signoff merged into
+    // two single rich-text fields. The correspondent-based signoff
+    // default (#2 of the general backlog: defaults to the actual person
+    // handling this client, query.internalCorrespondent, rather than a
+    // generic department signature, when that's been set) still applies
+    // -- now producing real HTML instead of \n, appended after
+    // template.closingSignoff's own closing-paragraph content rather
+    // than replacing the whole field. Still fully editable per-document
+    // afterward, same as every other pre-filled-then-independent field.
+    greetingOpening: template.greetingOpening,
+    closingSignoff: query.internalCorrespondent
+      ? `<p>Kindly check &amp; advise your acceptance, with exact date of journey &amp; no. of Pax enabling us to go ahead for the necessary arrangement well in advance.</p><p>Hope you will find the above in order.</p><p>Thanks &amp; Regards</p><p>${query.internalCorrespondent}<br/>Tour Deptt.<br/>Unitop Tours &amp; Travel Pvt. Ltd.</p>`
+      : template.closingSignoff,
     costSheetId: costSheetId || null,
     confirmedPax: "", tourValue: "",
     finalPriceEntries: [],
@@ -351,8 +351,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       ${q.attnName || q.attnCompany || q.attnCity ? '<div style="margin-top:8pt;">'+buildAddresseeBlock({ name:q.attnName, company:q.attnCompany, city:q.attnCity, fontSizePt:9 })+'</div>' : ''}
       ${q.refLine ? '<div style="margin-top:8pt;"><strong>RE:</strong> '+q.refLine+'</div>' : ''}
     </div>
-    <div style="font-style:italic;font-weight:bold;margin:14pt 0;font-size:10pt;">${q.greeting}</div>
-    <p style="font-size:9.5pt;margin-top:10pt;margin-bottom:12pt;">${q.openingLine}</p>`;
+    <div style="margin:14pt 0;font-size:9.5pt;">${q.greetingOpening}</div>`;
 
     // 1.2: date column optional (dates are often fluid at quotation stage),
     // B/F renamed to the full word for a client-facing document.
@@ -421,8 +420,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     <h2>Cost Does Not Include</h2><ol>${q.excludes.map(i=>'<li>'+i+'</li>').join('')}</ol>`;
 
     const closingBlock = `
-    <p style="margin-top:12pt;font-size:9.5pt;">${q.closingLine}</p>
-    <div style="margin-top:20pt;font-size:10pt;">${q.signoff.replace(/\n/g,'<br/>')}</div>
+    <div style="margin-top:12pt;font-size:9.5pt;">${q.closingSignoff}</div>
       <div style="margin-top:14pt;">
         ${stampHTMLQ}
         ${showStamp ? '' : '<div style="height:44pt;"></div>'}
@@ -843,15 +841,18 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </div>
           ))}
 
+          {/* ── GREETING & OPENING ── */}
+          {secTitle("👋 Greeting & Opening")}
+          <div style={{ marginBottom:8 }}>
+            <label style={labelStyle}>Greeting + opening line</label>
+            <RichTextEditor value={q.greetingOpening} onChange={v=>setF("greetingOpening",v)}/>
+          </div>
+
           {/* ── CLOSING TEXT ── */}
           {secTitle("✍ Closing")}
-          <div style={{ marginBottom:8 }}>
-            <label style={labelStyle}>Closing paragraph</label>
-            <RichTextEditor value={q.closingLine} onChange={v=>setF("closingLine",v)}/>
-          </div>
           <div>
-            <label style={labelStyle}>Sign-off</label>
-            <RichTextEditor value={q.signoff} onChange={v=>setF("signoff",v)}/>
+            <label style={labelStyle}>Closing paragraph + sign-off</label>
+            <RichTextEditor value={q.closingSignoff} onChange={v=>setF("closingSignoff",v)}/>
           </div>
 
           <div style={{ height:24 }} />

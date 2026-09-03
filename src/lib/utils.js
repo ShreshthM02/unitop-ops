@@ -1431,7 +1431,7 @@ export async function markInvoiceVersionFinal(db, queryId, docType, version) {
 
 // ─── QUOTATION (real versioned history, mirrors Cost Sheet exactly) ────────
 export function mapDbQuotationRow(row) {
-  return {
+  return migrateQuotationRichTextFields({
     version: row.version, isFinal: row.is_final || false, note: row.note || "",
     savedAt: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
     createdAt: row.created_at, createdBy: row.created_by,
@@ -1443,7 +1443,8 @@ export function mapDbQuotationRow(row) {
     monuments: row.monuments || [], showMonuments: row.show_monuments ?? true,
     includes: row.includes || [], excludes: row.excludes || [],
     greeting: row.greeting || "", openingLine: row.opening_line || "", closingLine: row.closing_line || "",
-    signoff: row.signoff || "", monumentNote: row.monument_note || "", costSheetId: row.cost_sheet_id || null,
+    signoff: row.signoff || "", greetingOpening: row.greeting_opening || "", closingSignoff: row.closing_signoff || "",
+    monumentNote: row.monument_note || "", costSheetId: row.cost_sheet_id || null,
     // Tracks which Cost Sheet version this Quotation was last pulled
     // from -- the anchor for the mutual staleness check against a newer
     // star-marked Cost Sheet (Document Chain plan, docs/DATA_OWNERSHIP.md
@@ -1453,7 +1454,7 @@ export function mapDbQuotationRow(row) {
     pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
     routeMapImage: row.route_map_image ?? null,
     dayImageOverrides: row.day_image_overrides || {},
-  };
+  });
 }
 
 // Loads every saved version for a tour file, oldest first -- same shape as
@@ -1488,7 +1489,8 @@ export async function saveQuotationVersion(db, queryId, snap, createdBy) {
       monuments: snap.monuments || [], show_monuments: snap.showMonuments,
       includes: snap.includes || [], excludes: snap.excludes || [],
       greeting: snap.greeting, opening_line: snap.openingLine, closing_line: snap.closingLine,
-      signoff: snap.signoff, monument_note: snap.monumentNote,
+      signoff: snap.signoff, greeting_opening: snap.greetingOpening, closing_signoff: snap.closingSignoff,
+      monument_note: snap.monumentNote,
       pulled_from_cost_sheet_version: snap.pulledFromCostSheetVersion ?? null,
       created_by: isUuid(createdBy) ? createdBy : null,
     });
@@ -1814,7 +1816,15 @@ export function mergeDocTemplates(defaults, saved) {
   const out = { ...defaults };
   if (!saved || typeof saved !== "object") return out;
   for (const key of Object.keys(saved)) {
-    const savedDoc = saved[key];
+    // Migrate the SAVED quotation template's old-style fields to the new
+    // merged ones BEFORE merging with defaults, not after -- merging
+    // first would let a non-empty DEFAULT greetingOpening silently win
+    // over the migration check (a real bug caught here: the field-level
+    // merge already fills greetingOpening in from defaults since a
+    // pre-migration saved template never has that key, so checking
+    // "is it empty" on the merged result is always false and the
+    // migration never actually runs).
+    const savedDoc = key === "quotation" ? migrateQuotationRichTextFields(saved[key]) : saved[key];
     const defaultDoc = defaults[key];
     // Only merge when both sides are plain objects; otherwise take the saved
     // value as-is (covers doc keys the defaults don't know about).
@@ -1826,6 +1836,31 @@ export function mergeDocTemplates(defaults, saved) {
     }
   }
   return out;
+}
+
+// 2.2/2.3: greeting+openingLine and closingLine+signoff were merged into
+// two single rich-text fields (greetingOpening, closingSignoff). Both a
+// saved TEMPLATE and a saved QUOTATION VERSION from before this change
+// still only have the old 4 separate plain-text fields -- this
+// reconstructs the new merged fields FROM the old ones the first time
+// an old one is loaded (a template via mergeDocTemplates below, a real
+// saved quotation row via mapDbQuotationRow), so existing content
+// carries over instead of appearing blank. Pure, read-only
+// reconstruction: never writes anything back on its own, only the next
+// real save persists the merged shape -- same "never silently persist"
+// rule this whole memory/settings system follows everywhere else.
+export function migrateQuotationRichTextFields(q) {
+  if (!q) return q;
+  const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const asHtml = (s) => String(s||"").split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\n/g,"<br/>")}</p>`).join("");
+  const migrated = { ...q };
+  if (!migrated.greetingOpening && (q.greeting || q.openingLine)) {
+    migrated.greetingOpening = `<p><strong><em>${esc(q.greeting||"")}</em></strong></p>${asHtml(q.openingLine)}`;
+  }
+  if (!migrated.closingSignoff && (q.closingLine || q.signoff)) {
+    migrated.closingSignoff = `${asHtml(q.closingLine)}${asHtml(q.signoff)}`;
+  }
+  return migrated;
 }
 
 // ─── ITINERARY DAY ITEMS (Group B of the 2026-07-31 itinerary feedback) ──

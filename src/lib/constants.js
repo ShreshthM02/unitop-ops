@@ -618,10 +618,13 @@ export const TYPOGRAPHY_DEFAULTS = {
 };
 
 export const DEFAULT_QUOT_TEMPLATE = {
-  greeting:"Greetings from Unitop Tours & Travel Pvt. Ltd.!",
-  openingLine:"As Desired, Please Find Itinerary & Quotation As Under.",
-  closingLine:"Kindly check & advise your acceptance, with exact date of journey & no. of Pax enabling us to go ahead for the necessary arrangement well in advance.\n\nHope you will find the above in order.",
-  signoff:"Thanks & Regards\n\nTour Deptt.\nUnitop Tours & Travel Pvt. Ltd.",
+  // 2.2/2.3: greeting+openingLine and closingLine+signoff merged into two
+  // single rich-text fields (was 4 separate plain-text fields). See
+  // migrateQuotationRichTextFields() in utils.js for how an existing
+  // saved template (still in the old 4-field shape) carries its content
+  // over into these automatically.
+  greetingOpening:"<p><strong><em>Greetings from Unitop Tours &amp; Travel Pvt. Ltd.!</em></strong></p><p>As Desired, Please Find Itinerary &amp; Quotation As Under.</p>",
+  closingSignoff:"<p>Kindly check &amp; advise your acceptance, with exact date of journey &amp; no. of Pax enabling us to go ahead for the necessary arrangement well in advance.</p><p>Hope you will find the above in order.</p><p>Thanks &amp; Regards</p><p>Tour Deptt.<br/>Unitop Tours &amp; Travel Pvt. Ltd.</p>",
   monumentNote:"Monument Fees (Payable Directly at Site):",
   flightsHeading:"Domestic Flights",
   trainsHeading:"Domestic Trains",

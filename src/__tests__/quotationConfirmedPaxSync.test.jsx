@@ -105,3 +105,89 @@ describe('Quotation Word export now goes through the shared converter (wordExpor
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('2.2/2.3: greeting+openingLine and closingLine+signoff merged into two rich-text fields', () => {
+  it('migrateQuotationRichTextFields reconstructs greetingOpening/closingSignoff from a real old-shape saved row (verified against actual production data)', async () => {
+    const { migrateQuotationRichTextFields, mapDbQuotationRow } = await import('../lib/utils.js');
+    // Exact shape of a real, live quotation row confirmed directly
+    // against the database before this migration -- greeting_opening/
+    // closing_signoff are null, only the old 4 columns have content.
+    const realOldRow = {
+      version: 2, is_final: false,
+      greeting: 'Greetings from Unitop Tours & Travel Pvt. Ltd.!',
+      opening_line: 'As Desired, Please Find Itinerary & Quotation As Under.',
+      closing_line: 'Kindly check & advise your acceptance, with exact date of journey & no. of Pax enabling us to go ahead for the necessary arrangement well in advance.\n\nHope you will find the above in order.',
+      signoff: 'Thanks & Regards\n\nTour Deptt.\nUnitop Tours & Travel Pvt. Ltd.',
+      greeting_opening: null, closing_signoff: null,
+      itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [],
+    };
+    const mapped = mapDbQuotationRow(realOldRow);
+    expect(mapped.greetingOpening).toContain('Greetings from Unitop Tours');
+    expect(mapped.greetingOpening).toContain('As Desired, Please Find Itinerary');
+    expect(mapped.closingSignoff).toContain('Kindly check');
+    expect(mapped.closingSignoff).toContain('Hope you will find the above in order');
+    expect(mapped.closingSignoff).toContain('Thanks &amp; Regards');
+    expect(mapped.closingSignoff).toContain('Tour Deptt.');
+  });
+
+  it('a row already saved in the new shape is used as-is, not re-derived from the old columns', async () => {
+    const { mapDbQuotationRow } = await import('../lib/utils.js');
+    const newRow = {
+      version: 3, is_final: false,
+      greeting: 'Stale old value', opening_line: 'Stale old value',
+      closing_line: 'Stale old value', signoff: 'Stale old value',
+      greeting_opening: '<p>The real current content</p>', closing_signoff: '<p>Also real current content</p>',
+      itinerary: [], hotels: [], slabs: [], monuments: [], includes: [], excludes: [],
+    };
+    const mapped = mapDbQuotationRow(newRow);
+    expect(mapped.greetingOpening).toBe('<p>The real current content</p>');
+    expect(mapped.closingSignoff).toBe('<p>Also real current content</p>');
+  });
+
+  it('escapes HTML-special characters correctly during reconstruction, so an ampersand in old content doesn\u2019t break the resulting markup', async () => {
+    const { migrateQuotationRichTextFields } = await import('../lib/utils.js');
+    const migrated = migrateQuotationRichTextFields({ greeting: 'Rock & Roll Tours', openingLine: 'A & B' });
+    expect(migrated.greetingOpening).toContain('Rock &amp; Roll Tours');
+    expect(migrated.greetingOpening).not.toContain('Rock & Roll');
+  });
+
+  it('mergeDocTemplates applies the same reconstruction to a saved TEMPLATE, not just a saved quotation row', async () => {
+    const { mergeDocTemplates } = await import('../lib/utils.js');
+    const { DEFAULT_DOC_TEMPLATES } = await import('../lib/constants.js');
+    const savedOldShapeTemplate = {
+      quotation: {
+        greeting: 'Custom Greeting From Settings', openingLine: 'Custom Opening',
+        closingLine: 'Custom Closing', signoff: 'Custom Signoff',
+      },
+    };
+    const merged = mergeDocTemplates(DEFAULT_DOC_TEMPLATES, savedOldShapeTemplate);
+    expect(merged.quotation.greetingOpening).toContain('Custom Greeting From Settings');
+    expect(merged.quotation.closingSignoff).toContain('Custom Closing');
+    expect(merged.quotation.closingSignoff).toContain('Custom Signoff');
+  });
+});
+
+describe('QuotationGenerator: merged rich-text editing UI', () => {
+  const fakeTemplate = { includes: [], excludes: [], monuments: [], showMonuments: true, greetingOpening: '<p>Default greeting</p>', closingSignoff: '<p>Default closing</p>', signoff: '', monumentNote: '' };
+
+  it('shows one combined field for greeting+opening, not two separate ones', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb(), realtimeClient: null }));
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    render(<QuotationGenerator query={query} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText(/Greeting & Opening/)).toBeTruthy());
+    expect(screen.getByText('Greeting + opening line')).toBeTruthy();
+    expect(screen.queryByText('Opening Line')).toBeFalsy(); // the old separate field label is gone
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('shows one combined field for closing+sign-off, not two separate ones', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb(), realtimeClient: null }));
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    render(<QuotationGenerator query={query} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText('Closing paragraph + sign-off')).toBeTruthy());
+    expect(screen.queryByText('Sign-off')).toBeFalsy(); // the old separate field label is gone
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
