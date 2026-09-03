@@ -633,6 +633,18 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               <input style={inputStyle} value={q.paxLine} onChange={e=>setF("paxLine",e.target.value)} placeholder="10–20 Pax"/></div>
           </div>
 
+          {/* ── GREETING & OPENING ── */}
+          {/* item 10: moved to sit right after Subject, matching the
+              logical document flow (Addressee -> Subject -> Greeting ->
+              body content -> Closing) -- it was previously stranded at
+              the very bottom of the form, right before Closing, even
+              though the print output was already correctly ordered. */}
+          {secTitle("👋 Greeting & Opening")}
+          <div style={{ marginBottom:8 }}>
+            <label style={labelStyle}>Greeting + opening line</label>
+            <RichTextEditor value={q.greetingOpening} onChange={v=>setF("greetingOpening",v)}/>
+          </div>
+
           {/* ── ITINERARY ── */}
           {secTitle("🗺 Day-wise Itinerary")}
           <div style={{ marginBottom:8 }}>
@@ -848,13 +860,6 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                 onClick={()=>addListItem(key)}>+ Add item</button>
             </div>
           ))}
-
-          {/* ── GREETING & OPENING ── */}
-          {secTitle("👋 Greeting & Opening")}
-          <div style={{ marginBottom:8 }}>
-            <label style={labelStyle}>Greeting + opening line</label>
-            <RichTextEditor value={q.greetingOpening} onChange={v=>setF("greetingOpening",v)}/>
-          </div>
 
           {/* ── CLOSING TEXT ── */}
           {secTitle("✍ Closing")}

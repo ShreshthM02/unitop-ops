@@ -135,8 +135,14 @@ describe('2.3 Quotation flights/trains: day/date field and no "undefined" headin
     fireEvent.change(screen.getByPlaceholderText('Day 02 / 12 Oct'), { target: { value: 'Day 02' } });
     fireEvent.change(screen.getByPlaceholderText('e.g. Delhi / Varanasi — 6E 2134'), { target: { value: 'DEL/VNS' } });
     fireEvent.click(screen.getByText(/Show remarks/).closest('label').querySelector('input'));
-    const editors = document.querySelectorAll('[contenteditable="true"]');
-    const editor = editors[1]; // [0]=Re:Line, [1]=Remarks, [2]=Closing, [3]=Sign-off
+    // Editor order in the form shifted after item 10's reorder (Greeting
+    // & Opening moved to sit right after Subject) -- finding by DOM
+    // position relative to the actual "Remarks" section heading instead
+    // of a fragile hardcoded index, so this doesn't break again the next
+    // time a field gets reordered.
+    const remarksHeading = screen.getByText("📝 Remarks");
+    const editors = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+    const editor = editors.find(el => remarksHeading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
     editor.innerHTML = 'note';
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     fireEvent.click(screen.getByText('👁 Preview'));

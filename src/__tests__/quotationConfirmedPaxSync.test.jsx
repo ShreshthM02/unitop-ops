@@ -191,3 +191,24 @@ describe('QuotationGenerator: merged rich-text editing UI', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('item 10: Greeting & Opening moved to sit right after Subject in the editing form, not stranded at the bottom right before Closing', () => {
+  it('Greeting & Opening now appears before Day-wise Itinerary, not after Cost Includes/Excludes', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb(), realtimeClient: null }));
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    const fakeTemplate = { includes: [], excludes: [], monuments: [], showMonuments: true, greetingOpening: '', closingSignoff: '', monumentNote: '' };
+    const query = { id: 'UTQ-1', groupName: 'Test Group', tourFileId: 'TF-1' };
+    render(<QuotationGenerator query={query} template={fakeTemplate} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText(/Subject/)).toBeTruthy());
+    const container = screen.getByText(/Subject/).closest('div').parentElement;
+    const allText = container.textContent;
+    const subjectPos = allText.indexOf('Subject');
+    const greetingPos = allText.indexOf('Greeting & Opening');
+    const itineraryPos = allText.indexOf('Day-wise Itinerary');
+    const closingPos = allText.indexOf('Closing');
+    expect(subjectPos).toBeLessThan(greetingPos);
+    expect(greetingPos).toBeLessThan(itineraryPos);
+    expect(itineraryPos).toBeLessThan(closingPos);
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
