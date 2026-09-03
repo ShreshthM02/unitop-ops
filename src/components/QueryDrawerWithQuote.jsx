@@ -273,6 +273,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                         {assignedUser&&<Avatar user={assignedUser} size={18}/>}{assignedUser?.name||"—"}
                       </span>
                     </div>
+                    <div className="info-item"><label>Reviewer</label>
+                      <select value={query.reviewerId||""} disabled={!onUpdateQuery}
+                        onChange={e=>onUpdateQuery && onUpdateQuery(query.id,{reviewerId:e.target.value||null})}
+                        style={{padding:"3px 6px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",color:G.gray800,background:G.white}}>
+                        <option value="">Not assigned</option>
+                        {(staff||USERS).filter(u=>u.id!==query.assignedTo||u.id===query.reviewerId).map(u=>
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        )}
+                      </select>
+                    </div>
                     <div className="info-item" style={{gridColumn:"1/-1"}}><label>Series</label>
                       <select value={query.seriesId||""} disabled={!onUpdateQuery}
                         onChange={e=>onUpdateQuery && onUpdateQuery(query.id,{seriesId:e.target.value||null})}

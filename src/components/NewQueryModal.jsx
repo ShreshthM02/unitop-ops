@@ -23,7 +23,7 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
     // 9.4 Travel Period
     dateKnown:false, travelDateFrom:"", travelDateTo:"", travelMonth:"", travelSeason:"",
     // 9.5 Internal
-    assignedTo:(staff||USERS)[0]?.id||"", internalCorrespondent:"",
+    assignedTo:(staff||USERS)[0]?.id||"", reviewerId:"", internalCorrespondent:"",
     notes:"",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -281,6 +281,12 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
             <div>{sl("Assigned To")}
               <select style={inp} value={form.assignedTo} onChange={e=>set("assignedTo",e.target.value)}>
                 {(staff||USERS).map(u=><option key={u.id} value={u.id}>{u.name} ({ROLE_LABELS[u.role]})</option>)}
+              </select>
+            </div>
+            <div>{sl("Reviewer (optional)")}
+              <select style={inp} value={form.reviewerId||""} onChange={e=>set("reviewerId",e.target.value)}>
+                <option value="">Not assigned</option>
+                {(staff||USERS).filter(u=>u.id!==form.assignedTo).map(u=><option key={u.id} value={u.id}>{u.name} ({ROLE_LABELS[u.role]})</option>)}
               </select>
             </div>
             <div>{sl("Correspondent")}

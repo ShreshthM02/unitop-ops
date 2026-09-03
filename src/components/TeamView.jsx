@@ -6,7 +6,14 @@ export default function TeamView({ queries, staff }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
       {(staff||USERS).map(user => {
+        // Doer/Reviewer (4.1): each person now has two separate lists --
+        // what they're doing (assignedTo, always set), and what they're
+        // reviewing for someone else (reviewerId, always optional,
+        // assignable at any stage per direct confirmation -- not gated
+        // behind conversion to a tour file, since catching something
+        // before conversion is often more valuable than after).
         const myQueries = queries.filter(q => q.assignedTo === user.id);
+        const reviewingQueries = queries.filter(q => q.reviewerId === user.id);
         return (
           <div key={user.id} style={{ background: G.white, borderRadius: 10, border: `1px solid ${G.gray200}`, overflow: "hidden" }}>
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${G.gray200}`,
@@ -17,9 +24,10 @@ export default function TeamView({ queries, staff }) {
                 <div style={{ fontSize: 11, color: G.gray400 }}>{ROLE_LABELS[user.role]}</div>
               </div>
               <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: G.gray600 }}>
-                {myQueries.length} queries
+                {myQueries.length} working{reviewingQueries.length>0?` · ${reviewingQueries.length} reviewing`:""}
               </span>
             </div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: G.gray400, textTransform: "uppercase", letterSpacing: "0.5px", padding: "8px 16px 4px" }}>Working On</div>
             {myQueries.map(q => (
               <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
                 display: "flex", alignItems: "center", gap: 8 }}>
@@ -29,8 +37,22 @@ export default function TeamView({ queries, staff }) {
               </div>
             ))}
             {myQueries.length === 0 && (
-              <div style={{ padding: "16px", textAlign: "center", fontSize: 12, color: G.gray400 }}>
-                No active queries
+              <div style={{ padding: "10px 16px", fontSize: 12, color: G.gray400 }}>
+                Nothing currently assigned
+              </div>
+            )}
+            <div style={{ fontSize: 10, fontWeight: 700, color: G.gray400, textTransform: "uppercase", letterSpacing: "0.5px", padding: "10px 16px 4px", borderTop: `1px solid ${G.gray100}` }}>Reviewing</div>
+            {reviewingQueries.map(q => (
+              <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
+                display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.id}</span>
+                <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
+                <StatusBadge status={q.status} />
+              </div>
+            ))}
+            {reviewingQueries.length === 0 && (
+              <div style={{ padding: "10px 16px", fontSize: 12, color: G.gray400 }}>
+                Nothing to review
               </div>
             )}
           </div>
