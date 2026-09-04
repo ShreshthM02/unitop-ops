@@ -738,7 +738,7 @@ export async function loadConversationsForStaff(db, staffId) {
     (myMemberships || []).forEach(m => { myMembershipByConv[m.conversation_id] = m; });
     return (convRows || []).map(c => ({
       id: c.id, type: c.type, name: c.name, createdBy: c.created_by, createdAt: c.created_at,
-      members: (membersByConv[c.id] || []).map(m => ({ staffId: m.staff_id, joinedAt: m.joined_at })),
+      members: (membersByConv[c.id] || []).map(m => ({ staffId: m.staff_id, joinedAt: m.joined_at, isAdmin: !!m.is_admin, lastReadAt: m.last_read_at })),
       lastMessage: lastMsgByConv[c.id] ? { text: lastMsgByConv[c.id].text, senderName: lastMsgByConv[c.id].sender_name, createdAt: lastMsgByConv[c.id].created_at } : null,
       lastReadAt: myMembershipByConv[c.id]?.last_read_at || null,
     })).sort((a, b) => new Date(b.lastMessage?.createdAt || b.createdAt) - new Date(a.lastMessage?.createdAt || a.createdAt));
@@ -777,12 +777,25 @@ export async function createGroupConversation(db, name, creatorId, memberIds) {
     if (!convId) return { id: null, error: "No conversation id returned" };
     const allMembers = [...new Set([creatorId, ...memberIds])];
     for (const staffId of allMembers) {
-      await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffId });
+      // Chat next steps, item 1: the creator becomes the group's first
+      // admin automatically -- everyone else starts as a regular
+      // member, promotable later by an existing admin.
+      await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffId, is_admin: staffId === creatorId });
     }
     return { id: convId, error: null };
   } catch (e) {
     console.warn("Create group failed:", e);
     return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function setConversationMemberAdmin(db, conversationId, staffId, isAdmin) {
+  try {
+    const { error } = await db.from("chat_conversation_members").upsert({ conversation_id: conversationId, staff_id: staffId, is_admin: isAdmin });
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Set member admin failed:", e);
+    return { error: e.message || String(e) };
   }
 }
 
@@ -826,10 +839,36 @@ export async function renameConversation(db, conversationId, name) {
 export async function loadChatMessages(db, conversationId) {
   try {
     const { data } = await db.from("chat_messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true });
-    return (data || []).map(m => ({ id: m.id, senderId: m.sender_id, senderName: m.sender_name, text: m.text, mentions: m.mentions || [], createdAt: m.created_at }));
+    return (data || []).map(m => ({ id: m.id, senderId: m.sender_id, senderName: m.sender_name, text: m.text, mentions: m.mentions || [], createdAt: m.created_at, editedAt: m.edited_at, deletedAt: m.deleted_at }));
   } catch (e) {
     console.warn("Load chat messages failed:", e);
     return [];
+  }
+}
+
+// Chat next steps, item 2: edit and delete, sender-only (RLS enforces
+// this server-side too -- verified directly, not just trusted). Delete
+// is a soft delete (deleted_at set, text left in place but never shown
+// once deleted) so conversation ordering/flow stays intact, matching
+// how WhatsApp/Slack show a "message deleted" placeholder rather than
+// closing the gap.
+export async function editChatMessage(db, messageId, newText, mentions) {
+  try {
+    const { error } = await db.from("chat_messages").upsert({ id: messageId, text: newText, mentions: mentions || [], edited_at: new Date().toISOString() });
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Edit chat message failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
+export async function deleteChatMessage(db, messageId) {
+  try {
+    const { error } = await db.from("chat_messages").upsert({ id: messageId, deleted_at: new Date().toISOString() });
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Delete chat message failed:", e);
+    return { error: e.message || String(e) };
   }
 }
 
