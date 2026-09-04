@@ -74,6 +74,10 @@ export const _supa = (() => {
       // methods support. Same PostgREST operator syntax as eq/gte/lte
       // -- `column=in.(v1,v2,v3)`.
       in: (col, vals) => { _filters.push(`${col}=in.(${(vals||[]).join(",")})`); return builder; },
+      // Added for filtering out deleted staff app-wide (deleted_at is
+      // null) -- PostgREST's `is` operator, for null/true/false checks
+      // that `eq` doesn't correctly express.
+      is: (col, val) => { _filters.push(`${col}=is.${val}`); return builder; },
       // Added for gazetteer lookups (place name search). PostgREST treats a
       // bare `*` in an ilike value as the SQL `%` wildcard, so callers pass
       // patterns like `*varanasi*` or `varanasi*` directly.
@@ -237,6 +241,24 @@ export const _supa = (() => {
       });
       return await r.json();
     },
+    // Item 4: real Delete User, distinct from Deactivate. Investigated
+    // first: several FKs to staff are NO ACTION, so a true row DELETE
+    // would fail outright for any staff member with real history, or
+    // (if those FKs were loosened) would silently destroy cost_sheets/
+    // quotations attribution entirely since neither has a redundant
+    // name field the way query_audit/query_remarks do. This is a real,
+    // permanent, irreversible marker instead -- deleted_at set, active
+    // forced false, session cleared server-side -- verified end to end
+    // via direct simulation (a real delete, then a real login attempt
+    // confirmed rejected) before this client wiring was ever written.
+    deleteStaffMember: async (targetUserId) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/delete_staff_member`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_target_user:targetUserId })
+      });
+      return await r.json();
+    },
     // Self-service update for the logged-in user's own display name and
     // avatar color -- deliberately separate from updatePermissions, which
     // is admin-only and requires a target user. On success, also updates
@@ -266,7 +288,11 @@ export const _supa = (() => {
       // staff, this call started failing for every user, every time,
       // regardless of session freshness -- authHeaders() is what
       // actually carries the real signed JWT when one exists.
-      const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,avatar,avatar_url,active,last_login,permissions&order=name.asc`, {
+      // Item 4: deleted_at=is.null -- a genuinely deleted user should
+      // never appear here again, unlike a deactivated one (which stays
+      // fully visible/manageable, the whole point of that being
+      // reversible).
+      const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,avatar,avatar_url,active,last_login,permissions&deleted_at=is.null&order=name.asc`, {
         headers: authHeaders(),
       });
       return r.ok ? await r.json() : [];

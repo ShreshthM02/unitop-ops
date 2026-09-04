@@ -210,7 +210,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           // photos never showed anywhere in the app except User
           // Management's own separate getStaffList() call, which
           // already had it.
-          db.from("staff").select("id,name,role,color,avatar,avatar_url,active").order("name", {ascending:true}),
+          db.from("staff").select("id,name,role,color,avatar,avatar_url,active").is("deleted_at", "null").order("name", {ascending:true}),
           loadAppSetting(db, "doc_numbering", DEFAULT_DOC_SETTINGS),
           loadAppSetting(db, "doc_templates", DEFAULT_DOC_TEMPLATES),
           db.from("payments").select("*"),

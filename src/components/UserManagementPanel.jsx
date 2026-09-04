@@ -50,6 +50,21 @@ export function UserManagementPanel({ currentUser, onClose }) {
     else { showMsg("Error: " + (res.error||"Unknown")); }
   };
 
+  // Item 4: real, permanent Delete -- distinct from the reversible
+  // Deactivate above. A hard row delete isn't safe here (several FKs to
+  // staff would either reject it outright or silently lose historical
+  // attribution -- see delete_staff_member's own migration notes), so
+  // this is a genuine, irreversible marker instead: the user
+  // disappears from active use everywhere and can never log in again,
+  // while every historical record they're attributed to keeps showing
+  // their real name correctly.
+  const handleDeleteUser = async (staff) => {
+    if (!window.confirm(`Permanently delete ${staff.name}? This cannot be undone -- they will no longer be able to log in or appear anywhere as an active user. Their name will still show correctly on past records (queries, remarks, documents) they were involved in.`)) return;
+    const res = await db.auth.deleteStaffMember(staff.id);
+    if (res.success) { showMsg("User deleted"); setSelected(null); loadStaff(); }
+    else { showMsg("Error: " + (res.error||"Unknown")); }
+  };
+
   const handlePermChange = async (staff, permKey, val) => {
     const current = { ...(ROLE_DEFAULTS[staff.role]||{}), ...(staff.permissions||{}) };
     const updated = { ...current, [permKey]: val };
@@ -232,12 +247,18 @@ export function UserManagementPanel({ currentUser, onClose }) {
                         {selected.last_login && <div style={{ fontSize:11, color:G.gray400 }}>Last login: {new Date(selected.last_login).toLocaleString("en-IN")}</div>}
                       </div>
                       {selected.id !== currentUser.id && (
-                        <button onClick={()=>handleToggleActive(selected)}
-                          className="btn btn-ghost" style={{ fontSize:11,
-                            color:selected.active?"#C0392B":"#059669",
-                            borderColor:selected.active?"#FECACA":"#A9DFBF" }}>
-                          {selected.active ? "Deactivate" : "Reactivate"}
-                        </button>
+                        <>
+                          <button onClick={()=>handleToggleActive(selected)}
+                            className="btn btn-ghost" style={{ fontSize:11,
+                              color:selected.active?"#C0392B":"#059669",
+                              borderColor:selected.active?"#FECACA":"#A9DFBF" }}>
+                            {selected.active ? "Deactivate" : "Reactivate"}
+                          </button>
+                          <button onClick={()=>handleDeleteUser(selected)}
+                            className="btn btn-ghost" style={{ fontSize:11, color:"#991B1B", borderColor:"#FECACA" }}>
+                            🗑 Delete
+                          </button>
+                        </>
                       )}
                     </div>
 
