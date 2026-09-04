@@ -669,6 +669,156 @@ export async function deleteSignature(db, id) {
   }
 }
 
+// ─── CHAT (DMs + Groups) ────────────────────────────────────────────────────
+// One generic model for both: a DM is a conversation with exactly 2
+// members and no name; a group is a conversation with a name and 2+
+// members. RLS restricts every one of these tables to actual members
+// only (verified via direct role simulation, including a real
+// infinite-recursion bug found and fixed that way) -- genuinely
+// different from this app's usual "any authenticated staff member"
+// standard, since conversation contents are personal, not shared
+// business data.
+
+// Loads every conversation a staff member belongs to, each with its
+// member list and a preview of the most recent message -- three
+// separate queries merged client-side rather than one PostgREST
+// embedded-join query, deliberately: this hand-rolled db wrapper's
+// actual supported surface is narrow (confirmed by extending it with
+// .in() just for this), and embedded-join syntax through it is
+// untested territory not worth the risk here.
+export async function loadConversationsForStaff(db, staffId) {
+  try {
+    const { data: myMemberships } = await db.from("chat_conversation_members").select("*").eq("staff_id", staffId);
+    const convIds = [...new Set((myMemberships || []).map(m => m.conversation_id))];
+    if (!convIds.length) return [];
+    const [{ data: convRows }, { data: allMembers }, { data: recentMessages }] = await Promise.all([
+      db.from("chat_conversations").select("*").in("id", convIds),
+      db.from("chat_conversation_members").select("*").in("conversation_id", convIds),
+      db.from("chat_messages").select("*").in("conversation_id", convIds).order("created_at", { ascending: false }),
+    ]);
+    const membersByConv = {};
+    (allMembers || []).forEach(m => { (membersByConv[m.conversation_id] ||= []).push(m); });
+    const lastMsgByConv = {};
+    (recentMessages || []).forEach(m => { if (!lastMsgByConv[m.conversation_id]) lastMsgByConv[m.conversation_id] = m; }); // already ordered desc, first hit per conv is the latest
+    const myMembershipByConv = {};
+    (myMemberships || []).forEach(m => { myMembershipByConv[m.conversation_id] = m; });
+    return (convRows || []).map(c => ({
+      id: c.id, type: c.type, name: c.name, createdBy: c.created_by, createdAt: c.created_at,
+      members: (membersByConv[c.id] || []).map(m => ({ staffId: m.staff_id, joinedAt: m.joined_at })),
+      lastMessage: lastMsgByConv[c.id] ? { text: lastMsgByConv[c.id].text, senderName: lastMsgByConv[c.id].sender_name, createdAt: lastMsgByConv[c.id].created_at } : null,
+      lastReadAt: myMembershipByConv[c.id]?.last_read_at || null,
+    })).sort((a, b) => new Date(b.lastMessage?.createdAt || b.createdAt) - new Date(a.lastMessage?.createdAt || a.createdAt));
+  } catch (e) {
+    console.warn("Load conversations failed:", e);
+    return [];
+  }
+}
+
+// Reuses an existing DM between these two people if one already exists
+// (matching how WhatsApp/Slack never creates a second thread for the
+// same pair), rather than always creating a new conversation.
+export async function findOrCreateDM(db, staffIdA, staffIdB) {
+  try {
+    const existingA = await loadConversationsForStaff(db, staffIdA);
+    const existingDM = existingA.find(c => c.type === "dm" && c.members.some(m => m.staffId === staffIdB) && c.members.length === 2);
+    if (existingDM) return { id: existingDM.id, error: null };
+    const { data: created, error: createErr } = await db.from("chat_conversations").insert({ type: "dm", created_by: staffIdA });
+    if (createErr) return { id: null, error: createErr.message || String(createErr) };
+    const convId = created && created[0] && created[0].id;
+    if (!convId) return { id: null, error: "No conversation id returned" };
+    await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdA });
+    await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdB });
+    return { id: convId, error: null };
+  } catch (e) {
+    console.warn("Find/create DM failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function createGroupConversation(db, name, creatorId, memberIds) {
+  try {
+    const { data: created, error } = await db.from("chat_conversations").insert({ type: "group", name, created_by: creatorId });
+    if (error) return { id: null, error: error.message || String(error) };
+    const convId = created && created[0] && created[0].id;
+    if (!convId) return { id: null, error: "No conversation id returned" };
+    const allMembers = [...new Set([creatorId, ...memberIds])];
+    for (const staffId of allMembers) {
+      await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffId });
+    }
+    return { id: convId, error: null };
+  } catch (e) {
+    console.warn("Create group failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function addConversationMember(db, conversationId, staffId) {
+  try {
+    const { error } = await db.from("chat_conversation_members").insert({ conversation_id: conversationId, staff_id: staffId });
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Add member failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
+// Same function for both "remove someone else" (group management) and
+// "leave" (removing yourself) -- the caller passes whichever staffId
+// applies; RLS doesn't distinguish between the two at the database
+// level, matching how most real group chats work (any member can
+// remove any other, not just an "admin" role -- this app has no
+// concept of a group owner/admin yet, a deliberate simplification for
+// this first build).
+export async function removeConversationMember(db, conversationId, staffId) {
+  try {
+    const { error } = await db.from("chat_conversation_members").delete().eq("conversation_id", conversationId).eq("staff_id", staffId);
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Remove member failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
+export async function renameConversation(db, conversationId, name) {
+  try {
+    const { error } = await db.from("chat_conversations").upsert({ id: conversationId, name, updated_at: new Date().toISOString() });
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Rename conversation failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
+export async function loadChatMessages(db, conversationId) {
+  try {
+    const { data } = await db.from("chat_messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true });
+    return (data || []).map(m => ({ id: m.id, senderId: m.sender_id, senderName: m.sender_name, text: m.text, mentions: m.mentions || [], createdAt: m.created_at }));
+  } catch (e) {
+    console.warn("Load chat messages failed:", e);
+    return [];
+  }
+}
+
+export async function sendChatMessage(db, conversationId, senderId, senderName, text, mentions) {
+  try {
+    const { data, error } = await db.from("chat_messages").insert({ conversation_id: conversationId, sender_id: senderId, sender_name: senderName, text, mentions: mentions || [] });
+    if (error) return { id: null, error: error.message || String(error) };
+    return { id: data && data[0] ? data[0].id : null, error: null };
+  } catch (e) {
+    console.warn("Send chat message failed:", e);
+    return { id: null, error: e.message || String(e) };
+  }
+}
+
+export async function markConversationRead(db, conversationId, staffId) {
+  try {
+    await db.from("chat_conversation_members").upsert({ conversation_id: conversationId, staff_id: staffId, last_read_at: new Date().toISOString() });
+  } catch (e) {
+    console.warn("Mark conversation read failed:", e);
+  }
+}
+
+
 export async function saveSeries(db, series) {
   const payload = { name: series.name, active: series.active !== false, notes: series.notes || null };
   try {

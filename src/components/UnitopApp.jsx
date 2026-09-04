@@ -816,7 +816,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>{/* end content */}
         </div>{/* end main */}
 
-        {showChat    && <InAppChat currentUser={currentUser} queries={queries} onClose={()=>setShowChat(false)}/>}
+        {showChat    && <InAppChat currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>setShowChat(false)}/>}
         {showProfile && <UserProfilePanel currentUser={currentUser} onClose={()=>setShowProfile(false)} onSave={onUpdateAuthUser}/>}
 
         {activeQuery&&!anyPanel&&!cancelTarget&&(

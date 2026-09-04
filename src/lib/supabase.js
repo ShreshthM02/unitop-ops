@@ -68,6 +68,12 @@ export const _supa = (() => {
       // all. Same PostgREST operator syntax eq() already uses.
       gte: (col, val) => { _filters.push(`${col}=gte.${val}`); return builder; },
       lte: (col, val) => { _filters.push(`${col}=lte.${val}`); return builder; },
+      // Added for chat: loading every conversation a staff member
+      // belongs to requires filtering by a LIST of conversation ids
+      // (their own memberships), which none of the existing filter
+      // methods support. Same PostgREST operator syntax as eq/gte/lte
+      // -- `column=in.(v1,v2,v3)`.
+      in: (col, vals) => { _filters.push(`${col}=in.(${(vals||[]).join(",")})`); return builder; },
       // Added for gazetteer lookups (place name search). PostgREST treats a
       // bare `*` in an ilike value as the SQL `%` wildcard, so callers pass
       // patterns like `*varanasi*` or `varanasi*` directly.
