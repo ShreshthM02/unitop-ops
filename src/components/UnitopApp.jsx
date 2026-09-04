@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -89,6 +89,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showAgents,     setShowAgents]     = useState(false);
   const [showSeries,     setShowSeries]     = useState(false);
   const [showVendors,    setShowVendors]    = useState(false);
+  // Record-anchored discussion threads: @mentioning an agent/vendor/
+  // series opens that panel already focused on the mentioned entity,
+  // same idea as unitop-activate-query's existing bridge for queries --
+  // these three panels manage their own `selected` state internally, so
+  // this seeds it via an initialSelectedId prop rather than controlling
+  // selection from here.
+  const [focusAgentId,   setFocusAgentId]   = useState(null);
+  const [focusVendorId,  setFocusVendorId]  = useState(null);
+  const [focusSeriesId,  setFocusSeriesId]  = useState(null);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [showChat,       setShowChat]       = useState(false);
@@ -141,6 +150,23 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     const handler = (e) => setActiveQuery(e.detail.query);
     document.addEventListener("unitop-activate-query", handler);
     return ()=>document.removeEventListener("unitop-activate-query", handler);
+  },[]);
+
+  // Same bridge, for the three other mentionable entity types in
+  // discussion threads -- opens the panel already focused on the
+  // mentioned agent/vendor/series.
+  useEffect(()=>{
+    const onAgent=(e)=>{setFocusAgentId(e.detail.id);setShowAgents(true);};
+    const onVendor=(e)=>{setFocusVendorId(e.detail.id);setShowVendors(true);};
+    const onSeries=(e)=>{setFocusSeriesId(e.detail.id);setShowSeries(true);};
+    document.addEventListener("unitop-activate-agent", onAgent);
+    document.addEventListener("unitop-activate-vendor", onVendor);
+    document.addEventListener("unitop-activate-series", onSeries);
+    return ()=>{
+      document.removeEventListener("unitop-activate-agent", onAgent);
+      document.removeEventListener("unitop-activate-vendor", onVendor);
+      document.removeEventListener("unitop-activate-series", onSeries);
+    };
   },[]);
 
   const can = useCan(currentUser);
@@ -214,7 +240,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           const remarkMap = {};
           (remarkData||[]).forEach(r => {
             if (!remarkMap[r.query_id]) remarkMap[r.query_id] = [];
-            remarkMap[r.query_id].push({ by: r.by_name, at: new Date(r.created_at).toLocaleString("en-IN"), text: r.text });
+            remarkMap[r.query_id].push({ id: r.id, by: r.by_name, byStaffId: r.by_staff_id, at: new Date(r.created_at).toLocaleString("en-IN"), createdAt: r.created_at, text: r.text, mentions: r.mentions || [] });
           });
           mapped.forEach(q => {
             q.audit   = auditMap[q.id]   || [];
@@ -278,6 +304,23 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // app can turn on itself.
   useRealtimeTable("queries", (eventType, newRow, oldRow) => {
     setQueries(qs => applyQueryRealtimeEvent(qs, eventType, newRow, oldRow));
+  });
+
+  // Record-anchored discussion threads: live updates for messages other
+  // people send while you're viewing the same query/tour file. Skips
+  // events for the current user's OWN messages -- those are already
+  // reflected via handleAddRemark's own optimistic local update, and
+  // the optimistic entry has no real id yet to reconcile against
+  // (matching by content/timestamp would be fragile); the one accepted
+  // tradeoff is the same account open in two tabs won't see its own
+  // just-sent message in the second tab until a reload, a low-stakes
+  // edge case.
+  useRealtimeTable("query_remarks", (eventType, newRow) => {
+    if (eventType !== "INSERT" || !newRow) return;
+    if (newRow.by_staff_id && newRow.by_staff_id === currentUser?.id) return;
+    const msg = { id: newRow.id, by: newRow.by_name, byStaffId: newRow.by_staff_id, at: new Date(newRow.created_at).toLocaleString("en-IN"), createdAt: newRow.created_at, text: newRow.text, mentions: newRow.mentions || [] };
+    setQueries(qs => qs.map(q => q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q));
+    setActiveQuery(q => q && q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q);
   });
 
   // ── Persist query to Supabase ──────────────────────────────────────────────
@@ -487,10 +530,14 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       return {...q, remarks:[...(q.remarks||[]), remark]};
     }));
     setActiveQuery(q=>q&&q.id===queryId?{...q,remarks:[...(q.remarks||[]),remark]}:q);
-    // Save to DB
+    // Save to DB -- by_staff_id and mentions added for the record-
+    // anchored discussion thread work: mentions is the real, structured
+    // source for rendering clickable chips and (eventually) notifying
+    // whoever was mentioned, not just decorative text.
     try {
       await db.from("query_remarks").insert({
-        query_id: queryId, by_name: currentUser.name, text: remark.text
+        query_id: queryId, by_name: currentUser.name, by_staff_id: isUuid(currentUser?.id) ? currentUser.id : null,
+        text: remark.text, mentions: remark.mentions || [],
       });
     } catch(e) { console.warn("Remark save failed:", e); }
     showToast("Remark logged");
@@ -790,6 +837,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             vendors={vendors}
             staff={staff}
             series={series}
+            agents={agents}
+            queries={queries}
             costSheetExists={costSheetExists.has(activeQuery.id)}
             quotationExists={quotationExists.has(activeQuery.id)}
             hasPayments={(payments[activeQuery.id]?.entries || []).length > 0 || (payments[activeQuery.id]?.outgoing || []).length > 0}
@@ -810,9 +859,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showUserMgmt  && can("user_management") && (
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
-        {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>setShowAgents(false)}/>}
-        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>setShowSeries(false)}/>}
-        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>setShowVendors(false)}/>}
+        {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{setShowAgents(false);setFocusAgentId(null);}} initialSelectedId={focusAgentId}/>}
+        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{setShowSeries(false);setFocusSeriesId(null);}} initialSelectedId={focusSeriesId}/>}
+        {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{setShowVendors(false);setFocusVendorId(null);}} initialSelectedId={focusVendorId}/>}
 
         {/* Cancel modal */}
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}

@@ -48,10 +48,10 @@ describe('Drawer-level lockdown for cancelled tour files: Itinerary, Hotels, Oth
     expect(screen.getAllByText('✕').length).toBeGreaterThan(0);
   });
 
-  it('Remarks remains fully usable on a cancelled query -- the one thing explicitly meant to stay live', () => {
+  it('Discussion (formerly Remarks) remains fully usable on a cancelled query -- the one thing explicitly meant to stay live', () => {
     render(<QueryDrawerWithQuote {...baseProps} query={cancelledQuery} onUpdateTourExecution={()=>{}}/>);
-    fireEvent.click(screen.getByText(/💬 Remarks/));
-    // No fieldset should wrap Remarks -- it should not be disabled
+    fireEvent.click(screen.getByText(/💬 Discussion/));
+    // No fieldset should wrap Discussion -- it should not be disabled
     const remarksFieldset = document.querySelector('fieldset');
     expect(remarksFieldset).toBeNull();
   });

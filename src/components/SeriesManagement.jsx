@@ -2,8 +2,8 @@ import { useState } from 'react';
 import * as Lib from '../lib/index.js';
 const { G, saveSeries, buildQuerySavePayload, db } = Lib;
 
-export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose }) {
-  const [selected, setSelected] = useState(null);
+export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId }) {
+  const [selected, setSelected] = useState(()=>series.find(s=>s.id===initialSelectedId)||null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [search, setSearch] = useState("");

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, costSheetExists, quotationExists, hasPayments, payments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const can = useCan(currentUser);
@@ -74,8 +74,8 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
   // Tabs: query vs tour file, order per spec
   const TABS = isCaseFile
-    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}]
-    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Remarks"}];
+    ? [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"services",label:"🧳 Services"},{id:"finance",label:"💰 Finance"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Discussion"}]
+    : [{id:"info",label:"ℹ Info"},{id:"progress",label:`✅ ${allDone.length}/17`},{id:"docs",label:"📋 Docs"},{id:"audit",label:"📜 Audit"},{id:"remarks",label:"💬 Discussion"}];
 
   const sec = t => (
     <div style={{fontSize:10,fontWeight:700,color:G.gray400,textTransform:"uppercase",letterSpacing:"1px",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${G.gray100}`}}>{t}</div>
@@ -86,7 +86,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const addRemark = () => {
     if(!remark.trim()) return;
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-    onUpdateRemarks && onUpdateRemarks(query.id, {by:currentUser.name, at:now, text:remark.trim()});
+    onUpdateRemarks && onUpdateRemarks(query.id, {by:currentUser.name, byStaffId:currentUser.id, at:now, text:remark.trim(), mentions:extractMentions(remark.trim())});
     setRemark("");
   };
 
@@ -672,7 +672,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
           {/* ── REMARKS ── */}
           {tab==="remarks"&&(
             <div>
-              {sec("Remarks & Special Requirements")}
+              {sec("Discussion")}
               {/* Show original notes from query form */}
               {query.notes&&(
                 <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
@@ -680,27 +680,39 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   <div style={{fontSize:12,color:G.gray800}}>{query.notes}</div>
                 </div>
               )}
-              {/* Logged remarks */}
+              {/* Record-anchored discussion thread: every message can
+                  @mention a colleague, tour file, agent, vendor, or
+                  series -- each mention renders as a real clickable
+                  chip (MessageWithMentions), not decorated text. Real-
+                  time via useRealtimeTable, same proven mechanism
+                  already driving live query updates elsewhere in this
+                  app -- filtered client-side to this query's own
+                  messages, matching the hook's own "caller owns the
+                  merge" design. */}
               {(query.remarks||[]).map((r,i)=>(
-                <div key={i} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 12px",marginBottom:8}}>
-                  <div style={{fontSize:12,color:G.gray800}}>{r.text}</div>
-                  <div style={{fontSize:10,color:G.gray400,marginTop:4}}>{r.by} · {r.at}</div>
+                <div key={r.id||i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+                  <Avatar user={{name:r.by,color:(staff||[]).find(s=>s.id===r.byStaffId)?.color,avatarUrl:(staff||[]).find(s=>s.id===r.byStaffId)?.avatarUrl}} size={28}/>
+                  <div style={{flex:1,background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:2}}>
+                      <span style={{fontSize:12,fontWeight:600}}>{r.by}</span>
+                      <span style={{fontSize:10,color:G.gray400}}>{r.at}</span>
+                    </div>
+                    <div style={{fontSize:12,color:G.gray800,lineHeight:1.5,whiteSpace:"pre-wrap"}}><MessageWithMentions text={r.text} queries={queries}/></div>
+                  </div>
                 </div>
               ))}
               {(query.remarks||[]).length===0&&!query.notes&&(
-                <div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>No remarks yet</div>
+                <div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>No messages yet. Start the discussion below.</div>
               )}
-              {/* Add new remark */}
+              {/* Add new message */}
               <div style={{marginTop:12,borderTop:`1px solid ${G.gray100}`,paddingTop:12}}>
-                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Add Remark</div>
-                <textarea value={remark} onChange={e=>setRemark(e.target.value)}
-                  style={{width:"100%",padding:"8px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,
-                    fontSize:12,fontFamily:"'Inter',sans-serif",minHeight:64,resize:"vertical",outline:"none",
-                    color:G.gray800,marginBottom:8}}
-                  placeholder="Log a remark, update, or note..."/>
-                <button className="btn btn-primary" style={{fontSize:12}} onClick={addRemark}
+                <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Add to Discussion</div>
+                <MentionInput value={remark} onChange={setRemark} onSubmit={addRemark}
+                  placeholder="Type a message... use @ to mention a colleague, tour file, agent, vendor, or series"
+                  staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>
+                <button className="btn btn-primary" style={{fontSize:12,marginTop:8}} onClick={addRemark}
                   disabled={!remark.trim()}>
-                  + Log Remark
+                  Send
                 </button>
               </div>
             </div>

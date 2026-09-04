@@ -14,6 +14,7 @@ export * from './placeResolver.js';
 export * from './gazetteerQuery.js';
 export * from './PlacePicker.jsx';
 export * from './PhotoPicker.jsx';
+export * from './Mentions.jsx';
 export * from './DayPlacesEditor.jsx';
 export * from './photoLibrary.js';
 export * from './LetterheadControls.jsx';

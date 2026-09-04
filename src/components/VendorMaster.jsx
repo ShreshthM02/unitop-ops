@@ -3,16 +3,16 @@ import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash } = Lib;
 
-export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose }) {
+export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId }) {
   const can = useCan(currentUser);
-  const [selected,setSelected]=useState(null);
+  const [selected,setSelected]=useState(()=>vendors.find(v=>v.id===initialSelectedId)||null);
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
   const [filterType,setFilterType]=useState("All");
   const [search,setSearch]=useState("");
   const [showInactive,setShowInactive]=useState(false);
   const [tab,setTab]=useState("profile");
-  const [rates,setRates]=useState([]);
+  const [rates,setRates]=useState(()=>{const v=vendors.find(v=>v.id===initialSelectedId);return v?.rates||[];});
   const [ratesSaveMsg,setRatesSaveMsg]=useState("");
   const [periodFilter,setPeriodFilter]=useState({preset:"all"});
 
