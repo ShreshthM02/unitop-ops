@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, formatDateSlash, PnLExportButton } = Lib;
 
 // entryINR() moved to src/lib/utils.js so QueryDrawerWithQuote's Finance-tab
 // summary can share the exact same formula -- see there for the comment.
@@ -382,7 +382,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
   const [newIn, setNewIn] = useState({ type:"advance", inCurrency:"INR", amount:"", amountINR:"", date:"", mode:"Remittance", ref:"", note:"", modeOther:"", currOther:"" });
-  const [newOut, setNewOut] = useState({ vendor:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"", receiptName:"" });
+  const [newOut, setNewOut] = useState({ vendor:"", category:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"", receiptName:"" });
   const setF=(k,v)=>setPt(p=>({...p,[k]:v}));
   const setNI=(k,v)=>setNewIn(p=>({...p,[k]:v}));
   const setNO=(k,v)=>setNewOut(p=>({...p,[k]:v}));
@@ -438,7 +438,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
     if(!newOut.vendor||!newOut.amount) return;
     const updated = {...pt, outgoing:[...(pt.outgoing||[]), {...newOut,id:Date.now()}]};
     setPt(updated); onUpdatePayments(query.id, updated, `Payment made to ${newOut.vendor}: ₹${newOut.amount}`);
-    setNewOut({vendor:"",amount:"",date:"",mode:"NEFT/RTGS",ref:"",note:"",receiptName:""});
+    setNewOut({vendor:"",category:"",amount:"",date:"",mode:"NEFT/RTGS",ref:"",note:"",receiptName:""});
   };
 
   const inp={padding:"7px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
@@ -598,6 +598,13 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                     <input style={inp} value={newOut.vendor} onChange={e=>setNO("vendor",e.target.value)} placeholder="e.g. Hotel Saura, IRCTC, IndiGo Airlines"/>
                   </div>
                   <div>
+                    <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Category</div>
+                    <select style={inp} value={newOut.category||""} onChange={e=>setNO("category",e.target.value)}>
+                      <option value="">Not categorised</option>
+                      {SERVICE_TYPES.map(s=><option key={s.id} value={s.label}>{s.icon} {s.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Bank Name (paying from)</div>
                     <input style={inp} value={newOut.bankName||""} onChange={e=>setNO("bankName",e.target.value)} placeholder="e.g. Punjab National Bank"/>
                   </div>
@@ -622,7 +629,10 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
           {tab==="pl" && (
             <div>
               <div style={{marginBottom:14}}>
-                <div style={{fontSize:11,fontWeight:600,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>P&L for this Tour File</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{fontSize:11,fontWeight:600,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px"}}>P&L for this Tour File</div>
+                  <PnLExportButton query={query} payments={pt}/>
+                </div>
                 <div style={{fontSize:11,color:G.gray400,marginBottom:14}}>
                   Uses the ROE set in Tour Value above (₹{pt.roeUsed||0} per unit) -- adjust it there to recalculate here too, so this and the summary above never disagree.
                 </div>

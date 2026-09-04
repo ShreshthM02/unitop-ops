@@ -219,6 +219,40 @@ export function entryINR(e) {
   return parseFloat(e.amountINR) || 0;
 }
 
+// New P&L export document (PDF + Excel). Per direct instruction, this
+// pulls ONLY from incoming/outgoing payment records -- no tour value,
+// no other table -- so this is deliberately a pure function of `pt`
+// (the same {entries, outgoing} shape mergePaymentsRows produces),
+// nothing else. Both export builders call this SAME function so PDF
+// and Excel can never compute different numbers from each other.
+// Profit here is real cash flow (received minus paid), not a quoted/
+// billed figure -- the right meaning for a LEDGER specifically, which
+// tracks actual money movements, not projections.
+export function buildPnLSummary(pt) {
+  const entries = pt?.entries || [];
+  const outgoing = pt?.outgoing || [];
+  const totalReceived = entries.reduce((s, e) => s + entryINR(e), 0);
+  const totalExpenditure = outgoing.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+  const netProfit = totalReceived - totalExpenditure;
+  const profitPercent = totalReceived > 0 ? (netProfit / totalReceived) * 100 : 0;
+  const byCategory = {};
+  outgoing.forEach(o => {
+    const cat = o.category || "Not Categorised";
+    if (!byCategory[cat]) byCategory[cat] = { total: 0, entries: [] };
+    byCategory[cat].total += parseFloat(o.amount) || 0;
+    byCategory[cat].entries.push(o);
+  });
+  // Stable order: real categories in SERVICE_TYPES' own order, "Not
+  // Categorised" always last regardless of where it'd otherwise sort.
+  const categoryOrder = ["Restaurant", "Hotel", "Transport", "Tour Facilitator", "Local Handler", "Activity", "Other"];
+  const sortedCategories = Object.keys(byCategory).sort((a, b) => {
+    if (a === "Not Categorised") return 1;
+    if (b === "Not Categorised") return -1;
+    return categoryOrder.indexOf(a) - categoryOrder.indexOf(b);
+  });
+  return { entries, outgoing, totalReceived, totalExpenditure, netProfit, profitPercent, byCategory, sortedCategories };
+}
+
 // Tour Value's own currency picker uses "US $" as its label for US
 // Dollars; an incoming payment entry's currency picker uses "USD" for
 // the same real currency. Both need to resolve to the same canonical
@@ -259,7 +293,7 @@ export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
   (outgoingRows || []).forEach(o => {
     if (!map[o.query_id]) map[o.query_id] = blankPaymentRecord(o.query_id);
     map[o.query_id].outgoing.push({
-      id: o.id, vendor: o.vendor, amount: o.amount, date: o.date, mode: o.mode,
+      id: o.id, vendor: o.vendor, category: o.category, amount: o.amount, date: o.date, mode: o.mode,
       ref: o.ref, note: o.note, receiptName: o.receipt_name,
     });
   });
@@ -297,7 +331,7 @@ export async function savePaymentsToDB(db, queryId, data) {
 
     for (const o of (data.outgoing || [])) {
       await db.from("payment_outgoing").upsert({
-        id: o.id, query_id: queryId, vendor: o.vendor, amount: parseFloat(o.amount) || null,
+        id: o.id, query_id: queryId, vendor: o.vendor, category: o.category || null, amount: parseFloat(o.amount) || null,
         date: o.date || null, mode: o.mode, ref: o.ref, note: o.note, receipt_name: o.receiptName,
       });
     }
