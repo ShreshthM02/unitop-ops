@@ -26,7 +26,10 @@ beforeEach(() => {
 describe('useRealtimeTable', () => {
   it('subscribes to the given table on mount', () => {
     renderHook(() => useRealtimeTable('queries', () => {}));
-    expect(mockClient.channel).toHaveBeenCalledWith('realtime:queries');
+    // Channel name now includes a unique per-instance suffix (fixing a
+    // real collision bug when multiple components subscribe to the same
+    // table at once) -- assert the stable prefix, not the exact string.
+    expect(mockClient.channel).toHaveBeenCalledWith(expect.stringMatching(/^realtime:queries:\d+$/));
     expect(mockChannel.on).toHaveBeenCalledWith(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'queries' },
