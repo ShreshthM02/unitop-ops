@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PnLExportButton } from '../lib/PnLExport.jsx';
 
 // New P&L export document (PDF, Word, Excel). Deliberately does NOT
@@ -64,8 +64,11 @@ describe('PnLExportButton', () => {
     render(<PnLExportButton query={query} payments={payments}/>);
     fireEvent.click(screen.getByText(/Export P&L/));
     fireEvent.click(screen.getByText(/Excel/));
-    await new Promise(r => setTimeout(r, 1500));
-    expect(clickSpy).toHaveBeenCalled();
+    // Polls instead of racing a fixed delay against the real async chain
+    // (dynamic exceljs import + workbook build + writeBuffer) -- a fixed
+    // sleep is a genuine flake risk on a slow machine/import, not a
+    // reliable wait.
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled(), { timeout: 10000 });
     createElementSpy.mockRestore(); createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore();
   });
 });
