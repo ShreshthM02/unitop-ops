@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, db } = Lib;
 
 export default function InAppChat({ currentUser, queries, staff, agents, vendors, series, onClose }) {
   const [conversations, setConversations] = useState([]);
@@ -63,7 +63,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   const iAmAdmin = activeConv?.type === "group" ? !!myMembership?.isAdmin : true; // DMs have no admin concept -- never gate anything on it
   const otherMember = (conv) => (staff || []).find(s => conv?.members.some(m => m.staffId === s.id) && s.id !== currentUser?.id);
   const convDisplayName = (conv) => conv.type === "group" ? conv.name : (otherMember(conv)?.name || "Unknown");
-  const isUnread = (conv) => conv.lastMessage && (!conv.lastReadAt || new Date(conv.lastMessage.createdAt) > new Date(conv.lastReadAt));
+  const isUnread = isConversationUnread;
 
   const sendMessage = async () => {
     const text = composerText.trim();

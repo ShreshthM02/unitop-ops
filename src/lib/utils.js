@@ -883,6 +883,14 @@ export async function sendChatMessage(db, conversationId, senderId, senderName, 
   }
 }
 
+// Shared unread check -- used both for the global sidebar badge (needs
+// to work even when the chat panel is closed) and inside InAppChat's
+// own conversation list, so the two can never disagree with each
+// other about which conversations are actually unread.
+export function isConversationUnread(conv) {
+  return !!(conv.lastMessage && (!conv.lastReadAt || new Date(conv.lastMessage.createdAt) > new Date(conv.lastReadAt)));
+}
+
 export async function markConversationRead(db, conversationId, staffId) {
   try {
     await db.from("chat_conversation_members").upsert({ conversation_id: conversationId, staff_id: staffId, last_read_at: new Date().toISOString() });

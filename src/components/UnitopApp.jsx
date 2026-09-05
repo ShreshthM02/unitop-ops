@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -101,6 +101,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [showChat,       setShowChat]       = useState(false);
+  // Global, always-loaded (not just while the chat panel is open) so
+  // the sidebar unread badge and mention toasts work even when chat is
+  // closed -- InAppChat.jsx keeps its own separate copy for the open
+  // panel's own UI, this one exists purely for the badge/notification.
+  const [chatConversations, setChatConversations] = useState([]);
   const [showProfile,    setShowProfile]    = useState(false);
   const [statFilter,     setStatFilter]     = useState(null); // {key, label, items}
   const [toast, setToast] = useState(null);
@@ -321,6 +326,35 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     const msg = { id: newRow.id, by: newRow.by_name, byStaffId: newRow.by_staff_id, at: new Date(newRow.created_at).toLocaleString("en-IN"), createdAt: newRow.created_at, text: newRow.text, mentions: newRow.mentions || [] };
     setQueries(qs => qs.map(q => q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q));
     setActiveQuery(q => q && q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q);
+    // Mention notification, part of "is he notified" -- applies to
+    // discussion threads the same as DM/Group chat below.
+    if (authUser && currentUser?.id && (newRow.mentions || []).some(m => m.type === "staff" && m.id === currentUser.id)) {
+      showToast(`💬 ${newRow.by_name} mentioned you in a discussion`);
+    }
+  });
+
+  // Global chat conversations, kept loaded even when the chat panel is
+  // closed -- purely to drive the sidebar unread badge and mention
+  // toasts, both of "is he notified" / "does chat have unread badges".
+  const reloadChatConversations = useCallback(() => {
+    if (!authUser || !currentUser?.id) return;
+    loadConversationsForStaff(db, currentUser.id).then(setChatConversations);
+  }, [authUser, currentUser?.id]);
+  useEffect(() => { reloadChatConversations(); }, [reloadChatConversations]);
+
+  useRealtimeTable("chat_messages", (eventType, newRow) => {
+    if (eventType !== "INSERT" || !newRow || !authUser) return;
+    if (newRow.sender_id !== currentUser?.id) {
+      if (currentUser?.id && (newRow.mentions || []).some(m => m.type === "staff" && m.id === currentUser.id)) {
+        showToast(`💬 ${newRow.sender_name} mentioned you in chat`);
+      }
+    }
+    reloadChatConversations();
+  });
+  useRealtimeTable("chat_conversation_members", (eventType, newRow, oldRow) => {
+    if (!authUser) return;
+    const relevant = (newRow && newRow.staff_id === currentUser?.id) || (oldRow && oldRow.staff_id === currentUser?.id);
+    if (relevant) reloadChatConversations();
   });
 
   // ── Persist query to Supabase ──────────────────────────────────────────────
@@ -658,6 +692,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       setView(item.id);setSidebarOpen(false);
                     }}>
                     <span className="nav-icon">{item.icon}</span>{item.label}
+                    {item.id==="chat" && chatConversations.filter(isConversationUnread).length>0 && (
+                      <span style={{marginLeft:"auto",background:G.accent,color:"#fff",fontSize:10,fontWeight:700,borderRadius:10,padding:"1px 7px",minWidth:16,textAlign:"center"}}>
+                        {chatConversations.filter(isConversationUnread).length}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
