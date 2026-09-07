@@ -332,7 +332,29 @@ export const _supa = (() => {
     }
   };
 
-  return { from, auth, rpc };
+  // Phase 6, feature 1: Query Intake Parser. Calls a Supabase Edge
+  // Function (not a Postgres RPC, since this needs to reach the
+  // Anthropic API server-side -- the API key can never live in the
+  // browser bundle). Same session_token the rest of this app already
+  // sends everywhere else; the edge function validates it against
+  // staff directly, matching every other privileged action's own
+  // pattern, rather than relying on Supabase's own JWT verification.
+  const ai = {
+    parseQueryIntake: async (text) => {
+      const sess = await _supa.auth.getSession();
+      try {
+        const r = await fetch(`${url}/functions/v1/parse-query-intake`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: sess?.token, text }),
+        });
+        return await r.json();
+      } catch (e) {
+        return { success: false, error: e.message || String(e) };
+      }
+    },
+  };
+
+  return { from, auth, rpc, ai };
 })();
 
 const db = _supa;
