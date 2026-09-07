@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash } = Lib;
 
-export default function SmartSearch({ queries, agents, vendors, onSelectQuery, onClose }) {
+export default function SmartSearch({ queries, agents, vendors, series, staff, chatConversations, currentUser, onSelectQuery, onSelectStaff, onSelectChat, onClose }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const inputRef = React.useRef(null);
@@ -24,15 +24,28 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
   useEffect(()=>{
     if(!q.trim()) { setResults([]); return; }
     const qr = queries.map(item=>({...item,_type:"query",_score:score(item,q)})).filter(i=>i._score>0);
-    const ag = agents.map(item=>({...item,_type:"agent",_score:score(item,q)})).filter(i=>i._score>0);
-    const vn = vendors.map(item=>({...item,_type:"vendor",_score:score(item,q)})).filter(i=>i._score>0);
-    const all = [...qr,...ag,...vn].sort((a,b)=>b._score-a._score).slice(0,12);
+    const ag = (agents||[]).map(item=>({...item,_type:"agent",_score:score(item,q)})).filter(i=>i._score>0);
+    const vn = (vendors||[]).map(item=>({...item,_type:"vendor",_score:score(item,q)})).filter(i=>i._score>0);
+    // Newer additions, folded into the same search rather than left
+    // behind as this grew: series, colleagues (so "who is Amit" finds
+    // them and can jump straight into a DM), and chat conversations
+    // themselves (so a remembered group/DM name is as findable as a
+    // query).
+    const sr = (series||[]).map(item=>({...item,_type:"series",_score:score(item,q)})).filter(i=>i._score>0);
+    const sf = (staff||[]).filter(s=>s.id!==currentUser?.id).map(item=>({...item,_type:"staff",_score:score(item,q)})).filter(i=>i._score>0);
+    const ch = (chatConversations||[]).map(c=>{
+      const other = c.type==="dm" ? (staff||[]).find(s=>c.members.some(m=>m.staffId===s.id)&&s.id!==currentUser?.id) : null;
+      const label = c.type==="group" ? c.name : c.type==="notifications" ? "Notifications" : (other?.name||"");
+      return {...c,_label:label,_type:"chat",_score:score({label},q)};
+    }).filter(i=>i._score>0);
+    const all = [...qr,...ag,...vn,...sr,...sf,...ch].sort((a,b)=>b._score-a._score).slice(0,12);
     setResults(all);
   },[q]);
 
   const TypeBadge = ({type}) => {
     const map = {query:{label:"Query",bg:"#DBEAFE",color:"#1E40AF"},agent:{label:"Agent",bg:"#D1FAE5",color:"#065F46"},
-      vendor:{label:"Vendor",bg:"#FEF3C7",color:"#92400E"}};
+      vendor:{label:"Vendor",bg:"#FEF3C7",color:"#92400E"},series:{label:"Series",bg:"#EDE9FE",color:"#5B21B6"},
+      staff:{label:"Colleague",bg:"#E0F2FE",color:"#075985"},chat:{label:"Chat",bg:"#FCE7F3",color:"#9D174D"}};
     const s=map[type]||map.query;
     return <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:s.bg,color:s.color,fontWeight:600}}>{s.label}</span>;
   };
@@ -41,13 +54,29 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
     if(r._type==="query") return r.groupName||r.clientName||r.agentCompany;
     if(r._type==="agent") return r.company;
     if(r._type==="vendor") return r.name;
+    if(r._type==="series") return r.name;
+    if(r._type==="staff") return r.name;
+    if(r._type==="chat") return (r.type==="group"?"# ":"")+r._label;
     return "";
   };
   const getSub = r => {
     if(r._type==="query") return `${r.id} · ${r.destination||r.sector||""} · ${formatDateSlash(r.travelDate)||r.travelMonth||""}`;
     if(r._type==="agent") return `${r.country} · ${r.contactName}`;
     if(r._type==="vendor") return `${r.type} · ${r.city}`;
+    if(r._type==="series") return r.notes || "Series";
+    if(r._type==="staff") return r.role;
+    if(r._type==="chat") return r.type==="group" ? `${r.members?.length||0} members` : r.type==="notifications" ? "Your notifications" : "Direct message";
     return "";
+  };
+
+  const isClickable = r => ["query","agent","vendor","series","staff","chat"].includes(r._type);
+  const handleSelect = (r) => {
+    if(r._type==="query"){ onSelectQuery(r); onClose(); return; }
+    if(r._type==="agent"){ document.dispatchEvent(new CustomEvent("unitop-activate-agent",{detail:{id:r.id}})); onClose(); return; }
+    if(r._type==="vendor"){ document.dispatchEvent(new CustomEvent("unitop-activate-vendor",{detail:{id:r.id}})); onClose(); return; }
+    if(r._type==="series"){ document.dispatchEvent(new CustomEvent("unitop-activate-series",{detail:{id:r.id}})); onClose(); return; }
+    if(r._type==="staff"){ onSelectStaff && onSelectStaff(r); onClose(); return; }
+    if(r._type==="chat"){ onSelectChat && onSelectChat(r); onClose(); return; }
   };
 
   return (
@@ -57,15 +86,15 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
         <div style={{padding:"14px 16px",borderBottom:`1px solid ${G.gray200}`,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:18,color:G.gray400}}>🔍</span>
           <input ref={inputRef} style={{flex:1,border:"none",outline:"none",fontSize:15,fontFamily:"'Inter',sans-serif",color:G.gray800}}
-            placeholder="Search queries, clients, agents, vendors, tour numbers, destinations..."
+            placeholder="Search queries, clients, agents, vendors, series, colleagues, chats..."
             value={q} onChange={e=>setQ(e.target.value)}/>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:G.gray400}}>✕</button>
         </div>
         <div style={{overflowY:"auto",flex:1}}>
           {q.trim()==='' && (
             <div style={{padding:"24px 16px",textAlign:"center",color:G.gray400}}>
-              <div style={{fontSize:13}}>Type to search across all queries, agents, vendors and tours</div>
-              <div style={{fontSize:11,marginTop:6}}>Try: client name, tour number, destination, agent company, vendor name...</div>
+              <div style={{fontSize:13}}>Type to search across queries, agents, vendors, series, colleagues, and chats</div>
+              <div style={{fontSize:11,marginTop:6}}>Try: client name, tour number, destination, agent company, vendor name, series, a colleague's name...</div>
             </div>
           )}
           {q.trim()!=='' && results.length===0 && (
@@ -75,8 +104,8 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
             </div>
           )}
           {results.map((r,i)=>(
-            <div key={i} onClick={()=>{ if(r._type==="query"){ onSelectQuery(r); onClose(); } }}
-              style={{padding:"12px 16px",borderBottom:`1px solid ${G.gray100}`,cursor:r._type==="query"?"pointer":"default",
+            <div key={i} onClick={()=>handleSelect(r)}
+              style={{padding:"12px 16px",borderBottom:`1px solid ${G.gray100}`,cursor:isClickable(r)?"pointer":"default",
                 display:"flex",alignItems:"center",gap:10,transition:"background .1s"}}
               onMouseEnter={e=>e.currentTarget.style.background=G.gray50}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -89,7 +118,7 @@ export default function SmartSearch({ queries, agents, vendors, onSelectQuery, o
             </div>
           ))}
         </div>
-        {results.length>0&&<div style={{padding:"8px 16px",background:G.gray50,borderTop:`1px solid ${G.gray200}`,fontSize:11,color:G.gray400}}>{results.length} result{results.length>1?"s":""} — click any query to open</div>}
+        {results.length>0&&<div style={{padding:"8px 16px",background:G.gray50,borderTop:`1px solid ${G.gray200}`,fontSize:11,color:G.gray400}}>{results.length} result{results.length>1?"s":""} — click any result to open it</div>}
       </div>
     </div>
   );

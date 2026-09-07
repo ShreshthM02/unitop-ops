@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -98,6 +98,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [focusAgentId,   setFocusAgentId]   = useState(null);
   const [focusVendorId,  setFocusVendorId]  = useState(null);
   const [focusSeriesId,  setFocusSeriesId]  = useState(null);
+  const [focusConvId,    setFocusConvId]    = useState(null);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [showChat,       setShowChat]       = useState(false);
@@ -881,7 +882,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>{/* end content */}
         </div>{/* end main */}
 
-        {showChat    && <InAppChat currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>setShowChat(false)}/>}
+        {showChat    && <InAppChat currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>{setShowChat(false);setFocusConvId(null);}} initialConvId={focusConvId}/>}
         {showProfile && <UserProfilePanel currentUser={currentUser} onClose={()=>setShowProfile(false)} onSave={onUpdateAuthUser}/>}
 
         {activeQuery&&!anyPanel&&!cancelTarget&&(
@@ -932,7 +933,18 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {cancelTarget && <CancelModal query={cancelTarget} onClose={()=>setCancelTarget(null)} onConfirm={(reason)=>handleCancel(cancelTarget,reason)}/>}
 
         {/* Smart Search */}
-        {showSearch && <SmartSearch queries={queries} agents={agents} vendors={vendors} onSelectQuery={q=>{setActiveQuery(q);}} onClose={()=>setShowSearch(false)}/>}
+        {showSearch && <SmartSearch queries={queries} agents={agents} vendors={vendors} series={series} staff={staff} chatConversations={chatConversations} currentUser={currentUser}
+          onSelectQuery={q=>{setActiveQuery(q);}}
+          onSelectStaff={async(s)=>{
+            // Search finding a colleague jumps straight into a DM with
+            // them, reusing the same findOrCreateDM used everywhere
+            // else in chat -- never creates a duplicate if one already
+            // exists.
+            const {id} = await findOrCreateDM(db, currentUser.id, s.id);
+            if(id){ setFocusConvId(id); setShowChat(true); }
+          }}
+          onSelectChat={(c)=>{ setFocusConvId(c.id); setShowChat(true); }}
+          onClose={()=>setShowSearch(false)}/>}
 
         {/* Stat filter list modal */}
         {statFilter && (

@@ -3,9 +3,29 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, notifyMentionedStaff, deleteConversation, db } = Lib;
 
-export default function InAppChat({ currentUser, queries, staff, agents, vendors, series, onClose, asTab = false }) {
+// Real gap found and fixed: only the send TIME ever showed on a
+// message, never the date -- no way to tell when something was
+// actually sent once a conversation spans more than a day. "Today"/
+// "Yesterday"/a real date, matching the same convention WhatsApp/Slack
+// use for their own date dividers.
+function formatDateDivider(dateStr) {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+}
+
+export default function InAppChat({ currentUser, queries, staff, agents, vendors, series, onClose, asTab = false, initialConvId = null }) {
   const [conversations, setConversations] = useState([]);
-  const [activeConvId, setActiveConvId] = useState(null);
+  const [activeConvId, setActiveConvId] = useState(initialConvId);
+  // Search-to-chat bridge: if opened with a specific conversation to
+  // jump to (from the global search finding a chat or a colleague),
+  // select it once conversations have actually loaded -- initialConvId
+  // alone at useState time may run before the real conversation list
+  // is populated.
+  useEffect(() => { if (initialConvId) setActiveConvId(initialConvId); }, [initialConvId]);
   const [messages, setMessages] = useState([]);
   const [composerText, setComposerText] = useState("");
   const [showNewMenu, setShowNewMenu] = useState(false);
@@ -357,8 +377,27 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                     const sender = (staff||[]).find(s=>s.id===msg.senderId);
                     const isMine = msg.senderId === currentUser?.id;
                     const isEditing = editingId === msg.id;
+                    // Real gap found and fixed: only the send TIME was
+                    // shown on each message, never the date -- no way
+                    // to tell when a message was actually sent once a
+                    // conversation spans more than one day. A date
+                    // divider (matching WhatsApp/Slack's own
+                    // convention) shows once per real calendar-day
+                    // change in the message list, not repeated on
+                    // every single message.
+                    const prevDay = i>0 && visibleMessages[i-1]?.createdAt ? new Date(visibleMessages[i-1].createdAt).toDateString() : null;
+                    const thisDay = msg.createdAt ? new Date(msg.createdAt).toDateString() : null;
+                    const showDateDivider = thisDay && thisDay !== prevDay;
                     return (
-                      <div key={msg.id||`optimistic-${i}`} className="chat-msg-row" style={{display:"flex",gap:10,marginBottom:showHeader?12:4,alignItems:"flex-start",position:"relative"}}>
+                      <div key={msg.id||`optimistic-${i}`}>
+                      {showDateDivider && (
+                        <div style={{display:"flex",alignItems:"center",gap:10,margin:"14px 0 10px"}}>
+                          <div style={{flex:1,height:1,background:G.gray100}}/>
+                          <span style={{fontSize:10.5,color:G.gray400,fontWeight:600,whiteSpace:"nowrap"}}>{formatDateDivider(msg.createdAt)}</span>
+                          <div style={{flex:1,height:1,background:G.gray100}}/>
+                        </div>
+                      )}
+                      <div className="chat-msg-row" style={{display:"flex",gap:10,marginBottom:showHeader?12:4,alignItems:"flex-start",position:"relative"}}>
                         <div style={{width:32,flexShrink:0}}>{showHeader&&<Avatar user={sender||{name:msg.senderName}} size={32}/>}</div>
                         <div style={{flex:1}}>
                           {showHeader&&<div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:2}}><span style={{fontSize:13,fontWeight:600}}>{msg.senderName}</span></div>}
@@ -387,6 +426,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                             <span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>deleteMessage(msg)} title="Delete">🗑</span>
                           </div>
                         )}
+                      </div>
                       </div>
                     );
                   })}
