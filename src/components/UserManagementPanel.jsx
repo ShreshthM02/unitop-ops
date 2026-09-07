@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
 
-export function UserManagementPanel({ currentUser, onClose }) {
+export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
   const [staffList, setStaffList]   = useState([]);
   const [selected,  setSelected]    = useState(null);
   const [tab, setTab]               = useState("users"); // users | create
@@ -89,9 +89,9 @@ export function UserManagementPanel({ currentUser, onClose }) {
     color:G.gray800, background:G.white };
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:G.white, width:"min(760px, 100vw)", height:"100vh", display:"flex",
-        flexDirection:"column", boxShadow:"-4px 0 24px rgba(0,0,0,0.15)" }}>
+    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined} onClick={asTab ? undefined : (e=>e.target===e.currentTarget&&onClose())}>
+      <div style={{ background:G.white, width:asTab?"100%":"min(760px, 100vw)", height:asTab?"100%":"100vh", display:"flex",
+        flexDirection:"column", boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)" }}>
 
         {/* Header */}
         <div style={{ background:G.navy, padding:"14px 20px", display:"flex",
@@ -106,8 +106,8 @@ export function UserManagementPanel({ currentUser, onClose }) {
             style={{ fontSize:11, ...(tab==="create"?{background:"rgba(255,255,255,0.15)",color:"#fff",border:"none"}:{}) }}>
             {tab==="create" ? "← Back to Users" : "+ New User"}
           </button>
-          <button onClick={onClose} className="btn btn-ghost"
-            style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
+          {!asTab && <button onClick={onClose} className="btn btn-ghost"
+            style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>}
         </div>
 
         {toast && (

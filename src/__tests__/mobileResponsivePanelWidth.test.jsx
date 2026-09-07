@@ -28,7 +28,12 @@ describe('Mobile: document panels no longer use a bare fixed width', () => {
   FIXED_COMPONENTS.forEach(name => {
     it(`${name}'s panel width is responsive (min(...px, 100vw)), not a bare pixel value`, () => {
       const src = fs.readFileSync(path.resolve(__dirname, `../components/${name}.jsx`), 'utf8');
-      const match = src.match(/background:\s*G\.white,\s*width:\s*("?)min\(\d+px,\s*100vw\)\1,\s*height:\s*["']100vh["']/);
+      // Allows an optional ternary prefix (e.g. `asTab?"100%":`) before
+      // the actual min(...) value -- some panels can now also embed as
+      // a tab (asTab=true), using a plain "100%" in that mode and only
+      // falling back to the responsive min(...) width in the modal/
+      // overlay mode. Same allowance for height's "100vh".
+      const match = src.match(/background:\s*G\.white,\s*width:\s*(?:[\w!=?:.]+\?"[^"]*":)?(")?min\(\d+px,\s*100vw\)\1,\s*height:\s*(?:[\w!=?:.]+\?"[^"]*":)?["']100vh["']/);
       expect(match, `${name}.jsx: expected the panel's width to be min(<n>px, 100vw)`).toBeTruthy();
     });
   });
