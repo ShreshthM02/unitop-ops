@@ -215,3 +215,28 @@ describe('Mention "open" targets: Agent/Vendor/Series panels open already focuse
     expect(() => render(<AgentMaster agents={agents} setAgents={()=>{}} queries={[]} payments={{}} currentUser={{id:1,role:'admin'}} onSaveAgent={()=>{}} onClose={()=>{}} initialSelectedId={null}/>)).not.toThrow();
   });
 });
+
+describe('MentionInput: live preview strip', () => {
+  it('shows no preview at all when there are no mentions yet', () => {
+    render(<MentionInput value="just a plain message" onChange={()=>{}} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    expect(screen.queryByText('Preview')).toBeFalsy();
+  });
+
+  it('shows a real, readable preview with a colored chip once a mention is present -- not the raw token', () => {
+    render(<MentionInput value="Hey @[[staff:s2:Amit Shah]], check this" onChange={()=>{}} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    expect(screen.getByText('Preview')).toBeTruthy();
+    // "Amit Shah" also appears inside the raw textarea value itself
+    // (expected -- that's the actual gap this preview closes), so
+    // confirm the CHIP specifically renders it, a real <span>.
+    const chip = screen.getAllByText(/Amit Shah/).find(el => el.closest('span'));
+    expect(chip).toBeTruthy();
+  });
+
+  it('updates live as the message changes, matching the actual mention system’s own real-time behavior', () => {
+    const { rerender } = render(<MentionInput value="no mention here" onChange={()=>{}} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    expect(screen.queryByText('Preview')).toBeFalsy();
+    rerender(<MentionInput value="now @[[vendor:v1:Saura]] is mentioned" onChange={()=>{}} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    expect(screen.getByText('Preview')).toBeTruthy();
+    expect(screen.getAllByText(/Saura/).some(el => el.closest('span'))).toBe(true);
+  });
+});

@@ -144,6 +144,21 @@ export function MentionInput({ value, onChange, onSubmit, placeholder, minHeight
           }
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSubmit && onSubmit(); }
         }}/>
+      {/* Real, live preview -- shows exactly how the message will render
+          once sent, with actual colored chips, not the raw @[[...]]
+          token the textarea itself has to show while typing (a plain
+          textarea can only ever hold plain text; only real HTML can be
+          styled, so this is a genuine platform limit, not a bug --
+          the preview is what closes that gap without the real risk a
+          full contentEditable rewrite would introduce). Only shown once
+          there's an actual mention to preview, so it doesn't clutter an
+          ordinary message with no mentions in it. */}
+      {extractMentions(value).length > 0 && (
+        <div style={{ marginTop: 4, padding: "6px 9px", background: G.gray50, border: `1px solid ${G.gray100}`, borderRadius: 6, fontSize: 12, color: G.gray800, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 9, color: G.gray400, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Preview</div>
+          <MessageWithMentions text={value} queries={queries} />
+        </div>
+      )}
     </div>
   );
 }
