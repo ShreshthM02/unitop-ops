@@ -1,3 +1,5 @@
+import { extractMentions } from "./Mentions.jsx";
+
 export const nextInvoiceNo = (prefix, existing) => {
   const nums = existing.filter(n=>n.startsWith(prefix)).map(n=>parseInt(n.split("-").pop())||0);
   return `${prefix}-${new Date().getFullYear()}-${String(Math.max(0,...nums)+1).padStart(3,"0")}`;
@@ -880,6 +882,33 @@ export async function sendChatMessage(db, conversationId, senderId, senderName, 
   } catch (e) {
     console.warn("Send chat message failed:", e);
     return { id: null, error: e.message || String(e) };
+  }
+}
+
+// Notifications thread: called by the SENDER's own client right after
+// they send a message/remark containing mentions -- not a realtime
+// listener on the recipient's side, since the recipient might not be
+// online at all when the mention happens, and a persistent
+// notification's whole point is being there when they come back.
+// db.auth.postNotification is a privileged RPC (post_notification)
+// that validates the sender's real session, then writes into the
+// recipient's own single-member notifications thread regardless of
+// normal chat RLS, which would otherwise correctly block writing into
+// a conversation you're not a member of.
+export async function notifyMentionedStaff(db, mentions, { senderName, contextLabel, snippet, contextMention }) {
+  const staffMentions = (mentions || []).filter(m => m.type === "staff");
+  if (!staffMentions.length) return;
+  const bodyMention = contextMention ? ` ${contextMention}` : "";
+  const text = `${senderName} mentioned you ${contextLabel}${bodyMention}: "${snippet}"`;
+  // The notification's own mentions carry the CONTEXT (e.g. the tour
+  // file), not the recipient themselves -- a self-mention here would
+  // double up with the recipient's own "new message in a conversation
+  // I'm in" unread/toast handling, which already fires for any new
+  // message in their notifications thread without needing this.
+  const contextMentionsList = contextMention ? extractMentions(contextMention) : [];
+  for (const m of staffMentions) {
+    try { await db.auth.postNotification(m.id, text, contextMentionsList); }
+    catch (e) { console.warn("Post notification failed:", e); }
   }
 }
 

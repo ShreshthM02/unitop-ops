@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, notifyMentionedStaff, db } = Lib;
 
 export default function InAppChat({ currentUser, queries, staff, agents, vendors, series, onClose }) {
   const [conversations, setConversations] = useState([]);
@@ -62,7 +62,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   const myMembership = activeConv?.members?.find(m => m.staffId === currentUser?.id);
   const iAmAdmin = activeConv?.type === "group" ? !!myMembership?.isAdmin : true; // DMs have no admin concept -- never gate anything on it
   const otherMember = (conv) => (staff || []).find(s => conv?.members?.some(m => m.staffId === s.id) && s.id !== currentUser?.id);
-  const convDisplayName = (conv) => conv.type === "group" ? conv.name : (otherMember(conv)?.name || "Unknown");
+  const convDisplayName = (conv) => conv.type === "group" ? conv.name : conv.type === "notifications" ? "Notifications" : (otherMember(conv)?.name || "Unknown");
   const isUnread = isConversationUnread;
 
   const sendMessage = async () => {
@@ -75,6 +75,17 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
     const { error } = await sendChatMessage(db, activeConvId, currentUser?.id, currentUser?.name || "You", text, mentions);
     if (error) setErrMsg("Error: " + error);
     reloadConversations();
+    // Notifications thread: fire-and-forget, same reasoning as the
+    // discussion thread's own version -- never blocks the real send.
+    // No contextMention here (unlike a discussion, which links back to
+    // its own tour file) -- a chat conversation isn't itself
+    // addressable via the mention system, so the recipient would just
+    // need to open Chat directly to find it.
+    notifyMentionedStaff(db, mentions, {
+      senderName: currentUser?.name || "Someone",
+      contextLabel: activeConv?.type === "group" ? "in a group chat" : "in a direct message",
+      snippet: text.length > 80 ? text.slice(0,80)+"…" : text,
+    });
   };
 
   const startDM = async (otherStaffId) => {
@@ -169,7 +180,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
               {conversations.map(conv=>(
                 <div key={conv.id} onClick={()=>setActiveConvId(conv.id)} style={{padding:"8px 14px",cursor:"pointer",background:activeConvId===conv.id?"rgba(255,255,255,0.12)":"transparent"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:13,color:"#fff",fontWeight:isUnread(conv)?700:400,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.type==="group"?"# ":""}{convDisplayName(conv)}</span>
+                    <span style={{fontSize:13,color:"#fff",fontWeight:isUnread(conv)?700:400,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.type==="group"?"# ":conv.type==="notifications"?"🔔 ":""}{convDisplayName(conv)}</span>
                     {isUnread(conv) && <span style={{width:7,height:7,borderRadius:"50%",background:G.accent,flexShrink:0}}/>}
                   </div>
                   {conv.lastMessage && <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.lastMessage.senderName}: {conv.lastMessage.text}</div>}
@@ -265,7 +276,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
               <>
                 <div style={{padding:"12px 18px",borderBottom:`1px solid ${G.gray200}`,flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:700}}>{activeConv.type==="group"?"# ":""}{convDisplayName(activeConv)}</div>
+                    <div style={{fontSize:14,fontWeight:700}}>{activeConv.type==="group"?"# ":activeConv.type==="notifications"?"🔔 ":""}{convDisplayName(activeConv)}</div>
                     {activeConv.type==="group" && <div style={{fontSize:11,color:G.gray400}}>{activeConv.members.length} members</div>}
                   </div>
                   <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowSearch(o=>!o)}>🔍</button>
@@ -320,16 +331,18 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                   {seenByOthers.length>0 && <div style={{fontSize:10,color:G.gray400,textAlign:"right",marginTop:2}}>Seen by {seenByOthers.join(", ")}</div>}
                   <div ref={bottomRef}/>
                 </div>
-                <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,flexShrink:0}}>
-                  <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
-                    <div style={{flex:1}}>
-                      <MentionInput value={composerText} onChange={setComposerText} onSubmit={sendMessage}
-                        placeholder={`Message ${convDisplayName(activeConv)}... use @ to mention`}
-                        staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>
+                {activeConv.type!=="notifications" && (
+                  <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,flexShrink:0}}>
+                    <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+                      <div style={{flex:1}}>
+                        <MentionInput value={composerText} onChange={setComposerText} onSubmit={sendMessage}
+                          placeholder={`Message ${convDisplayName(activeConv)}... use @ to mention`}
+                          staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>
+                      </div>
+                      <button onClick={sendMessage} className="btn btn-primary" style={{fontSize:12,padding:"8px 16px"}} disabled={!composerText.trim()}>Send</button>
                     </div>
-                    <button onClick={sendMessage} className="btn btn-primary" style={{fontSize:12,padding:"8px 16px"}} disabled={!composerText.trim()}>Send</button>
                   </div>
-                </div>
+                )}
               </>
             )}
           </div>

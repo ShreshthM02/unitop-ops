@@ -259,6 +259,20 @@ export const _supa = (() => {
       });
       return await r.json();
     },
+    // Notifications thread: a real, persistent alternative to a toast
+    // that disappears if you're not looking. The SENDER's own client
+    // calls this (not the recipient's) -- the sender is guaranteed
+    // online at send time, while the recipient might not be, so relying
+    // on the recipient's own client to notice a mention and write to
+    // itself would silently miss anyone who wasn't online right then.
+    postNotification: async (recipientStaffId, text, mentions) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/post_notification`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_recipient_staff_id:recipientStaffId, p_text:text, p_mentions:mentions })
+      });
+      return await r.json();
+    },
     // Self-service update for the logged-in user's own display name and
     // avatar color -- deliberately separate from updatePermissions, which
     // is admin-only and requires a target user. On success, also updates

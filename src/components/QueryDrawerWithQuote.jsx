@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions, notifyMentionedStaff } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
@@ -86,7 +86,19 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const addRemark = () => {
     if(!remark.trim()) return;
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-    onUpdateRemarks && onUpdateRemarks(query.id, {by:currentUser.name, byStaffId:currentUser.id, at:now, text:remark.trim(), mentions:extractMentions(remark.trim())});
+    const trimmed = remark.trim();
+    const mentions = extractMentions(trimmed);
+    onUpdateRemarks && onUpdateRemarks(query.id, {by:currentUser.name, byStaffId:currentUser.id, at:now, text:trimmed, mentions});
+    // Notifications thread: fire-and-forget, never blocks the remark
+    // itself from being added -- a failed notification shouldn't stop
+    // the real action from succeeding.
+    const idLabel = query.tourFileId || query.id;
+    notifyMentionedStaff(db, mentions, {
+      senderName: currentUser.name,
+      contextLabel: "in the discussion for",
+      snippet: trimmed.length > 80 ? trimmed.slice(0,80)+"…" : trimmed,
+      contextMention: `@[[query:${idLabel}:${query.groupName||query.clientName||idLabel}]]`,
+    });
     setRemark("");
   };
 
