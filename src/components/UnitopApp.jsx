@@ -692,11 +692,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 {sec.items.map(item=>(
                   <div key={item.id} className={`nav-item ${view===item.id?"active":""}`}
                     onClick={()=>{
-                      if(item.id==="chat"){setShowChat(true);setSidebarOpen(false);return;}
-                      if(item.id==="usermgmt"){setShowUserMgmt(true);setSidebarOpen(false);return;}
-                      if(item.id==="series"){setShowSeries(true);setSidebarOpen(false);return;}
-                      if(item.id==="agents"){setShowAgents(true);setSidebarOpen(false);return;}
-                      if(item.id==="vendors"){setShowVendors(true);setSidebarOpen(false);return;}
                       setView(item.id);setSidebarOpen(false);
                     }}>
                     <span className="nav-icon">{item.icon}</span>{item.label}
@@ -748,6 +743,21 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings} onSignaturesChanged={()=>loadSignatures(db).then(setSignatures)}/>}
             {view==="place_library" && <AdminPlaceLibrary/>}
+            {/* Sidebar navigation for these 5 now opens a real, full
+                tab like every other nav item, instead of a split-pane
+                overlay -- the components already fully supported
+                asTab (no backdrop, full width/height, no close
+                button), it just was never wired up from here. The
+                overlay-based rendering below (showChat/showAgents/etc)
+                stays as-is for its OTHER real use -- a mention click
+                elsewhere in the app opening a quick, contextual look
+                at a specific agent/vendor/series without navigating
+                away from what the user was doing. */}
+            {view==="chat" && <InAppChat asTab currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>{}}/>}
+            {view==="usermgmt" && <UserManagementPanel asTab currentUser={currentUser} onClose={()=>{}}/>}
+            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}}/>}
+            {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}}/>}
+            {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}}/>}
 
             {view==="cancelled" && (
               <div>
