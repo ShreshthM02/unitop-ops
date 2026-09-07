@@ -11,10 +11,10 @@ const queries = [
 ];
 
 describe('GanttView: Movement Chart tab', () => {
-  it('adds a third "Movement Chart" tab alongside Gantt and Overlap', () => {
+  it('adds a third "Movement Chart" tab alongside Gantt and Ground View (Overlap was replaced by Ground View, per direct request -- a real operational "what\'s happening today" view rather than a date-range collision chart)', () => {
     render(<GanttView queries={queries} tours={[]}/>);
     expect(screen.getByText('📅 Gantt')).toBeTruthy();
-    expect(screen.getByText('⚡ Overlap')).toBeTruthy();
+    expect(screen.getByText('📍 Ground View')).toBeTruthy();
     expect(screen.getByText('📋 Movement Chart')).toBeTruthy();
   });
 

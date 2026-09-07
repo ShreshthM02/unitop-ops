@@ -435,6 +435,44 @@ export function buildRouteLines(days) {
   return lines;
 }
 
+// Ground View: replaces the old destination-overlap tab. That answered
+// a scheduling question ("whose date ranges collide") -- this answers
+// the actual operational one: "what is physically happening today, for
+// every tour that's currently running." For a chosen date (defaulting
+// to today), returns every operationally active tour whose date range
+// includes it, together with its tour facilitators and that day's own
+// itinerary slice -- pulled ONLY from tour_execution (Tour Info),
+// exactly as instructed, the same single source of truth
+// getMovementChartRows already documents and relies on; never Cost
+// Sheet's own day fields, which are a separate pricing draft.
+export function getRunningToursForDate(queries, tourExecutions, vendors, dateStr) {
+  const chosen = parseLocalDateStr(dateStr);
+  if (!chosen) return [];
+  return queries
+    .filter(q => ["operations", "finance"].includes(q.status) && !q.cancelled && q.travelDate)
+    .map(q => {
+      const start = parseLocalDateStr(q.travelDate);
+      if (!start) return null;
+      const nights = parseInt(q.nights) || 0;
+      const end = new Date(start);
+      end.setDate(start.getDate() + nights);
+      if (chosen < start || chosen > end) return null;
+      const dayIndex = Math.round((chosen - start) / 86400000);
+      const te = (tourExecutions || {})[q.id];
+      const days = te?.days || [];
+      // Prefer an explicit date match (someone filled in real dates per
+      // day); fall back to position in the list otherwise, since day
+      // rows are always added in order.
+      const dayInfo = days.find(d => d.date && parseLocalDateStr(d.date)?.getTime() === chosen.getTime()) || days[dayIndex] || null;
+      const facilitatorNames = (te?.facilitators || [])
+        .map(f => (vendors || []).find(v => v.id === f.vendorId)?.name)
+        .filter(Boolean);
+      return { query: q, dayIndex: dayIndex + 1, totalDays: nights + 1, dayInfo, facilitatorNames };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.query.tourFileId || a.query.id).localeCompare(b.query.tourFileId || b.query.id));
+}
+
 export function getMovementChartRows(queries, users, year, month, tourExecutions, vendors) {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
@@ -588,6 +626,7 @@ export function mapCostSheetDaysToTourExecutionDays(csDays) {
     route: d.movement || "",
     hotelName: d.hotel || "",
     rooms: "",
+    mealPlan: d.mealPlan || "",
     notes: d.notes || "",
   }));
 }

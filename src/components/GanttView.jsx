@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML, getRunningToursForDate } = Lib;
 
 export default function GanttView({ queries, onOpenQuery, staff, vendors, tourExecutions }) {
   const [calTab, setCalTab]         = useState("gantt");
@@ -8,6 +8,12 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
   const [showColPicker, setShowColPicker] = useState(false);
   const [selectedYear,  setYear]    = useState(()=>new Date().getFullYear());
   const [selectedMonth, setMonth]   = useState(()=>new Date().getMonth()); // 0-indexed, defaults to current month
+  // Ground View: defaults to today, in the YYYY-MM-DD shape a date
+  // input and parseLocalDateStr both expect.
+  const [groundDate, setGroundDate] = useState(()=>{
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  });
 
   // ── GANTT ──────────────────────────────────────────────────────────────────
   // Build days for selected month
@@ -48,30 +54,15 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
     return { isFirst, isLast };
   };
 
-  // ── OVERLAP ─────────────────────────────────────────────────────────────────
-  const extractCities = (str="") => {
-    const known = ["Delhi","Agra","Jaipur","Varanasi","Leh","Bodh Gaya","Mumbai","Kolkata","Goa","Jaisalmer","Udaipur","Jodhpur","Kochi","Amritsar","Rishikesh","Manali","Shimla"];
-    return known.filter(c=>str.toLowerCase().includes(c.toLowerCase()));
-  };
-
-  const cityMap = {};
-  queries.filter(q=>["operations","costing","finance"].includes(q.status)&&!q.cancelled).forEach(q=>{
-    extractCities((q.destination||q.sector||"")).forEach(city=>{
-      if(!cityMap[city]) cityMap[city]=[];
-      if(!cityMap[city].find(x=>x.id===q.id)) cityMap[city].push(q);
-    });
-  });
-
-  const overlapDays = Array.from({length:daysInMonth},(_,i)=>i+1);
-
-  const isInCity = (q, day) => {
-    if(!q.travelDate) return false;
-    const d = new Date(selectedYear, selectedMonth, day);
-    const s = parseLocalDate(q.travelDate);
-    if(!s) return false;
-    const e = new Date(s); e.setDate(s.getDate()+(parseInt(q.nights)||7));
-    return d>=s && d<=e;
-  };
+  // ── GROUND VIEW ────────────────────────────────────────────────────────────
+  // Replaces the old destination-overlap tab. That answered "whose date
+  // ranges collide" -- this answers the real operational question:
+  // "what's physically happening today, for every tour that's running."
+  // Pulled entirely from the shared getRunningToursForDate helper, which
+  // reads ONLY tour_execution (Tour Info) for facilitators and the day's
+  // own itinerary slice -- never Cost Sheet's own day fields, matching
+  // this app's existing single-source-of-truth rule for this data.
+  const runningTours = getRunningToursForDate(queries, tourExecutions, vendors, groundDate);
 
   const availableYears = [2025,2026,2027];
   const availableMonths = MONTH_NAMES.map((m,i)=>({label:m,i}));
@@ -96,7 +87,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
           ))}
         </div>
         <div style={{marginLeft:"auto",display:"flex",background:G.gray100,borderRadius:8,padding:3,gap:2}}>
-          {[["gantt","📅 Gantt"],["overlap","⚡ Overlap"],["movement","📋 Movement Chart"]].map(([id,label])=>(
+          {[["gantt","📅 Gantt"],["ground","📍 Ground View"],["movement","📋 Movement Chart"]].map(([id,label])=>(
             <button key={id} onClick={()=>setCalTab(id)}
               style={{padding:"5px 14px",borderRadius:6,border:"none",cursor:"pointer",
                 background:calTab===id?G.white:"transparent",
@@ -182,73 +173,59 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
         </div>
       )}
 
-      {/* ── OVERLAP TAB ── */}
-      {calTab==="overlap" && (
+      {/* ── GROUND VIEW TAB ── */}
+      {calTab==="ground" && (
         <div>
-          <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
-            Destination overlaps for <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong>
-            {" · "}<span style={{color:"#92400E",fontWeight:600}}>⚡ = multiple groups in same city</span>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+            <div style={{fontSize:12,color:G.gray600}}>Running tours on</div>
+            <input type="date" value={groundDate} onChange={e=>setGroundDate(e.target.value)}
+              style={{padding:"6px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
+            <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>{
+              const d = new Date();
+              setGroundDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
+            }}>Today</button>
+            <div style={{marginLeft:"auto",fontSize:11,color:G.gray400}}>{runningTours.length} tour{runningTours.length!==1?"s":""} on the ground</div>
           </div>
-          {Object.keys(cityMap).length===0 ? (
+
+          {runningTours.length===0 ? (
             <div style={{textAlign:"center",padding:48,color:G.gray400,background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`}}>
-              <div style={{fontSize:28,marginBottom:8}}>🗺</div>
-              <div style={{fontSize:14,fontWeight:500}}>No active multi-destination tours</div>
-              <div style={{fontSize:12,marginTop:4}}>Overlaps appear once tours move to Operations stage with travel dates set.</div>
+              <div style={{fontSize:28,marginBottom:8}}>📍</div>
+              <div style={{fontSize:14,fontWeight:500}}>No tours running on this date</div>
+              <div style={{fontSize:12,marginTop:4}}>Tours appear here once they're in Operations/Finance with a travel date covering the chosen day.</div>
             </div>
           ) : (
-            <div style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,overflow:"hidden"}}>
-              <div style={{overflowX:"auto"}}>
-                <table style={{borderCollapse:"collapse",width:"100%",minWidth:600}}>
-                  <thead>
-                    <tr>
-                      <th style={{padding:"8px 12px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,minWidth:120,position:"sticky",left:0,zIndex:2}}>
-                        City
-                      </th>
-                      {overlapDays.map(d=>(
-                        <th key={d} style={{padding:"6px 2px",fontSize:10,fontWeight:isToday(d)?700:400,
-                          color:isToday(d)?G.accent:G.gray400,textAlign:"center",
-                          borderBottom:`1px solid ${G.gray200}`,background:isToday(d)?"#FEF2F2":G.gray50,
-                          borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",minWidth:26}}>
-                          {d}<br/><span style={{fontSize:8}}>{"SMTWTFS"[new Date(selectedYear,selectedMonth,d).getDay()]}</span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(cityMap).map(([city,cityQs],ci)=>(
-                      <tr key={city}>
-                        <td style={{padding:"8px 12px",fontSize:12,fontWeight:600,color:DEST_COLORS[ci%DEST_COLORS.length],
-                          borderBottom:`1px solid ${G.gray100}`,position:"sticky",left:0,background:G.white,zIndex:1}}>
-                          📍 {city}
-                          <div style={{fontSize:10,color:G.gray400,fontWeight:400}}>{cityQs.length} group{cityQs.length>1?"s":""}</div>
-                        </td>
-                        {overlapDays.map(d=>{
-                          const active = cityQs.filter(q=>isInCity(q,d));
-                          return (
-                            <td key={d} style={{padding:"3px 2px",textAlign:"center",borderBottom:`1px solid ${G.gray100}`,
-                              borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",height:36}}>
-                              {active.length>1 ? (
-                                <div style={{width:22,height:18,borderRadius:3,background:"#FEF3C7",border:"1.5px solid #F59E0B",
-                                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#92400E",margin:"0 auto",cursor:"pointer"}}
-                                  title={active.map(q=>q.groupName||q.clientName).join(", ")}>
-                                  {active.length}⚡
-                                </div>
-                              ) : active.length===1 ? (
-                                <div style={{width:18,height:18,borderRadius:3,background:DEST_COLORS[ci%DEST_COLORS.length],opacity:0.75,margin:"0 auto"}}
-                                  title={active[0].groupName||active[0].clientName}/>
-                              ) : null}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{padding:"8px 12px",background:G.gray50,borderTop:`1px solid ${G.gray200}`,display:"flex",gap:14,fontSize:11,color:G.gray400}}>
-                <span>■ Single group</span>
-                <span style={{color:"#92400E",fontWeight:600}}>⚡ Multiple groups — logistical opportunity</span>
-              </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {runningTours.map(({query:q, dayIndex, totalDays, dayInfo, facilitatorNames})=>(
+                <div key={q.id} onClick={()=>onOpenQuery(q)}
+                  style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:14,cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=G.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=G.gray200}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:G.navy}}>{q.groupName||q.clientName||q.id}</div>
+                      <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · Day {dayIndex} of {totalDays}</div>
+                    </div>
+                    {facilitatorNames.length>0 && (
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tour Facilitator{facilitatorNames.length>1?"s":""}</div>
+                        <div style={{fontSize:11,color:G.gray800}}>{facilitatorNames.join(", ")}</div>
+                      </div>
+                    )}
+                  </div>
+                  {dayInfo ? (
+                    <div style={{background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:11.5,color:G.gray800,display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:8}}>
+                      {dayInfo.route && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Route</span>{dayInfo.route}</div>}
+                      {dayInfo.hotelName && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Hotel</span>{dayInfo.hotelName}{dayInfo.rooms?` (${dayInfo.rooms})`:""}</div>}
+                      {dayInfo.mealPlan && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Meals</span>{dayInfo.mealPlan}</div>}
+                      {dayInfo.notes && <div style={{gridColumn:"1 / -1"}}><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Notes</span>{dayInfo.notes}</div>}
+                      {!dayInfo.route && !dayInfo.hotelName && !dayInfo.mealPlan && !dayInfo.notes && <div style={{color:G.gray400}}>Day {dayIndex} recorded, but no details filled in yet.</div>}
+                    </div>
+                  ) : (
+                    <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#7D6608"}}>
+                      No day-wise itinerary entered yet for Day {dayIndex} in Tour Info.
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

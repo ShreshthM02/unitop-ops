@@ -38,7 +38,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const saveTE = (label) => onUpdateTourExecution && onUpdateTourExecution(query.id, te, label);
   const setTeField = (k, v) => setTe(p => ({ ...p, [k]: v }));
   const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
-  const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", notes: "" }] }));
+  const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", mealPlan: "", notes: "" }] }));
   const rmDay = (i) => setTe(p => ({ ...p, days: p.days.filter((_, xi) => xi !== i) }));
 
   // Mutual staleness check against the star-marked Cost Sheet (Document
@@ -436,10 +436,11 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                   )}
                   {te.days.map((d,i)=>(
-                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
+                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.6fr 0.8fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
                       <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
                       <input style={teInp} type="date" value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
                       <input style={teInp} value={d.route||""} placeholder="e.g. Delhi – Agra" onChange={e=>updDay(i,"route",e.target.value)}/>
+                      <input style={teInp} value={d.mealPlan||""} placeholder="Meals (e.g. MAP)" onChange={e=>updDay(i,"mealPlan",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>}
                     </div>
                   ))}
