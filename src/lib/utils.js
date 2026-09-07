@@ -697,7 +697,10 @@ export async function saveSignature(db, sig) {
 
 export async function deleteSignature(db, id) {
   try {
-    const { error } = await db.from("signatures").delete().eq("id", id);
+    // Same bug class as photo_library/chat's removeConversationMember:
+    // delete() fires immediately when called, before .eq() had a
+    // chance to apply any filter -- fixed to the correct order.
+    const { error } = await db.from("signatures").eq("id", id).delete();
     return { error: error ? (error.message || String(error)) : null };
   } catch (e) {
     console.warn("Delete signature failed:", e);
@@ -813,14 +816,33 @@ export async function addConversationMember(db, conversationId, staffId) {
 
 // Same function for both "remove someone else" (group management) and
 // "leave" (removing yourself) -- the caller passes whichever staffId
-// applies; RLS doesn't distinguish between the two at the database
-// level, matching how most real group chats work (any member can
-// remove any other, not just an "admin" role -- this app has no
-// concept of a group owner/admin yet, a deliberate simplification for
-// this first build).
+// applies. RLS restricts this to either removing yourself, or an admin
+// removing anyone -- see the "Members can leave, admins can remove
+// anyone" policy.
+//
+// Real, severe bug found and fixed: this called .delete().eq(...).eq(...)
+// -- but delete() in this hand-rolled wrapper is async and terminal
+// (matching insert/update/upsert), executing its fetch IMMEDIATELY when
+// called and returning a plain Promise, not a chainable builder. Unlike
+// select()/eq()/etc, which return the builder synchronously for
+// chaining and only fire their request lazily via then(), delete()
+// fires right away -- so .delete() was dispatching an UNFILTERED
+// DELETE request (no filters had been applied yet, since .eq() comes
+// after it in the chain) before the .eq() calls afterward threw a
+// TypeError (caught silently by this function's own try/catch, masking
+// that the real, unfiltered request had already been sent). Combined
+// with a genuinely unconditional DELETE policy at the time (`USING
+// (true)`, allowing any authenticated user to delete any row), every
+// real call to this function was at risk of wiping the entire
+// chat_conversation_members table for every conversation, not just the
+// one row intended. Confirmed the actual table still had real data
+// before this fix shipped, but the exposure was real regardless of
+// whether it had been triggered yet. Fixed both problems: filters now
+// correctly precede the terminal .delete() call, and the RLS policy
+// itself no longer allows an unconditional delete (see migration).
 export async function removeConversationMember(db, conversationId, staffId) {
   try {
-    const { error } = await db.from("chat_conversation_members").delete().eq("conversation_id", conversationId).eq("staff_id", staffId);
+    const { error } = await db.from("chat_conversation_members").eq("conversation_id", conversationId).eq("staff_id", staffId).delete();
     return { error: error ? (error.message || String(error)) : null };
   } catch (e) {
     console.warn("Remove member failed:", e);
@@ -834,6 +856,22 @@ export async function renameConversation(db, conversationId, name) {
     return { error: error ? (error.message || String(error)) : null };
   } catch (e) {
     console.warn("Rename conversation failed:", e);
+    return { error: e.message || String(e) };
+  }
+}
+
+// New feature: deleting a whole group -- never built before now (only
+// remove-member and leave existed). Admin-only, enforced server-side
+// via its own dedicated DELETE policy (is_chat_admin) -- verified
+// directly: a non-admin member's delete attempt is silently rejected,
+// a real admin's succeeds, and membership/messages cascade-delete
+// automatically via the existing foreign keys.
+export async function deleteConversation(db, conversationId) {
+  try {
+    const { error } = await db.from("chat_conversations").eq("id", conversationId).delete();
+    return { error: error ? (error.message || String(error)) : null };
+  } catch (e) {
+    console.warn("Delete conversation failed:", e);
     return { error: e.message || String(e) };
   }
 }
@@ -854,9 +892,23 @@ export async function loadChatMessages(db, conversationId) {
 // once deleted) so conversation ordering/flow stays intact, matching
 // how WhatsApp/Slack show a "message deleted" placeholder rather than
 // closing the gap.
+//
+// Real bug found and fixed: these used .upsert({id: messageId, ...})
+// rather than a real .update().eq("id", ...). PostgREST's upsert still
+// evaluates the INSERT policy's WITH CHECK against the attempted row
+// before it discovers the id already exists and falls through to
+// UPDATE -- and since this payload never included conversation_id, the
+// membership check (is_chat_member(conversation_id, ...)) was checking
+// against a NULL conversation_id and always failing, throwing "new row
+// violates row-level security policy" on every single edit/delete.
+// Confirmed via direct simulation: the exact same upsert payload fails,
+// while a genuine UPDATE (which never touches the INSERT policy at
+// all) succeeds. A real update was always the correct operation here
+// anyway -- these functions only ever edit a message that already
+// exists, never create one.
 export async function editChatMessage(db, messageId, newText, mentions) {
   try {
-    const { error } = await db.from("chat_messages").upsert({ id: messageId, text: newText, mentions: mentions || [], edited_at: new Date().toISOString() });
+    const { error } = await db.from("chat_messages").eq("id", messageId).update({ text: newText, mentions: mentions || [], edited_at: new Date().toISOString() });
     return { error: error ? (error.message || String(error)) : null };
   } catch (e) {
     console.warn("Edit chat message failed:", e);
@@ -866,7 +918,7 @@ export async function editChatMessage(db, messageId, newText, mentions) {
 
 export async function deleteChatMessage(db, messageId) {
   try {
-    const { error } = await db.from("chat_messages").upsert({ id: messageId, deleted_at: new Date().toISOString() });
+    const { error } = await db.from("chat_messages").eq("id", messageId).update({ deleted_at: new Date().toISOString() });
     return { error: error ? (error.message || String(error)) : null };
   } catch (e) {
     console.warn("Delete chat message failed:", e);

@@ -153,9 +153,11 @@ describe('persistence', () => {
   });
 
   it('deleting removes the library row and reports failures', async () => {
-    const ok = { from: () => ({ delete: () => ({ eq: async () => ({ error:null }) }) }) };
+    // Mock order matches the real fix: .eq() before the terminal
+    // .delete() call, not after -- the real bug this app had.
+    const ok = { from: () => ({ eq: () => ({ delete: async () => ({ error:null }) }) }) };
     expect((await deleteLibraryPhoto(ok, '1')).error).toBeNull();
-    const bad = { from: () => ({ delete: () => ({ eq: async () => ({ error:{ message:'denied' } }) }) }) };
+    const bad = { from: () => ({ eq: () => ({ delete: async () => ({ error:{ message:'denied' } }) }) }) };
     expect((await deleteLibraryPhoto(bad, '1')).error).toContain('denied');
   });
 });

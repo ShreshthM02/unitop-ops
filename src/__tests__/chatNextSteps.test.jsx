@@ -14,6 +14,7 @@ import {
 
 function makeDb({ conversations = [], members = [], messages = [] } = {}) {
   const upsertCalls = [];
+  const updateCalls = [];
   const db = {
     from: (table) => {
       let conditions = [];
@@ -32,6 +33,7 @@ function makeDb({ conversations = [], members = [], messages = [] } = {}) {
         order: () => builder,
         insert: async (row) => ({ data: [{ ...row, id: row.id || 'new-id' }], error: null }),
         upsert: async (row) => { upsertCalls.push({ table, row }); return { error: null }; },
+        update: async (row) => { updateCalls.push({ table, row, conditions: [...conditions] }); return { error: null }; },
         delete: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
         then: (res) => res(resolve()),
       };
@@ -39,6 +41,7 @@ function makeDb({ conversations = [], members = [], messages = [] } = {}) {
     },
   };
   db._upsertCalls = upsertCalls;
+  db._updateCalls = updateCalls;
   return db;
 }
 
@@ -72,19 +75,21 @@ describe('setConversationMemberAdmin', () => {
 });
 
 describe('editChatMessage / deleteChatMessage', () => {
-  it('edit sets real text, mentions, and edited_at', async () => {
+  it('edit sets real text, mentions, and edited_at, via a genuine update -- not upsert (a real, separate bug: upsert with a payload missing conversation_id failed the INSERT policy every time, since PostgREST evaluates it before finding the existing row)', async () => {
     const db = makeDb();
     const { error } = await editChatMessage(db, 'm1', 'updated text', [{ type: 'staff', id: 's2', label: 'Amit' }]);
     expect(error).toBeNull();
-    expect(db._upsertCalls[0].row).toMatchObject({ id: 'm1', text: 'updated text' });
-    expect(db._upsertCalls[0].row.edited_at).toBeTruthy();
+    expect(db._updateCalls[0].row).toMatchObject({ text: 'updated text' });
+    expect(db._updateCalls[0].row.edited_at).toBeTruthy();
+    expect(db._updateCalls[0].conditions).toEqual([['id', 'm1']]); // filters correctly applied before the update, not after
   });
 
-  it('delete sets deleted_at, a real soft delete', async () => {
+  it('delete sets deleted_at, a real soft delete, via a genuine update', async () => {
     const db = makeDb();
     const { error } = await deleteChatMessage(db, 'm1');
     expect(error).toBeNull();
-    expect(db._upsertCalls[0].row.deleted_at).toBeTruthy();
+    expect(db._updateCalls[0].row.deleted_at).toBeTruthy();
+    expect(db._updateCalls[0].conditions).toEqual([['id', 'm1']]);
   });
 });
 

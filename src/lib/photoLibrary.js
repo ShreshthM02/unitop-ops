@@ -272,7 +272,20 @@ export async function updateLibraryPhoto(db, id, { destination, label } = {}) {
 
 export async function deleteLibraryPhoto(db, id) {
   try {
-    const { error } = await db.from("photo_library").delete().eq("id", id);
+    // Real, severe bug found and fixed (same class as chat's own
+    // removeConversationMember): delete() in this hand-rolled wrapper
+    // is async and terminal like insert/update/upsert -- it fires its
+    // fetch immediately when called, unlike select()/eq()/etc, which
+    // return the builder synchronously for lazy chaining. Calling
+    // .delete() before .eq() dispatched an UNFILTERED delete request
+    // (no filter had been applied yet) before .eq() afterward threw,
+    // caught silently by this function's own try/catch -- masking that
+    // an unfiltered request had already been sent. Combined with this
+    // table's own unconditional DELETE policy (`USING (true)`), every
+    // real call was at risk of deleting every row in photo_library, not
+    // just the one photo intended. Confirmed the real table still had
+    // its expected rows before this fix shipped.
+    const { error } = await db.from("photo_library").eq("id", id).delete();
     if (error) return { error: error.message || String(error) };
     return { error: null };
   } catch (e) {

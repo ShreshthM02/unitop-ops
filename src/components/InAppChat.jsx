@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, notifyMentionedStaff, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, MessageWithMentions, MentionInput, extractMentions, useRealtimeTable, loadConversationsForStaff, findOrCreateDM, createGroupConversation, addConversationMember, removeConversationMember, renameConversation, loadChatMessages, sendChatMessage, markConversationRead, setConversationMemberAdmin, editChatMessage, deleteChatMessage, isConversationUnread, notifyMentionedStaff, deleteConversation, db } = Lib;
 
 export default function InAppChat({ currentUser, queries, staff, agents, vendors, series, onClose }) {
   const [conversations, setConversations] = useState([]);
@@ -20,9 +20,21 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   const [searchQuery, setSearchQuery] = useState("");
   const bottomRef = useRef(null);
 
+  // Real performance problem found and fixed: every single button
+  // action called this directly, AND every realtime event (this
+  // component's own subscription, below) also triggers it -- a single
+  // logical action (e.g. adding one member) could cascade into several
+  // redundant full reloads back to back, each one three separate
+  // database queries (memberships, conversations, messages). Debounced
+  // so any number of triggers arriving close together collapse into
+  // one real fetch, not one per trigger.
+  const reloadTimeoutRef = useRef(null);
   const reloadConversations = useCallback(() => {
     if (!currentUser?.id) return;
-    loadConversationsForStaff(db, currentUser.id).then(setConversations);
+    if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
+    reloadTimeoutRef.current = setTimeout(() => {
+      loadConversationsForStaff(db, currentUser.id).then(setConversations);
+    }, 150);
   }, [currentUser?.id]);
   useEffect(() => { reloadConversations(); }, [reloadConversations]);
 
@@ -108,6 +120,27 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   const leaveGroup = async () => {
     if (!activeConvId || !window.confirm("Leave this group?")) return;
     await removeConversationMember(db, activeConvId, currentUser.id);
+    setActiveConvId(null);
+    reloadConversations();
+  };
+
+  // New feature: delete the whole group, admin-only -- never built
+  // before now (only remove-member and leave existed). Real error
+  // surfaced, not silence, matching this app's own standard for every
+  // other admin action -- a non-admin's delete attempt is rejected by
+  // RLS itself (verified directly), this is just the UI-level gate.
+  // Now generic for both DM and group -- per direct request, DMs get
+  // the same delete capability, without the admin requirement (a DM
+  // has no admin concept; either participant can delete it, enforced
+  // server-side via its own dedicated RLS condition, verified directly
+  // both ways -- the other participant succeeds, a genuinely unrelated
+  // third person cannot).
+  const deleteChat = async () => {
+    if (!activeConvId) return;
+    const isGroup = activeConv?.type === "group";
+    if (!window.confirm(`Delete this ${isGroup ? "group" : "chat"} permanently? This cannot be undone -- all messages will be lost for everyone.`)) return;
+    const { error } = await deleteConversation(db, activeConvId);
+    if (error) { setErrMsg("Error: " + error); return; }
     setActiveConvId(null);
     reloadConversations();
   };
@@ -282,6 +315,8 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                   <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowSearch(o=>!o)}>🔍</button>
                   {activeConv.type==="group" && <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setManageMembers(true)}>👥 Members</button>}
                   {activeConv.type==="group" && <button className="btn btn-ghost" style={{fontSize:11,color:"#B91C1C"}} onClick={leaveGroup}>Leave</button>}
+                  {activeConv.type==="group" && iAmAdmin && <button className="btn btn-ghost" style={{fontSize:11,color:"#991B1B",fontWeight:600}} onClick={deleteChat}>🗑 Delete Group</button>}
+                  {activeConv.type==="dm" && <button className="btn btn-ghost" style={{fontSize:11,color:"#991B1B",fontWeight:600}} onClick={deleteChat}>🗑 Delete Chat</button>}
                 </div>
                 {showSearch && (
                   <div style={{padding:"8px 18px",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>

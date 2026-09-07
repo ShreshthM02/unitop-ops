@@ -336,9 +336,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // Global chat conversations, kept loaded even when the chat panel is
   // closed -- purely to drive the sidebar unread badge and mention
   // toasts, both of "is he notified" / "does chat have unread badges".
+  // Same debounce fix as InAppChat's own reload -- this global version
+  // has the SAME redundancy problem (every realtime event here also
+  // triggers InAppChat's own reload when the panel is open), so both
+  // need it independently.
+  const chatReloadTimeoutRef = useRef(null);
   const reloadChatConversations = useCallback(() => {
     if (!authUser || !currentUser?.id) return;
-    loadConversationsForStaff(db, currentUser.id).then(setChatConversations);
+    if (chatReloadTimeoutRef.current) clearTimeout(chatReloadTimeoutRef.current);
+    chatReloadTimeoutRef.current = setTimeout(() => {
+      loadConversationsForStaff(db, currentUser.id).then(setChatConversations);
+    }, 150);
   }, [authUser, currentUser?.id]);
   useEffect(() => { reloadChatConversations(); }, [reloadChatConversations]);
 

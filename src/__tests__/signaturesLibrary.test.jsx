@@ -44,13 +44,15 @@ describe('utils.js: signature CRUD', () => {
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ id: 'sig-1', name: 'Updated' }));
   });
 
-  it('deleteSignature calls delete().eq() with the right id', async () => {
+  it('deleteSignature calls eq().delete() with the right id -- filter before the terminal delete call', async () => {
     const { deleteSignature } = await import('../lib/utils.js');
-    const eq = vi.fn(async () => ({ error: null }));
-    const db = { from: () => ({ delete: () => ({ eq }) }) };
+    const del = vi.fn(async () => ({ error: null }));
+    const eq = vi.fn(() => ({ delete: del }));
+    const db = { from: () => ({ eq }) };
     const { error } = await deleteSignature(db, 'sig-1');
     expect(error).toBeNull();
     expect(eq).toHaveBeenCalledWith('id', 'sig-1');
+    expect(del).toHaveBeenCalled();
   });
 });
 
@@ -175,7 +177,7 @@ describe('item 6 (real fix): a newly saved signature now syncs back to the paren
     const db = { from: () => {
       const builder = {
         select: () => builder, order: async () => ({ data: [{ id: 'sig-1', name: 'Existing', content_html: '<p>x</p>' }], error: null }),
-        delete: () => ({ eq: async () => ({ error: null }) }),
+        eq: () => ({ delete: async () => ({ error: null }) }),
       };
       return builder;
     } };
