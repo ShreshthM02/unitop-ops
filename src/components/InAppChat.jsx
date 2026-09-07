@@ -28,13 +28,28 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   // database queries (memberships, conversations, messages). Debounced
   // so any number of triggers arriving close together collapse into
   // one real fetch, not one per trigger.
+  // Real performance fix, the actual cause of the reported chat-wide
+  // lag: a plain debounce resets its timer on every single trigger, and
+  // any burst of related realtime events (e.g. several member-insert
+  // events for one new group, each arriving with its own real network
+  // delay) kept resetting it before it ever fired -- meaning the delay
+  // a person actually felt was the SUM of every event's arrival gap,
+  // not the fixed 150ms it looked like on paper. This adds a hard cap:
+  // once a burst starts, the reload fires at most 400ms later
+  // regardless of how many more triggers arrive in between, while still
+  // coalescing a genuine rapid burst into one real fetch.
   const reloadTimeoutRef = useRef(null);
+  const reloadMaxWaitRef = useRef(null);
   const reloadConversations = useCallback(() => {
     if (!currentUser?.id) return;
     if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
-    reloadTimeoutRef.current = setTimeout(() => {
+    const fire = () => {
+      clearTimeout(reloadTimeoutRef.current); clearTimeout(reloadMaxWaitRef.current);
+      reloadTimeoutRef.current = null; reloadMaxWaitRef.current = null;
       loadConversationsForStaff(db, currentUser.id).then(setConversations);
-    }, 150);
+    };
+    reloadTimeoutRef.current = setTimeout(fire, 150);
+    if (!reloadMaxWaitRef.current) reloadMaxWaitRef.current = setTimeout(fire, 400);
   }, [currentUser?.id]);
   useEffect(() => { reloadConversations(); }, [reloadConversations]);
 
@@ -145,7 +160,13 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
     reloadConversations();
   };
 
+  // Optimistic: updates the local conversations state immediately,
+  // rather than waiting for the round trip (plus the debounced reload
+  // after it) before the admin badge/controls visibly change -- the
+  // real write still happens, this just stops the UI from feeling
+  // like it's waiting on the network for something this simple.
   const toggleAdmin = async (staffId, makeAdmin) => {
+    setConversations(prev => prev.map(c => c.id !== activeConv.id ? c : { ...c, members: c.members.map(m => m.staffId === staffId ? { ...m, isAdmin: makeAdmin } : m) }));
     await setConversationMemberAdmin(db, activeConv.id, staffId, makeAdmin);
     reloadConversations();
   };
@@ -285,7 +306,10 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                       {iAmAdmin && m.staffId!==currentUser?.id && (
                         <>
                           <span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>toggleAdmin(m.staffId,!m.isAdmin)}>{m.isAdmin?"Remove admin":"Make admin"}</span>
-                          <span style={{cursor:"pointer",color:"#B91C1C",fontSize:12}} onClick={async()=>{await removeConversationMember(db,activeConv.id,m.staffId);reloadConversations();}}>Remove</span>
+                          <span style={{cursor:"pointer",color:"#B91C1C",fontSize:12}} onClick={async()=>{
+                            setConversations(prev=>prev.map(c=>c.id!==activeConv.id?c:{...c,members:c.members.filter(mm=>mm.staffId!==m.staffId)}));
+                            await removeConversationMember(db,activeConv.id,m.staffId);reloadConversations();
+                          }}>Remove</span>
                         </>
                       )}
                     </div>
@@ -293,7 +317,10 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
                 })}
                 <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",margin:"12px 0 6px"}}>Add member</div>
                 {(staff||[]).filter(s=>!activeConv.members.some(m=>m.staffId===s.id)).map(s=>(
-                  <div key={s.id} onClick={async()=>{await addConversationMember(db,activeConv.id,s.id);reloadConversations();}} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 4px",cursor:"pointer"}}>
+                  <div key={s.id} onClick={async()=>{
+                    setConversations(prev=>prev.map(c=>c.id!==activeConv.id?c:{...c,members:[...c.members,{staffId:s.id,isAdmin:false,lastReadAt:null}]}));
+                    await addConversationMember(db,activeConv.id,s.id);reloadConversations();
+                  }} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 4px",cursor:"pointer"}}>
                     <Avatar user={s} size={24}/><span style={{fontSize:13}}>{s.name}</span>
                   </div>
                 ))}

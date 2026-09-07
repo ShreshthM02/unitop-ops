@@ -797,15 +797,36 @@ export async function loadConversationsForStaff(db, staffId) {
 // same pair), rather than always creating a new conversation.
 export async function findOrCreateDM(db, staffIdA, staffIdB) {
   try {
-    const existingA = await loadConversationsForStaff(db, staffIdA);
-    const existingDM = existingA.find(c => c.type === "dm" && c.members.some(m => m.staffId === staffIdB) && c.members.length === 2);
-    if (existingDM) return { id: existingDM.id, error: null };
+    // Real performance fix: this used to call loadConversationsForStaff
+    // -- a heavy operation that fetches every one of the user's
+    // conversations AND every message in all of them -- just to check
+    // whether one specific DM already exists. Replaced with a
+    // lightweight, targeted pair of queries: find A's DM-type
+    // conversation ids, then check which of those B is also a member
+    // of. Real network round trips either way, but far less data moved
+    // per trip, and no unrelated conversations/messages fetched at all
+    // for what's just an existence check.
+    const { data: aRows } = await db.from("chat_conversation_members").select("conversation_id").eq("staff_id", staffIdA);
+    const aConvIds = [...new Set((aRows || []).map(r => r.conversation_id))];
+    if (aConvIds.length) {
+      const { data: bRows } = await db.from("chat_conversation_members").select("conversation_id").eq("staff_id", staffIdB).in("conversation_id", aConvIds);
+      const sharedIds = [...new Set((bRows || []).map(r => r.conversation_id))];
+      if (sharedIds.length) {
+        const { data: convRows } = await db.from("chat_conversations").select("id,type").in("id", sharedIds);
+        const existingDM = (convRows || []).find(c => c.type === "dm");
+        if (existingDM) return { id: existingDM.id, error: null };
+      }
+    }
     const { data: created, error: createErr } = await db.from("chat_conversations").insert({ type: "dm", created_by: staffIdA });
     if (createErr) return { id: null, error: createErr.message || String(createErr) };
     const convId = created && created[0] && created[0].id;
     if (!convId) return { id: null, error: "No conversation id returned" };
-    await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdA });
-    await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdB });
+    // Two independent inserts, run together instead of one after the
+    // other -- same fix as createGroupConversation's own member loop.
+    await Promise.all([
+      db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdA }),
+      db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffIdB }),
+    ]);
     return { id: convId, error: null };
   } catch (e) {
     console.warn("Find/create DM failed:", e);
@@ -820,12 +841,18 @@ export async function createGroupConversation(db, name, creatorId, memberIds) {
     const convId = created && created[0] && created[0].id;
     if (!convId) return { id: null, error: "No conversation id returned" };
     const allMembers = [...new Set([creatorId, ...memberIds])];
-    for (const staffId of allMembers) {
+    // Real performance fix: these member inserts used to run one at a
+    // time in a sequential loop -- N members meant N round trips back
+    // to back, each one adding real network latency. They're
+    // independent inserts (nothing about one depends on another
+    // finishing first), so running them together cuts this from N
+    // round trips down to 1.
+    await Promise.all(allMembers.map(staffId =>
       // Chat next steps, item 1: the creator becomes the group's first
       // admin automatically -- everyone else starts as a regular
       // member, promotable later by an existing admin.
-      await db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffId, is_admin: staffId === creatorId });
-    }
+      db.from("chat_conversation_members").insert({ conversation_id: convId, staff_id: staffId, is_admin: staffId === creatorId })
+    ));
     return { id: convId, error: null };
   } catch (e) {
     console.warn("Create group failed:", e);

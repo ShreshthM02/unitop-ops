@@ -340,13 +340,21 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // has the SAME redundancy problem (every realtime event here also
   // triggers InAppChat's own reload when the panel is open), so both
   // need it independently.
+  // Same max-wait fix as InAppChat's own reloadConversations -- this
+  // global copy has the identical unbounded-reset problem, since it
+  // ALSO subscribes to the same tables.
   const chatReloadTimeoutRef = useRef(null);
+  const chatReloadMaxWaitRef = useRef(null);
   const reloadChatConversations = useCallback(() => {
     if (!authUser || !currentUser?.id) return;
     if (chatReloadTimeoutRef.current) clearTimeout(chatReloadTimeoutRef.current);
-    chatReloadTimeoutRef.current = setTimeout(() => {
+    const fire = () => {
+      clearTimeout(chatReloadTimeoutRef.current); clearTimeout(chatReloadMaxWaitRef.current);
+      chatReloadTimeoutRef.current = null; chatReloadMaxWaitRef.current = null;
       loadConversationsForStaff(db, currentUser.id).then(setChatConversations);
-    }, 150);
+    };
+    chatReloadTimeoutRef.current = setTimeout(fire, 150);
+    if (!chatReloadMaxWaitRef.current) chatReloadMaxWaitRef.current = setTimeout(fire, 400);
   }, [authUser, currentUser?.id]);
   useEffect(() => { reloadChatConversations(); }, [reloadChatConversations]);
 
