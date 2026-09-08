@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES } = Lib;
 
 export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, series, queries }) {
   const [form, setForm] = useState({
@@ -26,40 +26,7 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
     assignedTo:(staff||USERS)[0]?.id||"", reviewerId:"", internalCorrespondent:"",
     notes:"",
   });
-  // Phase 6, feature 1: Query Intake Parser. Paste an agent's email/
-  // WhatsApp message, AI extracts what it can into the form below --
-  // never saves anything itself, a human still reviews and clicks
-  // Create Query same as always. Per direct instruction: no banners,
-  // no upfront badges -- aiFilledFields is a quiet visual cue (a
-  // faint tint) on exactly the fields AI just touched, and it clears
-  // itself the moment the person edits that specific field, since
-  // editing IS the review.
-  const [showEmailPaste, setShowEmailPaste] = useState(false);
-  const [emailPasteText, setEmailPasteText] = useState("");
-  const [extracting, setExtracting] = useState(false);
-  const [extractError, setExtractError] = useState("");
-  const [aiFilledFields, setAiFilledFields] = useState(new Set());
-  const set = (k,v) => { setForm(f=>({...f,[k]:v})); setAiFilledFields(prev => { if(!prev.has(k)) return prev; const next=new Set(prev); next.delete(k); return next; }); };
-  const extractFromEmail = async () => {
-    if (!emailPasteText.trim()) return;
-    setExtracting(true); setExtractError("");
-    const res = await db.ai.parseQueryIntake(emailPasteText.trim());
-    setExtracting(false);
-    if (!res.success) { setExtractError(res.error || "Could not extract from this text"); return; }
-    const filled = new Set();
-    setForm(f => {
-      const next = { ...f };
-      Object.entries(res.extracted || {}).forEach(([k, v]) => {
-        // Only fills a field that's genuinely still empty -- never
-        // overwrites anything the person already typed themselves,
-        // before or after opening this.
-        if (v && v.toString().trim() && !next[k]) { next[k] = v; filled.add(k); }
-      });
-      return next;
-    });
-    setAiFilledFields(filled);
-    setShowEmailPaste(false); setEmailPasteText("");
-  };
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const [referenceSearch, setReferenceSearch] = useState("");
   const activeSeries = (series||[]).filter(s=>s.active);
   // Independent of series entirely, per direct spec: a user should be
@@ -138,36 +105,6 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
           <div style={{marginBottom:12}}>
             <div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Query Number (auto-assigned)</div>
             <div className="query-num-preview">{nextId}</div>
-          </div>
-
-          {/* Phase 6, feature 1: Query Intake Parser. A quiet text
-              link, not a button with a fill/border -- something you'd
-              notice if you were looking for it, not something that
-              announces itself. Opens inline, not a modal-on-modal. */}
-          <div style={{marginBottom:12}}>
-            {!showEmailPaste ? (
-              <span style={{fontSize:11,color:G.gray400,cursor:"pointer"}} onClick={()=>setShowEmailPaste(true)}>
-                Paste from agent email or WhatsApp
-              </span>
-            ) : (
-              <div style={{background:"#FAFBFC",border:`1px solid ${G.gray200}`,borderRadius:6,padding:10}}>
-                <textarea autoFocus value={emailPasteText} onChange={e=>setEmailPasteText(e.target.value)}
-                  placeholder="Paste the agent's message here..." rows={4}
-                  style={{...inp,resize:"vertical",fontFamily:"'Inter',sans-serif"}}/>
-                {extractError && <div style={{fontSize:11,color:"#991B1B",marginTop:6}}>{extractError}</div>}
-                <div style={{display:"flex",gap:8,marginTop:8}}>
-                  <span style={{fontSize:11,color:G.gray400,cursor:"pointer",alignSelf:"center"}} onClick={()=>{setShowEmailPaste(false);setEmailPasteText("");setExtractError("");}}>Never mind</span>
-                  <button className="btn btn-ghost" style={{fontSize:11,marginLeft:"auto"}} onClick={extractFromEmail} disabled={extracting||!emailPasteText.trim()}>
-                    {extracting ? "Reading…" : "Fill fields from this"}
-                  </button>
-                </div>
-              </div>
-            )}
-            {aiFilledFields.size > 0 && (
-              <div style={{fontSize:10.5,color:G.gray400,marginTop:6}}>
-                {aiFilledFields.size} field{aiFilledFields.size>1?"s":""} filled from your paste — worth a glance before you save.
-              </div>
-            )}
           </div>
 
           {activeSeries.length > 0 && (
