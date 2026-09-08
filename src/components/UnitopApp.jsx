@@ -21,6 +21,7 @@ import SmartSearch from './SmartSearch.jsx';
 import TeamView from './TeamView.jsx';
 import TemplatesHub from './TemplatesHub.jsx';
 import AdminPlaceLibrary from './AdminPlaceLibrary.jsx';
+import MaintenancePanel from './MaintenancePanel.jsx';
 import TourBriefingSheet from './TourBriefingSheet.jsx';
 import DocumentEditor from './DocumentEditor.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
@@ -649,14 +650,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       {id:"payments",     icon:"₹", label:"Payments"},
       {id:"reports",      icon:"📈",label:"Reports"},
     ]},
-    ...((can("templates")||can("user_management"))?[{section:"Admin",items:[
+    ...((can("templates")||can("user_management")||can("maintenance"))?[{section:"Admin",items:[
       ...(can("templates")?[{id:"templates_hub",icon:"🗂",label:"Templates"}]:[]),
       ...(can("user_management")?[{id:"usermgmt",icon:"👥",label:"User Management"}]:[]),
       ...(can("place_library")?[{id:"place_library",icon:"📍",label:"Photo & Place Library"}]:[]),
+      ...(can("maintenance")?[{id:"maintenance",icon:"🛠",label:"Maintenance"}]:[]),
     ]}]:[]),
   ];
 
-  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library"};
+  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library",maintenance:"Maintenance"};
   const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showSeries||showVendors||showTourBrief||showEditor;
 
   const DocButtons = ({q,stopProp=false}) => (
@@ -752,6 +754,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings} onSignaturesChanged={()=>loadSignatures(db).then(setSignatures)}/>}
             {view==="place_library" && <AdminPlaceLibrary/>}
+            {view==="maintenance" && <MaintenancePanel currentUser={currentUser}/>}
             {/* Sidebar navigation for these 5 now opens a real, full
                 tab like every other nav item, instead of a split-pane
                 overlay -- the components already fully supported

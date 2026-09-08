@@ -123,7 +123,7 @@ export const SOURCE_COLORS = { WhatsApp:"#25D366", Email:"#4A90D9", Website:"#E6
 export const GANTT_DAYS = ["Jun 16","Jun 17","Jun 18","Jun 19","Jun 20","Jun 21","Jun 22","Jun 23","Jun 24","Jun 25","Jun 26","Jun 27","Jun 28","Jun 29","Jun 30","Jul 1","Jul 2","Jul 3","Jul 4","Jul 5","Jul 6","Jul 7","Jul 8","Jul 9","Jul 10"];
 export const TODAY_IDX = 3;
 
-export const APP_VERSION = "v1.9.1";
+export const APP_VERSION = "v1.10.0";
 export const COMPANY_INFO = {
   name:    "Unitop Tours & Travel Pvt. Ltd.",
   address: "506, DDA 2F, District Centre, Janakpuri, New Delhi – 110058",
@@ -243,27 +243,31 @@ export const ROLE_DEFAULTS = {
     // a dumping ground other people fill, and needs one place someone can
     // actually audit and correct it.
     place_library:true,
+    // New: Maintenance -- backup export, health check, and the user
+    // manual. Admin-only for the same reason User Management is: these
+    // touch/reveal the whole system, not one person's own work.
+    maintenance:true,
   },
   sales: {
     queries_create:true, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:true,
-    templates:false, user_management:false, force_move_stage:false, place_library:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false, maintenance:false,
   },
   ops: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false, force_move_stage:false, place_library:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false, maintenance:false,
   },
   accounts: {
     queries_create:false, queries_delete:false, cost_sheet:true, quotation:true,
     itinerary:true, exchange_orders:true, payments_incoming:true,
     payments_outgoing:true, invoices:true, pl_report:true,
     agents_edit:true, vendors_edit:true, cancel_query:false,
-    templates:false, user_management:false, force_move_stage:false, place_library:false,
+    templates:false, user_management:false, force_move_stage:false, place_library:false, maintenance:false,
   },
 };
 
@@ -285,6 +289,7 @@ export const PERM_LABELS = {
   user_management:  "User Management (Admin)",
   force_move_stage: "Move Tour File to Any Stage (Admin)",
   place_library:    "Photo & Place Library (Admin)",
+  maintenance:      "Maintenance -- Backup, Health Check, Manual (Admin)",
 };
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
