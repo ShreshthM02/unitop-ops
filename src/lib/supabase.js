@@ -332,7 +332,32 @@ export const _supa = (() => {
     }
   };
 
-  return { from, auth, rpc };
+  // Google Drive document upload/delete/rename-folder, via a Supabase
+  // Edge Function (same reason as any AI-style function would need
+  // one: this has to reach a third-party API server-side, since the
+  // service account's private key can never live in the browser
+  // bundle). Same session_token pattern the rest of this app already
+  // sends everywhere else.
+  const drive = {
+    call: async (payload) => {
+      const sess = await _supa.auth.getSession();
+      try {
+        const r = await fetch(`${url}/functions/v1/drive-documents`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: sess?.token, ...payload }),
+        });
+        return await r.json();
+      } catch (e) {
+        return { success: false, error: e.message || String(e) };
+      }
+    },
+    upload: (queryId, folderName, fileName, mimeType, fileBase64) =>
+      drive.call({ action: "upload", queryId, folderName, fileName, mimeType, fileBase64 }),
+    delete: (documentId) => drive.call({ action: "delete", documentId }),
+    renameFolder: (queryId, newName) => drive.call({ action: "rename-folder", queryId, newName }),
+  };
+
+  return { from, auth, rpc, drive };
 })();
 
 const db = _supa;

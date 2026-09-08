@@ -597,7 +597,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
                     Log all documents received for this tour file — booking confirmations, vouchers, visa copies, invoices, tickets.
                   </div>
-                  <DocRegistryInline queryId={query.id} tourFileId={query.tourFileId} currentUser={currentUser} readOnly={query.cancelled}/>
+                  <DocRegistryInline queryId={query.id} tourFileId={query.tourFileId} groupName={query.groupName} clientName={query.clientName} currentUser={currentUser} readOnly={query.cancelled}/>
                 </div>
               )}
             </div>

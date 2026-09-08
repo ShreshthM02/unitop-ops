@@ -474,6 +474,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     saveQueryToDB(updQ, auditMsg);
     showToast(`Tour File opened — ${tourNum}`);
 
+    // Renames (never recreates) the query's Drive folder to the real
+    // tour file name the moment it exists -- every document uploaded
+    // before conversion stays exactly where it was, just under its new
+    // name. Async and non-blocking, same reasoning as the Document
+    // Chain pre-fill just below: skips silently (a no-op on Drive's
+    // side) if no folder exists yet, i.e. nothing was ever uploaded
+    // before this conversion.
+    db.drive.renameFolder(query.id, `${tourNum} - ${query.groupName || query.clientName || "Untitled"}`);
+
     // Document Chain plan (docs/DATA_OWNERSHIP.md): one-time reverse
     // pre-fill at conversion. Tour Info's Day-wise tabs have never been
     // editable before this moment (gated behind tourFileId), so

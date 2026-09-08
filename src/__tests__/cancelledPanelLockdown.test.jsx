@@ -72,10 +72,10 @@ describe('Nested panel lockdown for cancelled tour files: view-only, nothing act
     expect(row.getAttribute('draggable')).toBe('false');
   });
 
-  it('DocRegistryInline: shows the banner and disables the Log Document button', async () => {
+  it('DocRegistryInline: shows the banner and disables the Upload document button', async () => {
     const { DocRegistryInline } = await import('../components/DocumentRegistry.jsx');
     render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:'x',name:'Priya'}} readOnly={true}/>);
-    await waitFor(() => expect(screen.getByText('+ Log Document')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/\+ Upload document/)).toBeTruthy());
     expect(screen.getByText(/viewing only, nothing here is editable/)).toBeTruthy();
     const fieldset = document.querySelector('fieldset');
     expect(fieldset.disabled).toBe(true);
@@ -84,7 +84,7 @@ describe('Nested panel lockdown for cancelled tour files: view-only, nothing act
   it('DocRegistryInline: when NOT read-only, no banner and fieldset enabled (no regression)', async () => {
     const { DocRegistryInline } = await import('../components/DocumentRegistry.jsx');
     render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:'x',name:'Priya'}} readOnly={false}/>);
-    await waitFor(() => expect(screen.getByText('+ Log Document')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/\+ Upload document/)).toBeTruthy());
     expect(screen.queryByText(/viewing only/)).toBeNull();
     expect(document.querySelector('fieldset').disabled).toBe(false);
   });

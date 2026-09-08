@@ -21,7 +21,13 @@ const FIXED_COMPONENTS = [
   'InAppChat', 'TourBriefingSheet', 'VendorMaster', 'QuotationGenerator',
   'AgentLedgerPanel', 'InvoiceGenerator', 'CostSheet',
   'EnhancedPaymentTracker', 'AgentMaster',
-  'VendorLedgerPanel', 'DocumentRegistry',
+  'VendorLedgerPanel',
+  // DocumentRegistry removed 2026-09-08: the standalone overlay panel
+  // this test checked was confirmed dead code (nothing rendered it)
+  // and was deleted. The real, actively-used export is now
+  // DocRegistryInline, an embedded panel with no overlay/modal width
+  // of its own to check -- it renders inline inside whatever container
+  // (QueryDrawerWithQuote) already hosts it.
 ];
 
 describe('Mobile: document panels no longer use a bare fixed width', () => {

@@ -132,17 +132,19 @@ describe('Payments: updatePayments now accepts and logs an audit action (the cen
   });
 });
 
-describe('Document Registry: logging a document now logs to the audit trail', () => {
-  it('logging a new document calls logAudit', async () => {
+describe('Document Registry: uploading a document logs to the audit trail', () => {
+  it('uploading a new document calls logAudit', async () => {
     const { db, auditCalls } = makeTrackingDb();
+    db.drive = { upload: vi.fn(async () => ({ success: true, document: { id: 'd1', file_name: 'Test Voucher.pdf', file_size: 1000, uploaded_by_name: 'Priya', created_at: '2026-09-08T10:00:00Z', drive_view_link: 'https://drive.google.com/x' } })) };
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { DocRegistryInline } = await import('../components/DocumentRegistry.jsx');
-    render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" currentUser={{id:'x',name:'Priya'}}/>);
-    await waitFor(() => expect(screen.getByText('+ Log Document')).toBeTruthy());
-    fireEvent.click(screen.getByText('+ Log Document'));
-    fireEvent.change(screen.getByPlaceholderText('Document name...'), { target: { value: 'Test Voucher' } });
-    fireEvent.click(screen.getByText('Log'));
-    await waitFor(() => expect(auditCalls.some(a => a.action.includes('"Test Voucher"'))).toBe(true));
+    const { container } = render(<DocRegistryInline queryId="UTQ-1" tourFileId="TF-1" groupName="Test" currentUser={{id:'x',name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText(/\+ Upload document/)).toBeTruthy());
+    const fileInput = container.querySelector('input[type="file"]');
+    const file = new File(['x'], 'Test Voucher.pdf', { type: 'application/pdf' });
+    Object.defineProperty(fileInput, 'files', { value: [file] });
+    fireEvent.change(fileInput);
+    await waitFor(() => expect(auditCalls.some(a => a.action.includes('"Test Voucher.pdf"'))).toBe(true));
   });
 });
