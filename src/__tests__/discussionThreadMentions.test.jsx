@@ -8,6 +8,26 @@ import QueryDrawerWithQuote from '../components/QueryDrawerWithQuote.jsx';
 // data migration, existing remarks became the thread's first messages
 // automatically). Every mention is a real, structured reference stored
 // alongside the message, not just parsed from text at render time.
+//
+// MentionInput is now a contentEditable-based rich text composer
+// (bold/italic/underline/bullet list), not a plain textarea -- this
+// means simulating "typing" in these tests requires setting real DOM
+// content and cursor position via the Selection/Range APIs, not
+// fireEvent.change with a target.value (contentEditable elements have
+// no .value property at all).
+function typeIntoEditor(editor, text) {
+  editor.textContent = text;
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false); // cursor at the end, matching normal typing
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  fireEvent.input(editor);
+}
+function getEditor(container) {
+  return container.querySelector('.mention-input-editable');
+}
 
 describe('extractMentions', () => {
   it('extracts every mention token from a message, in order', () => {
@@ -95,42 +115,60 @@ describe('MentionInput composer', () => {
   const vendors = [{ id: 'v1', name: 'Taj Palace' }];
   const series = [{ id: 'ser1', name: 'Europe Summer 2026' }];
 
+  it('renders a real toolbar (Bold/Italic/Underline/Bullet list), matching this app\'s own lightweight rich-text pattern', () => {
+    render(<MentionInput value="" onChange={()=>{}} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    expect(screen.getByTitle('Bold')).toBeTruthy();
+    expect(screen.getByTitle('Italic')).toBeTruthy();
+    expect(screen.getByTitle('Underline')).toBeTruthy();
+    expect(screen.getByTitle('Bullet list')).toBeTruthy();
+  });
+
   it('typing @ opens a dropdown listing matches across every entity type', () => {
-    render(<MentionInput value="" onChange={()=>{}} staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>);
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: '@' } });
+    const { container } = render(<MentionInput value="" onChange={()=>{}} staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>);
+    typeIntoEditor(getEditor(container), '@');
     expect(screen.getByText('Priya Rao')).toBeTruthy();
   });
 
   it('typing a search term after @ filters matches across all types', () => {
-    render(<MentionInput value="" onChange={()=>{}} staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>);
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: '@taj', selectionStart: 4 } });
+    const { container } = render(<MentionInput value="" onChange={()=>{}} staff={staff} queries={queries} agents={agents} vendors={vendors} series={series}/>);
+    typeIntoEditor(getEditor(container), '@taj');
     expect(screen.getByText('Taj Palace')).toBeTruthy();
     expect(screen.queryByText('Priya Rao')).toBeFalsy();
   });
 
   it('selecting a match inserts the real mention token into the text', () => {
     const onChange = vi.fn();
-    render(<MentionInput value="" onChange={onChange} staff={staff} queries={[]} agents={[]} vendors={[]} series={[]}/>);
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: '@Priya', selectionStart: 6 } });
+    const { container } = render(<MentionInput value="" onChange={onChange} staff={staff} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    typeIntoEditor(getEditor(container), '@Priya');
     fireEvent.mouseDown(screen.getByText('Priya Rao'));
     expect(onChange).toHaveBeenCalledWith(expect.stringContaining('@[[staff:s1:Priya Rao]]'));
   });
 
   it('Enter with no dropdown open submits the message, matching a normal chat composer', () => {
     const onSubmit = vi.fn();
-    render(<MentionInput value="hello" onChange={()=>{}} onSubmit={onSubmit} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    const { container } = render(<MentionInput value="hello" onChange={()=>{}} onSubmit={onSubmit} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    fireEvent.keyDown(getEditor(container), { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalled();
   });
 
   it('Shift+Enter does not submit -- allows a new line', () => {
     const onSubmit = vi.fn();
-    render(<MentionInput value="hello" onChange={()=>{}} onSubmit={onSubmit} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: true });
+    const { container } = render(<MentionInput value="hello" onChange={()=>{}} onSubmit={onSubmit} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    fireEvent.keyDown(getEditor(container), { key: 'Enter', shiftKey: true });
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Bold formatting round-trips correctly to the stored plain-text marker', () => {
+    const onChange = vi.fn();
+    const { container } = render(<MentionInput value="" onChange={onChange} staff={[]} queries={[]} agents={[]} vendors={[]} series={[]}/>);
+    const editor = getEditor(container);
+    // Simulate the browser having applied bold formatting (execCommand
+    // itself isn't implemented in jsdom, so this sets the DOM directly
+    // to what a real browser's bold command would produce, then
+    // confirms the app's own DOM->text conversion handles it).
+    editor.innerHTML = '<b>urgent</b>';
+    fireEvent.input(editor);
+    expect(onChange).toHaveBeenCalledWith('**urgent**');
   });
 });
 
@@ -149,10 +187,9 @@ describe('Discussion tab (formerly Remarks): full integration', () => {
 
   it('sending a message extracts real mentions and calls onUpdateRemarks with them', () => {
     const onUpdateRemarks = vi.fn();
-    render(<QueryDrawerWithQuote {...baseProps} query={query} onUpdateRemarks={onUpdateRemarks}/>);
+    const { container } = render(<QueryDrawerWithQuote {...baseProps} query={query} onUpdateRemarks={onUpdateRemarks}/>);
     fireEvent.click(screen.getByText(/💬 Discussion/));
-    const textarea = screen.getByPlaceholderText(/Type a message/);
-    fireEvent.change(textarea, { target: { value: 'Hey @[[staff:staff-2:Amit]], check @[[query:TUR-2026-050:Other Group]]' } });
+    typeIntoEditor(getEditor(container), 'Hey @[[staff:staff-2:Amit]], check @[[query:TUR-2026-050:Other Group]]');
     fireEvent.click(screen.getByText('Send'));
     expect(onUpdateRemarks).toHaveBeenCalledWith('UTQ-1', expect.objectContaining({
       text: expect.stringContaining('@[[staff:staff-2:Amit]]'),
@@ -177,9 +214,9 @@ describe('Discussion tab (formerly Remarks): full integration', () => {
   });
 
   it('the Discussion tab works identically on a query that has not been converted to a tour file yet', () => {
-    render(<QueryDrawerWithQuote {...baseProps} query={query}/>);
+    const { container } = render(<QueryDrawerWithQuote {...baseProps} query={query}/>);
     fireEvent.click(screen.getByText(/💬 Discussion/));
-    expect(screen.getByPlaceholderText(/Type a message/)).toBeTruthy();
+    expect(getEditor(container)).toBeTruthy();
   });
 });
 

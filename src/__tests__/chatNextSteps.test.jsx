@@ -4,6 +4,21 @@ import {
   setConversationMemberAdmin, editChatMessage, deleteChatMessage, createGroupConversation, loadChatMessages,
 } from '../lib/utils.js';
 
+// MentionInput (used for both the composer and message-edit mode) is
+// contentEditable-based now, not a plain textarea -- simulating typing
+// requires setting real DOM content and cursor position, not
+// fireEvent.change with a target.value.
+function typeIntoEditor(editor, text) {
+  editor.textContent = text;
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  fireEvent.input(editor);
+}
+
 // Chat "next steps": group owner/admin role, message edit/delete, read
 // receipts, timestamps, search within chat. The admin-role and edit/
 // delete RLS itself was verified separately via direct database
@@ -206,8 +221,8 @@ describe('InAppChat UI: message edit/delete', () => {
     fireEvent.click(screen.getByText('Amit'));
     await waitFor(() => expect(screen.getByText('original')).toBeTruthy());
     fireEvent.click(screen.getByTitle('Edit'));
-    const textarea = screen.getByDisplayValue('original');
-    fireEvent.change(textarea, { target: { value: 'corrected text' } });
+    const editor = document.querySelector('.mention-input-editable');
+    typeIntoEditor(editor, 'corrected text');
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(screen.getByText(/corrected text/)).toBeTruthy());
     expect(screen.getByText('(edited)')).toBeTruthy();
