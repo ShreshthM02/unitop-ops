@@ -250,15 +250,23 @@ export async function runHealthCheck(db) {
   // 4. Queries stuck in Operations long after their tour should have
   // finished -- likely just forgotten to move forward, not a data bug,
   // but a genuinely useful nudge.
-  const { data: opsQueries } = await safeSelect(db, "queries", "id,status,travel_date,nights,cancelled");
+  //
+  // Real bug found (by Claude Code's own verification, not caught by
+  // this file's own tests since their mock db accepted any column
+  // name unconditionally): this originally read a travel_date column
+  // that doesn't exist on queries -- the real columns are
+  // travel_date_from/travel_date_to. Fixed to use travel_date_to
+  // directly as the real end date, which is actually simpler than the
+  // original travel_date+nights math it replaces (that shape doesn't
+  // exist on this table at all).
+  const { data: opsQueries } = await safeSelect(db, "queries", "id,status,travel_date_to,cancelled");
   if (opsQueries === null) {
     results.push({ id: "stale_ops", label: "Tours stuck in Operations past their end date", status: "error", detail: "Could not check this." });
   } else {
     const today = new Date();
     const stale = (opsQueries || []).filter(q => {
-      if (q.status !== "operations" || q.cancelled || !q.travel_date) return false;
-      const start = new Date(q.travel_date);
-      const end = new Date(start); end.setDate(start.getDate() + (parseInt(q.nights) || 0));
+      if (q.status !== "operations" || q.cancelled || !q.travel_date_to) return false;
+      const end = new Date(q.travel_date_to);
       const daysSinceEnd = (today - end) / 86400000;
       return daysSinceEnd > 14; // a genuine grace period, not flagging a tour that ended yesterday
     });

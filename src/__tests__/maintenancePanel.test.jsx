@@ -199,8 +199,8 @@ describe('runHealthCheck', () => {
     const db = makeDb({
       app_settings: [],
       queries: [
-        { id: 'q1', status: 'operations', travel_date: longAgo.toISOString().slice(0,10), nights: 2, cancelled: false },
-        { id: 'q2', status: 'operations', travel_date: recent.toISOString().slice(0,10), nights: 2, cancelled: false },
+        { id: 'q1', status: 'operations', travel_date_to: longAgo.toISOString().slice(0,10), cancelled: false },
+        { id: 'q2', status: 'operations', travel_date_to: recent.toISOString().slice(0,10), cancelled: false },
       ],
       cost_sheets: [], quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
       staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
