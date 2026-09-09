@@ -123,11 +123,26 @@ function BackupTab({ currentUser }) {
 function DriveRootFolderSetup() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("Unitop Ops Documents");
+  const [confirming, setConfirming] = useState(false);
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  // Real, direct feedback acted on: a single click here creates a real
+  // Drive folder -- low-stakes on its own (nothing is deleted, and an
+  // extra unused folder is trivial to clean up by hand), but this is a
+  // one-time setup action that shouldn't be triggerable by an idle
+  // click while looking around the panel. A second, explicit
+  // confirmation click is a small, real barrier against exactly that,
+  // without turning a rare, one-time action into a heavier modal
+  // dialog than it deserves.
+  const handleCreateClick = () => {
+    if (!confirming) { setConfirming(true); return; }
+    handleCreate();
+  };
+
   const handleCreate = async () => {
+    setConfirming(false);
     setCreating(true); setError(""); setResult(null);
     const res = await db.drive.createRootFolder(name.trim() || "Unitop Ops Documents");
     setCreating(false);
@@ -148,11 +163,20 @@ function DriveRootFolderSetup() {
             Run this once, then copy the folder ID it returns into the GOOGLE_DRIVE_ROOT_FOLDER_ID secret in Supabase.
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Folder name"
+            <input value={name} onChange={e => { setName(e.target.value); setConfirming(false); }} placeholder="Folder name"
               style={{ flex: 1, padding: "6px 10px", border: `1px solid ${G.gray200}`, borderRadius: 6, fontSize: 12, fontFamily: "'Inter',sans-serif" }} />
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={handleCreate} disabled={creating}>
-              {creating ? "Creating…" : "Create folder"}
-            </button>
+            {confirming ? (
+              <>
+                <button className="btn btn-ghost" style={{ fontSize: 11, background: "#FEF3C7", borderColor: "#FCD34D" }} onClick={handleCreateClick} disabled={creating}>
+                  {creating ? "Creating…" : "Click again to confirm"}
+                </button>
+                <span style={{ fontSize: 11, color: G.gray400, cursor: "pointer" }} onClick={() => setConfirming(false)}>Cancel</span>
+              </>
+            ) : (
+              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={handleCreateClick} disabled={creating}>
+                Create folder
+              </button>
+            )}
           </div>
           {error && <div style={{ marginTop: 8, fontSize: 11.5, color: "#991B1B", background: "#FEF2F2", borderRadius: 6, padding: "6px 10px" }}>{error}</div>}
           {result && (

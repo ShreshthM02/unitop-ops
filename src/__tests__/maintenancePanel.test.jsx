@@ -278,7 +278,7 @@ describe('Drive root folder setup utility (Backup tab)', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 
-  it('creating a root folder calls db.drive.createRootFolder and shows the real returned id to copy', async () => {
+  it('a single click alone does not create anything -- requires an explicit second confirmation click', async () => {
     const db = makeDb({});
     db.drive = { createRootFolder: vi.fn(async (name) => ({ success: true, folderId: 'new-folder-123', folderName: name })) };
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
@@ -287,6 +287,21 @@ describe('Drive root folder setup utility (Backup tab)', () => {
     render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
     fireEvent.click(screen.getByText(/Drive folder setup/));
     fireEvent.click(screen.getByText('Create folder'));
+    expect(db.drive.createRootFolder).not.toHaveBeenCalled(); // one click alone must never be enough
+    expect(screen.getByText('Click again to confirm')).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('creating a root folder calls db.drive.createRootFolder and shows the real returned id to copy', async () => {
+    const db = makeDb({});
+    db.drive = { createRootFolder: vi.fn(async (name) => ({ success: true, folderId: 'new-folder-123', folderName: name })) };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/Drive folder setup/));
+    fireEvent.click(screen.getByText('Create folder')); // first click only arms confirmation
+    fireEvent.click(screen.getByText('Click again to confirm')); // second click actually runs it
     await waitFor(() => expect(db.drive.createRootFolder).toHaveBeenCalledWith('Unitop Ops Documents'));
     await waitFor(() => expect(screen.getByText(/new-folder-123/)).toBeTruthy());
     vi.doUnmock('../lib/supabase.js');
@@ -301,6 +316,7 @@ describe('Drive root folder setup utility (Backup tab)', () => {
     render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
     fireEvent.click(screen.getByText(/Drive folder setup/));
     fireEvent.click(screen.getByText('Create folder'));
+    fireEvent.click(screen.getByText('Click again to confirm'));
     await waitFor(() => expect(screen.getByText(/not configured yet/)).toBeTruthy());
     vi.doUnmock('../lib/supabase.js');
   });

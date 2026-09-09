@@ -737,7 +737,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             </span>
           </div>
           <div style={{textAlign:"center",padding:"4px 0 8px",fontSize:9,color:"rgba(255,255,255,0.18)",letterSpacing:"0.5px"}}>
-            v1.9.3
+            {APP_VERSION}
           </div>
         </div>
 
