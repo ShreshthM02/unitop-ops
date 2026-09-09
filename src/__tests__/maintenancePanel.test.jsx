@@ -267,6 +267,45 @@ describe('MaintenancePanel UI', () => {
   });
 });
 
+describe('Drive root folder setup utility (Backup tab)', () => {
+  it('stays collapsed by default, matching the "only needed once" framing', async () => {
+    vi.doMock('../lib/supabase.js', () => ({ db: makeDb({}), realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    expect(screen.getByText(/Drive folder setup/)).toBeTruthy();
+    expect(screen.queryByText(/Create folder/)).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('creating a root folder calls db.drive.createRootFolder and shows the real returned id to copy', async () => {
+    const db = makeDb({});
+    db.drive = { createRootFolder: vi.fn(async (name) => ({ success: true, folderId: 'new-folder-123', folderName: name })) };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/Drive folder setup/));
+    fireEvent.click(screen.getByText('Create folder'));
+    await waitFor(() => expect(db.drive.createRootFolder).toHaveBeenCalledWith('Unitop Ops Documents'));
+    await waitFor(() => expect(screen.getByText(/new-folder-123/)).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('shows a real error if creating the folder fails, rather than failing silently', async () => {
+    const db = makeDb({});
+    db.drive = { createRootFolder: vi.fn(async () => ({ success: false, error: 'Google Drive is not configured yet' })) };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/Drive folder setup/));
+    fireEvent.click(screen.getByText('Create folder'));
+    await waitFor(() => expect(screen.getByText(/not configured yet/)).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
+
 describe('Sidebar: Maintenance nav item, admin-gated like User Management', () => {
   const fs = require('fs');
   const path = require('path');

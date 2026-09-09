@@ -106,6 +106,63 @@ function BackupTab({ currentUser }) {
           </div>
         </div>
       )}
+
+      <DriveRootFolderSetup />
+    </div>
+  );
+}
+
+// One-time Drive setup utility. Only needed once, when first connecting
+// Drive or when switching to a narrower OAuth scope that can no longer
+// see a manually-created parent folder -- drive.file only grants access
+// to files/folders the app itself creates, so a fresh, app-owned parent
+// is created here once, and its id gets pasted into
+// GOOGLE_DRIVE_ROOT_FOLDER_ID. Every query folder nests under whatever
+// this id points to, keeping Drive organised rather than every query's
+// folder scattering across the top level of the account.
+function DriveRootFolderSetup() {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("Unitop Ops Documents");
+  const [creating, setCreating] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const handleCreate = async () => {
+    setCreating(true); setError(""); setResult(null);
+    const res = await db.drive.createRootFolder(name.trim() || "Unitop Ops Documents");
+    setCreating(false);
+    if (!res.success) { setError(res.error || "Could not create the folder"); return; }
+    setResult(res);
+  };
+
+  return (
+    <div style={{ marginTop: 28, paddingTop: 16, borderTop: `1px solid ${G.gray100}` }}>
+      {!open ? (
+        <span style={{ fontSize: 11, color: G.gray400, cursor: "pointer" }} onClick={() => setOpen(true)}>
+          Drive folder setup (only needed once, or after changing Drive permissions)
+        </span>
+      ) : (
+        <div style={{ maxWidth: 480 }}>
+          <div style={{ fontSize: 12, color: G.gray600, marginBottom: 10 }}>
+            Creates a new, app-owned parent folder in your Drive that every query's own folder will nest inside.
+            Run this once, then copy the folder ID it returns into the GOOGLE_DRIVE_ROOT_FOLDER_ID secret in Supabase.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Folder name"
+              style={{ flex: 1, padding: "6px 10px", border: `1px solid ${G.gray200}`, borderRadius: 6, fontSize: 12, fontFamily: "'Inter',sans-serif" }} />
+            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={handleCreate} disabled={creating}>
+              {creating ? "Creating…" : "Create folder"}
+            </button>
+          </div>
+          {error && <div style={{ marginTop: 8, fontSize: 11.5, color: "#991B1B", background: "#FEF2F2", borderRadius: 6, padding: "6px 10px" }}>{error}</div>}
+          {result && (
+            <div style={{ marginTop: 8, fontSize: 11.5, color: "#065F46", background: "#ECFDF5", borderRadius: 6, padding: "8px 10px" }}>
+              ✓ Created "{result.folderName}" -- copy this ID into GOOGLE_DRIVE_ROOT_FOLDER_ID:
+              <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 11, background: G.white, padding: "4px 8px", borderRadius: 4, wordBreak: "break-all" }}>{result.folderId}</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

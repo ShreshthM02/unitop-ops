@@ -354,6 +354,9 @@ export const _supa = (() => {
     upload: (queryId, folderName, fileName, mimeType, fileBase64) =>
       drive.call({ action: "upload", queryId, folderName, fileName, mimeType, fileBase64 }),
     delete: (documentId) => drive.call({ action: "delete", documentId }),
+    // One-time setup action, run once when switching to a new Drive
+    // scope/parent folder -- see MaintenancePanel's Backup tab.
+    createRootFolder: (name) => drive.call({ action: "create-root-folder", name }),
     renameFolder: (queryId, newName) => drive.call({ action: "rename-folder", queryId, newName }),
   };
 
