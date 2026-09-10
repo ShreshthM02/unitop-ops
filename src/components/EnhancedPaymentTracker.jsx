@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, formatDateSlash, PnLExportButton } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildPaginatedLetterheadDocument, printHTML, formatDateDMY, isIsoDateString, loadQuotationVersions, summarizeFinalPriceEntries, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, formatDateSlash, PnLExportButton, defaultResizeImage } = Lib;
 
 // entryINR() moved to src/lib/utils.js so QueryDrawerWithQuote's Finance-tab
 // summary can share the exact same formula -- see there for the comment.
@@ -376,13 +376,383 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   );
 }
 
+// ─── Payment Advice: the outgoing mirror of a Payment Receipt ──────────────
+// Deliberately simpler than IncomingEntryRow in a few specific ways, all
+// per direct instruction: outgoing payments are always INR (no currency
+// fields/conversion at all, unlike incoming which handles foreign
+// currency), no client signature line (there is no "client" on this
+// side -- Unitop is the one paying), and no receipt/doc number required.
+// Amend/version history mirrors incoming's own pattern exactly, since
+// outgoing entries never had either before this -- the same reasoning
+// applies equally to both: a correction should update the record with a
+// real trail, not silently overwrite it.
+function OutgoingEntryRow({ entry: e, query, pt, setPt, onUpdatePayments, COMPANY_INFO, currentUser }) {
+  const deleteEntry = async () => {
+    // A vendor receipt attached to this entry is a real, separate
+    // document in the query's own Drive folder (the same repository the
+    // Documents tab manages) -- deleting the payment entry also removes
+    // that document, rather than leaving an orphaned file with nothing
+    // pointing to it anymore.
+    if (e.receiptDocId) await db.drive.delete(e.receiptDocId);
+    const updated = { ...pt, outgoing: pt.outgoing.filter(x => x.id !== e.id) };
+    setPt(updated);
+    onUpdatePayments(query.id, updated, `Payment out to ${e.vendor} deleted: ₹${e.amount}`);
+  };
+
+  const EDIT_FIELDS = ["vendor","category","amount","date","mode","modeOther","ref","note","bankName"];
+  const FIELD_LABELS = { vendor:"Vendor / Payee", category:"Category", amount:"Amount", date:"Date", mode:"Mode", modeOther:"Mode (other)", ref:"Reference", note:"Note", bankName:"Bank (paying from)" };
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  const openEditModal = () => {
+    const form = {};
+    EDIT_FIELDS.forEach(k => { form[k] = e[k] ?? ""; });
+    setEditForm(form);
+    setShowEditModal(true);
+  };
+  const setEF = (k,v) => setEditForm(f => ({ ...f, [k]: v }));
+
+  const saveEdit = () => {
+    const changed = EDIT_FIELDS.filter(k => String(e[k] ?? "") !== String(editForm[k] ?? ""));
+    if (changed.length === 0) { setShowEditModal(false); return; }
+    const oldSnapshot = {};
+    EDIT_FIELDS.forEach(k => { oldSnapshot[k] = e[k] ?? ""; });
+    oldSnapshot.version = e.version || 1;
+    oldSnapshot.editedAt = new Date().toISOString();
+    oldSnapshot.editedBy = currentUser?.name || "";
+
+    const updatedEntry = { ...e, ...editForm, version: (e.version || 1) + 1, history: [...(e.history || []), oldSnapshot] };
+    const updated = { ...pt, outgoing: pt.outgoing.map(x => x.id === e.id ? updatedEntry : x) };
+    setPt(updated);
+    const changeSummary = changed.map(k => `${FIELD_LABELS[k]} ${e[k]||"—"}→${editForm[k]||"—"}`).join(", ");
+    onUpdatePayments(query.id, updated, `Payment out entry amended (v${e.version||1}→v${updatedEntry.version}): ${changeSummary}`);
+    setShowEditModal(false);
+  };
+
+  // ─── Payment Advice print ────────────────────────────────────────────
+  const [showAdviceModal, setShowAdviceModal] = useState(false);
+  const [advVendorLine, setAdvVendorLine] = useState("");
+  const [advTourLine, setAdvTourLine] = useState("");
+  const [advFileLine, setAdvFileLine] = useState("");
+  const [advStamp, setAdvStamp] = useState(false);
+
+  const dateRange = () => {
+    if (!query.travelDateFrom) return query.travelMonth || query.travelSeason || "—";
+    const from = formatDateDMY ? formatDateDMY(query.travelDateFrom) : query.travelDateFrom;
+    const to = query.travelDateTo ? (formatDateDMY ? formatDateDMY(query.travelDateTo) : query.travelDateTo) : "";
+    return to ? `${from} - ${to}` : from;
+  };
+
+  const openAdviceModal = () => {
+    setAdvVendorLine(e.vendor || "—");
+    setAdvTourLine(`${query.groupName || query.clientName || "—"} | ${dateRange()}`);
+    setAdvFileLine(`${query.tourFileId||query.id} | ${query.destination||query.sector||"—"} | ${query.paxDisplay||"—"}`);
+    setAdvStamp(false);
+    setShowAdviceModal(true);
+  };
+
+  const printAdvice = async () => {
+    const ci = COMPANY_INFO;
+    const amountFormatted = parseFloat(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+    const extraHeadCSS = `
+  .rcpt .title{font-family:'Playfair Display',serif;font-size:15pt;font-weight:700;color:#1A3A52;text-align:center;margin:4pt 0 6pt;text-transform:uppercase;letter-spacing:1pt}
+  .rcpt .party{background:#f8f9fa;border:1pt solid #e5e7eb;border-radius:4pt;padding:8pt 10pt;margin-bottom:10pt}
+  .rcpt .party-lbl{font-size:7pt;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1pt;margin-bottom:3pt}
+  .rcpt .party-name{font-size:11pt;font-weight:700;color:#1A3A52;font-family:'Playfair Display',serif}
+  .rcpt .party-det{font-size:8.5pt;color:#555;margin-top:2pt;line-height:1.6}
+  .rcpt table{width:100%;border-collapse:collapse;margin-bottom:8pt}
+  .rcpt th{background:#1A3A52;color:#fff;font-size:8pt;font-weight:700;padding:5pt 7pt;text-align:left}
+  .rcpt td{padding:5pt 7pt;border-bottom:0.5pt solid #e5e7eb;font-size:9pt;vertical-align:top}
+  .rcpt tr:nth-child(even) td{background:#f9fafb}
+  .rcpt .amount-row td{background:#1A3A52;color:#fff;font-weight:700;border:none;padding:7pt}
+  .rcpt .receipt-disclaimer{font-size:7.5pt;color:#888;text-align:center;margin-top:14pt}
+  .rcpt .stamp-area{margin-top:18pt;display:flex;justify-content:flex-end;align-items:flex-end;font-size:8pt;color:#555}
+`;
+    // No client-signature line at all -- there is no client on this side
+    // of a payment; Unitop's own authorised-signatory block is the only
+    // one that ever applies to an advice sent to a vendor.
+    const stampImgHTML = advStamp
+      ? `<img src="${STAMP_B64}" style="height:52pt;width:auto;display:block;margin:0 auto 4pt" alt="Digital Stamp"/>` : "";
+
+    const bodyHTML = `
+  <div class="rcpt">
+    <div class="title">Payment Advice</div>
+
+    <div class="party">
+      <div class="party-lbl">Paid To</div>
+      <div class="party-name">${advVendorLine}</div>
+      <div class="party-det">
+        ${advTourLine}<br/>
+        ${advFileLine}
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Description</th><th style="text-align:right">Details</th></tr></thead>
+      <tbody>
+        <tr><td>Category</td><td style="text-align:right;font-weight:600">${e.category||"—"}</td></tr>
+        <tr><td>Date Paid</td><td style="text-align:right">${e.date||"—"}</td></tr>
+        <tr><td>Mode of Payment</td><td style="text-align:right">${e.mode==="Other"?e.modeOther||"Other":e.mode}</td></tr>
+        ${e.bankName?`<tr><td>Paid From</td><td style="text-align:right">${e.bankName}</td></tr>`:""}
+        ${e.ref?`<tr><td>Reference / UTR</td><td style="text-align:right;font-family:monospace">${e.ref}</td></tr>`:""}
+        ${e.note?`<tr><td>Notes</td><td style="text-align:right;font-style:italic">${e.note}</td></tr>`:""}
+      </tbody>
+      <tfoot>
+        <tr class="amount-row"><td>Amount Paid</td><td style="text-align:right;font-size:12pt">₹ ${amountFormatted}</td></tr>
+      </tfoot>
+    </table>
+
+    <div class="stamp-area">
+      <div style="text-align:right">
+        ${stampImgHTML}
+        <div style="border-top:0.5pt solid #ccc;padding-top:4pt;margin-top:${advStamp?4:32}pt;width:120pt;text-align:center">For ${ci.name}<br/><span style="font-size:7pt;color:#888">Authorised Signatory</span></div>
+      </div>
+    </div>
+
+    <div class="receipt-disclaimer">This is a computer-generated payment advice. &nbsp;|&nbsp; ${ci.name} &nbsp;|&nbsp; GSTIN: ${ci.gstin}</div>
+  </div>
+`;
+
+    const html = await buildPaginatedLetterheadDocument({
+      title: `Payment Advice - ${e.vendor}`,
+      extraHeadCSS,
+      bodyBlocks: [bodyHTML],
+      headerFooterAllPages: true,
+    });
+    printHTML(html);
+    logAudit(db, query.id, currentUser?.name, `Payment advice printed: ${e.vendor} (₹${e.amount})`);
+    setShowAdviceModal(false);
+  };
+
+  // ─── Vendor receipt upload -- real Drive storage, same repository the
+  // Documents tab already uses (query_documents/db.drive), not a
+  // separate, disconnected upload mechanism. Viewable and deletable
+  // both from here AND from the Documents tab, since both read/write
+  // the exact same underlying record.
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef(null);
+
+  const handleReceiptUpload = async (file) => {
+    setUploading(true); setUploadError("");
+    try {
+      const toUpload = await defaultResizeImage(file);
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(toUpload);
+      });
+      const folderLabel = `${query.tourFileId||query.id} - ${query.groupName || query.clientName || "Untitled"}`;
+      const res = await db.drive.upload(query.id, folderLabel, file.name, toUpload.type || file.type, base64);
+      if (!res.success) { setUploadError(res.error || "Could not upload receipt"); setUploading(false); return; }
+      const updatedEntry = { ...e, receiptDocId: res.document.id, receiptFileName: res.document.file_name, receiptViewLink: res.document.drive_view_link };
+      const updated = { ...pt, outgoing: pt.outgoing.map(x => x.id === e.id ? updatedEntry : x) };
+      setPt(updated);
+      onUpdatePayments(query.id, updated, `Vendor receipt attached to payment to ${e.vendor}: "${file.name}"`);
+    } catch (err) {
+      setUploadError(err.message || String(err));
+    }
+    setUploading(false);
+  };
+
+  const handleReceiptDelete = async () => {
+    if (!window.confirm(`Remove the attached receipt "${e.receiptFileName}"? This deletes it from Drive as well.`)) return;
+    const res = await db.drive.delete(e.receiptDocId);
+    if (!res.success) { setUploadError(res.error || "Could not delete this receipt"); return; }
+    const updatedEntry = { ...e, receiptDocId: null, receiptFileName: null, receiptViewLink: null };
+    const updated = { ...pt, outgoing: pt.outgoing.map(x => x.id === e.id ? updatedEntry : x) };
+    setPt(updated);
+    onUpdatePayments(query.id, updated, `Vendor receipt removed from payment to ${e.vendor}`);
+  };
+
+  const rcptInputStyle = {padding:"8px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,
+    fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800};
+  const rcptLabelStyle = {fontSize:11,fontWeight:600,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6};
+
+  return (
+    <>
+    <div style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <div style={{fontSize:12,fontWeight:600}}>{e.vendor}</div>
+            <span style={{fontSize:13,fontWeight:700,color:"#6B21A8"}}>₹ {parseFloat(e.amount||0).toLocaleString("en-IN")}</span>
+            {e.category && <span style={{fontSize:10,color:G.gray400,background:G.gray50,padding:"1px 7px",borderRadius:8}}>{e.category}</span>}
+            {e.version > 1 && (
+              <span onClick={()=>setShowHistoryModal(true)}
+                style={{fontSize:10,color:"#1A5276",background:"#EBF5FB",padding:"1px 7px",borderRadius:8,cursor:"pointer",fontWeight:600}}
+                title="View edit history">v{e.version}</span>
+            )}
+          </div>
+          <div style={{fontSize:11,color:G.gray600}}>
+            {formatDateSlash(e.date)} · {e.mode==="Other"?e.modeOther||"Other":e.mode}
+            {e.ref && <span style={{fontFamily:"monospace",marginLeft:6,color:G.gray500}}>{e.ref}</span>}
+          </div>
+          {e.note && <div style={{fontSize:11,color:G.gray400,marginTop:2,fontStyle:"italic"}}>{e.note}</div>}
+          {e.receiptFileName ? (
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+              <a href={e.receiptViewLink} target="_blank" rel="noopener noreferrer"
+                style={{fontSize:10,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,textDecoration:"none"}}>
+                📎 {e.receiptFileName}
+              </a>
+              <span onClick={handleReceiptDelete} style={{fontSize:10,color:"#C0392B",cursor:"pointer"}}>Remove</span>
+            </div>
+          ) : (
+            <div style={{marginTop:4}}>
+              <input ref={fileInputRef} type="file" style={{display:"none"}} onChange={ev=>ev.target.files[0] && handleReceiptUpload(ev.target.files[0])}/>
+              <span onClick={()=>fileInputRef.current?.click()} style={{fontSize:10,color:G.gray400,cursor:"pointer",textDecoration:"underline"}}>
+                {uploading ? "Uploading…" : "+ Attach vendor receipt"}
+              </span>
+              {uploadError && <div style={{fontSize:10,color:"#991B1B",marginTop:2}}>{uploadError}</div>}
+            </div>
+          )}
+        </div>
+        <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
+          <button onClick={openEditModal}
+            style={{background:"#F5F3FF",border:"1px solid #DDD6FE",color:"#5B21B6",borderRadius:5,
+              padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            ✏ Amend
+          </button>
+          <button onClick={openAdviceModal}
+            style={{background:"#F5EEF8",border:"1px solid #D2B4DE",color:"#6C3483",borderRadius:5,
+              padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            🖨 Advice
+          </button>
+          <button onClick={deleteEntry}
+            style={{background:"none",border:"none",cursor:"pointer",color:G.gray400,fontSize:18,padding:"0 4px"}}
+            title="Delete entry">✕</button>
+        </div>
+      </div>
+    </div>
+
+    {showEditModal && editForm && (
+      <div className="modal-overlay">
+        <div className="modal" style={{width:480}}>
+          <div className="modal-head">
+            <div className="modal-title">Amend Payment Out</div>
+            <div className="modal-sub">{e.vendor} · currently v{e.version||1}</div>
+          </div>
+          <div className="modal-body">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div style={{gridColumn:"1/-1"}}><div style={rcptLabelStyle}>Vendor / Payee</div>
+                <input style={rcptInputStyle} value={editForm.vendor} onChange={ev=>setEF("vendor",ev.target.value)}/>
+              </div>
+              <div><div style={rcptLabelStyle}>Bank (paying from)</div>
+                <input style={rcptInputStyle} value={editForm.bankName} onChange={ev=>setEF("bankName",ev.target.value)}/>
+              </div>
+              <div><div style={rcptLabelStyle}>Category</div>
+                <select style={rcptInputStyle} value={editForm.category||""} onChange={ev=>setEF("category",ev.target.value)}>
+                  <option value="">Not categorised</option>
+                  {SERVICE_TYPES.map(s=><option key={s.id} value={s.label}>{s.icon} {s.label}</option>)}
+                </select>
+              </div>
+              <div><div style={rcptLabelStyle}>Date</div>
+                <input style={rcptInputStyle} type="date" value={editForm.date} onChange={ev=>setEF("date",ev.target.value)}/>
+              </div>
+              <div><div style={rcptLabelStyle}>Amount (INR)</div>
+                <input style={{...rcptInputStyle,textAlign:"right"}} type="number" value={editForm.amount} onChange={ev=>setEF("amount",ev.target.value)}/>
+              </div>
+              <div><div style={rcptLabelStyle}>Mode</div>
+                <select style={rcptInputStyle} value={editForm.mode} onChange={ev=>setEF("mode",ev.target.value)}>
+                  {["NEFT/RTGS","IMPS","Cheque","Cash","UPI","Credit Card","Other"].map(m=><option key={m}>{m}</option>)}
+                </select>
+                {editForm.mode==="Other" && <input style={{...rcptInputStyle,marginTop:4}} value={editForm.modeOther} onChange={ev=>setEF("modeOther",ev.target.value)} placeholder="Specify mode..."/>}
+              </div>
+              <div><div style={rcptLabelStyle}>Reference</div>
+                <input style={rcptInputStyle} value={editForm.ref} onChange={ev=>setEF("ref",ev.target.value)}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}><div style={rcptLabelStyle}>Note</div>
+                <input style={rcptInputStyle} value={editForm.note} onChange={ev=>setEF("note",ev.target.value)}/>
+              </div>
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={()=>setShowEditModal(false)}>Cancel</button>
+            <div style={{flex:1}}/>
+            <button className="btn btn-primary" onClick={saveEdit}>Save Amendment</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {showHistoryModal && (
+      <div className="modal-overlay">
+        <div className="modal" style={{width:480}}>
+          <div className="modal-head">
+            <div className="modal-title">Edit History</div>
+            <div className="modal-sub">{e.vendor} · v{e.version||1} (current)</div>
+          </div>
+          <div className="modal-body">
+            {[...(e.history||[])].reverse().map((h,i) => (
+              <div key={i} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:G.gray600,marginBottom:6}}>
+                  v{h.version} — {h.editedBy||"Unknown"}{h.editedAt?` · ${new Date(h.editedAt).toLocaleString("en-IN")}`:""}
+                </div>
+                <div style={{fontSize:11,color:G.gray600,lineHeight:1.7}}>
+                  {EDIT_FIELDS.filter(k=>h[k]).map(k=>(
+                    <div key={k}><span style={{color:G.gray400}}>{FIELD_LABELS[k]}:</span> {h[k]}</div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={()=>setShowHistoryModal(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {showAdviceModal && (
+      <div className="modal-overlay">
+        <div className="modal" style={{width:480}}>
+          <div className="modal-head">
+            <div className="modal-title">Print Payment Advice</div>
+            <div className="modal-sub">{e.vendor}</div>
+          </div>
+          <div className="modal-body">
+            <div style={{marginBottom:12}}>
+              <div style={rcptLabelStyle}>Paid To</div>
+              <input style={rcptInputStyle} value={advVendorLine} onChange={ev=>setAdvVendorLine(ev.target.value)}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={rcptLabelStyle}>Tour Name | Dates</div>
+              <input style={rcptInputStyle} value={advTourLine} onChange={ev=>setAdvTourLine(ev.target.value)}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={rcptLabelStyle}>Tour File No. | Sector | Pax</div>
+              <input style={rcptInputStyle} value={advFileLine} onChange={ev=>setAdvFileLine(ev.target.value)}/>
+            </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer",color:G.gray800}}>
+              <input type="checkbox" checked={advStamp} onChange={ev=>setAdvStamp(ev.target.checked)}/>
+              Apply digital stamp
+            </label>
+            <div style={{fontSize:10.5,color:G.gray400,marginTop:8}}>
+              No client signature line -- this document is between Unitop and the vendor, not a client.
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={()=>setShowAdviceModal(false)}>Cancel</button>
+            <div style={{flex:1}}/>
+            <button className="btn btn-primary" onClick={printAdvice}>🖨 Print</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
 export default function EnhancedPaymentTracker({ query, payments, onUpdatePayments, onClose, readOnly, currentUser }) {
   const can = useCan(currentUser);
   const existing = payments[query.id] || { queryId:query.id, tourValue:"", currency:"US $", roeUsed:90, tourValueINR:"", entries:[], outgoing:[] };
   const [pt, setPt] = useState(existing);
   const [tab, setTab]  = useState("incoming");
   const [newIn, setNewIn] = useState({ type:"advance", inCurrency:"INR", amount:"", amountINR:"", date:"", mode:"Remittance", ref:"", note:"", modeOther:"", currOther:"" });
-  const [newOut, setNewOut] = useState({ vendor:"", category:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"", receiptName:"" });
+  const [newOut, setNewOut] = useState({ vendor:"", category:"", amount:"", date:"", mode:"NEFT/RTGS", ref:"", note:"" });
   const setF=(k,v)=>setPt(p=>({...p,[k]:v}));
   const setNI=(k,v)=>setNewIn(p=>({...p,[k]:v}));
   const setNO=(k,v)=>setNewOut(p=>({...p,[k]:v}));
@@ -436,9 +806,9 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
 
   const addOutgoing = () => {
     if(!newOut.vendor||!newOut.amount) return;
-    const updated = {...pt, outgoing:[...(pt.outgoing||[]), {...newOut,id:Date.now()}]};
+    const updated = {...pt, outgoing:[...(pt.outgoing||[]), {...newOut,id:Date.now(),version:1,history:[]}]};
     setPt(updated); onUpdatePayments(query.id, updated, `Payment made to ${newOut.vendor}: ₹${newOut.amount}`);
-    setNewOut({vendor:"",category:"",amount:"",date:"",mode:"NEFT/RTGS",ref:"",note:"",receiptName:""});
+    setNewOut({vendor:"",category:"",amount:"",date:"",mode:"NEFT/RTGS",ref:"",note:""});
   };
 
   const inp={padding:"7px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
@@ -576,18 +946,8 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
 
           {tab==="outgoing" && (
             <>
-              {(pt.outgoing||[]).map((e,i)=>(
-                <div key={e.id} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600}}>{e.vendor}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#6B21A8"}}>₹ {parseFloat(e.amount).toLocaleString()}</div>
-                    <div style={{fontSize:11,color:G.gray600}}>{formatDateSlash(e.date)} · {e.mode}{e.ref?" · "+e.ref:""}</div>
-                    {e.note&&<div style={{fontSize:11,color:G.gray400}}>{e.note}</div>}
-                    {e.receiptName&&<div style={{fontSize:10,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,display:"inline-block",marginTop:3}}>📎 {e.receiptName}</div>}
-                  </div>
-                  <button onClick={()=>{const u={...pt,outgoing:(pt.outgoing||[]).filter(x=>x.id!==e.id)};setPt(u);onUpdatePayments(query.id,u,`Payment out to ${e.vendor} deleted: ₹${e.amount}`);}}
-                    style={{background:"none",border:"none",cursor:"pointer",color:G.gray400,fontSize:18,padding:"0 4px",flexShrink:0}} title="Delete">✕</button>
-                </div>
+              {(pt.outgoing||[]).map((e)=>(
+                <OutgoingEntryRow key={e.id} entry={e} query={query} pt={pt} setPt={setPt} onUpdatePayments={onUpdatePayments} COMPANY_INFO={COMPANY_INFO} currentUser={currentUser}/>
               ))}
               {can("payments_outgoing") && (
               <div style={{background:"#F5EEF8",border:"1px solid #D2B4DE",borderRadius:8,padding:14}}>
@@ -614,13 +974,9 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
                       :<input style={{...inp,textAlign:t==="number"?"right":"left"}} type={t} value={newOut[k]} onChange={e=>setNO(k,e.target.value)}/>}
                     </div>
                   ))}
-                  <div>
-                    <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Receipt / Doc (name)</div>
-                    <input style={inp} value={newOut.receiptName} onChange={e=>setNO("receiptName",e.target.value)} placeholder="e.g. hotel_receipt_jun28.pdf"/>
-                    <div style={{fontSize:9,color:G.gray400,marginTop:3}}>Document upload will be available once backend is connected (Phase 4)</div>
-                  </div>
                 </div>
                 <button className="btn btn-primary" style={{background:"#6C3483",fontSize:12}} onClick={addOutgoing}>✓ Record Outgoing Payment</button>
+                <div style={{fontSize:9.5,color:G.gray400,marginTop:6}}>You can attach the vendor's receipt once this is recorded, from the entry itself below.</div>
               </div>
               )}
             </>

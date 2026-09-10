@@ -207,8 +207,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           db.from("queries").select("*").order("created_at", {ascending:false}),
           db.from("query_audit").select("*").order("created_at", {ascending:true}),
           db.from("query_remarks").select("*").order("created_at", {ascending:true}),
-          db.from("agents").select("*").order("company", {ascending:true}),
-          db.from("vendors").select("*").order("name", {ascending:true}),
+          db.from("agents").select("*").is("deleted_at", null).order("company", {ascending:true}),
+          db.from("vendors").select("*").is("deleted_at", null).order("name", {ascending:true}),
           // Staff: only safe display columns, never password_hash/
           // session_token/permissions -- the client has no legitimate
           // reason to hold those in memory. avatar_url added alongside

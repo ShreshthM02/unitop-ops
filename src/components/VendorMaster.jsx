@@ -43,6 +43,16 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   };
 
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [deleting,setDeleting]=useState(false);
+  const handleDelete = async (vendor) => {
+    if (!window.confirm(`Delete ${vendor.name}? This removes them from every list and search, but their name still shows correctly on past records (exchange orders, payments) they were involved in. This can only be undone by a developer restoring the record directly.`)) return;
+    setDeleting(true);
+    const res = await db.auth.deleteVendor(vendor.id);
+    setDeleting(false);
+    if (!res.success) { alert(res.error || "Could not delete this vendor"); return; }
+    setVendors(prev => prev.filter(v => v.id !== vendor.id));
+    setSelected(null);
+  };
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"},{id:"eo",label:"Exchange Orders"}];
   const filtered=vendors.filter(v=>(showInactive||v.active!==false)&&(filterType==="All"||v.type===filterType)&&(!search||v.name?.toLowerCase().includes(search.toLowerCase())||v.city?.toLowerCase().includes(search.toLowerCase())));
   const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
@@ -165,6 +175,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                 <div style={{display:"flex",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
                   {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 16px",border:"none",cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif",background:"none",color:tab===t.id?G.accent:G.gray600,fontWeight:tab===t.id?600:400,borderBottom:`2px solid ${tab===t.id?G.accent:"transparent"}`}}>{t.label}</button>)}
                   <div style={{flex:1}}/>{can("vendors_edit") && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px"}} onClick={()=>{setForm({...selected});setEditing(true);}}>✏ Edit</button>}
+                  {currentUser?.role==="admin" && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px 6px 0",color:"#C0392B",borderColor:"#FECACA"}} onClick={()=>handleDelete(selected)} disabled={deleting}>🗑 Delete</button>}
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:16}}>
                   {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy}}>{selected.name}</div><div style={{fontSize:12,color:G.accent,fontWeight:500,marginTop:2}}>{selected.type} · {selected.city}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{(selected.type==="Tour Facilitator"?[["Languages",selected.languages],["Areas Covered",selected.areas],["Status",selected.active===false?"Inactive":"Active"]]:[["Address",selected.address],["GSTIN",selected.gstin]]).map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>

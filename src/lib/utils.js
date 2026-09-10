@@ -696,7 +696,7 @@ export function mapDbSeriesRow(row) {
 
 export async function loadSeries(db) {
   try {
-    const { data } = await db.from("series").select("*").order("name", { ascending: true });
+    const { data } = await db.from("series").select("*").is("deleted_at", null).order("name", { ascending: true });
     return (data || []).map(mapDbSeriesRow);
   } catch (e) {
     console.warn("Load series failed:", e);

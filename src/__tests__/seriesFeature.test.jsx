@@ -15,7 +15,7 @@ describe('mapDbSeriesRow / loadSeries', () => {
   });
 
   it('loads and maps every series row, ordered by name', async () => {
-    const db = { from: () => ({ select: () => ({ order: async () => ({ data: [{ id: 's1', name: 'A', active: true }], error: null }) }) }) };
+    const db = { from: () => ({ select: () => ({ is: () => ({ order: async () => ({ data: [{ id: 's1', name: 'A', active: true }], error: null }) }) }) }) };
     const result = await loadSeries(db);
     expect(result).toEqual([{ id: 's1', name: 'A', active: true, notes: '', createdBy: undefined, createdAt: undefined, updatedAt: undefined }]);
   });

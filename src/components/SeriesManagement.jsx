@@ -8,6 +8,16 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
   const [form, setForm] = useState({});
   const [search, setSearch] = useState("");
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [deleting, setDeleting] = useState(false);
+  const handleDelete = async (s) => {
+    if (!window.confirm(`Delete series "${s.name}"? This removes it from every list, but any query already linked to it keeps that link on its own past records. This can only be undone by a developer restoring the record directly.`)) return;
+    setDeleting(true);
+    const res = await db.auth.deleteSeries(s.id);
+    setDeleting(false);
+    if (!res.success) { alert(res.error || "Could not delete this series"); return; }
+    setSeries(prev => prev.filter(x => x.id !== s.id));
+    setSelected(null);
+  };
 
   const seriesQueries = (s) => queries.filter(q => q.seriesId === s.id);
   const filtered = series.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()));
@@ -107,6 +117,7 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
                   </div>
                   <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setForm({ ...selected }); setEditing(true); }}>✏ Edit</button>
                   <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => toggleActive(selected)}>{selected.active ? "Mark Inactive" : "Mark Active"}</button>
+                  {currentUser?.role === "admin" && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} onClick={() => handleDelete(selected)} disabled={deleting}>🗑 Delete</button>}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, textTransform: "uppercase", letterSpacing: "0.5px", margin: "18px 0 10px" }}>
                   Assigned Queries ({seriesQueries(selected).length})

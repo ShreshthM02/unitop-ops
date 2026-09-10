@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, db } = Lib;
 
 export default function AgentMaster({ agents, setAgents, queries, payments, currentUser, onSaveAgent, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
@@ -12,6 +12,21 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [deleting,setDeleting]=useState(false);
+  // Admin-only, soft-delete -- matches delete_staff_member's own
+  // pattern exactly. Built directly in response to real, unexplained
+  // data loss on this table: a deletion from here on is always a
+  // deliberate, confirmed, admin-only action with a real record of
+  // when it happened, not something that can happen silently.
+  const handleDelete = async (agent) => {
+    if (!window.confirm(`Delete ${agent.company}? This removes them from every list and search, but their name still shows correctly on past records (queries, payments) they were involved in. This can only be undone by a developer restoring the record directly.`)) return;
+    setDeleting(true);
+    const res = await db.auth.deleteAgent(agent.id);
+    setDeleting(false);
+    if (!res.success) { alert(res.error || "Could not delete this agent"); return; }
+    setAgents(prev => prev.filter(a => a.id !== agent.id));
+    setSelected(null);
+  };
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Query History"},{id:"ledger",label:"Financial Ledger"}];
   const agentQueries=a=>queries.filter(q=>q.agentCompany===a.company||q.agentId===a.id);
   const agentLedger=a=>agentQueries(a).map(q=>{const pt=payments[q.id];const tv=(parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);const rc=(pt?.entries||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{queryId:q.id,tourFileId:q.tourFileId,group:q.groupName||q.clientName,sector:q.destination||q.sector||"—",travelDate:q.travelDate||"—",status:q.status,tourVal:tv,received:rc,balance:tv-rc,entries:pt?.entries||[]};});
@@ -115,6 +130,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 <div style={{display:"flex",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
                   {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 16px",border:"none",cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif",background:"none",color:tab===t.id?G.accent:G.gray600,fontWeight:tab===t.id?600:400,borderBottom:`2px solid ${tab===t.id?G.accent:"transparent"}`}}>{t.label}</button>)}
                   <div style={{flex:1}}/>{can("agents_edit") && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px"}} onClick={()=>{setForm({...selected});setEditing(true);}}>✏ Edit</button>}
+                  {currentUser?.role==="admin" && <button className="btn btn-ghost" style={{fontSize:11,margin:"6px 12px 6px 0",color:"#C0392B",borderColor:"#FECACA"}} onClick={()=>handleDelete(selected)} disabled={deleting}>🗑 Delete</button>}
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:16}}>
                   {tab==="profile"&&<div><div style={{background:G.gray50,borderRadius:10,padding:"14px 16px",marginBottom:14}}><div style={{fontSize:18,fontWeight:700,fontFamily:"'Playfair Display',serif",color:G.navy,marginBottom:4}}>{selected.company}</div><div style={{fontSize:12,color:G.gray600}}>{selected.country}{selected.city?" · "+selected.city:""}{selected.market?" · "+selected.market:""}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{[["Address",selected.address],["GSTIN",selected.gstin],["Total Queries",agentQueries(selected).length+" queries"]].map(([l,v])=><div key={l}><div style={{fontSize:10,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:500}}>{v||"—"}</div></div>)}</div>

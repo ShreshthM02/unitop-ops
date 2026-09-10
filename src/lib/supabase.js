@@ -259,6 +259,35 @@ export const _supa = (() => {
       });
       return await r.json();
     },
+    // Soft-delete for agents/vendors/series, matching deleteStaffMember's
+    // own pattern exactly -- built directly in response to real,
+    // unexplained data loss on the agents table, so a deletion is now
+    // always a deliberate, admin-only, and reversible action instead of
+    // something that can happen without a trace.
+    deleteAgent: async (targetId) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/delete_agent`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_target_id:targetId })
+      });
+      return await r.json();
+    },
+    deleteVendor: async (targetId) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/delete_vendor`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_target_id:targetId })
+      });
+      return await r.json();
+    },
+    deleteSeries: async (targetId) => {
+      const sess = await _supa.auth.getSession();
+      const r = await fetch(`${url}/rest/v1/rpc/delete_series`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({ p_token:sess?.token, p_target_id:targetId })
+      });
+      return await r.json();
+    },
     // Notifications thread: a real, persistent alternative to a toast
     // that disappears if you're not looking. The SENDER's own client
     // calls this (not the recipient's) -- the sender is guaranteed
