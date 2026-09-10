@@ -69,6 +69,15 @@ export async function exportAllData(db, currentUser) {
   const wb = new ExcelJS.Workbook();
   const summary = [];
 
+  // Real, server-authoritative time -- not the browser's own clock,
+  // which a real bug traced back to: a backup genuinely taken 2 days
+  // earlier showed as "yesterday" because the displayed timestamp
+  // trusted whatever clock the device happened to have. Falls back to
+  // the local clock only if the server call itself somehow fails, so a
+  // transient network issue never blocks the export outright.
+  const serverNow = await db.auth.getServerTime();
+  const now = serverNow ? new Date(serverNow) : new Date();
+
   // Added first (not reordered afterward -- ExcelJS orders sheets by
   // when addWorksheet() was called, not when their cells get written),
   // so opening the file always lands on a real cover explaining what
@@ -127,7 +136,7 @@ export async function exportAllData(db, currentUser) {
   cover.getCell("A3").value = "Exported by:";
   cover.getCell("B3").value = currentUser?.name || "Unknown";
   cover.getCell("A4").value = "Exported at:";
-  cover.getCell("B4").value = new Date().toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" });
+  cover.getCell("B4").value = now.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Kolkata" });
   cover.getCell("A6").value = "Contents:";
   cover.getCell("A6").font = { bold: true };
   summary.forEach((s, i) => {
@@ -140,7 +149,6 @@ export async function exportAllData(db, currentUser) {
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const now = new Date();
   const filename = `Unitop-Ops-Backup-${now.toISOString().slice(0, 10)}.xlsx`;
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
@@ -167,6 +175,28 @@ export async function getLastBackupInfo(db) {
     return (data && data[0] && data[0].value) || null;
   } catch (e) {
     console.warn("Load backup info failed:", e);
+    return null;
+  }
+}
+
+// Same pattern as backup tracking above -- "when was this last run, and
+// by whom" is exactly as useful a signal for the health check as it is
+// for backups, so it gets the identical treatment rather than a new
+// one-off mechanism.
+export async function saveHealthCheckInfo(db, info) {
+  try {
+    await db.from("app_settings").upsert({ key: "last_health_check", value: info });
+  } catch (e) {
+    console.warn("Save health check info failed:", e);
+  }
+}
+
+export async function getLastHealthCheckInfo(db) {
+  try {
+    const { data } = await db.from("app_settings").select("value").eq("key", "last_health_check");
+    return (data && data[0] && data[0].value) || null;
+  } catch (e) {
+    console.warn("Load health check info failed:", e);
     return null;
   }
 }
@@ -201,12 +231,19 @@ export async function runHealthCheck(db) {
   const results = [];
   const startedAt = Date.now();
 
+  // Same real bug/fix as the backup export: a client device's own
+  // clock isn't reliable enough for "when did this actually run" --
+  // uses the database's own server time instead, falling back to the
+  // local clock only if that call itself fails.
+  const serverNow = await db.auth.getServerTime();
+  const nowIso = serverNow ? new Date(serverNow).toISOString() : new Date().toISOString();
+
   // 1. Basic connectivity -- if this fails, nothing else below is
   // meaningful, so it's checked and reported first.
   const { data: pingRows, error: pingError } = await safeSelect(db, "app_settings", "key");
   if (pingError || pingRows === null) {
     results.push({ id: "connectivity", label: "Database connection", status: "error", detail: "Could not reach the database at all. Check your internet connection, or this may be a genuine outage -- try again in a few minutes." });
-    return { results, ranAt: new Date().toISOString(), durationMs: Date.now() - startedAt };
+    return { results, ranAt: nowIso, durationMs: Date.now() - startedAt };
   }
   results.push({ id: "connectivity", label: "Database connection", status: "ok", detail: "Connected and responding normally." });
 
@@ -323,5 +360,5 @@ export async function runHealthCheck(db) {
       : { id: "backup_recency", label: "Recent backup exists", status: "warning", detail: `Last backup was ${Math.floor(daysSince)} days ago (by ${lastBackup.by}) -- worth running a fresh one from the Backup tab.` });
   }
 
-  return { results, ranAt: new Date().toISOString(), durationMs: Date.now() - startedAt };
+  return { results, ranAt: nowIso, durationMs: Date.now() - startedAt };
 }

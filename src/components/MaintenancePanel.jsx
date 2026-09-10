@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import * as Lib from "../lib/index.js";
-const { G, db, exportAllData, getLastBackupInfo, runHealthCheck, USER_MANUAL_SECTIONS,
+const { G, db, exportAllData, getLastBackupInfo, runHealthCheck, saveHealthCheckInfo, getLastHealthCheckInfo, USER_MANUAL_SECTIONS,
   buildManualBodyHTML, buildPaginatedLetterheadDocument, printHTML, APP_VERSION } = Lib;
 
 const STATUS_STYLE = {
@@ -9,9 +9,16 @@ const STATUS_STYLE = {
   error:   { icon: "✕", color: "#991B1B", bg: "#FEF2F2" },
 };
 
-function timeAgo(iso) {
+// Real bug this fixes: "yesterday" showed for a backup genuinely taken
+// 2 real days earlier. The stored timestamp was already correct by
+// then (a separate fix) -- this was the actual remaining cause: "now"
+// itself was Date.now(), the client device's own clock, not a
+// reliable reference point. Takes a real server-fetched reference time
+// instead of assuming the caller's device clock is trustworthy.
+function timeAgo(iso, referenceNow) {
   if (!iso) return null;
-  const days = (Date.now() - new Date(iso).getTime()) / 86400000;
+  const now = referenceNow ? new Date(referenceNow).getTime() : Date.now();
+  const days = (now - new Date(iso).getTime()) / 86400000;
   if (days < 1) return "today";
   if (days < 2) return "yesterday";
   return `${Math.floor(days)} days ago`;
@@ -34,7 +41,7 @@ export default function MaintenancePanel({ currentUser }) {
         ))}
       </div>
       {tab === "backup" && <BackupTab currentUser={currentUser} />}
-      {tab === "health" && <HealthCheckTab />}
+      {tab === "health" && <HealthCheckTab currentUser={currentUser} />}
       {tab === "manual" && <ManualTab />}
     </div>
   );
@@ -47,9 +54,11 @@ function BackupTab({ currentUser }) {
   const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [serverNow, setServerNow] = useState(null);
 
   useEffect(() => {
     getLastBackupInfo(db).then(info => { setLastBackup(info); setLoading(false); });
+    db.auth.getServerTime().then(setServerNow);
   }, []);
 
   const handleExport = async () => {
@@ -81,8 +90,8 @@ function BackupTab({ currentUser }) {
         ) : lastBackup ? (
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, color: G.gray800 }}>
-              {timeAgo(lastBackup.at)} <span style={{ fontWeight: 400, color: G.gray400, fontSize: 12 }}>
-                ({new Date(lastBackup.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })})
+              {timeAgo(lastBackup.at, serverNow)} <span style={{ fontWeight: 400, color: G.gray400, fontSize: 12 }}>
+                ({new Date(lastBackup.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })})
               </span>
             </div>
             <div style={{ fontSize: 12, color: G.gray400, marginTop: 2 }}>by {lastBackup.by}</div>
@@ -192,15 +201,27 @@ function DriveRootFolderSetup() {
 }
 
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
-function HealthCheckTab() {
+function HealthCheckTab({ currentUser }) {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState(null);
+  const [lastRun, setLastRun] = useState(null);
+  const [loadingLastRun, setLoadingLastRun] = useState(true);
+  const [serverNow, setServerNow] = useState(null);
+
+  useEffect(() => {
+    getLastHealthCheckInfo(db).then(info => { setLastRun(info); setLoadingLastRun(false); });
+    db.auth.getServerTime().then(setServerNow);
+  }, []);
 
   const handleRun = async () => {
     setRunning(true);
     const res = await runHealthCheck(db);
     setReport(res);
     setRunning(false);
+    const counts = res.results.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+    const info = { by: currentUser?.name || "Unknown", at: res.ranAt, ok: counts.ok || 0, warning: counts.warning || 0, error: counts.error || 0 };
+    await saveHealthCheckInfo(db, info);
+    setLastRun(info);
   };
 
   const counts = report ? report.results.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {}) : null;
@@ -218,6 +239,28 @@ function HealthCheckTab() {
         developer looking at the source directly, not something a running app can inspect about itself.
       </div>
 
+      <div style={{ background: G.gray50, border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: G.gray400, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+          Last health check
+        </div>
+        {loadingLastRun ? (
+          <div style={{ fontSize: 13, color: G.gray400 }}>Checking…</div>
+        ) : lastRun ? (
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: G.gray800 }}>
+              {timeAgo(lastRun.at, serverNow)} <span style={{ fontWeight: 400, color: G.gray400, fontSize: 12 }}>
+                ({new Date(lastRun.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })})
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: G.gray400, marginTop: 2 }}>
+              by {lastRun.by} -- {lastRun.ok} passed{lastRun.warning > 0 ? `, ${lastRun.warning} warning${lastRun.warning === 1 ? "" : "s"}` : ""}{lastRun.error > 0 ? `, ${lastRun.error} error${lastRun.error === 1 ? "" : "s"}` : ""}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#92400E" }}>Never run yet.</div>
+        )}
+      </div>
+
       <button className="btn btn-primary" onClick={handleRun} disabled={running} style={{ fontSize: 13, marginBottom: 16 }}>
         {running ? "Running…" : "▶ Run Health Check"}
       </button>
@@ -228,7 +271,7 @@ function HealthCheckTab() {
             <span style={{ color: "#059669" }}>{counts.ok || 0} passed</span>
             {counts.warning > 0 && <span style={{ color: "#92400E" }}>{counts.warning} warning{counts.warning === 1 ? "" : "s"}</span>}
             {counts.error > 0 && <span style={{ color: "#991B1B" }}>{counts.error} error{counts.error === 1 ? "" : "s"}</span>}
-            <span style={{ color: G.gray400, marginLeft: "auto" }}>Ran {new Date(report.ranAt).toLocaleTimeString("en-IN")} · {(report.durationMs / 1000).toFixed(1)}s</span>
+            <span style={{ color: G.gray400, marginLeft: "auto" }}>Ran {new Date(report.ranAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} · {(report.durationMs / 1000).toFixed(1)}s</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {report.results.map(r => {

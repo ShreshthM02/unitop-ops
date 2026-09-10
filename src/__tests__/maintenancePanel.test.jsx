@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { exportAllData, saveBackupInfo, getLastBackupInfo, runHealthCheck } from '../lib/maintenance.js';
+import { exportAllData, saveBackupInfo, getLastBackupInfo, runHealthCheck, saveHealthCheckInfo, getLastHealthCheckInfo } from '../lib/maintenance.js';
 
 // New Maintenance feature (admin-only): a real backup export the app
 // can run on itself, and a real, data-level health check -- scoped
@@ -28,6 +28,11 @@ function makeDb(tables = {}) {
       };
       return builder;
     },
+    // A fixed, known instant rather than the real Date.now() -- this
+    // mock exists specifically to keep tests deterministic, and a real
+    // server time call is exactly the kind of "trusts the outside
+    // world" dependency a unit test should never rely on.
+    auth: { getServerTime: async () => '2026-09-10T12:00:00.000Z' },
   };
 }
 
@@ -121,9 +126,86 @@ describe('getLastBackupInfo / saveBackupInfo', () => {
   });
 });
 
+describe('getLastHealthCheckInfo / saveHealthCheckInfo -- same "when did this last run" tracking as backups', () => {
+  it('returns null when a health check has never been run', async () => {
+    const db = makeDb({});
+    expect(await getLastHealthCheckInfo(db)).toBeNull();
+  });
+
+  it('round-trips real health check info correctly', async () => {
+    const db = makeDb({});
+    await saveHealthCheckInfo(db, { by: 'Priya', at: '2026-09-10T10:00:00Z', ok: 11, warning: 1, error: 0 });
+    const info = await getLastHealthCheckInfo(db);
+    expect(info.by).toBe('Priya');
+    expect(info.ok).toBe(11);
+  });
+});
+
+describe('exportAllData / runHealthCheck use the real server clock, not the device\'s own', () => {
+  it('exportAllData records the server-reported time, not a client-computed one', async () => {
+    const db = makeDb({ queries: [], agents: [], vendors: [] });
+    db.auth.getServerTime = async () => '2026-09-10T09:00:00.000Z';
+    global.URL.createObjectURL = () => 'blob:mock';
+    global.URL.revokeObjectURL = () => {};
+    const origCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tag) => tag === 'a' ? { click: () => {}, set href(v){}, set download(v){} } : origCreateElement(tag));
+    await exportAllData(db, { name: 'Priya' });
+    const info = await getLastBackupInfo(db);
+    expect(info.at).toBe('2026-09-10T09:00:00.000Z');
+    vi.restoreAllMocks();
+  });
+
+  it('runHealthCheck timestamps its report with the real server time, not Date.now()', async () => {
+    const db = makeDb({ staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
+    db.auth.getServerTime = async () => '2026-09-10T09:30:00.000Z';
+    const report = await runHealthCheck(db);
+    expect(report.ranAt).toBe('2026-09-10T09:30:00.000Z');
+  });
+});
+
+describe('MaintenancePanel UI: Health Check tab shows real "last run" info, matching the Backup tab pattern', () => {
+  it('shows "Never run yet" before any health check has been run', async () => {
+    const db = makeDb({});
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/🩺 Health Check/));
+    await waitFor(() => expect(screen.getByText('Never run yet.')).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('a genuinely 2-day-old health check reads "2 days ago", not "yesterday" -- the exact bug reported', async () => {
+    const db = makeDb({ app_settings: [{ key: 'last_health_check', value: { by: 'Priya', at: '2026-09-08T10:00:00.000Z', ok: 11, warning: 1, error: 0 } }] });
+    db.auth.getServerTime = async () => '2026-09-10T10:00:00.000Z'; // exactly 2 real days later
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/🩺 Health Check/));
+    await waitFor(() => expect(screen.getByText('2 days ago')).toBeTruthy());
+    expect(screen.queryByText('yesterday')).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('after running a fresh health check, its own info is saved and shown as the new "last run"', async () => {
+    const db = makeDb({ staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
+    db.auth.getServerTime = async () => '2026-09-10T11:00:00.000Z';
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    fireEvent.click(screen.getByText(/🩺 Health Check/));
+    await waitFor(() => expect(screen.getByText('Never run yet.')).toBeTruthy());
+    fireEvent.click(screen.getByText(/▶ Run Health Check/));
+    await waitFor(() => expect(screen.getByText(/by Priya/)).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
+
 describe('runHealthCheck', () => {
   it('reports a connectivity error and stops early if the database is unreachable', async () => {
-    const db = { from: () => ({ select: () => ({ then: (res) => res({ data: null, error: { message: 'network down' } }) }) }) };
+    const db = { from: () => ({ select: () => ({ then: (res) => res({ data: null, error: { message: 'network down' } }) }) }), auth: { getServerTime: async () => '2026-09-10T12:00:00.000Z' } };
     const report = await runHealthCheck(db);
     expect(report.results).toHaveLength(1);
     expect(report.results[0].status).toBe('error');
@@ -174,6 +256,7 @@ describe('runHealthCheck', () => {
         };
         return builder;
       },
+      auth: { getServerTime: async () => '2026-09-10T12:00:00.000Z' },
     };
     const report = await runHealthCheck(db);
     const check = report.results.find(r => r.id === 'orphan_tour_execution');

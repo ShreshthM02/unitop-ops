@@ -288,6 +288,19 @@ export const _supa = (() => {
       });
       return await r.json();
     },
+    // Real bug found: Maintenance-panel timestamps ("last backed up",
+    // "last health check") were generated client-side, trusting
+    // whatever clock the device happens to have -- a backup taken 2
+    // real days earlier showed as "yesterday" because of this. Returns
+    // the database's own server clock instead, authoritative and not
+    // subject to any individual device's drift.
+    getServerTime: async () => {
+      const r = await fetch(`${url}/rest/v1/rpc/get_server_time`, {
+        method:"POST", headers:{ "apikey":key, "Content-Type":"application/json" },
+        body: JSON.stringify({})
+      });
+      return r.ok ? await r.json() : null;
+    },
     // Notifications thread: a real, persistent alternative to a toast
     // that disappears if you're not looking. The SENDER's own client
     // calls this (not the recipient's) -- the sender is guaranteed
