@@ -89,3 +89,31 @@ describe('Master Data sidebar items open the full dashboard directly, no interme
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('A genuinely empty database shows a real empty state, never the hardcoded demo data', () => {
+  // Real, serious bug found and fixed: queries/agents/vendors/staff/
+  // payments state used to start as hardcoded demo constants
+  // (INITIAL_QUERIES etc, including a sample query literally named
+  // "Anderson Family"), on the assumption the real fetch below would
+  // always replace them -- but a genuinely empty real table (a fresh
+  // install, or right after a clean-slate wipe) correctly returned an
+  // empty array, and a separate bug (requiring `.length > 0` before
+  // trusting the fetch) then left that empty result silently discarded,
+  // keeping the fake demo data displayed as if it were real. Fixed in
+  // two places: the length>0 guards removed (a real, empty result is
+  // always trusted), AND the hardcoded initial state itself removed
+  // (starts genuinely empty, not demo data waiting to be overwritten).
+  it('never shows "Anderson Family" or any other hardcoded demo query when Supabase genuinely returns none', async () => {
+    const mockDb = { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }), is: () => ({ order: async () => ({ data: [], error: null }) }) }) }), auth: { getSession: async () => null } };
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    const { default: UnitopApp } = await import('../components/UnitopApp.jsx');
+    render(<UnitopApp authUser={{id:'staff-1',name:'Priya',role:'admin'}} onUpdateAuthUser={()=>{}} onOpenVendorLedger={()=>{}} onOpenAgentLedger={()=>{}}/>);
+    await waitFor(() => expect(screen.queryByText(/Loading/)).toBeFalsy());
+    expect(screen.queryByText(/Anderson Family/)).toBeFalsy();
+    expect(screen.queryByText(/Chen Group/)).toBeFalsy();
+    expect(screen.queryByText(/Smith Group/)).toBeFalsy();
+    expect(screen.queryByText(/Tanaka Group/)).toBeFalsy();
+    expect(screen.queryByText(/Mueller Tour/)).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

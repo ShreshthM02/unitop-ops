@@ -39,13 +39,23 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // user. Showing a brief loading state instead avoids that entirely.
   const [dataLoading, setDataLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [queries, setQueries]     = useState(INITIAL_QUERIES);
-  const [agents, setAgents]       = useState(INITIAL_AGENTS);
+  // Real, serious bug found and fixed here: these five used to start as
+  // hardcoded demo constants (INITIAL_QUERIES etc, "Anderson Family" and
+  // similar sample records) on the theory that the real fetch below
+  // would always replace them -- but a genuinely empty real table (a
+  // fresh install, or right after a clean-slate wipe) left that fetch's
+  // own result correctly empty, and a separate bug in that fetch (see
+  // below) then failed to ever apply it. Starting from real emptiness
+  // here removes the fallback entirely, rather than just fixing the one
+  // bug that exposed it -- nothing for a future, different bug to fall
+  // back to ever again.
+  const [queries, setQueries]     = useState([]);
+  const [agents, setAgents]       = useState([]);
   const [series, setSeries]       = useState([]);
   const [signatures, setSignatures] = useState([]);
-  const [vendors, setVendors]     = useState(INITIAL_VENDORS);
-  const [staff, setStaff]         = useState(USERS);
-  const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
+  const [vendors, setVendors]     = useState([]);
+  const [staff, setStaff]         = useState([]);
+  const [payments, setPayments]   = useState({});
   const [tourExecutions, setTourExecutions] = useState({});
   const [costSheetExists, setCostSheetExists] = useState(new Set());
   const [quotationExists, setQuotationExists] = useState(new Set());
@@ -237,7 +247,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         setSeries(seriesData);
         setSignatures(signaturesData);
 
-        if (qData && qData.length > 0) {
+        // Real, serious bug found and fixed: this used to require
+        // qData.length > 0 before trusting it, meaning a genuinely
+        // empty queries table (e.g. right after a clean-slate wipe,
+        // or simply a brand-new install) left `queries` state stuck
+        // at its hardcoded initial demo value (INITIAL_QUERIES,
+        // "Anderson Family" etc) forever -- displayed as if real, and
+        // any interaction with it could write that fake data straight
+        // into the live database. A real fetch result -- even an
+        // empty array -- must always be trusted over a hardcoded
+        // placeholder.
+        if (qData) {
           const mapped = qData.map(q => ({ ...mapDbQueryRow(q), audit: [], remarks: [] }));
           const auditMap = {};
           (auditData||[]).forEach(a => {
@@ -263,7 +283,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             if (restored) setActiveQuery(restored);
           }
         }
-        if (agData && agData.length > 0) {
+        // Same real bug, same fix: an empty result is a genuine, valid
+        // state to trust, not a signal to keep showing hardcoded demo
+        // agents/vendors/staff/payments instead.
+        if (agData) {
           setAgents(agData.map(a => {
             const mapped = { id: a.id, company: a.company, country: a.country, city: a.city, address: a.address,
               market: a.market, contactName: a.contact_name, contactPhone: a.contact_phone,
@@ -272,7 +295,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             return { ...mapped, contacts: migrateContacts(mapped) };
           }));
         }
-        if (vData && vData.length > 0) {
+        if (vData) {
           setVendors(vData.map(v => {
             const mapped = { id: v.id, name: v.name, type: v.type, city: v.city, address: v.address,
               contactName: v.contact_name, contactPhone: v.contact_phone,
@@ -282,7 +305,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             return { ...mapped, contacts: migrateContacts(mapped) };
           }));
         }
-        if (staffData && staffData.length > 0) {
+        if (staffData) {
           setStaff(staffData.filter(s => s.active !== false));
         }
         setDocSettings(docSettingsValue);
@@ -292,9 +315,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         // as a literal "undefined" in the Quotation PDF headings.
         setDocTemplates(mergeDocTemplates(DEFAULT_DOC_TEMPLATES, docTemplatesValue));
         const paymentsMap = mergePaymentsRows(payData, inData, outData);
-        if (Object.keys(paymentsMap).length > 0) setPayments(paymentsMap);
+        setPayments(paymentsMap);
         const teMap = mergeTourExecutionRows(teData);
-        if (Object.keys(teMap).length > 0) setTourExecutions(teMap);
+        setTourExecutions(teMap);
       } catch(e) {
         console.warn("Could not load from Supabase, using demo data:", e);
       } finally {
