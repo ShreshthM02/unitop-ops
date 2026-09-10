@@ -228,7 +228,14 @@ export async function runHealthCheck(db) {
     ["exchange_orders", "query_id", "orphan_eo", "Exchange Orders"],
   ];
   for (const [table, field, id, label] of orphanTargets) {
-    const { data } = await safeSelect(db, table, `id,${field}`);
+    // Only ever selects the link column itself (see orphanCheck below --
+    // it never reads anything but that field). A real bug found via a
+    // live health check run: this used to also request "id", which
+    // doesn't exist on tour_execution at all (its own query_id IS its
+    // primary key, since there's exactly one row per query) -- that
+    // caused a hard SQL error there specifically, surfaced honestly as
+    // "could not read this table" rather than silently passing.
+    const { data } = await safeSelect(db, table, field);
     results.push(orphanCheck(id, `${label}: linked to a real query`, data, field, queryIds));
   }
 

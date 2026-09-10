@@ -144,6 +144,43 @@ describe('runHealthCheck', () => {
     expect(check.detail).toContain('1');
   });
 
+  it('every orphan check only ever requests the link column itself, never "id" -- a real bug found via a live health check run against tour_execution, which has no id column at all (query_id is its own primary key)', async () => {
+    // A schema-aware mock: throws exactly like real Postgrest would if a
+    // column that doesn't exist on the table gets requested, rather than
+    // silently accepting anything the way the other tests' plain mock
+    // does -- this is specifically built to catch the class of bug that
+    // slipped through before (selecting "id,query_id" when a table has
+    // no id column at all).
+    const tourExecRows = [{ query_id: 'q1' }]; // deliberately no id field, matching the real schema
+    const db = {
+      from: (table) => {
+        const builder = {
+          select: (cols) => {
+            if (table === 'tour_execution') {
+              const requested = cols.split(',').map(c => c.trim());
+              const invalid = requested.filter(c => !['query_id'].includes(c));
+              if (invalid.length) throw new Error(`column "${invalid[0]}" does not exist`);
+            }
+            return builder;
+          },
+          eq: () => builder, order: () => builder,
+          then: (res) => {
+            const rows = table === 'queries' ? [{ id: 'q1' }]
+              : table === 'tour_execution' ? tourExecRows
+              : table === 'staff' ? [{ id: 's1', role: 'admin', active: true, deleted_at: null }]
+              : [];
+            res({ data: rows, error: null });
+          },
+        };
+        return builder;
+      },
+    };
+    const report = await runHealthCheck(db);
+    const check = report.results.find(r => r.id === 'orphan_tour_execution');
+    expect(check.status).toBe('ok'); // genuinely readable and correctly linked, not erroring
+    expect(check.detail).not.toContain('Could not read');
+  });
+
   it('passes cleanly when there are genuinely no orphans', async () => {
     const db = makeDb({
       app_settings: [], queries: [{ id: 'q1' }],
