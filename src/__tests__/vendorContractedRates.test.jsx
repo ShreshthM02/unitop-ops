@@ -96,3 +96,51 @@ describe('Contracted Rates item 7: tax toggle', () => {
     expect(screen.getByText('Exclusive of tax')).toBeTruthy();
   });
 });
+
+describe('Contracted Rates: the real imported rate sheet (vendor_rates table), not the generic editor', () => {
+  const hotelWithRealRates = { id: 'VND-AGR-001', name: 'HHW Hotel', type: 'Hotel', city: 'Agra', active: true };
+  const realRates = [
+    { id: 'r1', vendor_id: 'VND-AGR-001', market_segment: null, room_category: 'Classic', meal_plan: 'CPAI',
+      season_label: 'Oct-Mar', single_rate: 2500, double_rate: null, triple_rate: null, extra_bed_rate: 1000,
+      tax_inclusive: true, terms: 'Extra bed (child 5-12): 750.' },
+  ];
+
+  it('shows the real imported rate, not the generic manually-typed editor, for a hotel that has real contracted rates', async () => {
+    const mockDb = { from: (table) => {
+      const builder = { select: () => builder, eq: () => builder,
+        is: () => ({ then: (res) => res({ data: table === 'vendor_rates' ? realRates : [], error: null }) }) };
+      return builder;
+    }};
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { default: VendorMasterFresh } = await import('../components/VendorMaster.jsx');
+    render(<VendorMasterFresh vendors={[hotelWithRealRates]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('HHW Hotel'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+    await waitFor(() => expect(screen.getByText('Classic')).toBeTruthy());
+    expect(screen.getByText('CPAI')).toBeTruthy();
+    expect(screen.getByText('₹2,500')).toBeTruthy();
+    expect(screen.getByText(/Extra bed \(child 5-12\)/)).toBeTruthy();
+    // The generic, manually-typed editor must NOT show for this vendor --
+    // real imported rates take priority.
+    expect(screen.queryByText('+ Add Rate')).toBeFalsy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('falls back to the generic manually-typed editor for a hotel with no real imported rates yet', async () => {
+    const mockDb = { from: () => {
+      const builder = { select: () => builder, eq: () => builder,
+        is: () => ({ then: (res) => res({ data: [], error: null }) }) };
+      return builder;
+    }};
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { default: VendorMasterFresh } = await import('../components/VendorMaster.jsx');
+    const emptyHotel = { id: 'v-new', name: 'Brand New Hotel', type: 'Hotel', city: 'Delhi', active: true, rates: [] };
+    render(<VendorMasterFresh vendors={[emptyHotel]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Brand New Hotel'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+    await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

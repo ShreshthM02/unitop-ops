@@ -14,6 +14,26 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [tab,setTab]=useState("profile");
   const [rates,setRates]=useState(()=>{const v=vendors.find(v=>v.id===initialSelectedId);return v?.rates||[];});
   const [ratesSaveMsg,setRatesSaveMsg]=useState("");
+  // Real, imported contracted rates (vendor_rates table) -- distinct
+  // from the generic, manually-typed "rates" array above, which is a
+  // different, older mechanism still used by non-Hotel vendor types.
+  // Hotel vendors created via the real rate import have their actual
+  // contracted rates here, not in that generic array.
+  const [contractedRates,setContractedRates]=useState([]);
+  const [loadingContractedRates,setLoadingContractedRates]=useState(false);
+  useEffect(() => {
+    if (!selected || selected.type !== "Hotel") { setContractedRates([]); return; }
+    setLoadingContractedRates(true);
+    // Wrapped defensively, matching loadSeries/loadSignatures' own
+    // pattern elsewhere in this app -- a real fetch error here should
+    // degrade gracefully to the old, generic rates editor (see the tab
+    // render below), never leave VendorMaster itself uncaught-crashing.
+    Promise.resolve()
+      .then(() => db.from("vendor_rates").select("*").eq("vendor_id", selected.id).is("deleted_at", null))
+      .then(({ data }) => setContractedRates(data || []))
+      .catch(() => setContractedRates([]))
+      .finally(() => setLoadingContractedRates(false));
+  }, [selected?.id, selected?.type]);
   const [periodFilter,setPeriodFilter]=useState({preset:"all"});
 
   // Exchange Orders tab: every EO issued against the selected vendor,
@@ -240,6 +260,39 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   })()}
                   {tab==="rates"&&(()=>{
                     const vtype=selected.type||"Hotel";
+                    // Real, imported contracted rates take priority for Hotel
+                    // vendors that actually have them -- these are the real
+                    // rate-sheet import, not the generic manually-typed
+                    // editor below (which stays as the fallback for Hotel
+                    // vendors with none yet, and for every other vendor
+                    // type, which the import never touches).
+                    if (vtype==="Hotel" && contractedRates.length>0) {
+                      return (
+                        <div>
+                          <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
+                            Real contracted rates, imported from the hotel rate sheet. Read-only here -- corrections go through the import, not this screen.
+                          </div>
+                          {contractedRates.map(r=>(
+                            <div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12,marginBottom:8}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                                <span style={{fontSize:13,fontWeight:700,color:G.navy}}>{r.room_category}</span>
+                                <span style={{fontSize:11,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{r.meal_plan}</span>
+                                {r.market_segment && <span style={{fontSize:11,background:"#F5EEF8",color:"#6C3483",padding:"2px 8px",borderRadius:10}}>{r.market_segment}</span>}
+                                {r.season_label && <span style={{fontSize:11,color:G.gray400}}>{r.season_label}</span>}
+                              </div>
+                              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:8,marginBottom:r.terms?8:0}}>
+                                {r.single_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_rate).toLocaleString("en-IN")}</div></div>}
+                                {r.double_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Double</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.double_rate).toLocaleString("en-IN")}</div></div>}
+                                {r.triple_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Triple</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.triple_rate).toLocaleString("en-IN")}</div></div>}
+                                {r.extra_bed_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Bed</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.extra_bed_rate).toLocaleString("en-IN")}</div></div>}
+                                <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tax</div><div style={{fontSize:11,color:G.gray600}}>{r.tax_inclusive?"Inclusive":"GST applied"}</div></div>
+                              </div>
+                              {r.terms && <div style={{fontSize:11,color:G.gray600,lineHeight:1.6,borderTop:`1px solid ${G.gray200}`,paddingTop:8}}>{r.terms}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
                     const upd=(i,k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));
                     // item 6: "Season" replaced with real Rates Applicable
                     // From/Till date pickers, for every vendor type that
