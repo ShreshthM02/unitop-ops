@@ -384,6 +384,7 @@ export async function saveVendorToDB(db, vendor) {
       contact_email: primary.email || "",
       contacts: vendor.contacts || [],
       gstin: vendor.gstin,
+      website: vendor.website,
       notes: vendor.notes,
       languages: vendor.languages,
       areas: vendor.areas,
@@ -663,7 +664,7 @@ export async function saveAgentToDB(db, agent) {
   const payload = {
     company: agent.company, country: agent.country, city: agent.city, address: agent.address,
     market: agent.market, contact_name: primary.name || "", contact_phone: primary.phone || "",
-    contact_email: primary.email || "", gstin: agent.gstin, notes: agent.notes, active: agent.active !== false,
+    contact_email: primary.email || "", gstin: agent.gstin, website: agent.website, notes: agent.notes, active: agent.active !== false,
     contacts: agent.contacts || [],
   };
   try {

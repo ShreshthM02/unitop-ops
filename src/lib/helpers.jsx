@@ -18,6 +18,20 @@ export function useCan(user) {
   return (key) => perms[key] === true;
 }
 
+// Real fix: this used to be name.slice(0,2) -- the first two raw
+// characters of the full string, so "Priya Sharma" showed "PR"
+// instead of real initials "PS". Splits on whitespace and takes the
+// first letter of each word (up to two); a single-word name falls
+// back to its own first two letters, matching the old behavior only
+// for that one case, since there's no second word to take an initial
+// from.
+function getInitials(name) {
+  if (!name) return "U";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export function Avatar({ user, size = 28, onClick, style }) {
   // avatarUrl (a real uploaded photo) takes priority over the color +
   // initials fallback, which now only ever shows for someone who
@@ -37,7 +51,7 @@ export function Avatar({ user, size = 28, onClick, style }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       fontSize: size * 0.35, fontWeight: 600, color: "#fff", flexShrink: 0,
       ...(style||{}) }}>
-      {user?.avatar || (user?.name ? user.name.slice(0,2).toUpperCase() : "U")}
+      {user?.avatar || getInitials(user?.name)}
     </div>
   );
 }
