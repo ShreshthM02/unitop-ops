@@ -25,7 +25,7 @@ export function useCan(user) {
 // back to its own first two letters, matching the old behavior only
 // for that one case, since there's no second word to take an initial
 // from.
-function getInitials(name) {
+export function getInitials(name) {
   if (!name) return "U";
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();

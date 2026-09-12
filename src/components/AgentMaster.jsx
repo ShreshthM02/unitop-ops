@@ -67,7 +67,16 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
   });
   const saveEdit=async()=>{
     if(form.id){
+      // Real bug found and fixed here: setSelected was never called on
+      // this branch (editing an existing agent) -- only the agents list
+      // array got updated, so the Profile tab kept showing the old,
+      // stale selected object after every save, including for fields
+      // that were already there before website was added (address,
+      // GSTIN, etc) -- not something website itself introduced, but a
+      // real, pre-existing gap that made this exact new field look
+      // broken the moment someone tried it.
       setAgents(p=>p.map(a=>a.id===form.id?form:a));
+      setSelected(form);
       onSaveAgent && await onSaveAgent(form);
     }else{
       // Don't invent an id client-side -- agents.id is a real DB-generated

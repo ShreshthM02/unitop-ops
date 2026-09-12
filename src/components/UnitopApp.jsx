@@ -126,7 +126,16 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     id:     authUser.id,
     name:   authUser.name,
     role:   authUser.role,
-    avatar: authUser.name ? authUser.name.slice(0,2).toUpperCase() : "U",
+    // Real bug found and fixed here: this used to recompute "avatar"
+    // fresh on every login using the old, buggy name.slice(0,2) logic
+    // -- since Avatar's own render checks user?.avatar first (a real,
+    // deliberate manual-override mechanism, staff.avatar in the
+    // database), this silently masked the real initials fix in
+    // helpers.jsx for every single logged-in user. Passes through the
+    // real stored value (or none at all) instead, letting Avatar's own
+    // getInitials() fallback compute real initials correctly when no
+    // manual override actually exists.
+    avatar: authUser.avatar || null,
     avatarUrl: authUser.avatar_url || authUser.avatarUrl || null,
     color:  authUser.color || "#1A5276",
     permissions: authUser.permissions || {},
@@ -288,9 +297,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         // agents/vendors/staff/payments instead.
         if (agData) {
           setAgents(agData.map(a => {
+            // Real bug found and fixed here: website was added to the
+            // database and to the save payload, but never to this
+            // read-side mapping -- a completely separate code path.
+            // Every fetch silently discarded it regardless of whether
+            // it was correctly saved, which is why it never appeared
+            // even for rows updated directly in the database.
             const mapped = { id: a.id, company: a.company, country: a.country, city: a.city, address: a.address,
               market: a.market, contactName: a.contact_name, contactPhone: a.contact_phone,
-              contactEmail: a.contact_email, gstin: a.gstin, notes: a.notes, active: a.active,
+              contactEmail: a.contact_email, gstin: a.gstin, website: a.website, notes: a.notes, active: a.active,
               contacts: a.contacts || [] };
             return { ...mapped, contacts: migrateContacts(mapped) };
           }));
@@ -299,7 +314,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           setVendors(vData.map(v => {
             const mapped = { id: v.id, name: v.name, type: v.type, city: v.city, address: v.address,
               contactName: v.contact_name, contactPhone: v.contact_phone,
-              contactEmail: v.contact_email, gstin: v.gstin, notes: v.notes,
+              contactEmail: v.contact_email, gstin: v.gstin, website: v.website, notes: v.notes,
               languages: v.languages, areas: v.areas, active: v.active,
               rates: v.rates || [], contacts: v.contacts || [] };
             return { ...mapped, contacts: migrateContacts(mapped) };
