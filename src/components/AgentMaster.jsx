@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, COUNTRIES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, db } = Lib;
 
 export default function AgentMaster({ agents, setAgents, queries, payments, currentUser, onSaveAgent, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
@@ -23,6 +23,10 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
   const [periodFilter,setPeriodFilter]=useState({preset:"all"});
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
+  // Real, direct request: a country-wide filter, built on the same
+  // dropdown used for the profile's own Country field, so agents from
+  // a particular country can be listed directly.
+  const [filterCountry,setFilterCountry]=useState("All");
   const setF=(k,v)=>setForm(p=>({...p,[k]:v}));
   const [deleting,setDeleting]=useState(false);
   // Admin-only, soft-delete -- matches delete_staff_member's own
@@ -71,7 +75,19 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
     }
     return { activeAgents, totalAgents: agents.length };
   }, [agents, agentStats]);
-  const filtered=agents.filter(a=>!search||a.company?.toLowerCase().includes(search.toLowerCase())||a.country?.toLowerCase().includes(search.toLowerCase()));
+  // Real, direct request: search should also match contact persons and
+  // other relevant fields, not just company/country -- this kind of
+  // meta search helps find an agent even from partial information (a
+  // contact's name, phone, email, designation, or the GSTIN/website/
+  // address on file).
+  const filtered=agents.filter(a=>{
+    if(filterCountry!=="All"&&a.country!==filterCountry) return false;
+    if(!search) return true;
+    const q=search.toLowerCase();
+    const directHit=[a.company,a.country,a.city,a.market,a.gstin,a.website,a.address].some(f=>f?.toLowerCase().includes(q));
+    const contactHit=(a.contacts||[]).some(c=>[c.name,c.phone,c.email,c.designation].some(f=>f?.toLowerCase().includes(q)));
+    return directHit||contactHit;
+  });
   const sorted = [...filtered].sort((a,b)=>{
     if (sortBy==="name") return (a.company||"").localeCompare(b.company||"");
     const sa=agentStats.get(a.id), sb=agentStats.get(b.id);
@@ -121,6 +137,12 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 <option value="name">Name</option>
               </select>
             </div>
+            <div style={{padding:"0 12px 8px 12px",borderBottom:`1px solid ${G.gray200}`}}>
+              <select value={filterCountry} onChange={e=>setFilterCountry(e.target.value)} style={{...inp,padding:"6px 9px",fontSize:11}} title="Filter agents by country">
+                <option value="All">All countries</option>
+                {[...new Set(agents.map(a=>a.country).filter(Boolean))].sort().map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
             <div style={{flex:1,overflowY:"auto"}}>{sorted.map(a=>{const s=agentStats.get(a.id);return(<div key={a.id} onClick={()=>{setSelected(a);setEditing(false);setTab("profile");}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===a.id?"#EBF5FB":G.white}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country}{a.market?" · "+a.market:""}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.queryCount||0} queries{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}</div>
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -129,7 +151,8 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 <div style={{fontSize:14,fontWeight:700,color:G.navy,marginBottom:14}}>{form.id?"Edit Agent":"New Agent"}</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Agency / Company Name</div><input style={inp} value={form.company||""} onChange={e=>setF("company",e.target.value)}/></div>
-                  {[["Country","country"],["City","city"],["Address","address"],["Market / Nationality","market"],["GSTIN","gstin"],["Website","website"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
+                  <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Country</div><select style={inp} value={form.country||""} onChange={e=>setF("country",e.target.value)}><option value="">Select country…</option>{COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+                  {[["City","city"],["Address","address"],["Market / Nationality","market"],["GSTIN","gstin"],["Website","website"]].map(([l,k])=><div key={k}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>{l}</div><input style={inp} value={form[k]||""} onChange={e=>setF(k,e.target.value)}/></div>)}
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Notes</div><textarea style={{...inp,minHeight:52,resize:"vertical"}} value={form.notes||""} onChange={e=>setF("notes",e.target.value)}/></div>
                 </div>
                 <div style={{marginBottom:12}}>

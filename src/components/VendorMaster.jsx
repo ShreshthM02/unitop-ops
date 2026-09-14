@@ -81,7 +81,17 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
     setSelected(null);
   };
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"},{id:"eo",label:"Exchange Orders"}];
-  const filtered=vendors.filter(v=>(showInactive||v.active!==false)&&(filterType==="All"||v.type===filterType)&&(!search||v.name?.toLowerCase().includes(search.toLowerCase())||v.city?.toLowerCase().includes(search.toLowerCase())));
+  // Same meta search treatment as AgentMaster -- matches contact
+  // persons and other relevant fields too, not just name/city.
+  const filtered=vendors.filter(v=>{
+    if(!(showInactive||v.active!==false)) return false;
+    if(!(filterType==="All"||v.type===filterType)) return false;
+    if(!search) return true;
+    const q=search.toLowerCase();
+    const directHit=[v.name,v.city,v.type,v.gstin,v.website,v.address].some(f=>f?.toLowerCase().includes(q));
+    const contactHit=(v.contacts||[]).some(c=>[c.name,c.phone,c.email,c.designation].some(f=>f?.toLowerCase().includes(q)));
+    return directHit||contactHit;
+  });
   const [sortBy,setSortBy]=useState("activity"); // "activity" | "name"
   // Smart dashboard: reuses getVendorAssignmentHistory (already proven,
   // real vendor.id-matched assignment data -- not a new computation) to

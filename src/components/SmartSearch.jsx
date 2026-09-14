@@ -12,7 +12,15 @@ export default function SmartSearch({ queries, agents, vendors, series, staff, c
 
   const score = (item, query) => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const fields = Object.values(item).filter(v=>typeof v==="string").join(" ").toLowerCase();
+    // Real, direct request: this already matches every other
+    // top-level string field generically (name, city, gstin, website,
+    // address, etc all fall out of Object.values for free) -- but
+    // contacts is an array, so contact persons' own names/phones/
+    // emails/designations were silently invisible to search. Flattens
+    // those in too, so a partial contact detail can still surface the
+    // right agent or vendor.
+    const contactFields = (item.contacts||[]).map(c=>[c.name,c.phone,c.email,c.designation].filter(Boolean).join(" ")).join(" ");
+    const fields = (Object.values(item).filter(v=>typeof v==="string").join(" ") + " " + contactFields).toLowerCase();
     let s = 0;
     terms.forEach(t=>{
       if(fields.includes(t)) s += fields.startsWith(t) ? 3 : 1;

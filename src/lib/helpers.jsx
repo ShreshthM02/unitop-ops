@@ -1,5 +1,5 @@
 // Small shared helpers/components used across many components:
-// permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput.
+// permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect.
 
 import { useEffect, useRef, useState } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
@@ -274,6 +274,60 @@ export function TimePeriodFilter({ value, onChange }) {
           <span style={{ fontSize: 11, color: G.gray400 }}>to</span>
           <input type="date" value={filter.to||""} onChange={e=>onChange({...filter, to:e.target.value})} style={selStyle}/>
         </>
+      )}
+    </div>
+  );
+}
+
+// Real, direct request: a long native <select> (e.g. every agent in
+// the system) forces scrolling through the whole list with no way to
+// type and narrow it down. A real combobox instead: a text input that
+// shows the current selection, opens a filtered dropdown as you type,
+// and closes on an outside click or Escape -- exactly the "type to
+// search" affordance a plain <select> can't offer.
+export function SearchableSelect({ value, onChange, options, getLabel, getValue, placeholder = "Type to search…", style, emptyLabel = "— None —" }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const boxRef = useRef(null);
+  const selected = options.find(o => getValue(o) === value);
+
+  useEffect(() => {
+    const onOutside = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  const filtered = query.trim()
+    ? options.filter(o => getLabel(o).toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", ...style }}>
+      <input
+        style={{ padding: "7px 9px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12,
+          fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white }}
+        value={open ? query : (selected ? getLabel(selected) : "")}
+        placeholder={selected ? getLabel(selected) : placeholder}
+        onFocus={() => { setQuery(""); setOpen(true); }}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={e => { if (e.key === "Escape") setOpen(false); }}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: G.white,
+          border: `1px solid ${G.gray200}`, borderRadius: 5, marginTop: 2, maxHeight: 220, overflowY: "auto",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+          <div style={{ padding: "7px 9px", fontSize: 12, color: G.gray400, cursor: "pointer" }}
+            onMouseDown={e => { e.preventDefault(); onChange(""); setOpen(false); }}>{emptyLabel}</div>
+          {filtered.length === 0 && <div style={{ padding: "7px 9px", fontSize: 12, color: G.gray400 }}>No matches</div>}
+          {filtered.map(o => (
+            <div key={getValue(o)} style={{ padding: "7px 9px", fontSize: 12, cursor: "pointer" }}
+              onMouseDown={e => { e.preventDefault(); onChange(getValue(o)); setOpen(false); }}
+              onMouseEnter={e => e.currentTarget.style.background = G.gray50}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              {getLabel(o)}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
