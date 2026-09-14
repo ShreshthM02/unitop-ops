@@ -6,6 +6,13 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
   const [selected,setSelected]=useState(()=>vendors.find(v=>v.id===initialSelectedId)||null);
+  // Same real bug/fix as AgentMaster's own selected state: the lazy
+  // initializer above only ever runs once, at first mount -- never
+  // re-syncs to later data or a later "activate this vendor" request
+  // while already mounted.
+  useEffect(() => {
+    if (initialSelectedId) setSelected(vendors.find(v=>v.id===initialSelectedId)||null);
+  }, [initialSelectedId, vendors]);
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
   const [filterType,setFilterType]=useState("All");
@@ -114,15 +121,21 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   });
   const getLedger=v=>{const entries=[];Object.entries(payments||{}).forEach(([qId,pt])=>{(pt.outgoing||[]).forEach(e=>{if((e.vendor||"").toLowerCase().includes((v.name||"").toLowerCase())){const q=queries.find(q=>q.id===qId);entries.push({...e,queryId:qId,tourFileId:q?.tourFileId,clientName:q?.groupName||q?.clientName,sector:q?.destination||q?.sector});}});});return entries.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));};
   const ROLE_STYLE={"Tour Facilitator":{bg:"#EAFAF1",color:"#0E6655"},"Local Handler":{bg:"#EBF5FB",color:"#1A5276"},"Transporter":{bg:"#F5EEF8",color:"#6C3483"}};
-  const saveEdit=()=>{
+  const saveEdit=async()=>{
     if(form.id){
       setVendors(p=>p.map(v=>v.id===form.id?form:v));
       setSelected(form);
-      onSaveVendor?.(form);
+      onSaveVendor && await onSaveVendor(form);
     }else{
-      const nv={...form,id:"VND-"+String(vendors.length+1).padStart(3,"0"),active:true};
-      setVendors(p=>[...p,nv]);setSelected(nv);
-      onSaveVendor?.(nv);
+      // Real bug fixed here: don't invent an id client-side -- a
+      // sequential "VND-"+count scheme meant two saves happening
+      // close together could compute the same id, silently
+      // overwriting one vendor with another on save. vendors.id now
+      // has a real, server-generated default (matching agents.id),
+      // so save first and use whatever id actually comes back.
+      const nv={...form,active:true};
+      const saved = onSaveVendor ? await onSaveVendor(nv) : nv;
+      setVendors(p=>[...p,saved]);setSelected(saved);
     }
     setEditing(false);
   };

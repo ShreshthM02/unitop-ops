@@ -5,6 +5,18 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 export default function AgentMaster({ agents, setAgents, queries, payments, currentUser, onSaveAgent, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
   const [selected,setSelected]=useState(()=>agents.find(a=>a.id===initialSelectedId)||null);
+  // Real bug fixed here: the line above only ever runs ONCE, at first
+  // mount, from whatever `agents` happened to contain at that exact
+  // moment -- useState's lazy initializer never re-runs. If this
+  // component mounted before `agents` had finished loading, or a
+  // later "activate this agent" request came in while already
+  // mounted (see the dual-instance fix in UnitopApp.jsx), `selected`
+  // could get stuck on stale or missing data for the component's
+  // entire lifetime. Keeps it genuinely in sync with the real,
+  // current data instead.
+  useEffect(() => {
+    if (initialSelectedId) setSelected(agents.find(a=>a.id===initialSelectedId)||null);
+  }, [initialSelectedId, agents]);
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
   const [tab,setTab]=useState("profile");

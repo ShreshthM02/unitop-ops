@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const { G, saveSeries, buildQuerySavePayload, db } = Lib;
 
 export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId, asTab = false }) {
   const [selected, setSelected] = useState(()=>series.find(s=>s.id===initialSelectedId)||null);
+  // Same real bug/fix as AgentMaster/VendorMaster's own selected
+  // state: the lazy initializer above only ever runs once, at first
+  // mount -- never re-syncs to later data or a later "activate this
+  // series" request while already mounted.
+  useEffect(() => {
+    if (initialSelectedId) setSelected(series.find(s=>s.id===initialSelectedId)||null);
+  }, [initialSelectedId, series]);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [search, setSearch] = useState("");

@@ -182,9 +182,22 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // discussion threads -- opens the panel already focused on the
   // mentioned agent/vendor/series.
   useEffect(()=>{
-    const onAgent=(e)=>{setFocusAgentId(e.detail.id);setShowAgents(true);};
-    const onVendor=(e)=>{setFocusVendorId(e.detail.id);setShowVendors(true);};
-    const onSeries=(e)=>{setFocusSeriesId(e.detail.id);setShowSeries(true);};
+    // Real bug fixed here: these used to unconditionally open a
+    // second, independent overlay (its own separate form/selected/
+    // editing state) even when the corresponding Master tab was
+    // already the active view -- two uncoordinated editors on the
+    // same underlying data at once. A save from either one could
+    // leave the other holding stale state, and if that stale editor
+    // was later saved too (e.g. a forgotten "+ New" form left open
+    // behind the overlay), it could silently create a genuine
+    // duplicate record. Now: if that tab is already open, just
+    // update the shared focus id instead -- the tab instance now
+    // has its own real sync effect (see AgentMaster/VendorMaster/
+    // SeriesManagement) and will pick up the new focus without a
+    // second, competing instance ever being mounted.
+    const onAgent=(e)=>{setFocusAgentId(e.detail.id); if (view!=="agents") setShowAgents(true);};
+    const onVendor=(e)=>{setFocusVendorId(e.detail.id); if (view!=="vendors") setShowVendors(true);};
+    const onSeries=(e)=>{setFocusSeriesId(e.detail.id); if (view!=="series") setShowSeries(true);};
     document.addEventListener("unitop-activate-agent", onAgent);
     document.addEventListener("unitop-activate-vendor", onVendor);
     document.addEventListener("unitop-activate-series", onSeries);
@@ -193,7 +206,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       document.removeEventListener("unitop-activate-vendor", onVendor);
       document.removeEventListener("unitop-activate-series", onSeries);
     };
-  },[]);
+  },[view]);
 
   const can = useCan(currentUser);
 
@@ -814,9 +827,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 away from what the user was doing. */}
             {view==="chat" && <InAppChat asTab currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>{}}/>}
             {view==="usermgmt" && <UserManagementPanel asTab currentUser={currentUser} onClose={()=>{}}/>}
-            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}}/>}
-            {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}}/>}
-            {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}}/>}
+            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId}/>}
+            {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}} initialSelectedId={focusAgentId}/>}
+            {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}} initialSelectedId={focusVendorId}/>}
 
             {view==="cancelled" && (
               <div>

@@ -66,6 +66,37 @@ describe('VendorMaster: Tour Facilitator support', () => {
     expect(onSaveVendor).toHaveBeenCalledTimes(1);
     expect(onSaveVendor.mock.calls[0][0].name).toBe('New Vendor Co');
   });
+
+  it('a new vendor never has a client-invented id -- real bug fixed: "VND-"+count could collide between two saves happening close together, silently overwriting one vendor with another on save', () => {
+    const onSaveVendor = vi.fn();
+    render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} onSaveVendor={onSaveVendor} currentUser={{id:"admin-1",role:"admin"}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('+ New Vendor'));
+    const nameLabel = screen.getByText('Vendor Name');
+    fireEvent.change(nameLabel.parentElement.querySelector('input'), { target: { value: 'Another New Vendor' } });
+    fireEvent.click(screen.getByText('Save Vendor'));
+    // No id at all should be present on the object handed to onSaveVendor --
+    // the database is now the sole source of a new vendor's real id.
+    expect(onSaveVendor.mock.calls[0][0].id).toBeUndefined();
+  });
+});
+
+describe('saveVendorToDB: a new vendor gets a real, database-generated id, never a client-invented one', () => {
+  it('a vendor with no id does an insert and returns whatever id the database actually generated', async () => {
+    const mockDb = { from: () => ({ insert: async (payload) => ({ data: [{ ...payload, id: 'a-real-server-generated-uuid' }], error: null }) }) };
+    const result = await saveVendorToDB(mockDb, { name: 'Brand New Hotel', type: 'Hotel' });
+    expect(result.id).toBe('a-real-server-generated-uuid');
+  });
+
+  it('a vendor that already has an id does a real upsert on that id, never an insert', async () => {
+    let calledInsert = false, upsertedWith = null;
+    const mockDb = { from: () => ({
+      insert: async () => { calledInsert = true; return { data: [], error: null }; },
+      upsert: async (payload) => { upsertedWith = payload; return { error: null }; },
+    }) };
+    await saveVendorToDB(mockDb, { id: 'VND-existing-001', name: 'Existing Hotel' });
+    expect(calledInsert).toBe(false);
+    expect(upsertedWith.id).toBe('VND-existing-001');
+  });
 });
 
 describe('saveVendorToDB', () => {
@@ -86,9 +117,9 @@ describe('saveVendorToDB', () => {
     });
   });
 
-  it('does not throw when the db call fails', async () => {
+  it('does not throw when the db call fails, and returns the original vendor rather than undefined -- so a caller relying on the returned id/object never crashes on failure', async () => {
     const db = { from: () => ({ upsert: async () => { throw new Error('fail'); } }) };
-    await expect(saveVendorToDB(db, { id: 'VND-999', name: 'X' })).resolves.toBeUndefined();
+    await expect(saveVendorToDB(db, { id: 'VND-999', name: 'X' })).resolves.toEqual({ id: 'VND-999', name: 'X' });
   });
 });
 

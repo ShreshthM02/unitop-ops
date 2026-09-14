@@ -372,26 +372,44 @@ export async function saveVendorToDB(db, vendor) {
   // Same contact_name/contact_phone/contact_email sync-from-primary
   // treatment as saveAgentToDB above.
   const primary = (vendor.contacts && vendor.contacts[0]) || {};
+  const payload = {
+    name: vendor.name,
+    type: vendor.type,
+    city: vendor.city,
+    address: vendor.address,
+    contact_name: primary.name || "",
+    contact_phone: primary.phone || "",
+    contact_email: primary.email || "",
+    contacts: vendor.contacts || [],
+    gstin: vendor.gstin,
+    website: vendor.website,
+    notes: vendor.notes,
+    languages: vendor.languages,
+    areas: vendor.areas,
+    active: vendor.active !== false,
+    rates: vendor.rates || [],
+  };
   try {
-    await db.from("vendors").upsert({
-      id: vendor.id,
-      name: vendor.name,
-      type: vendor.type,
-      city: vendor.city,
-      address: vendor.address,
-      contact_name: primary.name || "",
-      contact_phone: primary.phone || "",
-      contact_email: primary.email || "",
-      contacts: vendor.contacts || [],
-      gstin: vendor.gstin,
-      website: vendor.website,
-      notes: vendor.notes,
-      languages: vendor.languages,
-      areas: vendor.areas,
-      active: vendor.active !== false,
-      rates: vendor.rates || [],
-    });
-  } catch (e) { console.warn("Save vendor to DB failed:", e); }
+    if (vendor.id) {
+      await db.from("vendors").upsert({ id: vendor.id, ...payload });
+      return vendor;
+    }
+    // Real, serious bug fixed here: a new vendor's id used to be
+    // invented client-side as "VND-" + (vendors.length + 1) -- a
+    // sequential counter that two saves happening close together
+    // could both compute identically, silently overwriting one
+    // vendor's entire row with another's on the second write. Same
+    // treatment as saveAgentToDB's own "don't invent an id
+    // client-side" fix: let the database's own new default
+    // (gen_random_uuid()) generate a genuinely unique id, and use
+    // whatever id actually comes back.
+    const { data } = await db.from("vendors").insert(payload);
+    const created = data && data[0];
+    return created ? { ...vendor, id: created.id } : vendor;
+  } catch (e) {
+    console.warn("Save vendor to DB failed:", e);
+    return vendor;
+  }
 }
 
 // ─── MOVEMENT CHART ─────────────────────────────────────────────────────────
