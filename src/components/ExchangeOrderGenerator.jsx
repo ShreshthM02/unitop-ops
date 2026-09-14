@@ -104,6 +104,16 @@ function RichTextEditor({ value, onChange, readOnly }) {
     ref.current?.focus();
     onChange(ref.current.innerHTML);
   };
+  // Same real fix as the shared RichTextEditor in helpers.jsx: pasted
+  // text otherwise carries its source's own formatting straight in,
+  // with no font/size control here to adjust it -- strip to plain text
+  // on paste so it picks up this editor's own default styling instead.
+  const onPaste = (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+    onChange(ref.current.innerHTML);
+  };
   const btn = (lbl, cmd, title) => (
     <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => exec(cmd)} title={title}
       style={{ padding: "3px 9px", fontSize: 11, fontWeight: 700, border: `1px solid ${G.gray200}`, borderRadius: 4, background: G.white, cursor: "pointer", marginRight: 4 }}>
@@ -126,6 +136,7 @@ function RichTextEditor({ value, onChange, readOnly }) {
       )}
       <div ref={ref} contentEditable={!readOnly} suppressContentEditableWarning
         onInput={() => onChange(ref.current.innerHTML)}
+        onPaste={onPaste}
         style={{ minHeight: 110, padding: "8px 10px", border: `1px solid ${G.gray200}`, borderRadius: 6, fontSize: 12, lineHeight: 1.5, fontFamily: "'Inter',sans-serif", background: readOnly ? G.gray50 : G.white, outline: "none" }} />
       {!readOnly && (
         <div style={{ fontSize: 10, marginTop: 3, color: overBudget ? "#C0392B" : G.gray600 }}>

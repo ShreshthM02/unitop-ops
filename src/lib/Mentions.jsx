@@ -218,6 +218,18 @@ export function MentionInput({ value, onChange, onSubmit, placeholder, minHeight
     else setOpen(false);
   };
 
+  // Real, direct request: pasted text otherwise carries its source's own
+  // formatting straight into the composer, with no way to change it here
+  // -- strips to plain text on paste, then re-runs the normal input
+  // handling so an @mention typed elsewhere and pasted here is still
+  // correctly detected.
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+    handleInput();
+  };
+
   const matches = useMemo(() => {
     if (!open) return [];
     const q = search.toLowerCase();
@@ -294,6 +306,7 @@ export function MentionInput({ value, onChange, onSubmit, placeholder, minHeight
         className="mention-input-editable"
         style={{ width: "100%", padding: "8px 10px", border: `1px solid ${G.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "'Inter',sans-serif", outline: "none", minHeight, lineHeight: 1.5 }}
         onInput={handleInput}
+        onPaste={handlePaste}
         onKeyDown={e => {
           if (open && matches.length > 0) {
             if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => (i + 1) % matches.length); return; }
