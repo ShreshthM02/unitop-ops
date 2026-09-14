@@ -363,7 +363,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       };
                       const deleteRate=async(id)=>{
                         if(!window.confirm("Delete this rate? This can only be undone by a developer restoring the record directly."))return;
-                        try{ await db.from("vendor_rates").eq("id",id).update({deleted_at:new Date().toISOString()}); }
+                        try{ await db.from("vendor_rates").eq("id",id).update({deleted_at:new Date().toISOString(),deleted_by:currentUser?.id}); }
                         catch(e){ console.warn("Delete vendor rate failed:",e); }
                         await reloadContractedRates();
                       };
