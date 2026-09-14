@@ -323,7 +323,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       };
                       const sc=SCHEMA[vtype];
                       const setRF=(k,v)=>setRateForm(p=>({...p,[k]:v}));
-                      const startAdd=()=>{setRateForm({tax_inclusive:true});setEditingRateId("new");};
+                      const startAdd=()=>{setRateForm({tax_inclusive:true,season_start:"2026-10-01",season_end:"2027-03-31"});setEditingRateId("new");};
                       const startEdit=(r)=>{setRateForm({...r});setEditingRateId(r.id);};
                       const cancelEdit=()=>{setEditingRateId(null);setRateForm({});};
                       const saveRate=async()=>{
@@ -341,8 +341,15 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                           rate_text:sc.rateFreeText?(rateForm.rate_text||null):null,
                           single_supplement:sc.singleSupplement?(rateForm.single_supplement||null):null,
                           tax_inclusive:rateForm.tax_inclusive!==false,
+                          // Real, direct request: when exclusive of tax, a
+                          // real tax % is stored and applied to the base
+                          // rate to compute the final -- not pre-baked into
+                          // the stored number, so it stays correct if tax
+                          // rates ever change.
+                          tax_pct:rateForm.tax_inclusive!==false?null:(rateForm.tax_pct||null),
+                          manual_active:rateForm.manual_active===undefined?null:rateForm.manual_active,
                           terms:rateForm.terms||null,
-                          currency:"INR",
+                          currency:rateForm.currency||"INR",
                         };
                         try{
                           if(editingRateId&&editingRateId!=="new"){
@@ -360,67 +367,112 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                         catch(e){ console.warn("Delete vendor rate failed:",e); }
                         await reloadContractedRates();
                       };
+                      // Real, direct request: a rate is "effectively active"
+                      // right now based on whether today falls within its
+                      // own date range -- unless a manual override
+                      // (manual_active) has been explicitly set, which
+                      // always takes precedence. A rate with no date range
+                      // at all is treated as always active (evergreen),
+                      // never silently hidden just because a date wasn't
+                      // given.
+                      const todayStr=new Date().toISOString().slice(0,10);
+                      const isEffectivelyActive=(r)=>{
+                        if(r.manual_active!==null&&r.manual_active!==undefined) return r.manual_active;
+                        if(!r.season_start||!r.season_end) return true;
+                        return todayStr>=r.season_start&&todayStr<=r.season_end;
+                      };
+                      const toggleActive=async(r)=>{
+                        const next=!isEffectivelyActive(r);
+                        try{ await db.from("vendor_rates").update({manual_active:next}).eq("id",r.id); }
+                        catch(e){ console.warn("Toggle rate active failed:",e); }
+                        await reloadContractedRates();
+                      };
                       const visibleRates=contractedRates.filter(r=>rangeOverlapsPeriod(r.season_start,r.season_end,periodFilter));
+                      // Active rates on top, inactive ones stay in the list
+                      // below rather than disappearing entirely.
+                      const sortedRates=[...visibleRates].sort((a,b)=>(isEffectivelyActive(b)?1:0)-(isEffectivelyActive(a)?1:0));
                       const fld=(label,children)=>(<div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{label}</div>{children}</div>);
                       const smallInp={...inp,fontSize:11};
+                      const editForm=(
+                        <div style={{background:G.white,border:`2px solid ${G.accent}`,borderRadius:8,padding:12,marginBottom:10}}>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:8}}>
+                            {sc.topLabel&&fld(sc.topLabel,<input style={smallInp} value={rateForm[sc.topKey]||""} onChange={e=>setRF(sc.topKey,e.target.value)}/>)}
+                            {sc.dateRange&&fld("Rates From",<input type="date" style={smallInp} value={rateForm.season_start||""} onChange={e=>setRF("season_start",e.target.value)}/>)}
+                            {sc.dateRange&&fld("Rates Till",<input type="date" style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
+                            {fld(sc.itemLabel,<input style={smallInp} value={rateForm[sc.itemKey]||""} onChange={e=>setRF(sc.itemKey,e.target.value)}/>)}
+                            {sc.mealPlan&&fld("Meal Plan",<select style={smallInp} value={rateForm.meal_plan||"CP"} onChange={e=>setRF("meal_plan",e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>)}
+                            {sc.singleDouble&&fld("Single Rate",<input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>)}
+                            {(sc.singleDouble||sc.ratePP)&&fld(sc.ratePP?"Price Per Head":"Double Rate",<input type="number" style={smallInp} value={rateForm.double_rate||""} onChange={e=>setRF("double_rate",e.target.value)}/>)}
+                            {sc.extraBed&&fld("Extra Bed",<input type="number" style={smallInp} value={rateForm.extra_bed_rate||""} onChange={e=>setRF("extra_bed_rate",e.target.value)}/>)}
+                            {sc.rateFreeText&&fld("Rate",<input style={smallInp} value={rateForm.rate_text||""} onChange={e=>setRF("rate_text",e.target.value)}/>)}
+                            {(sc.ratePerPerson||sc.rate)&&fld(sc.ratePerPerson?"Rate (per person)":"Rate",<input type="number" style={smallInp} value={rateForm.rate||""} onChange={e=>setRF("rate",e.target.value)}/>)}
+                            {sc.singleSupplement&&fld("Single Supplement",<input type="number" style={smallInp} value={rateForm.single_supplement||""} onChange={e=>setRF("single_supplement",e.target.value)}/>)}
+                            {sc.tax&&fld("Tax",<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer",padding:"7px 0"}}><input type="checkbox" checked={rateForm.tax_inclusive!==false} onChange={e=>setRF("tax_inclusive",e.target.checked)} style={{accentColor:G.accent}}/>Inclusive of tax</label>)}
+                            {sc.tax&&rateForm.tax_inclusive===false&&fld("Tax %",<input type="number" style={smallInp} placeholder="e.g. 18" value={rateForm.tax_pct||""} onChange={e=>setRF("tax_pct",e.target.value)}/>)}
+                          </div>
+                          {sc.notes&&fld("Notes",<RichTextArea value={rateForm.terms||""} onChange={v=>setRF("terms",v)}/>)}
+                          <div style={{display:"flex",gap:8,marginTop:10}}>
+                            <button className="btn btn-ghost" style={{fontSize:11}} onClick={cancelEdit}>Cancel</button>
+                            <button className="btn btn-primary" style={{fontSize:11}} onClick={saveRate}>💾 Save Rate</button>
+                          </div>
+                        </div>
+                      );
                       return(
                         <div>
                           <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>Contracted rates for this vendor. Fields adapt to vendor type.</div>
                           <div style={{marginBottom:10}}><TimePeriodFilter value={periodFilter} onChange={setPeriodFilter}/></div>
+                          {editingRateId==="new"&&editForm}
                           {loadingContractedRates?<div style={{fontSize:12,color:G.gray600}}>Loading…</div>:<>
                           {contractedRates.length>0&&visibleRates.length===0&&<div style={{textAlign:"center",padding:20,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8,marginBottom:10,fontSize:12}}>No rates apply to this period.</div>}
-                          {visibleRates.map(r=>(
-                            <div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12,marginBottom:8}}>
-                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-                                <span style={{fontSize:13,fontWeight:700,color:G.navy}}>{r.room_category||"—"}</span>
-                                {sc.mealPlan&&r.meal_plan&&<span style={{fontSize:11,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{r.meal_plan}</span>}
-                                {sc.topKey&&r[sc.topKey]&&<span style={{fontSize:11,background:"#F5EEF8",color:"#6C3483",padding:"2px 8px",borderRadius:10}}>{r[sc.topKey]}</span>}
-                                {r.season_start&&<span style={{fontSize:11,color:G.gray400}}>{formatDateSlash(r.season_start)} – {formatDateSlash(r.season_end)}</span>}
-                                <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-                                  {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.accent,fontSize:11}} onClick={()=>startEdit(r)}>✏ Edit</span>}
-                                  {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>deleteRate(r.id)}>✕ Delete</span>}
+                          {sortedRates.map(r=>{
+                            const active=isEffectivelyActive(r);
+                            // Real, direct request: when this rate is
+                            // exclusive of tax, the FINAL rate (base + real
+                            // tax %) is computed here for display -- the
+                            // stored single_rate/double_rate/etc are the
+                            // real base, tax_pct is applied on top, never
+                            // baked permanently into the stored number.
+                            const withTax=(v)=>v==null?null:(r.tax_inclusive?parseFloat(v):parseFloat(v)*(1+(parseFloat(r.tax_pct)||0)/100));
+                            const curSym=r.currency&&r.currency!=="INR"?(r.currency+" "):"₹";
+                            return(
+                            <div key={r.id}>
+                              <div style={{background:active?G.gray50:"#F5F5F5",border:`1px solid ${active?G.gray200:G.gray200}`,borderRadius:8,padding:12,marginBottom:8,opacity:active?1:0.65}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                                  <span style={{fontSize:13,fontWeight:700,color:G.navy}}>{r.room_category||"—"}</span>
+                                  {sc.mealPlan&&r.meal_plan&&<span style={{fontSize:11,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{r.meal_plan}</span>}
+                                  {sc.topKey&&r[sc.topKey]&&<span style={{fontSize:11,background:"#F5EEF8",color:"#6C3483",padding:"2px 8px",borderRadius:10}}>{r[sc.topKey]}</span>}
+                                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontWeight:700,background:active?"#D1FAE5":"#FEE2E2",color:active?"#065F46":"#991B1B"}}>{active?"● Active":"○ Inactive"}</span>
+                                  <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                                    {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>toggleActive(r)}>{active?"Mark Inactive":"Mark Active"}</span>}
+                                    {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.accent,fontSize:11}} onClick={()=>startEdit(r)}>✏ Edit</span>}
+                                    {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>deleteRate(r.id)}>✕ Delete</span>}
+                                  </div>
                                 </div>
+                                {/* Real, direct request: dates displayed clearly and
+                                    prominently, not tucked into a small inline span. */}
+                                {r.season_start&&<div style={{fontSize:11,color:G.gray600,fontWeight:600,marginBottom:6}}>📅 {formatDateSlash(r.season_start)} – {formatDateSlash(r.season_end)}</div>}
+                                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:8,marginBottom:r.terms?8:0}}>
+                                  {sc.singleDouble&&r.single_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single</div><div style={{fontSize:13,fontWeight:700}}>{curSym}{withTax(r.single_rate).toLocaleString("en-IN")}</div></div>}
+                                  {(sc.singleDouble||sc.ratePP)&&r.double_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePP?"Price Per Head":"Double"}</div><div style={{fontSize:13,fontWeight:700}}>{curSym}{withTax(r.double_rate).toLocaleString("en-IN")}</div></div>}
+                                  {sc.extraBed&&r.extra_bed_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Bed</div><div style={{fontSize:13,fontWeight:700}}>{curSym}{withTax(r.extra_bed_rate).toLocaleString("en-IN")}</div></div>}
+                                  {sc.rateFreeText&&r.rate_text&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Rate</div><div style={{fontSize:13,fontWeight:700}}>{r.rate_text}</div></div>}
+                                  {(sc.ratePerPerson||sc.rate)&&r.rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePerPerson?"Rate (per person)":"Rate"}</div><div style={{fontSize:13,fontWeight:700}}>{curSym}{withTax(r.rate).toLocaleString("en-IN")}</div></div>}
+                                  {sc.singleSupplement&&r.single_supplement!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supp</div><div style={{fontSize:13,fontWeight:700}}>{curSym}{withTax(r.single_supplement).toLocaleString("en-IN")}</div></div>}
+                                  {sc.tax&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tax</div><div style={{fontSize:11,color:G.gray600}}>{r.tax_inclusive?"Inclusive":`+${r.tax_pct||0}%`}</div></div>}
+                                </div>
+                                {r.terms&&<div style={{fontSize:11,color:G.gray600,lineHeight:1.6,borderTop:`1px solid ${G.gray200}`,paddingTop:8}} dangerouslySetInnerHTML={{__html:r.terms}}/>}
                               </div>
-                              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:8,marginBottom:r.terms?8:0}}>
-                                {sc.singleDouble&&r.single_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_rate).toLocaleString("en-IN")}</div></div>}
-                                {(sc.singleDouble||sc.ratePP)&&r.double_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePP?"Price Per Head":"Double"}</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.double_rate).toLocaleString("en-IN")}</div></div>}
-                                {sc.extraBed&&r.extra_bed_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Bed</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.extra_bed_rate).toLocaleString("en-IN")}</div></div>}
-                                {sc.rateFreeText&&r.rate_text&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Rate</div><div style={{fontSize:13,fontWeight:700}}>{r.rate_text}</div></div>}
-                                {(sc.ratePerPerson||sc.rate)&&r.rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePerPerson?"Rate (per person)":"Rate"}</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.rate).toLocaleString("en-IN")}</div></div>}
-                                {sc.singleSupplement&&r.single_supplement!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supp</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_supplement).toLocaleString("en-IN")}</div></div>}
-                                {sc.tax&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tax</div><div style={{fontSize:11,color:G.gray600}}>{r.tax_inclusive?"Inclusive":"Exclusive"}</div></div>}
-                              </div>
-                              {r.terms&&<div style={{fontSize:11,color:G.gray600,lineHeight:1.6,borderTop:`1px solid ${G.gray200}`,paddingTop:8}} dangerouslySetInnerHTML={{__html:r.terms}}/>}
+                              {editingRateId===r.id&&editForm}
                             </div>
-                          ))}
+                            );
+                          })}
                           </>}
-                          {editingRateId&&(
-                            <div style={{background:G.white,border:`2px solid ${G.accent}`,borderRadius:8,padding:12,marginBottom:10}}>
-                              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:8}}>
-                                {sc.topLabel&&fld(sc.topLabel,<input style={smallInp} value={rateForm[sc.topKey]||""} onChange={e=>setRF(sc.topKey,e.target.value)}/>)}
-                                {sc.dateRange&&fld("Rates From",<input type="date" style={smallInp} value={rateForm.season_start||""} onChange={e=>setRF("season_start",e.target.value)}/>)}
-                                {sc.dateRange&&fld("Rates Till",<input type="date" style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
-                                {fld(sc.itemLabel,<input style={smallInp} value={rateForm[sc.itemKey]||""} onChange={e=>setRF(sc.itemKey,e.target.value)}/>)}
-                                {sc.mealPlan&&fld("Meal Plan",<select style={smallInp} value={rateForm.meal_plan||"CP"} onChange={e=>setRF("meal_plan",e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>)}
-                                {sc.singleDouble&&fld("Single Rate",<input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>)}
-                                {(sc.singleDouble||sc.ratePP)&&fld(sc.ratePP?"Price Per Head":"Double Rate",<input type="number" style={smallInp} value={rateForm.double_rate||""} onChange={e=>setRF("double_rate",e.target.value)}/>)}
-                                {sc.extraBed&&fld("Extra Bed",<input type="number" style={smallInp} value={rateForm.extra_bed_rate||""} onChange={e=>setRF("extra_bed_rate",e.target.value)}/>)}
-                                {sc.rateFreeText&&fld("Rate",<input style={smallInp} value={rateForm.rate_text||""} onChange={e=>setRF("rate_text",e.target.value)}/>)}
-                                {(sc.ratePerPerson||sc.rate)&&fld(sc.ratePerPerson?"Rate (per person)":"Rate",<input type="number" style={smallInp} value={rateForm.rate||""} onChange={e=>setRF("rate",e.target.value)}/>)}
-                                {sc.singleSupplement&&fld("Single Supplement",<input type="number" style={smallInp} value={rateForm.single_supplement||""} onChange={e=>setRF("single_supplement",e.target.value)}/>)}
-                                {sc.tax&&fld("Tax",<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer",padding:"7px 0"}}><input type="checkbox" checked={rateForm.tax_inclusive!==false} onChange={e=>setRF("tax_inclusive",e.target.checked)} style={{accentColor:G.accent}}/>Inclusive of tax</label>)}
-                              </div>
-                              {sc.notes&&fld("Notes",<RichTextArea value={rateForm.terms||""} onChange={v=>setRF("terms",v)}/>)}
-                              <div style={{display:"flex",gap:8,marginTop:10}}>
-                                <button className="btn btn-ghost" style={{fontSize:11}} onClick={cancelEdit}>Cancel</button>
-                                <button className="btn btn-primary" style={{fontSize:11}} onClick={saveRate}>💾 Save Rate</button>
-                              </div>
-                            </div>
-                          )}
                           {!editingRateId&&can("vendors_edit")&&<button className="btn btn-ghost" style={{fontSize:11}} onClick={startAdd}>+ Add Rate</button>}
                         </div>
                       );
+
                     }
+
                     const upd=(i,k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));
 
                     // item 6: "Season" replaced with real Rates Applicable
