@@ -9,16 +9,23 @@ import VendorMaster from '../components/VendorMaster.jsx';
 // vanished the moment the panel closed. This tests the real fix
 // (loading from and saving to the vendor's own rates) alongside items
 // 6 (date range replacing Season) and 7 (the tax toggle).
+//
+// Uses a "Tour Facilitator" vendor throughout this describe block --
+// Hotel/Restaurant/Transport/Local Handler/Activity/Other all moved
+// to the real, database-backed vendor_rates system afterward (see the
+// dedicated describe blocks below), but this generic, manually-typed
+// "rates" jsonb-array editor and its real persistence behavior is
+// still exactly what Tour Facilitator uses, unchanged.
 
 describe('Contracted Rates: real persistence (the actual prerequisite fix)', () => {
-  const hotelVendor = { id: 'v1', name: 'Taj Palace', type: 'Hotel', city: 'Delhi', active: true,
-    rates: [{ id: 1, roomType: 'Deluxe', ratePP: '5000', ratesFrom: '2026-10-01', ratesTill: '2027-03-31', taxExclusive: true, taxPct: '18', notes: 'Peak season' }] };
+  const hotelVendor = { id: 'v1', name: 'Taj Palace', type: 'Tour Facilitator', city: 'Delhi', active: true,
+    rates: [{ id: 1, language: 'French', ratePP: '5000', ratesFrom: '2026-10-01', ratesTill: '2027-03-31', taxExclusive: true, taxPct: '18', notes: 'Peak season' }] };
 
-  it('loads the vendor\u2019s own saved rates when selected, instead of always resetting to empty', () => {
+  it('loads the vendor\u2019s own saved rates when selected, instead of always resetting to empty', async () => {
     render(<VendorMaster vendors={[hotelVendor]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Taj Palace'));
     fireEvent.click(screen.getByText('Contracted Rates'));
-    expect(screen.getByDisplayValue('Deluxe')).toBeTruthy();
+    await waitFor(() => expect(screen.getByDisplayValue('French')).toBeTruthy());
     expect(screen.getByDisplayValue('5000')).toBeTruthy();
     expect(screen.getByDisplayValue('Peak season')).toBeTruthy();
   });
@@ -35,14 +42,14 @@ describe('Contracted Rates: real persistence (the actual prerequisite fix)', () 
     await waitFor(() => expect(screen.getByText('Rates saved ✓')).toBeTruthy());
   });
 
-  it('a brand-new vendor starts with genuinely empty rates, not stale rates from whichever vendor was selected before', () => {
+  it('a brand-new vendor starts with genuinely empty rates, not stale rates from whichever vendor was selected before', async () => {
     render(<VendorMaster vendors={[hotelVendor]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Taj Palace'));
     fireEvent.click(screen.getByText('Contracted Rates'));
-    expect(screen.getByDisplayValue('Deluxe')).toBeTruthy(); // confirm rates loaded first
+    await waitFor(() => expect(screen.getByDisplayValue('French')).toBeTruthy()); // confirm rates loaded first
     fireEvent.click(screen.getByText('+ New Vendor'));
     // form now shown for a new vendor -- no leftover rate rows from Taj Palace
-    expect(screen.queryByDisplayValue('Deluxe')).toBeFalsy();
+    expect(screen.queryByDisplayValue('French')).toBeFalsy();
   });
 });
 
@@ -74,7 +81,7 @@ describe('Contracted Rates item 6: Season replaced with real date pickers', () =
 
 describe('Contracted Rates item 7: tax toggle', () => {
   const vendors = [
-    { id: 'v1', name: 'Taj Palace', type: 'Hotel', active: true, rates: [] },
+    { id: 'v1', name: 'Taj Palace', type: 'Tour Facilitator', active: true, rates: [] },
     { id: 'v2', name: 'Ranthambore Safari', type: 'Activity Provider', active: true, rates: [] },
   ];
 
@@ -121,9 +128,11 @@ describe('Contracted Rates: the real imported rate sheet (vendor_rates table), n
     expect(screen.getByText('CPAI')).toBeTruthy();
     expect(screen.getByText('₹2,500')).toBeTruthy();
     expect(screen.getByText(/Extra bed \(child 5-12\)/)).toBeTruthy();
-    // The generic, manually-typed editor must NOT show for this vendor --
-    // real imported rates take priority.
-    expect(screen.queryByText('+ Add Rate')).toBeFalsy();
+    // The old generic, manually-typed editor (labeled "Room Type") must
+    // NOT show for this vendor -- real imported rates, editable through
+    // the same real vendor_rates-backed system (labeled "Room Category"
+    // instead), take priority.
+    expect(screen.queryByText('Room Type')).toBeFalsy();
     vi.doUnmock('../lib/supabase.js');
   });
 

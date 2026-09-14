@@ -1,5 +1,5 @@
 // Small shared helpers/components used across many components:
-// permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect.
+// permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, RichTextArea.
 
 import { useEffect, useRef, useState } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
@@ -329,6 +329,60 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Real, direct request: a rich text editing area for vendor rate
+// notes, since the free-text terms these carry (FOC policies,
+// complimentary-room rules, tax caveats) are genuinely long and
+// benefit from real structure -- bold, italic, and bullet lists --
+// rather than one flat, unformatted block. A lightweight, real
+// editor built on contentEditable + document.execCommand (the
+// standard approach for a simple toolbar like this) rather than a
+// heavy third-party dependency for what only needs basic formatting.
+export function RichTextArea({ value, onChange, placeholder = "Notes…", minHeight = 90 }) {
+  const ref = useRef(null);
+  const lastValue = useRef(value);
+
+  useEffect(() => {
+    // Only re-sync the DOM from props when the change came from
+    // OUTSIDE this editor (e.g. switching to a different rate row) --
+    // syncing on every keystroke would fight the browser's own
+    // cursor position mid-edit.
+    if (ref.current && value !== lastValue.current && document.activeElement !== ref.current) {
+      ref.current.innerHTML = value || "";
+    }
+  }, [value]);
+
+  const exec = (cmd) => { ref.current?.focus(); document.execCommand(cmd, false, null); handleInput(); };
+  const handleInput = () => {
+    const html = ref.current?.innerHTML || "";
+    lastValue.current = html;
+    onChange(html);
+  };
+
+  const btnStyle = { border: `1px solid ${G.gray200}`, background: G.white, borderRadius: 4, padding: "3px 8px",
+    fontSize: 11, cursor: "pointer", color: G.gray600 };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+        <button type="button" style={{ ...btnStyle, fontWeight: 700 }} onMouseDown={e => e.preventDefault()} onClick={() => exec("bold")}>B</button>
+        <button type="button" style={{ ...btnStyle, fontStyle: "italic" }} onMouseDown={e => e.preventDefault()} onClick={() => exec("italic")}>I</button>
+        <button type="button" style={btnStyle} onMouseDown={e => e.preventDefault()} onClick={() => exec("insertUnorderedList")}>• List</button>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        data-placeholder={placeholder}
+        className="rich-text-area"
+        style={{ minHeight, border: `1px solid ${G.gray200}`, borderRadius: 5, padding: "7px 9px",
+          fontSize: 12, fontFamily: "'Inter',sans-serif", color: G.gray800, background: G.white, outline: "none",
+          overflowY: "auto" }}
+      />
     </div>
   );
 }

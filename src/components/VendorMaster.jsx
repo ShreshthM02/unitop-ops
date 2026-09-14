@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextArea, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
@@ -21,26 +21,32 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [tab,setTab]=useState("profile");
   const [rates,setRates]=useState(()=>{const v=vendors.find(v=>v.id===initialSelectedId);return v?.rates||[];});
   const [ratesSaveMsg,setRatesSaveMsg]=useState("");
-  // Real, imported contracted rates (vendor_rates table) -- distinct
-  // from the generic, manually-typed "rates" array above, which is a
-  // different, older mechanism still used by non-Hotel vendor types.
-  // Hotel vendors created via the real rate import have their actual
-  // contracted rates here, not in that generic array.
+  // Real, editable contracted rates (vendor_rates table) for every
+  // vendor type -- originally Hotel-only (the imported rate sheet),
+  // extended per direct request to be the real, database-backed rates
+  // system for Restaurant/Transport/Local Handler/Activity & Others
+  // too, replacing the old generic, manually-typed "rates" jsonb array
+  // above entirely for all five types.
   const [contractedRates,setContractedRates]=useState([]);
   const [loadingContractedRates,setLoadingContractedRates]=useState(false);
-  useEffect(() => {
-    if (!selected || selected.type !== "Hotel") { setContractedRates([]); return; }
+  const [editingRateId,setEditingRateId]=useState(null);
+  const [rateForm,setRateForm]=useState({});
+  const reloadContractedRates=async()=>{
+    if(!selected) { setContractedRates([]); return; }
     setLoadingContractedRates(true);
+    try {
+      const { data } = await db.from("vendor_rates").select("*").eq("vendor_id", selected.id).is("deleted_at", null);
+      setContractedRates(data || []);
+    } catch { setContractedRates([]); }
+    setLoadingContractedRates(false);
+  };
+  useEffect(() => {
     // Wrapped defensively, matching loadSeries/loadSignatures' own
     // pattern elsewhere in this app -- a real fetch error here should
-    // degrade gracefully to the old, generic rates editor (see the tab
-    // render below), never leave VendorMaster itself uncaught-crashing.
-    Promise.resolve()
-      .then(() => db.from("vendor_rates").select("*").eq("vendor_id", selected.id).is("deleted_at", null))
-      .then(({ data }) => setContractedRates(data || []))
-      .catch(() => setContractedRates([]))
-      .finally(() => setLoadingContractedRates(false));
-  }, [selected?.id, selected?.type]);
+    // degrade gracefully to an empty list, never leave VendorMaster
+    // itself uncaught-crashing.
+    reloadContractedRates();
+  }, [selected?.id]);
   const [periodFilter,setPeriodFilter]=useState({preset:"all"});
 
   // Exchange Orders tab: every EO issued against the selected vendor,
@@ -286,40 +292,137 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   })()}
                   {tab==="rates"&&(()=>{
                     const vtype=selected.type||"Hotel";
-                    // Real, imported contracted rates take priority for Hotel
-                    // vendors that actually have them -- these are the real
-                    // rate-sheet import, not the generic manually-typed
-                    // editor below (which stays as the fallback for Hotel
-                    // vendors with none yet, and for every other vendor
-                    // type, which the import never touches).
-                    if (vtype==="Hotel" && contractedRates.length>0) {
-                      return (
+                    // Real, direct request: Hotel/Restaurant/Transport/Local
+                    // Handler/Activity & Other all now use the real,
+                    // database-backed vendor_rates table -- editable from
+                    // the app, not just the imported Hotel display this
+                    // started as. Tour Facilitator wasn't part of this
+                    // request, so it keeps its existing, separate
+                    // (generic, manually-typed "rates" array) system
+                    // entirely unchanged below.
+                    const NEW_SYSTEM_TYPES=["Hotel","Restaurant","Transport","Local Handler","Activity","Other"];
+                    if(NEW_SYSTEM_TYPES.includes(vtype)){
+                      // Per-vendor-type field schema -- which columns show,
+                      // under which label, and how. Column reuse is
+                      // deliberate: e.g. market_segment doubles as
+                      // "Vehicle Type" for Transport, room_category doubles
+                      // as "Menu"/"Particulars" -- a given rate row only
+                      // ever belongs to one vendor of one type, so there's
+                      // no collision, and it avoids a sprawl of
+                      // rarely-used, type-specific columns.
+                      const SCHEMA={
+                        Hotel:{topLabel:"Market Segment",topKey:"market_segment",itemLabel:"Room Category",itemKey:"room_category",
+                          mealPlan:true,singleDouble:true,extraBed:true,dateRange:true,tax:true,notes:true},
+                        Restaurant:{itemLabel:"Menu",itemKey:"room_category",ratePP:true,dateRange:true,tax:true,notes:true},
+                        Transport:{topLabel:"Vehicle Type",topKey:"market_segment",itemLabel:"Particulars",itemKey:"room_category",
+                          rateFreeText:true,dateRange:true,tax:true,notes:true},
+                        "Local Handler":{topLabel:"Market Segment",topKey:"market_segment",itemLabel:"Particulars",itemKey:"room_category",
+                          ratePerPerson:true,singleSupplement:true,dateRange:true,tax:true,notes:true},
+                        Activity:{itemLabel:"Particulars",itemKey:"room_category",rate:true,dateRange:true,tax:true,notes:true},
+                        Other:{itemLabel:"Particulars",itemKey:"room_category",rate:true,dateRange:true,tax:true,notes:true},
+                      };
+                      const sc=SCHEMA[vtype];
+                      const setRF=(k,v)=>setRateForm(p=>({...p,[k]:v}));
+                      const startAdd=()=>{setRateForm({tax_inclusive:true});setEditingRateId("new");};
+                      const startEdit=(r)=>{setRateForm({...r});setEditingRateId(r.id);};
+                      const cancelEdit=()=>{setEditingRateId(null);setRateForm({});};
+                      const saveRate=async()=>{
+                        const payload={
+                          vendor_id:selected.id,
+                          market_segment:rateForm.market_segment||null,
+                          room_category:rateForm.room_category||null,
+                          meal_plan:sc.mealPlan?(rateForm.meal_plan||null):null,
+                          season_start:rateForm.season_start||null,
+                          season_end:rateForm.season_end||null,
+                          single_rate:sc.singleDouble?(rateForm.single_rate||null):null,
+                          double_rate:(sc.singleDouble||sc.ratePP)?(rateForm.double_rate||null):null,
+                          extra_bed_rate:sc.extraBed?(rateForm.extra_bed_rate||null):null,
+                          rate:(sc.ratePerPerson||sc.rate)?(rateForm.rate||null):null,
+                          rate_text:sc.rateFreeText?(rateForm.rate_text||null):null,
+                          single_supplement:sc.singleSupplement?(rateForm.single_supplement||null):null,
+                          tax_inclusive:rateForm.tax_inclusive!==false,
+                          terms:rateForm.terms||null,
+                          currency:"INR",
+                        };
+                        try{
+                          if(editingRateId&&editingRateId!=="new"){
+                            await db.from("vendor_rates").update(payload).eq("id",editingRateId);
+                          }else{
+                            await db.from("vendor_rates").insert(payload);
+                          }
+                        }catch(e){ console.warn("Save vendor rate failed:",e); }
+                        await reloadContractedRates();
+                        cancelEdit();
+                      };
+                      const deleteRate=async(id)=>{
+                        if(!window.confirm("Delete this rate? This can only be undone by a developer restoring the record directly."))return;
+                        try{ await db.from("vendor_rates").update({deleted_at:new Date().toISOString()}).eq("id",id); }
+                        catch(e){ console.warn("Delete vendor rate failed:",e); }
+                        await reloadContractedRates();
+                      };
+                      const visibleRates=contractedRates.filter(r=>rangeOverlapsPeriod(r.season_start,r.season_end,periodFilter));
+                      const fld=(label,children)=>(<div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{label}</div>{children}</div>);
+                      const smallInp={...inp,fontSize:11};
+                      return(
                         <div>
-                          <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>
-                            Real contracted rates, imported from the hotel rate sheet. Read-only here -- corrections go through the import, not this screen.
-                          </div>
-                          {contractedRates.map(r=>(
+                          <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>Contracted rates for this vendor. Fields adapt to vendor type.</div>
+                          <div style={{marginBottom:10}}><TimePeriodFilter value={periodFilter} onChange={setPeriodFilter}/></div>
+                          {loadingContractedRates?<div style={{fontSize:12,color:G.gray600}}>Loading…</div>:<>
+                          {contractedRates.length>0&&visibleRates.length===0&&<div style={{textAlign:"center",padding:20,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8,marginBottom:10,fontSize:12}}>No rates apply to this period.</div>}
+                          {visibleRates.map(r=>(
                             <div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:12,marginBottom:8}}>
                               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-                                <span style={{fontSize:13,fontWeight:700,color:G.navy}}>{r.room_category}</span>
-                                <span style={{fontSize:11,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{r.meal_plan}</span>
-                                {r.market_segment && <span style={{fontSize:11,background:"#F5EEF8",color:"#6C3483",padding:"2px 8px",borderRadius:10}}>{r.market_segment}</span>}
-                                {r.season_label && <span style={{fontSize:11,color:G.gray400}}>{r.season_label}</span>}
+                                <span style={{fontSize:13,fontWeight:700,color:G.navy}}>{r.room_category||"—"}</span>
+                                {sc.mealPlan&&r.meal_plan&&<span style={{fontSize:11,background:"#EBF5FB",color:"#154360",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{r.meal_plan}</span>}
+                                {sc.topKey&&r[sc.topKey]&&<span style={{fontSize:11,background:"#F5EEF8",color:"#6C3483",padding:"2px 8px",borderRadius:10}}>{r[sc.topKey]}</span>}
+                                {r.season_start&&<span style={{fontSize:11,color:G.gray400}}>{formatDateSlash(r.season_start)} – {formatDateSlash(r.season_end)}</span>}
+                                <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                                  {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.accent,fontSize:11}} onClick={()=>startEdit(r)}>✏ Edit</span>}
+                                  {can("vendors_edit")&&<span style={{cursor:"pointer",color:G.gray400,fontSize:11}} onClick={()=>deleteRate(r.id)}>✕ Delete</span>}
+                                </div>
                               </div>
                               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:8,marginBottom:r.terms?8:0}}>
-                                {r.single_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_rate).toLocaleString("en-IN")}</div></div>}
-                                {r.double_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Double</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.double_rate).toLocaleString("en-IN")}</div></div>}
-                                {r.triple_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Triple</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.triple_rate).toLocaleString("en-IN")}</div></div>}
-                                {r.extra_bed_rate!=null && <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Bed</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.extra_bed_rate).toLocaleString("en-IN")}</div></div>}
-                                <div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tax</div><div style={{fontSize:11,color:G.gray600}}>{r.tax_inclusive?"Inclusive":"GST applied"}</div></div>
+                                {sc.singleDouble&&r.single_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_rate).toLocaleString("en-IN")}</div></div>}
+                                {(sc.singleDouble||sc.ratePP)&&r.double_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePP?"Price Per Head":"Double"}</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.double_rate).toLocaleString("en-IN")}</div></div>}
+                                {sc.extraBed&&r.extra_bed_rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Bed</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.extra_bed_rate).toLocaleString("en-IN")}</div></div>}
+                                {sc.rateFreeText&&r.rate_text&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Rate</div><div style={{fontSize:13,fontWeight:700}}>{r.rate_text}</div></div>}
+                                {(sc.ratePerPerson||sc.rate)&&r.rate!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>{sc.ratePerPerson?"Rate (per person)":"Rate"}</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.rate).toLocaleString("en-IN")}</div></div>}
+                                {sc.singleSupplement&&r.single_supplement!=null&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supp</div><div style={{fontSize:13,fontWeight:700}}>₹{parseFloat(r.single_supplement).toLocaleString("en-IN")}</div></div>}
+                                {sc.tax&&<div><div style={{fontSize:9,color:G.gray400,textTransform:"uppercase",letterSpacing:"0.5px"}}>Tax</div><div style={{fontSize:11,color:G.gray600}}>{r.tax_inclusive?"Inclusive":"Exclusive"}</div></div>}
                               </div>
-                              {r.terms && <div style={{fontSize:11,color:G.gray600,lineHeight:1.6,borderTop:`1px solid ${G.gray200}`,paddingTop:8}}>{r.terms}</div>}
+                              {r.terms&&<div style={{fontSize:11,color:G.gray600,lineHeight:1.6,borderTop:`1px solid ${G.gray200}`,paddingTop:8}} dangerouslySetInnerHTML={{__html:r.terms}}/>}
                             </div>
                           ))}
+                          </>}
+                          {editingRateId&&(
+                            <div style={{background:G.white,border:`2px solid ${G.accent}`,borderRadius:8,padding:12,marginBottom:10}}>
+                              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:8}}>
+                                {sc.topLabel&&fld(sc.topLabel,<input style={smallInp} value={rateForm[sc.topKey]||""} onChange={e=>setRF(sc.topKey,e.target.value)}/>)}
+                                {sc.dateRange&&fld("Rates From",<input type="date" style={smallInp} value={rateForm.season_start||""} onChange={e=>setRF("season_start",e.target.value)}/>)}
+                                {sc.dateRange&&fld("Rates Till",<input type="date" style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
+                                {fld(sc.itemLabel,<input style={smallInp} value={rateForm[sc.itemKey]||""} onChange={e=>setRF(sc.itemKey,e.target.value)}/>)}
+                                {sc.mealPlan&&fld("Meal Plan",<select style={smallInp} value={rateForm.meal_plan||"CP"} onChange={e=>setRF("meal_plan",e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>)}
+                                {sc.singleDouble&&fld("Single Rate",<input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>)}
+                                {(sc.singleDouble||sc.ratePP)&&fld(sc.ratePP?"Price Per Head":"Double Rate",<input type="number" style={smallInp} value={rateForm.double_rate||""} onChange={e=>setRF("double_rate",e.target.value)}/>)}
+                                {sc.extraBed&&fld("Extra Bed",<input type="number" style={smallInp} value={rateForm.extra_bed_rate||""} onChange={e=>setRF("extra_bed_rate",e.target.value)}/>)}
+                                {sc.rateFreeText&&fld("Rate",<input style={smallInp} value={rateForm.rate_text||""} onChange={e=>setRF("rate_text",e.target.value)}/>)}
+                                {(sc.ratePerPerson||sc.rate)&&fld(sc.ratePerPerson?"Rate (per person)":"Rate",<input type="number" style={smallInp} value={rateForm.rate||""} onChange={e=>setRF("rate",e.target.value)}/>)}
+                                {sc.singleSupplement&&fld("Single Supplement",<input type="number" style={smallInp} value={rateForm.single_supplement||""} onChange={e=>setRF("single_supplement",e.target.value)}/>)}
+                                {sc.tax&&fld("Tax",<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer",padding:"7px 0"}}><input type="checkbox" checked={rateForm.tax_inclusive!==false} onChange={e=>setRF("tax_inclusive",e.target.checked)} style={{accentColor:G.accent}}/>Inclusive of tax</label>)}
+                              </div>
+                              {sc.notes&&fld("Notes",<RichTextArea value={rateForm.terms||""} onChange={v=>setRF("terms",v)}/>)}
+                              <div style={{display:"flex",gap:8,marginTop:10}}>
+                                <button className="btn btn-ghost" style={{fontSize:11}} onClick={cancelEdit}>Cancel</button>
+                                <button className="btn btn-primary" style={{fontSize:11}} onClick={saveRate}>💾 Save Rate</button>
+                              </div>
+                            </div>
+                          )}
+                          {!editingRateId&&can("vendors_edit")&&<button className="btn btn-ghost" style={{fontSize:11}} onClick={startAdd}>+ Add Rate</button>}
                         </div>
                       );
                     }
                     const upd=(i,k,v)=>setRates(p=>p.map((x,xi)=>xi===i?{...x,[k]:v}:x));
+
                     // item 6: "Season" replaced with real Rates Applicable
                     // From/Till date pickers, for every vendor type that
                     // previously had Season. Activity Provider and
