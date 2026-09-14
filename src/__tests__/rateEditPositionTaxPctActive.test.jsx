@@ -12,15 +12,24 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 function makeMockDb(initialRows = []) {
   let rows = [...initialRows];
   const db = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          is: () => ({ then: (res) => res({ data: rows, error: null }) }),
-        }),
-      }),
-      insert: async (payload) => { const row = { ...payload, id: String(Math.random()) }; rows.push(row); return { data: [row], error: null }; },
-      update: (payload) => ({ eq: async (col, val) => { rows = rows.map(r => r.id === val ? { ...r, ...payload } : r); return { data: null, error: null }; } }),
-    }),
+    // Matches the real supabase.js shape: a single shared builder where
+    // eq()/is() push filters and return the SAME builder (so they can be
+    // called before OR after update(), matching the real, correct
+    // .eq(...).update(...) call order this app actually uses).
+    from: () => {
+      let filters = {};
+      const builder = {
+        select: () => builder,
+        eq: (col, val) => { filters[col] = val; return builder; },
+        is: () => ({ then: (res) => res({ data: rows, error: null }) }),
+        insert: async (payload) => { const row = { ...payload, id: String(Math.random()) }; rows.push(row); return { data: [row], error: null }; },
+        update: async (payload) => {
+          rows = rows.map(r => (filters.id ? r.id === filters.id : true) ? { ...r, ...payload } : r);
+          return { data: null, error: null };
+        },
+      };
+      return builder;
+    },
   };
   return { db, getRows: () => rows };
 }
@@ -141,5 +150,43 @@ describe('Active/Inactive: computed from dates, manually overridable, active sho
     await waitFor(() => expect(getRows()[0].manual_active).toBe(false));
     await waitFor(() => expect(screen.getByText('○ Inactive')).toBeTruthy());
     vi.doUnmock('../lib/supabase.js');
+  });
+});
+
+describe('Final rate preview: the base + tax % result shows live in the edit form itself, not only after saving', () => {
+  it('shows a live "= ₹X with tax" preview under Single Rate as soon as a base rate and tax % are entered', async () => {
+    const { db } = makeMockDb([]);
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: VendorMaster } = await import('../components/VendorMaster.jsx');
+    render(<VendorMaster vendors={[{ id: 'v1', name: 'Test Hotel', type: 'Hotel', active: true }]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Test Hotel'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+    await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Rate'));
+    fireEvent.click(screen.getByLabelText(/Inclusive of tax/)); // switch to exclusive
+    const singleInput = screen.getByText('Single Rate').parentElement.querySelector('input');
+    fireEvent.change(singleInput, { target: { value: '10000' } });
+    fireEvent.change(screen.getByText('Tax %').parentElement.querySelector('input'), { target: { value: '18' } });
+    expect(screen.getByText('= ₹11,800 with tax')).toBeTruthy();
+  });
+
+  it('the preview updates live as the tax % changes, without needing to save first', async () => {
+    const { db } = makeMockDb([]);
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: VendorMaster } = await import('../components/VendorMaster.jsx');
+    render(<VendorMaster vendors={[{ id: 'v1', name: 'Test Hotel', type: 'Hotel', active: true }]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Test Hotel'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+    await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Rate'));
+    fireEvent.click(screen.getByLabelText(/Inclusive of tax/));
+    fireEvent.change(screen.getByText('Single Rate').parentElement.querySelector('input'), { target: { value: '10000' } });
+    fireEvent.change(screen.getByText('Tax %').parentElement.querySelector('input'), { target: { value: '5' } });
+    expect(screen.getByText('= ₹10,500 with tax')).toBeTruthy();
+    fireEvent.change(screen.getByText('Tax %').parentElement.querySelector('input'), { target: { value: '18' } });
+    expect(screen.getByText('= ₹11,800 with tax')).toBeTruthy();
+    expect(screen.queryByText('= ₹10,500 with tax')).toBeFalsy();
   });
 });

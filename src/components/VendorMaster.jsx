@@ -353,7 +353,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                         };
                         try{
                           if(editingRateId&&editingRateId!=="new"){
-                            await db.from("vendor_rates").update(payload).eq("id",editingRateId);
+                            await db.from("vendor_rates").eq("id",editingRateId).update(payload);
                           }else{
                             await db.from("vendor_rates").insert(payload);
                           }
@@ -363,7 +363,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       };
                       const deleteRate=async(id)=>{
                         if(!window.confirm("Delete this rate? This can only be undone by a developer restoring the record directly."))return;
-                        try{ await db.from("vendor_rates").update({deleted_at:new Date().toISOString()}).eq("id",id); }
+                        try{ await db.from("vendor_rates").eq("id",id).update({deleted_at:new Date().toISOString()}); }
                         catch(e){ console.warn("Delete vendor rate failed:",e); }
                         await reloadContractedRates();
                       };
@@ -383,7 +383,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       };
                       const toggleActive=async(r)=>{
                         const next=!isEffectivelyActive(r);
-                        try{ await db.from("vendor_rates").update({manual_active:next}).eq("id",r.id); }
+                        try{ await db.from("vendor_rates").eq("id",r.id).update({manual_active:next}); }
                         catch(e){ console.warn("Toggle rate active failed:",e); }
                         await reloadContractedRates();
                       };
@@ -393,6 +393,18 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       const sortedRates=[...visibleRates].sort((a,b)=>(isEffectivelyActive(b)?1:0)-(isEffectivelyActive(a)?1:0));
                       const fld=(label,children)=>(<div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>{label}</div>{children}</div>);
                       const smallInp={...inp,fontSize:11};
+                      // Real, direct request: the final rate (base + the
+                      // entered tax %) should show wherever applicable --
+                      // including live, right here in the edit form itself,
+                      // as soon as a base rate and tax % are entered, not
+                      // only after saving.
+                      const finalPreview=(base)=>{
+                        if(rateForm.tax_inclusive!==false||!base) return null;
+                        const pct=parseFloat(rateForm.tax_pct)||0;
+                        if(!pct) return null;
+                        const final=parseFloat(base)*(1+pct/100);
+                        return <div style={{fontSize:10,color:G.gray400,marginTop:2}}>= ₹{final.toLocaleString("en-IN")} with tax</div>;
+                      };
                       const editForm=(
                         <div style={{background:G.white,border:`2px solid ${G.accent}`,borderRadius:8,padding:12,marginBottom:10}}>
                           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:8}}>
@@ -401,12 +413,12 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                             {sc.dateRange&&fld("Rates Till",<input type="date" style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
                             {fld(sc.itemLabel,<input style={smallInp} value={rateForm[sc.itemKey]||""} onChange={e=>setRF(sc.itemKey,e.target.value)}/>)}
                             {sc.mealPlan&&fld("Meal Plan",<select style={smallInp} value={rateForm.meal_plan||"CP"} onChange={e=>setRF("meal_plan",e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>)}
-                            {sc.singleDouble&&fld("Single Rate",<input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>)}
-                            {(sc.singleDouble||sc.ratePP)&&fld(sc.ratePP?"Price Per Head":"Double Rate",<input type="number" style={smallInp} value={rateForm.double_rate||""} onChange={e=>setRF("double_rate",e.target.value)}/>)}
-                            {sc.extraBed&&fld("Extra Bed",<input type="number" style={smallInp} value={rateForm.extra_bed_rate||""} onChange={e=>setRF("extra_bed_rate",e.target.value)}/>)}
+                            {sc.singleDouble&&fld("Single Rate",<><input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>{finalPreview(rateForm.single_rate)}</>)}
+                            {(sc.singleDouble||sc.ratePP)&&fld(sc.ratePP?"Price Per Head":"Double Rate",<><input type="number" style={smallInp} value={rateForm.double_rate||""} onChange={e=>setRF("double_rate",e.target.value)}/>{finalPreview(rateForm.double_rate)}</>)}
+                            {sc.extraBed&&fld("Extra Bed",<><input type="number" style={smallInp} value={rateForm.extra_bed_rate||""} onChange={e=>setRF("extra_bed_rate",e.target.value)}/>{finalPreview(rateForm.extra_bed_rate)}</>)}
                             {sc.rateFreeText&&fld("Rate",<input style={smallInp} value={rateForm.rate_text||""} onChange={e=>setRF("rate_text",e.target.value)}/>)}
-                            {(sc.ratePerPerson||sc.rate)&&fld(sc.ratePerPerson?"Rate (per person)":"Rate",<input type="number" style={smallInp} value={rateForm.rate||""} onChange={e=>setRF("rate",e.target.value)}/>)}
-                            {sc.singleSupplement&&fld("Single Supplement",<input type="number" style={smallInp} value={rateForm.single_supplement||""} onChange={e=>setRF("single_supplement",e.target.value)}/>)}
+                            {(sc.ratePerPerson||sc.rate)&&fld(sc.ratePerPerson?"Rate (per person)":"Rate",<><input type="number" style={smallInp} value={rateForm.rate||""} onChange={e=>setRF("rate",e.target.value)}/>{finalPreview(rateForm.rate)}</>)}
+                            {sc.singleSupplement&&fld("Single Supplement",<><input type="number" style={smallInp} value={rateForm.single_supplement||""} onChange={e=>setRF("single_supplement",e.target.value)}/>{finalPreview(rateForm.single_supplement)}</>)}
                             {sc.tax&&fld("Tax",<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer",padding:"7px 0"}}><input type="checkbox" checked={rateForm.tax_inclusive!==false} onChange={e=>setRF("tax_inclusive",e.target.checked)} style={{accentColor:G.accent}}/>Inclusive of tax</label>)}
                             {sc.tax&&rateForm.tax_inclusive===false&&fld("Tax %",<input type="number" style={smallInp} placeholder="e.g. 18" value={rateForm.tax_pct||""} onChange={e=>setRF("tax_pct",e.target.value)}/>)}
                           </div>

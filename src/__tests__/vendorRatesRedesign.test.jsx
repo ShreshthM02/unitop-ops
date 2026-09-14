@@ -13,15 +13,24 @@ function makeMockDb(initialRows = []) {
   let rows = [...initialRows];
   let nextId = 100;
   const db = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          is: () => ({ then: (res) => res({ data: rows, error: null }) }),
-        }),
-      }),
-      insert: async (payload) => { const row = { ...payload, id: String(nextId++) }; rows.push(row); return { data: [row], error: null }; },
-      update: (payload) => ({ eq: async (col, val) => { rows = rows.map(r => r.id === val ? { ...r, ...payload } : r); return { data: null, error: null }; } }),
-    }),
+    // Matches the real supabase.js shape: a single shared builder where
+    // eq()/is() push filters and return the SAME builder (so they can be
+    // called before OR after update(), matching the real, correct
+    // .eq(...).update(...) call order this app actually uses).
+    from: (table) => {
+      let filters = {};
+      const builder = {
+        select: () => builder,
+        eq: (col, val) => { filters[col] = val; return builder; },
+        is: (col, val) => ({ then: (res) => res({ data: rows.filter(r => filters.vendor_id ? r.vendor_id === filters.vendor_id : true), error: null }) }),
+        insert: async (payload) => { const row = { ...payload, id: String(nextId++) }; rows.push(row); return { data: [row], error: null }; },
+        update: async (payload) => {
+          rows = rows.map(r => (filters.id ? r.id === filters.id : true) ? { ...r, ...payload } : r);
+          return { data: null, error: null };
+        },
+      };
+      return builder;
+    },
   };
   return { db, getRows: () => rows };
 }
