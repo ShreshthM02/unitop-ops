@@ -301,7 +301,7 @@ export function TimePeriodFilter({ value, onChange }) {
 // shows the current selection, opens a filtered dropdown as you type,
 // and closes on an outside click or Escape -- exactly the "type to
 // search" affordance a plain <select> can't offer.
-export function SearchableSelect({ value, onChange, options, getLabel, getValue, placeholder = "Type to search…", style, emptyLabel = "— None —" }) {
+export function SearchableSelect({ value, onChange, options, getLabel, getValue, placeholder = "Type to search…", style, emptyLabel = "— None —", fallbackDisplay }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const boxRef = useRef(null);
@@ -322,8 +322,8 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
       <input
         style={{ padding: "7px 9px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12,
           fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white }}
-        value={open ? query : (selected ? getLabel(selected) : "")}
-        placeholder={selected ? getLabel(selected) : placeholder}
+        value={open ? query : (selected ? getLabel(selected) : (fallbackDisplay || ""))}
+        placeholder={selected ? getLabel(selected) : (fallbackDisplay || placeholder)}
         onFocus={() => { setQuery(""); setOpen(true); }}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={e => { if (e.key === "Escape") setOpen(false); }}

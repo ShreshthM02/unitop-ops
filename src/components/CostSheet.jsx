@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db } = Lib;
 
-export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings }) {
+export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
   const n = v => parseFloat(v)||0;
   const fieldsetRef = useRef(null);
   const [version, setVersion] = useState(1);
@@ -82,6 +82,46 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     }));
   };
   const [days, setDays] = useState(buildDefaultDays());
+
+  // Real, direct request: a real vendor dropdown for primary hotel (not
+  // free text), and rates fetched only from that vendor's own real,
+  // active, date-matching contracted rates -- not from Alt hotel, which
+  // stays name-only, purely for the itinerary's own optionality.
+  const hotelVendors = useMemo(() => (vendors || []).filter(v => v.type === "Hotel" && v.active !== false), [vendors]);
+  // Cached per vendor id, since several day rows commonly share the same
+  // hotel -- avoids refetching the same vendor's rates for every row.
+  const [hotelRatesCache, setHotelRatesCache] = useState({});
+  const fetchHotelRates = async (vendorId) => {
+    if (!vendorId || hotelRatesCache[vendorId]) return;
+    try {
+      const { data } = await db.from("vendor_rates").select("*").eq("vendor_id", vendorId).is("deleted_at", null);
+      setHotelRatesCache(p => ({ ...p, [vendorId]: data || [] }));
+    } catch { setHotelRatesCache(p => ({ ...p, [vendorId]: [] })); }
+  };
+  // Real, direct request: a rate applies to this cost sheet only if the
+  // query's own travel date falls within that rate's own date range, or
+  // the rate has no date range at all (evergreen -- never silently
+  // hidden just because a date wasn't given). If the query itself has no
+  // travel date set, every one of the vendor's rates is shown instead of
+  // narrowing to none, with a clear note that nothing's been filtered yet
+  // -- work never stops for a missing date either way.
+  // Real bug fixed here, found while testing: a rate's own "active
+  // right now" status is a TODAY-based computation (VendorMaster's own
+  // concern -- which of a hotel's contracted rates are currently in
+  // effect). That's the wrong question for a Cost Sheet: a rate for a
+  // future winter season should absolutely be selectable today for a
+  // trip being planned for that winter, even though today isn't yet
+  // within its own date range. The only thing that should exclude a
+  // rate here is an explicit manual "inactive" override (respecting
+  // the user's own deliberate choice) -- never today's date, and never
+  // the query's own travel date when that's the whole point of the
+  // date-range match below.
+  const matchingRatesFor = (vendorId) => {
+    const rates = hotelRatesCache[vendorId] || [];
+    const notManuallyDisabled = rates.filter(r => r.manual_active !== false);
+    if (!query.travelDate) return notManuallyDisabled; // no query date -- show everything, unfiltered
+    return notManuallyDisabled.filter(r => !r.season_start || (query.travelDate >= r.season_start && query.travelDate <= r.season_end));
+  };
 
   // 10.3 Transport rows
   const [transports, setTransports] = useState([
@@ -939,8 +979,58 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                     <td style={{padding:"2px 3px",minWidth:130}}><input style={inp} value={d.movement} onChange={e=>updateDay(i,"movement",e.target.value)} placeholder="Movement / destination"/></td>
                     <td style={{padding:"2px 3px",width:68}}><input style={{...inp,textAlign:"center"}} value={d.mealPlan} onChange={e=>updateDay(i,"mealPlan",e.target.value)} placeholder="B/L/D"/></td>
                     <td style={{padding:"2px 3px",width:68}}><input style={{...inp,textAlign:"right"}} type="number" value={d.mealCost} onChange={e=>updateDay(i,"mealCost",e.target.value)} placeholder="0"/></td>
-                    <td style={{padding:"2px 3px",minWidth:110}}><input style={inp} value={d.hotel} onChange={e=>updateDay(i,"hotel",e.target.value)} placeholder="Primary hotel"/></td>
-                    <td style={{padding:"2px 3px",minWidth:90}}><input style={{...inp,fontSize:10}} value={d.hotelAlt} onChange={e=>updateDay(i,"hotelAlt",e.target.value)} placeholder="Alt hotel"/></td>
+                    <td style={{padding:"2px 3px",minWidth:150}}>
+                      <SearchableSelect
+                        value={d.hotelVendorId||""}
+                        onChange={vid=>{
+                          const v=hotelVendors.find(hv=>hv.id===vid);
+                          updateDay(i,"hotelVendorId",vid);
+                          updateDay(i,"hotel",v?v.name:"");
+                          updateDay(i,"hotelRateId","");
+                          if(vid) fetchHotelRates(vid);
+                        }}
+                        options={hotelVendors}
+                        getValue={v=>v.id}
+                        getLabel={v=>`${v.name} (${v.city||"—"})`}
+                        placeholder="Primary hotel…"
+                        fallbackDisplay={d.hotel}
+                      />
+                      {d.hotelVendorId&&(()=>{
+                        const rates=matchingRatesFor(d.hotelVendorId);
+                        if(!rates.length) return <div style={{fontSize:9,color:G.gray400,marginTop:2}}>No contracted rates on file.</div>;
+                        return (
+                          <select style={{...inp,fontSize:9,marginTop:2,padding:"2px 3px"}} value={d.hotelRateId||""}
+                            onChange={e=>{
+                              const r=rates.find(rr=>rr.id===e.target.value);
+                              updateDay(i,"hotelRateId",e.target.value);
+                              if(!r) return;
+                              const withTax=(v)=>v==null?null:(r.tax_inclusive?parseFloat(v):parseFloat(v)*(1+(parseFloat(r.tax_pct)||0)/100));
+                              updateDay(i,"hotelPlan",r.meal_plan||d.hotelPlan);
+                              if(r.double_rate!=null) updateDay(i,"hotelNetPP",Math.round(withTax(r.double_rate)/2));
+                              if(r.single_rate!=null) updateDay(i,"singleSupp",Math.round(withTax(r.single_rate)));
+                            }}>
+                            <option value="">Pick rate…</option>
+                            {rates.map(r=><option key={r.id} value={r.id}>{r.room_category} ({r.meal_plan})</option>)}
+                          </select>
+                        );
+                      })()}
+                      {!query.travelDate&&d.hotelVendorId&&<div style={{fontSize:9,color:"#92400E",marginTop:2}}>⚠ No travel date set on this query -- showing all rates, unfiltered by date.</div>}
+                    </td>
+                    <td style={{padding:"2px 3px",minWidth:90}}>
+                      <SearchableSelect
+                        value={d.hotelAltVendorId||""}
+                        onChange={vid=>{
+                          const v=hotelVendors.find(hv=>hv.id===vid);
+                          updateDay(i,"hotelAltVendorId",vid);
+                          updateDay(i,"hotelAlt",v?v.name:"");
+                        }}
+                        options={hotelVendors}
+                        getValue={v=>v.id}
+                        getLabel={v=>`${v.name} (${v.city||"—"})`}
+                        placeholder="Alt hotel…"
+                        fallbackDisplay={d.hotelAlt}
+                      />
+                    </td>
                     <td style={{padding:"2px 3px",width:52}}>
                       <select style={{...inp,padding:"3px 2px"}} value={d.hotelPlan} onChange={e=>updateDay(i,"hotelPlan",e.target.value)}>
                         {["","EP","CP","MAP","AP"].map(p=><option key={p}>{p}</option>)}
