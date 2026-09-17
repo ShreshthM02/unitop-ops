@@ -1,10 +1,18 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
+  // Real bug found via a screenshot at phone width: the list panel below
+  // is a fixed 240px and the detail panel is flex:1, with no collapse
+  // behaviour at all -- on a ~390px phone that squeezed both into a
+  // sliver, clipping the filter pills and the detail profile alike.
+  // Confirmed tablets are fine at this same side-by-side width (real
+  // device test), so this only needs to act below phone width.
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
   const [selected,setSelected]=useState(()=>vendors.find(v=>v.id===initialSelectedId)||null);
   // Same real bug/fix as AgentMaster's own selected state: the lazy
   // initializer above only ever runs once, at first mount -- never
@@ -162,7 +170,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
       <div style={{background:G.white,width:asTab?"100%":"min(900px, 100vw)",height:asTab?"100%":"100vh",display:"flex",flexDirection:"column",boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Vendor Repository</div></div>
-          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contacts:[],gstin:"",website:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);setRates([]);}}>+ New Vendor</button>}
+          {can("vendors_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({name:"",type:"Hotel",city:"",address:"",contacts:[],gstin:"",website:"",notes:"",languages:"",areas:""});setEditing(true);setSelected(null);setRates([]);setShowDetailMobile(true);}}>+ New Vendor</button>}
           {!asTab && <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>}
         </div>
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -170,7 +178,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Assignments</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{vendorTotals.activeVendors}</div></div>
         </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-          <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0}}>
+          {(!isNarrow || !showDetailMobile) && <div style={{width:isNarrow?"100%":240,borderRight:isNarrow?"none":`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0}}>
             <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`}}>
               <input style={{...inp,padding:"6px 9px",marginBottom:6}} placeholder="Search vendors..." value={search} onChange={e=>setSearch(e.target.value)}/>
               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["All",...VENDOR_TYPES].map(t=><button key={t} onClick={()=>setFilterType(t)} style={{padding:"2px 7px",borderRadius:10,border:`1px solid ${filterType===t?G.accent:G.gray200}`,background:filterType===t?"#FDEDEC":G.white,color:filterType===t?G.accent:G.gray600,fontSize:10,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{t}</button>)}</div>
@@ -185,9 +193,10 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                 </select>
               </div>
             </div>
-            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates(v.rates||[]);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
-          </div>
-          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates(v.rates||[]);setShowDetailMobile(true);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
+          </div>}
+          {(!isNarrow || showDetailMobile) && <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{padding:"10px 14px",borderBottom:`1px solid ${G.gray200}`,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600,flexShrink:0}}>← Back to list</div>}
             {editing?(
               <div style={{flex:1,overflowY:"auto",padding:16}}>
                 <div style={{fontSize:14,fontWeight:700,color:G.navy,marginBottom:14}}>{form.id?"Edit Vendor":"New Vendor"}</div>
@@ -602,7 +611,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                 </div>
               </>
             ):<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,color:G.gray400}}><div style={{fontSize:24,marginBottom:8}}>🏢</div><div style={{fontSize:13}}>Select a vendor</div></div>}
-          </div>
+          </div>}
         </div>
       </div>
       {openEO && <ExchangeOrderGenerator query={openEO.query} template={docTemplates?.exchange} vendors={vendors} initialOpenOrderNo={openEO.orderNo} currentUser={currentUser} onClose={()=>{setOpenEO(null);refreshEO();}}/>}

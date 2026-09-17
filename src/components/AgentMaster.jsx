@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, COUNTRIES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, COUNTRIES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, TimePeriodFilter, isWithinPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, db, useIsNarrowViewport } = Lib;
 
 export default function AgentMaster({ agents, setAgents, queries, payments, currentUser, onSaveAgent, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
+  // Same fix as VendorMaster (identical layout shape, same 240px fixed
+  // list panel next to a flex:1 detail panel with no collapse at all).
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
   const [selected,setSelected]=useState(()=>agents.find(a=>a.id===initialSelectedId)||null);
   // Real bug fixed here: the line above only ever runs ONCE, at first
   // mount, from whatever `agents` happened to contain at that exact
@@ -121,7 +125,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
       <div style={{background:G.white,width:asTab?"100%":"min(900px, 100vw)",height:asTab?"100%":"100vh",display:"flex",flexDirection:"column",boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Agent & Client Repository</div></div>
-          {can("agents_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({company:"",country:"",city:"",address:"",market:"",contacts:[],gstin:"",website:"",notes:""});setEditing(true);setSelected(null);}}>+ New Agent</button>}
+          {can("agents_edit") && <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>{setForm({company:"",country:"",city:"",address:"",market:"",contacts:[],gstin:"",website:"",notes:""});setEditing(true);setSelected(null);setShowDetailMobile(true);}}>+ New Agent</button>}
           {!asTab && <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>}
         </div>
         <div style={{display:"flex",padding:"10px 20px",gap:24,background:"#F8FAFC",borderBottom:`1px solid ${G.gray200}`,flexShrink:0}}>
@@ -129,7 +133,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
           <div><div style={{fontSize:9,color:G.gray400,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>With Active Business</div><div style={{fontSize:16,fontWeight:700,color:G.navy}}>{orgTotals.activeAgents}</div></div>
         </div>
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-          <div style={{width:240,borderRight:`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column"}}>
+          {(!isNarrow || !showDetailMobile) && <div style={{width:isNarrow?"100%":240,borderRight:isNarrow?"none":`1px solid ${G.gray200}`,overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column"}}>
             <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`,display:"flex",gap:6}}>
               <input style={{...inp,padding:"6px 9px"}} placeholder="Search agents..." value={search} onChange={e=>setSearch(e.target.value)}/>
               <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inp,padding:"6px 4px",width:"auto",fontSize:11}} title="Sort agents by">
@@ -143,9 +147,10 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 {[...new Set(agents.map(a=>a.country).filter(Boolean))].sort().map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div style={{flex:1,overflowY:"auto"}}>{sorted.map(a=>{const s=agentStats.get(a.id);return(<div key={a.id} onClick={()=>{setSelected(a);setEditing(false);setTab("profile");}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===a.id?"#EBF5FB":G.white}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country}{a.market?" · "+a.market:""}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.queryCount||0} queries{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}</div>
-          </div>
-          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{flex:1,overflowY:"auto"}}>{sorted.map(a=>{const s=agentStats.get(a.id);return(<div key={a.id} onClick={()=>{setSelected(a);setEditing(false);setTab("profile");setShowDetailMobile(true);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===a.id?"#EBF5FB":G.white}}><div style={{fontSize:13,fontWeight:600}}>{a.company}</div><div style={{fontSize:11,color:G.gray400}}>{a.country}{a.market?" · "+a.market:""}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.queryCount||0} queries{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}</div>
+          </div>}
+          {(!isNarrow || showDetailMobile) && <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{padding:"10px 14px",borderBottom:`1px solid ${G.gray200}`,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600,flexShrink:0}}>← Back to list</div>}
             {editing?(
               <div style={{flex:1,overflowY:"auto",padding:16}}>
                 <div style={{fontSize:14,fontWeight:700,color:G.navy,marginBottom:14}}>{form.id?"Edit Agent":"New Agent"}</div>
@@ -200,7 +205,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
                 </div>
               </>
             ):<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,color:G.gray400}}><div style={{fontSize:24,marginBottom:8}}>🌐</div><div style={{fontSize:13}}>Select an agent to view details</div></div>}
-          </div>
+          </div>}
         </div>
       </div>
     </div>

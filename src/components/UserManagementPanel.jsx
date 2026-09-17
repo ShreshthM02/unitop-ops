@@ -1,9 +1,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, getInitials, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, getInitials, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, db, useIsNarrowViewport } = Lib;
 
 export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
   const [staffList, setStaffList]   = useState([]);
+  // Same fix as VendorMaster/AgentMaster -- fixed 240px list panel next
+  // to a flex:1 detail panel, confirmed squeezed at phone width by a
+  // real screenshot of this exact screen.
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
   const [selected,  setSelected]    = useState(null);
   const [tab, setTab]               = useState("users"); // users | create
   const [loading, setLoading]       = useState(true);
@@ -202,11 +207,11 @@ export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
           {tab==="users" && (
             <>
               {/* User list */}
-              <div style={{ width:240, borderRight:`1px solid ${G.gray200}`, overflowY:"auto", flexShrink:0 }}>
+              {(!isNarrow || !showDetailMobile) && <div style={{ width:isNarrow?"100%":240, borderRight:isNarrow?"none":`1px solid ${G.gray200}`, overflowY:"auto", flexShrink:0 }}>
                 {loading ? (
                   <div style={{ padding:24, textAlign:"center", color:G.gray400, fontSize:12 }}>Loading…</div>
                 ) : staffList.map(s=>(
-                  <div key={s.id} onClick={()=>setSelected(s)}
+                  <div key={s.id} onClick={()=>{setSelected(s);setShowDetailMobile(true);}}
                     style={{ padding:"12px 14px", borderBottom:`1px solid ${G.gray100}`, cursor:"pointer",
                       background:selected?.id===s.id?"#EBF5FB":G.white,
                       opacity:s.active?1:0.5 }}>
@@ -226,10 +231,11 @@ export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
                     </div>
                   </div>
                 ))}
-              </div>
+              </div>}
 
               {/* User detail */}
-              <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+              {(!isNarrow || showDetailMobile) && <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+                {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{ marginBottom:12, cursor:"pointer", color:G.accent, fontSize:12, fontWeight:600 }}>← Back to list</div>}
                 {!selected ? (
                   <div style={{ textAlign:"center", padding:48, color:G.gray400 }}>
                     <div style={{ fontSize:24, marginBottom:8 }}>👤</div>
@@ -348,7 +354,7 @@ export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
             </>
           )}
         </div>

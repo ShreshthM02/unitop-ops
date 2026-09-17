@@ -23,6 +23,7 @@ export * from './VersionDropdown.jsx';
 export * from './ExportMenu.jsx';
 export * from './DayItemsEditor.jsx';
 export * from './useRealtimeTable.js';
+export * from './responsive.js';
 export * from './supabase.js';
 export * from './maintenance.js';
 export * from './userManualContent.js';
