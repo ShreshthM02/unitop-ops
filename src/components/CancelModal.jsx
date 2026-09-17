@@ -10,7 +10,7 @@ export default function CancelModal({ query, onClose, onConfirm }) {
       <div className="modal" style={{width:480}}>
         <div className="modal-head" style={{background:"#7B241C"}}>
           <div className="modal-title">Cancel {query.tourFileId?"Tour File":"Query"}</div>
-          <div className="modal-sub">{query.id} · {query.groupName||query.clientName}</div>
+          <div className="modal-sub">{query.tourFileId||query.id} · {query.groupName||query.clientName}</div>
         </div>
         <div className="modal-body">
           <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:8,padding:12,marginBottom:14,fontSize:12,color:"#7B241C"}}>

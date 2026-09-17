@@ -146,7 +146,7 @@ export default function AgentLedgerPanel({ agent, queries, payments, onClose }) 
               </div>
               {agentQueries.map(q=>(
                 <div key={q.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <div style={{flex:1,fontSize:12}}>{q.groupName||q.clientName} <span style={{color:G.gray400,fontSize:11}}>({q.id})</span></div>
+                  <div style={{flex:1,fontSize:12}}>{q.groupName||q.clientName} <span style={{color:G.gray400,fontSize:11}}>({q.tourFileId||q.id})</span></div>
                   <input style={{...inp,width:100,textAlign:"right"}} type="number"
                     value={alloc[q.id]||""} onChange={e=>setAlloc(p=>({...p,[q.id]:e.target.value}))}
                     placeholder="₹ 0"/>

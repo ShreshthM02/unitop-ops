@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions, notifyMentionedStaff } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions, notifyMentionedStaff, nightsDaysLabel } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
@@ -150,7 +150,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
             <div className="drawer-name">{query.groupName||query.clientName||query.agentCompany}<FileTypeBadge fileType={query.fileType}/></div>
             <div className="drawer-dest">
               {query.destination||query.sector||""}
-              {query.nights?` · ${query.nights}N`:""}
+              {query.nights?` · ${nightsDaysLabel(query.nights)}`:""}
               {query.pax?` · ${query.paxDisplay||query.pax+" pax"}`:""}
             </div>
           </div>
@@ -283,7 +283,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div className="info-item"><label>Group / Client</label><span>{query.groupName||query.clientName||"—"}</span></div>
                     <div className="info-item"><label>Nationality</label><span>{query.nationality||"—"}</span></div>
                     <div className="info-item"><label>Pax</label><span>{query.paxDisplay||(query.pax?`${query.pax} pax`:"TBC")}</span></div>
-                    <div className="info-item"><label>Nights</label><span>{query.nights?`${query.nights}N`:"—"}</span></div>
+                    <div className="info-item"><label>Nights / Days</label><span>{query.nights?nightsDaysLabel(query.nights):"—"}</span></div>
                     <div className="info-item" style={{gridColumn:"1/-1"}}><label>Travel Period</label><span>{query.dateDisplay||formatDateSlash(query.travelDate)||"TBC"}</span></div>
                     <div className="info-item"><label>Hotel Category</label><span>{query.hotelCat||"—"}</span></div>
                     <div className="info-item"><label>Assigned To</label>

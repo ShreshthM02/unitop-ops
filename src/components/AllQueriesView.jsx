@@ -85,7 +85,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
                 <tr key={q.id} onClick={()=>onOpenQuery(q)} style={{background:i%2===0?G.white:G.gray50,cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="#EBF5FB"}
                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?G.white:G.gray50}>
-                  <td style={{...td,fontFamily:"monospace",fontSize:10,fontWeight:700,color:sc}}>{q.id}</td>
+                  <td style={{...td,fontFamily:"monospace",fontSize:10,fontWeight:700,color:sc}}>{q.tourFileId||q.id}</td>
                   <td style={{...td,color:G.gray400,fontSize:10,maxWidth:72,whiteSpace:'nowrap'}}>{q.date||'—'}</td>
                   <td style={{...td,fontWeight:600,width:'18%',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></td>
                   <td style={{...td,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.destination||q.sector||'—'}</td>

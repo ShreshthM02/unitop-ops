@@ -3,18 +3,18 @@ import { render, screen } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
 describe('CostSheet Phase 2: day count and starting slab derive from the query (Document Chain plan, docs/DATA_OWNERSHIP.md)', () => {
-  it('a query with 10 nights gets exactly 10 day rows, matching this app\'s own observed convention (nights count = day-row count, not the generic nights+1)', () => {
+  it('a query with 10 nights gets exactly 11 day rows -- the standard nights+1 convention, per direct instruction reversing this file\'s earlier 1:1 decision', () => {
     const query = { id: 'UTQ-2026-1300', groupName: 'Auto-init 10N Test', nights: 10, pax: '15–20' };
     render(<CostSheet query={query} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
-    expect(screen.getByDisplayValue('Day 10')).toBeTruthy();
-    expect(screen.queryByDisplayValue('Day 11')).toBeNull();
+    expect(screen.getByDisplayValue('Day 11')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Day 12')).toBeNull();
   });
 
-  it('a query with 5 nights gets exactly 5 day rows', () => {
+  it('a query with 5 nights gets exactly 6 day rows', () => {
     const query = { id: 'UTQ-2026-1301', groupName: 'Auto-init 5N Test', nights: 5 };
     render(<CostSheet query={query} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:'x'}}/>);
-    expect(screen.getByDisplayValue('Day 5')).toBeTruthy();
-    expect(screen.queryByDisplayValue('Day 6')).toBeNull();
+    expect(screen.getByDisplayValue('Day 6')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Day 7')).toBeNull();
   });
 
   it('falls back to the old 4-row default when nights is not set (nothing to derive from)', () => {
@@ -63,6 +63,7 @@ describe('CostSheet Phase 2: per-day dates auto-fill from a confirmed travel dat
     expect(screen.getByDisplayValue('2026-07-24')).toBeTruthy();
     expect(screen.getByDisplayValue('2026-07-25')).toBeTruthy();
     expect(screen.getByDisplayValue('2026-07-26')).toBeTruthy();
+    expect(screen.getByDisplayValue('2026-07-27')).toBeTruthy();
   });
 
   it('leaves dates blank when travelDate is still TBC (a month/season string, not a confirmed date)', () => {

@@ -68,7 +68,7 @@ export default function SmartSearch({ queries, agents, vendors, series, staff, c
     return "";
   };
   const getSub = r => {
-    if(r._type==="query") return `${r.id} · ${r.destination||r.sector||""} · ${formatDateSlash(r.travelDate)||r.travelMonth||""}`;
+    if(r._type==="query") return `${r.tourFileId||r.id} · ${r.destination||r.sector||""} · ${formatDateSlash(r.travelDate)||r.travelMonth||""}`;
     if(r._type==="agent") return `${r.country} · ${r.contactName}`;
     if(r._type==="vendor") return `${r.type} · ${r.city}`;
     if(r._type==="series") return r.notes || "Series";

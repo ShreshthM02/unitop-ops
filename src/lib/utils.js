@@ -1,5 +1,41 @@
 import { extractMentions } from "./Mentions.jsx";
 
+// The single, authoritative nights->days conversion. A tour of N nights
+// spans N+1 calendar days (arrival day through departure day) -- the
+// standard travel-industry convention, and the one Shreshth explicitly
+// asked for directly: "when a user inputs '3 nights', the cost sheet and
+// every subsequent document should open with 4 days, not 3."
+//
+// This directly REVERSES an earlier, deliberate decision in this same
+// codebase (CostSheet's buildDefaultDays used to treat nights and days
+// as numerically equal, confirmed at the time against a specific 10-
+// night tour that happened to have exactly 10 day rows) -- that decision
+// is now superseded by this direct instruction.
+//
+// Callers that derive an END DATE by offsetting a start date by `nights`
+// calendar days (GanttView's tourEnd, DestinationOverlapView's overlap
+// window, getMovementChartRows below) are NOT part of this bug:
+// `start + nights days = departure date` already correctly spans
+// nights+1 calendar days inclusive, so those are left untouched. This
+// helper is only for call sites that need the actual COUNT of days
+// (day-row counts, "X Days" labels), which is exactly where the bug
+// was: several places used the raw nights number directly as that count.
+export function daysFromNights(nights) {
+  const n = parseInt(nights) || 0;
+  return n > 0 ? n + 1 : 0;
+}
+
+// Explicit "3N/4D" label, used everywhere a tour's length is shown --
+// direct instruction: nights and days must both always be visible
+// together, never one number alone, specifically to prevent the exact
+// confusion daysFromNights() above was introduced to fix in the first
+// place. Returns "" when nights isn't set, so callers can render it
+// conditionally the same way they already handle a missing value.
+export function nightsDaysLabel(nights) {
+  const n = parseInt(nights) || 0;
+  return n > 0 ? `${n}N/${n + 1}D` : "";
+}
+
 export const nextInvoiceNo = (prefix, existing) => {
   const nums = existing.filter(n=>n.startsWith(prefix)).map(n=>parseInt(n.split("-").pop())||0);
   return `${prefix}-${new Date().getFullYear()}-${String(Math.max(0,...nums)+1).padStart(3,"0")}`;

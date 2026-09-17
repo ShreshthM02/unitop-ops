@@ -6,7 +6,7 @@ const {
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
   DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, buildDownloadFilename, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
-  logAudit, db,
+  logAudit, db, nightsDaysLabel,
 } = Lib;
 
 const CUSTOM_PARTY = "__custom__";
@@ -91,7 +91,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
       invoiceNo: "",
       date: today,
       placeOfSupply: tTmpl.placeOfSupply,
-      items: [{ desc: `Tour Package — ${query.destination || ""} (${query.nights || "??"} Days)`, hsn: "998552", qty: query.paxDisplay || 1, rate: Math.round(gstBase), amount: Math.round(gstBase) }],
+      items: [{ desc: `Tour Package — ${query.destination || ""} (${query.nights ? nightsDaysLabel(query.nights) : "??"})`, hsn: "998552", qty: query.paxDisplay || 1, rate: Math.round(gstBase), amount: Math.round(gstBase) }],
       igst: true,
       gstRate: 5,
       notes: "",
@@ -487,7 +487,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1 }}>INVOICES · {versions.length > 0 ? `v${version - 1} saved` : "unsaved"}</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: G.white, fontFamily: "'Playfair Display',serif" }}>{query.groupName || query.clientName}</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{query.id}</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{query.tourFileId||query.id}{query.nights?" · "+nightsDaysLabel(query.nights):""}</div>
           </div>
           <VersionDropdown versions={versions} viewingVersion={viewingVersion} displayVersion={version} finalVersion={finalVersion}
             onSelectVersion={loadVersionIntoDraft} onMarkFinal={onMarkFinal} readOnly={readOnly} G={G} />

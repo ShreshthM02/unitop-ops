@@ -42,7 +42,7 @@ export default function TeamView({ queries, staff }) {
             {myQueries.map(q => (
               <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
                 display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.id}</span>
+                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
                 <StatusBadge status={q.status} />
               </div>
@@ -56,7 +56,7 @@ export default function TeamView({ queries, staff }) {
             {reviewingQueries.map(q => (
               <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
                 display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.id}</span>
+                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
                 <StatusBadge status={q.status} />
               </div>
