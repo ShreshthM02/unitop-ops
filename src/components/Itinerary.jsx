@@ -235,9 +235,14 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   };
 
   const updateDay = (i, field, val) => setItinDays(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val} : d));
+  const MEAL_ORDER = { B: 0, L: 1, D: 2 };
   const toggleMeal = (i, m) => setItinDays(prev => prev.map((d,idx) => {
     if (idx!==i) return d;
-    const meals = d.meals.includes(m) ? d.meals.filter(x=>x!==m) : [...d.meals, m].sort();
+    // Real bug: a plain .sort() with no comparator sorts these as
+    // strings alphabetically (B, D, L), not chronologically -- exactly
+    // why Dinner was appearing before Lunch regardless of selection
+    // order. Explicit comparator forces the real meal sequence.
+    const meals = d.meals.includes(m) ? d.meals.filter(x=>x!==m) : [...d.meals, m].sort((a,b)=>MEAL_ORDER[a]-MEAL_ORDER[b]);
     return {...d, meals};
   }));
   const addDay = () => setItinDays(prev => [...prev, { id:Date.now(), dayLabel:`DAY-${prev.length+1}`, title:"", meals:["B","L","D"], items:[] }]);
@@ -315,7 +320,11 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   // its content starting fresh on the next, which would read as a bare day
   // number pointing at nothing.
   const buildDayBlocks = (flavor) => itinDays.flatMap((d, i) => {
-    const mealStr = d.meals.map(m => `<span style="background:#F2EEE6;color:#1A3A52;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
+    // Defensive re-sort here too (not just in toggleMeal): a day saved
+    // before this fix could already have the wrong order baked into its
+    // stored meals array, and this makes sure it displays correctly right
+    // away rather than only once someone happens to re-toggle a meal.
+    const mealStr = [...d.meals].sort((a,b)=>MEAL_ORDER[a]-MEAL_ORDER[b]).map(m => `<span style="background:#F2EEE6;color:#1A3A52;padding:2pt 7pt;border-radius:10pt;font-size:8.5pt;margin-left:4pt;font-weight:600">${m==="B"?"Breakfast":m==="L"?"Lunch":"Dinner"}</span>`).join("");
     const rail = `<div style="flex:0 0 30pt;text-align:right;padding-top:1pt">
         <div style="font-size:17pt;font-weight:700;color:#1A3A52;font-family:'Lora',serif;line-height:1">${String(i+1).padStart(2,"0")}</div>
         <div style="font-size:6.5pt;color:#999;letter-spacing:0.6pt;text-transform:uppercase;margin-top:1pt">Day</div>

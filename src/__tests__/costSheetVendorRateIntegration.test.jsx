@@ -53,7 +53,7 @@ describe('CostSheet: real vendor-linked hotel picker, replacing free text', () =
     vi.doUnmock('../lib/supabase.js');
   });
 
-  it('selecting a hotel then a rate auto-fills Meal Plan, Hotel Net PP (double/2), and Single Supplement, with tax applied', async () => {
+  it('selecting a hotel then a rate auto-fills Meal Plan, Hotel Net PP (double/2), and Single Supplement (the exact same value as Hotel Net PP, not the hotel\'s own single_rate), with tax applied', async () => {
     const rates = [
       { id: 'r1', vendor_id: 'v1', room_category: 'Deluxe', meal_plan: 'CP', single_rate: 4000, double_rate: 5000, tax_inclusive: true, season_start: null, season_end: null, manual_active: null },
     ];
@@ -68,9 +68,11 @@ describe('CostSheet: real vendor-linked hotel picker, replacing free text', () =
     fireEvent.mouseDown(screen.getByText(/Test Hotel/));
     await waitFor(() => expect(screen.getByText('Deluxe (CP)')).toBeTruthy());
     fireEvent.change(screen.getByText('Deluxe (CP)').closest('select'), { target: { value: 'r1' } });
-    // Hotel Net PP = double_rate / 2 = 2500; Single Supp = single_rate = 4000 (both inclusive of tax already)
-    expect(screen.getByDisplayValue('2500')).toBeTruthy();
-    expect(screen.getByDisplayValue('4000')).toBeTruthy();
+    // Hotel Net PP = double_rate / 2 = 2500 (tax-inclusive already); Single
+    // Supp is now set to that exact same 2500 -- direct instruction,
+    // deliberately ignoring the rate's own single_rate (4000) entirely.
+    expect(screen.getAllByDisplayValue('2500').length).toBe(2);
+    expect(screen.queryByDisplayValue('4000')).toBeFalsy();
     vi.doUnmock('../lib/supabase.js');
   });
 

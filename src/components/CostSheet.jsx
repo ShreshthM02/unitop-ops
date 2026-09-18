@@ -1006,8 +1006,15 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                               if(!r) return;
                               const withTax=(v)=>v==null?null:(r.tax_inclusive?parseFloat(v):parseFloat(v)*(1+(parseFloat(r.tax_pct)||0)/100));
                               updateDay(i,"hotelPlan",r.meal_plan||d.hotelPlan);
-                              if(r.double_rate!=null) updateDay(i,"hotelNetPP",Math.round(withTax(r.double_rate)/2));
-                              if(r.single_rate!=null) updateDay(i,"singleSupp",Math.round(withTax(r.single_rate)));
+                              if(r.double_rate!=null){
+                                const netPP = Math.round(withTax(r.double_rate)/2);
+                                updateDay(i,"hotelNetPP",netPP);
+                                // Single Supplement is now always the exact same
+                                // value as Hotel Net Per Person -- direct
+                                // instruction, replacing the hotel's own
+                                // separately-quoted single_rate entirely.
+                                updateDay(i,"singleSupp",netPP);
+                              }
                             }}>
                             <option value="">Pick rate…</option>
                             {rates.map(r=><option key={r.id} value={r.id}>{r.room_category} ({r.meal_plan})</option>)}
