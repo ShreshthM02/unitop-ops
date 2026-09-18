@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery, signatures, docSettings }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -105,7 +105,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       // Meal Plan and Itinerary Builder use the same functions (Phase 4
       // of the Document Chain plan).
       const extracted = extractItineraryFromCostSheetDays(match.days);
-      const itinerary = extracted.map(d => ({ day: d.day, date: "", movement: d.movement, bf: d.breakfast, lunch: d.lunch, dinner: d.dinner }));
+      // extractItineraryFromCostSheetDays is the same shared function Tour
+      // Briefing Sheet pulls from, which translates its raw "Included"
+      // flag to "At Hotel" at its own call site rather than changing the
+      // shared function's output text. Same pattern applied here now,
+      // per direct instruction extending that wording to Quotation too.
+      const itinerary = extracted.map(d => ({ day: d.day, date: "", movement: d.movement, bf: d.breakfast?"At Hotel":"", lunch: d.lunch?"At Hotel":"", dinner: d.dinner?"At Hotel":"" }));
       const hotels = extractHotelsFromCostSheetDays(match.days);
 
       // Cost: each group slab's computed final price, using the same
@@ -124,7 +129,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         const c = calcCostSheetTlSlabFinalPrice(match, tl);
         return { label: tl.label, price: c.finalFX ? String(c.finalFX) : "" };
       });
-      const slabs = [...groupSlabs, ...tlSlabs];
+      // Single Supplement as its own slab, appended last -- per direct
+      // instruction: it's the same flat cost regardless of slab, so it's
+      // safe to show it as another pricing tier rather than leaving it
+      // buried inside the Cost Sheet only. Omitted entirely when there's
+      // no actual single supplement cost on this Cost Sheet.
+      const ssFX = calcCostSheetSingleSupplementFX(match);
+      const singleSuppSlab = ssFX > 0 ? [{ label: "Single Supplement", price: String(ssFX) }] : [];
+      const slabs = [...groupSlabs, ...tlSlabs, ...singleSuppSlab];
 
       // Monuments: only the ones actually included in the price (an
       // excluded monument was priced as an optional extra, not something

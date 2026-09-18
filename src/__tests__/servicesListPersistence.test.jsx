@@ -4,7 +4,12 @@ import { mapDbServiceRow, loadQueryServices, saveQueryServices } from '../lib/ut
 describe('mapDbServiceRow', () => {
   it('maps snake_case DB fields to the camelCase shape ServicesList uses', () => {
     const mapped = mapDbServiceRow({ id: 1, name: 'Hotel', status: 'confirmed', date: '2026-08-01', sort_order: 2 });
-    expect(mapped).toEqual({ id: 1, name: 'Hotel', status: 'confirmed', date: '2026-08-01', sortOrder: 2 });
+    expect(mapped).toEqual({ id: 1, name: 'Hotel', status: 'confirmed', date: '2026-08-01', notes: '', sortOrder: 2 });
+  });
+
+  it('reads a real note back from its own db column', () => {
+    const mapped = mapDbServiceRow({ id: 1, name: 'Hotel', status: 'confirmed', date: '2026-08-01', sort_order: 2, notes: 'Confirmed by phone' });
+    expect(mapped.notes).toBe('Confirmed by phone');
   });
 });
 

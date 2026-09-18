@@ -59,14 +59,20 @@ describe('Nested panel lockdown for cancelled tour files: view-only, nothing act
     expect(fieldset.disabled).toBe(true);
   });
 
-  it('ServicesList: shows the banner, disables status changes, and hides drag/remove affordances', async () => {
+  it('ServicesList: shows the banner, disables status changes, hides drag/remove affordances, but leaves the notes field editable', async () => {
     const { ServicesList } = await import('../components/ServicesList.jsx');
     render(<ServicesList query={{ id: 'UTQ-1' }} sec={(l)=><div>{l}</div>} currentUser={{id:'x',name:'Priya'}} readOnly={true}/>);
     await waitFor(() => expect(document.querySelectorAll('select').length).toBeGreaterThan(0));
-    expect(screen.getByText(/viewing only, nothing here is editable/)).toBeTruthy();
+    expect(screen.getByText(/service itself is view-only, but notes can still be added/)).toBeTruthy();
     expect(screen.queryByText('Drag ⠿ to reorder')).toBeNull();
-    const fieldset = document.querySelector('fieldset');
-    expect(fieldset.disabled).toBe(true);
+    // No wrapping fieldset anymore -- disabled is applied directly to
+    // the status select only, specifically so the notes field below
+    // (deliberately never disabled, per direct instruction) isn't swept
+    // up by an ancestor fieldset's all-or-nothing disabling.
+    const select = document.querySelector('select');
+    expect(select.disabled).toBe(true);
+    const notesInput = screen.getAllByPlaceholderText('Add a note…')[0];
+    expect(notesInput.disabled).toBe(false);
     // Rows should not be draggable when read-only
     const row = document.querySelector('div[draggable]');
     expect(row.getAttribute('draggable')).toBe('false');

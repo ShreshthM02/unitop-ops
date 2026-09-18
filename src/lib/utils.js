@@ -1405,6 +1405,23 @@ export function extractTourBriefingTransportSummary(transports) {
     .map(t => ({ description: `${t.vehicleType || "Vehicle"} for ${t.sector || "sector TBC"}`, quantity: "" }));
 }
 
+// Single Supplement's final FX surcharge -- deliberately its own
+// function, not folded into calcCostSheetSlabFinalPrice above, because
+// it genuinely doesn't depend on which slab is being priced (it's the
+// same flat total across every slab, exactly per Cost Sheet's own
+// design: "single supplement cost stays same across slabs"). Mirrors
+// CostSheet.jsx's own calcSlab formula exactly, so Quotation can never
+// silently compute a different number than what the Cost Sheet itself
+// showed.
+export function calcCostSheetSingleSupplementFX(snap) {
+  const n = v => parseFloat(v)||0;
+  const days = snap.days || [], localHandlers = snap.localHandlers || [];
+  const daySS = days.reduce((s,d)=>s+n(d.singleSupp),0);
+  const handlerSS = localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
+  const totSS = daySS + handlerSS;
+  return Math.ceil(((totSS + totSS*(snap.gst||0)/100) * (1 + (snap.markup||0)/100)) / (snap.roe||1));
+}
+
 export function calcCostSheetSlabFinalPrice(snap, slab) {
   const n = v => parseFloat(v)||0;
   const days = snap.days || [], transports = snap.transports || [], monuments = snap.monuments || [];
@@ -2172,7 +2189,7 @@ export function toggleWFStep(manualWF, stepId, autoDetected, stepLabel) {
 
 // ─── QUERY SERVICES (Service Status list, now with real persistence + order) ──
 export function mapDbServiceRow(row) {
-  return { id: row.id, name: row.name, status: row.status, date: row.date, sortOrder: row.sort_order || 0 };
+  return { id: row.id, name: row.name, status: row.status, date: row.date, notes: row.notes || "", sortOrder: row.sort_order || 0 };
 }
 
 export async function loadQueryServices(db, queryId) {
@@ -2193,7 +2210,7 @@ export async function saveQueryServices(db, queryId, services) {
     for (let i = 0; i < services.length; i++) {
       const s = services[i];
       await db.from("query_services").upsert({
-        id: s.id, query_id: queryId, name: s.name, status: s.status, date: s.date || null, sort_order: i,
+        id: s.id, query_id: queryId, name: s.name, status: s.status, date: s.date || null, notes: s.notes || null, sort_order: i,
       });
     }
     const { data: existing } = await db.from("query_services").select("id").eq("query_id", queryId);

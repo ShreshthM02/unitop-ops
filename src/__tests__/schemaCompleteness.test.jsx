@@ -245,7 +245,7 @@ describe('Schema completeness: agents (saveAgentToDB) -- address and gstin added
 });
 
 describe('Schema completeness: query_services (saveQueryServices)', () => {
-  const EXPECTED_COLUMNS = ['id','query_id','name','status','date','sort_order'];
+  const EXPECTED_COLUMNS = ['id','query_id','name','status','date','notes','sort_order'];
   it('every real column has a corresponding key in the save payload', async () => {
     const { db, calls } = capturingDb();
     await saveQueryServices(db, 'UTQ-1', [{ id: 1, name: 'Test', status: 'requested' }]);

@@ -6,11 +6,11 @@ const SERVICE_STATUSES = ["requested","pending","confirmed","Ex. Order Issued","
 
 export function ServicesList({ query, sec, currentUser, readOnly }) {
   const DEFAULT_SERVICES = [
-    {id:1,name:"Hotel — Primary Hotel (Night 1–2)",status:"requested",date:""},
-    {id:2,name:"Hotel — Primary Hotel (Night 3–4)",status:"requested",date:""},
-    {id:3,name:"Transport — Main Circuit",status:"requested",date:""},
-    {id:4,name:"Local Facilitator",status:"requested",date:""},
-    {id:5,name:"Restaurant — Lunch (Day 1)",status:"requested",date:""},
+    {id:1,name:"Hotel — Primary Hotel (Night 1–2)",status:"requested",date:"",notes:""},
+    {id:2,name:"Hotel — Primary Hotel (Night 3–4)",status:"requested",date:"",notes:""},
+    {id:3,name:"Transport — Main Circuit",status:"requested",date:"",notes:""},
+    {id:4,name:"Local Facilitator",status:"requested",date:"",notes:""},
+    {id:5,name:"Restaurant — Lunch (Day 1)",status:"requested",date:"",notes:""},
   ];
   const STATUS_COLORS = {
     requested:  {bg:"#DBEAFE",color:"#1E40AF"},
@@ -28,7 +28,12 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
 
   useEffect(() => {
     loadQueryServices(db, query.id).then(loadedServices => {
-      setServices(loadedServices.length > 0 ? loadedServices : DEFAULT_SERVICES);
+      // Older saved services predate the notes field -- default it in
+      // rather than leaving it undefined, so the input below always has
+      // a real controlled value.
+      const withNotes = (loadedServices.length > 0 ? loadedServices : DEFAULT_SERVICES)
+        .map(s => ({ ...s, notes: s.notes || "" }));
+      setServices(withNotes);
       setLoaded(true);
     });
   }, [query.id]);
@@ -37,7 +42,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
 
   const addService = () => {
     if(!newSvc.name) return;
-    persist([...services,{...newSvc,id:Date.now()}]);
+    persist([...services,{...newSvc,id:Date.now(),notes:""}]);
     logAudit(db, query.id, currentUser?.name, `Service "${newSvc.name}" added`);
     setNewSvc({name:"",date:"",status:"requested"});
     setAdding(false);
@@ -58,11 +63,11 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
   if (!loaded) return <div>{sec("Service Status")}<div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>Loading…</div></div>;
 
   return (
-    <fieldset disabled={readOnly} style={{border:"none",margin:0,padding:0,minWidth:0}}>
+    <div style={{minWidth:0}}>
       {sec("Service Status")}
       {readOnly && (
         <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,padding:"8px 14px",fontSize:12,color:"#92400E",marginBottom:10}}>
-          🔒 This tour file is cancelled — viewing only, nothing here is editable.
+          🔒 This tour file is cancelled — the service itself is view-only, but notes can still be added below.
         </div>
       )}
       <div style={{fontSize:10,color:G.gray400,marginBottom:6}}>{readOnly?"":"Drag ⠿ to reorder"}</div>
@@ -71,28 +76,39 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
           onDragStart={()=>!readOnly&&(dragIndex.current=i)}
           onDragOver={e=>e.preventDefault()}
           onDrop={()=>!readOnly&&handleDrop(i)}
-          style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+          style={{padding:"8px 10px",
           background:G.white,border:`1px solid ${G.gray200}`,borderRadius:7,marginBottom:6,cursor:readOnly?"default":"grab"}}>
-          {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
-          <div style={{flex:1}}>
-            <div style={{fontSize:12,fontWeight:500}}>{s.name}</div>
-            {s.date&&<div style={{fontSize:11,color:G.gray400}}>{formatDateSlash(s.date)}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:500}}>{s.name}</div>
+              {s.date&&<div style={{fontSize:11,color:G.gray400}}>{formatDateSlash(s.date)}</div>}
+            </div>
+            <select value={s.status} disabled={readOnly}
+              onChange={e=>{persist(services.map((x,xi)=>xi===i?{...x,status:e.target.value}:x));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" status changed to "${e.target.value}"`);}}
+              style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontFamily:"'Inter',sans-serif",
+                outline:"none",cursor:readOnly?"default":"pointer",fontWeight:600,
+                border:`1px solid ${(STATUS_COLORS[s.status]||STATUS_COLORS.requested).color}`,
+                background:(STATUS_COLORS[s.status]||STATUS_COLORS.requested).bg,
+                color:(STATUS_COLORS[s.status]||STATUS_COLORS.requested).color}}>
+              {SERVICE_STATUSES.map(st=>(
+                <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)}</option>
+              ))}
+            </select>
+            {!readOnly && (
+              <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
+                onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
+            )}
           </div>
-          <select value={s.status}
-            onChange={e=>{persist(services.map((x,xi)=>xi===i?{...x,status:e.target.value}:x));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" status changed to "${e.target.value}"`);}}
-            style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontFamily:"'Inter',sans-serif",
-              outline:"none",cursor:"pointer",fontWeight:600,
-              border:`1px solid ${(STATUS_COLORS[s.status]||STATUS_COLORS.requested).color}`,
-              background:(STATUS_COLORS[s.status]||STATUS_COLORS.requested).bg,
-              color:(STATUS_COLORS[s.status]||STATUS_COLORS.requested).color}}>
-            {SERVICE_STATUSES.map(st=>(
-              <option key={st} value={st}>{st.charAt(0).toUpperCase()+st.slice(1)}</option>
-            ))}
-          </select>
-          {!readOnly && (
-            <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
-              onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
-          )}
+          {/* Note: deliberately NEVER disabled, even when the rest of this
+              service (and the tour file itself) is read-only -- a direct
+              instruction, since a note is information, not an action, and
+              stays useful to add/edit regardless of the service or tour
+              file's own status. */}
+          <input value={s.notes||""} placeholder="Add a note…"
+            onChange={e=>setServices(prev=>prev.map((x,xi)=>xi===i?{...x,notes:e.target.value}:x))}
+            onBlur={()=>persist(services)}
+            style={{...inp,marginTop:6,fontSize:11,padding:"4px 7px"}}/>
         </div>
       ))}
 
@@ -120,13 +136,13 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
           </div>
         </div>
       ) : (
-        <button className="btn btn-ghost" style={{fontSize:11,marginBottom:8}} onClick={()=>setAdding(true)}>+ Add Service</button>
+        !readOnly && <button className="btn btn-ghost" style={{fontSize:11,marginBottom:8}} onClick={()=>setAdding(true)}>+ Add Service</button>
       )}
 
       <div style={{marginTop:8,fontSize:11,color:G.gray400,background:G.gray50,padding:"8px 10px",borderRadius:6}}>
         ℹ Select "Ex. Order Issued" once an Exchange Order has actually been issued for this service — this is a manual confirmation, not automatic, to avoid misrepresenting status due to a naming mismatch.
       </div>
-    </fieldset>
+    </div>
   );
 }
 
