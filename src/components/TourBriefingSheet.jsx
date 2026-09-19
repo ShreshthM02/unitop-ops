@@ -41,7 +41,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
   const [recipient,setRecipient]=useState(query.correspondent||"");
   const [agentCo,setAgentCo]=useState(query.agentCompany||"");
   const [agentCity,setAgentCity]=useState(query.agentCountry||"");
-  const [subject,setSubject]=useState(`GROUP FROM ${formatDateSlash(query.travelDate)||""} x ${query.paxDisplay||""} PAX (REF. ${query.tourFileId||query.id})`);
+  const [subject,setSubject]=useState(`GROUP FROM ${formatDateSlash(query.travelDate)||""} x ${query.paxDisplay||"?? Pax"} (REF. ${query.tourFileId||query.id})`);
   const [intro,setIntro]=useState(tmpl.openingLine);
   const [footer,setFooter]=useState(tmpl.footerText);
   const [metaNotes,setMetaNotes]=useState("");

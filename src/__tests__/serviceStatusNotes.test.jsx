@@ -56,3 +56,26 @@ describe('ServicesList: every service has an always-editable note field', () => 
     expect(select.disabled).toBe(true);
   });
 });
+
+describe('ServicesList: the service itself (name and date) is now editable too, not just its status', () => {
+  it('the service name is a real input, editable and persisted on blur', async () => {
+    render(<ServicesList query={fakeQuery} sec={sec}/>);
+    const nameInput = await waitFor(() => screen.getByDisplayValue('Hotel — Primary Hotel (Night 1–2)'));
+    fireEvent.change(nameInput, { target: { value: 'Hotel — Renamed Property' } });
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      const upsertCalls = mockDb.from.mock.results
+        .filter((r,i)=>mockDb.from.mock.calls[i][0]==='query_services')
+        .map(r=>r.value.upsert.mock.calls).flat();
+      expect(upsertCalls.some(c => c[0].name === 'Hotel — Renamed Property')).toBe(true);
+    });
+  });
+
+  it('name and date inputs are disabled when the tour file is read-only, same as status', async () => {
+    render(<ServicesList query={fakeQuery} sec={sec} readOnly={true}/>);
+    const nameInput = await waitFor(() => screen.getByDisplayValue('Hotel — Primary Hotel (Night 1–2)'));
+    expect(nameInput.disabled).toBe(true);
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+    expect(dateInputs[0].disabled).toBe(true);
+  });
+});

@@ -81,8 +81,17 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
             <div style={{flex:1}}>
-              <div style={{fontSize:12,fontWeight:500}}>{s.name}</div>
-              {s.date&&<div style={{fontSize:11,color:G.gray400}}>{formatDateSlash(s.date)}</div>}
+              <input value={s.name} disabled={readOnly}
+                onChange={e=>setServices(prev=>prev.map((x,xi)=>xi===i?{...x,name:e.target.value}:x))}
+                onBlur={()=>persist(services)}
+                style={{fontSize:12,fontWeight:500,border:"none",outline:"none",background:"transparent",
+                  width:"100%",padding:0,color:G.gray800,fontFamily:"'Inter',sans-serif",
+                  cursor:readOnly?"default":"text"}}/>
+              <input type="date" value={s.date||""} disabled={readOnly}
+                onChange={e=>setServices(prev=>prev.map((x,xi)=>xi===i?{...x,date:e.target.value}:x))}
+                onBlur={()=>persist(services)}
+                style={{fontSize:11,color:G.gray400,border:"none",outline:"none",background:"transparent",
+                  padding:0,marginTop:2,fontFamily:"'Inter',sans-serif",cursor:readOnly?"default":"text"}}/>
             </div>
             <select value={s.status} disabled={readOnly}
               onChange={e=>{persist(services.map((x,xi)=>xi===i?{...x,status:e.target.value}:x));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" status changed to "${e.target.value}"`);}}

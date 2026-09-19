@@ -7,10 +7,11 @@ const queryWithPax = {
 };
 
 describe('The q.pax bug: paxDisplay now actually shows up everywhere it is supposed to', () => {
-  it('Kanban card shows the real pax count, not blank', async () => {
+  it('Kanban card shows the real pax count, not blank, and not doubled up as "pax pax"', async () => {
     const { default: KanbanView } = await import('../components/KanbanView.jsx');
     render(<KanbanView queries={[queryWithPax]} onOpenQuery={()=>{}} onAdvance={()=>{}} staff={[]}/>);
-    expect(screen.getByText(/18 pax pax/)).toBeTruthy();
+    expect(screen.getByText('18 pax')).toBeTruthy();
+    expect(screen.queryByText(/pax pax/)).not.toBeInTheDocument();
   });
 
   it('All Queries table shows the real pax count in its cell', async () => {

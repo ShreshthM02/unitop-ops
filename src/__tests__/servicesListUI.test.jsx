@@ -31,12 +31,12 @@ describe('ServicesList: real persistence', () => {
 
   it('falls back to default demo services when nothing is saved yet, and persists them via saveQueryServices', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
-    await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
   });
 
   it('changing a status calls the persistence layer (upsert), not just local state', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
-    await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
     mockDb.from.mockClear();
     const selects = document.querySelectorAll('select');
     fireEvent.change(selects[0], { target: { value: 'confirmed' } });
@@ -47,7 +47,7 @@ describe('ServicesList: real persistence', () => {
 describe('ServicesList: "Ex. Order Issued" status option', () => {
   it('includes Ex. Order Issued as a selectable status, manually selectable (not automatic)', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
-    await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
     const select = document.querySelectorAll('select')[0];
     const options = Array.from(select.querySelectorAll('option')).map(o => o.value);
     expect(options).toContain('Ex. Order Issued');
@@ -62,15 +62,15 @@ describe('ServicesList: "Ex. Order Issued" status option', () => {
 describe('ServicesList: drag-to-reorder', () => {
   it('each service row is draggable', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
-    await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
-    const row = screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/).closest('div[draggable]');
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+    const row = screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/).closest('div[draggable]');
     expect(row).toBeTruthy();
     expect(row.getAttribute('draggable')).toBe('true');
   });
 
   it('dropping a dragged row onto another position reorders the list and persists the new order', async () => {
     render(<ServicesList query={fakeQuery} sec={sec}/>);
-    await waitFor(() => expect(screen.getByText(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
     const rows = document.querySelectorAll('div[draggable]');
     expect(rows.length).toBeGreaterThan(1);
     mockDb.from.mockClear();

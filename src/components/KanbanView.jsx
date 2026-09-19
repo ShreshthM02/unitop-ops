@@ -100,7 +100,7 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
                       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                         {q.paxDisplay && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,
-                          background:"#F3F4F6",color:"#555",fontWeight:500}}>{q.paxDisplay} pax</span>}
+                          background:"#F3F4F6",color:"#555",fontWeight:500}}>{q.paxDisplay}</span>}
                         {q.nights && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,
                           background:"#F3F4F6",color:"#555",fontWeight:500}}>{nightsDaysLabel(q.nights)}</span>}
                         {q.tourFileId && <span style={{fontSize:9,padding:"1px 5px",borderRadius:6,

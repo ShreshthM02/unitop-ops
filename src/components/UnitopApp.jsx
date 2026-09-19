@@ -886,7 +886,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{flex:1}}>
                         <div style={{fontSize:14,fontWeight:700,fontFamily:"'Playfair Display',serif"}}>{q.tourFileId}</div>
                         <div style={{fontSize:13,color:G.gray600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/> — {q.destination||q.sector}</div>
-                        <div style={{fontSize:11,color:G.gray400}}>Travel: {formatDateSlash(q.travelDate)||q.travelMonth||"TBC"} · {q.paxDisplay} pax · {nightsDaysLabel(q.nights)}</div>
+                        <div style={{fontSize:11,color:G.gray400}}>Travel: {formatDateSlash(q.travelDate)||q.travelMonth||"TBC"} · {q.paxDisplay} · {nightsDaysLabel(q.nights)}</div>
                       </div>
                       <StatusBadge status={q.status}/>
                     </div>
