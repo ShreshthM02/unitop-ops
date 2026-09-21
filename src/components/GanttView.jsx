@@ -34,7 +34,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
   };
 
   // Only show queries that are in operations or completed AND have a confirmed travel date
-  const ganttTours = queries
+  const allTours = queries
     .filter(q=>["operations","finance","completed"].includes(q.status) && !q.cancelled && q.travelDate)
     .map((q,idx)=>{
       const nights = parseInt(q.nights)||7;
@@ -42,6 +42,20 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
       return { query:q, tDate, nights, color:DEST_COLORS[idx%DEST_COLORS.length] };
     })
     .filter(t=>t.tDate);
+
+  // Real, reported bug: every tour above got its own row in EVERY month's
+  // table forever, once it reached operations status -- barForDay
+  // correctly drew no bar for a day outside that tour's real range, but
+  // the ROW ITSELF (name, Tour File ID) still rendered regardless, since
+  // nothing filtered the ROW LIST itself by month, only individual days.
+  // Same month-overlap check already used correctly elsewhere in this
+  // app (getMovementChartRows, DestinationOverlapView).
+  const monthStart = new Date(selectedYear, selectedMonth, 1);
+  const monthEnd   = new Date(selectedYear, selectedMonth+1, 0, 23, 59, 59);
+  const ganttTours = allTours.filter(t => {
+    const tourEnd = new Date(t.tDate); tourEnd.setDate(tourEnd.getDate()+t.nights);
+    return t.tDate <= monthEnd && tourEnd >= monthStart;
+  });
 
   const barForDay = (tour, day) => {
     if(!tour.tDate) return null;

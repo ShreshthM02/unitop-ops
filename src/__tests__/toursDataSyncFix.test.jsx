@@ -1,9 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+// Computed relative to "today" at test-run time, not a hardcoded date --
+// a fixed past date would eventually make isTourOnGround's real date-
+// range check correctly exclude it, which is exactly the kind of
+// silent test rot this dynamic approach avoids.
+const todayIso = new Date().toISOString().slice(0,10);
+const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+const yesterdayIso = yesterday.toISOString().slice(0,10);
+
 const convertedQuery = {
   id: 'UTQ-1', tourFileId: 'TF-1', clientName: 'Original Name', groupName: 'Original Name',
-  destination: 'Kerala', travelDate: '2026-08-01', paxDisplay: '18 pax', status: 'operations',
+  destination: 'Kerala', travelDate: yesterdayIso, nights: 3, paxDisplay: '18 pax', status: 'operations',
   cancelled: false, fileType: 'GIT',
 };
 

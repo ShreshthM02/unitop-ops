@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { getRunningToursForDate } from '../lib/utils.js';
+import { MONTH_NAMES } from '../lib/constants.js';
 
 // Ground View: replaces the old destination-overlap tab. Answers the
 // real operational question -- "what's physically happening today, for
@@ -90,6 +91,28 @@ describe('getRunningToursForDate', () => {
   it('handles a genuinely empty/invalid date without crashing', () => {
     expect(getRunningToursForDate([], {}, [], '')).toEqual([]);
     expect(getRunningToursForDate([], {}, [], null)).toEqual([]);
+  });
+});
+
+describe('GanttView "Tour Calendar" table: only lists tours whose real dates overlap the selected month', () => {
+  it("a tour dated for next month does not appear as a row in the current month's table, even in Operations status", async () => {
+    const { default: GanttView } = await import('../components/GanttView.jsx');
+    const nextMonth = new Date(); nextMonth.setDate(nextMonth.getDate()+35);
+    const nextMonthIso = nextMonth.toISOString().slice(0,10);
+    const nextMonthTour = { id: 'UTQ-2026-600', tourFileId: 'TF-600', groupName: 'Next Month Tour', status: 'operations', cancelled: false, travelDate: nextMonthIso, nights: 5 };
+    render(<GanttView queries={[nextMonthTour]} onOpenQuery={()=>{}} staff={[]} vendors={[]} tourExecutions={{}}/>);
+    expect(screen.queryByText('Next Month Tour')).toBeNull();
+    expect(screen.getByText(/No active tours in/)).toBeTruthy();
+  });
+
+  it('the same tour DOES appear once its own month is selected', async () => {
+    const { default: GanttView } = await import('../components/GanttView.jsx');
+    const nextMonth = new Date(); nextMonth.setDate(nextMonth.getDate()+35);
+    const nextMonthIso = nextMonth.toISOString().slice(0,10);
+    const nextMonthTour = { id: 'UTQ-2026-600', tourFileId: 'TF-600', groupName: 'Next Month Tour', status: 'operations', cancelled: false, travelDate: nextMonthIso, nights: 5 };
+    render(<GanttView queries={[nextMonthTour]} onOpenQuery={()=>{}} staff={[]} vendors={[]} tourExecutions={{}}/>);
+    fireEvent.click(screen.getByText(MONTH_NAMES[nextMonth.getMonth()]));
+    expect(screen.getAllByText('Next Month Tour').length).toBeGreaterThan(0);
   });
 });
 

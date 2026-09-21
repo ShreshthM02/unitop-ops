@@ -20,6 +20,26 @@ import { extractMentions } from "./Mentions.jsx";
 // helper is only for call sites that need the actual COUNT of days
 // (day-row counts, "X Days" labels), which is exactly where the bug
 // was: several places used the raw nights number directly as that count.
+// Single source of truth for "is this tour physically on ground today" --
+// found duplicated in two places (Dashboard's stat card and UnitopApp's
+// drill-through view) with two DIFFERENT status scopes, and neither
+// checking dates at all: a query in Operations (or Finance) status
+// counted as "on ground" regardless of whether its actual travel dates
+// were today, next month, or already long past. A tour's date range is
+// [travelDate, travelDate + nights] (arrival through departure day),
+// same convention already used correctly elsewhere (GanttView,
+// DestinationOverlapView). A query with no travelDate yet (still TBC)
+// can't be confirmed as happening today, so it's excluded, not included.
+export function isTourOnGround(q, today = new Date()) {
+  if (q.cancelled) return false;
+  if (!["operations","finance"].includes(q.status)) return false;
+  if (!q.travelDate) return false;
+  const todayMidnight = new Date(today); todayMidnight.setHours(0,0,0,0);
+  const start = new Date(q.travelDate); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(end.getDate() + (parseInt(q.nights)||0));
+  return start <= todayMidnight && todayMidnight <= end;
+}
+
 export function daysFromNights(nights) {
   const n = parseInt(nights) || 0;
   return n > 0 ? n + 1 : 0;

@@ -9,9 +9,17 @@ import { render, screen } from '@testing-library/react';
 // stale value forever, regardless of how many times groupName was
 // updated -- looking exactly like "changes aren't persisting," when the
 // save was actually working correctly the whole time.
+// Computed relative to "today" at test-run time -- a fixed past date
+// would eventually fall outside GanttView's default (current) month
+// view, which is now correctly filtered by real date range, not just
+// status. This keeps the fixture meaningful regardless of when the
+// test suite actually runs.
+const today = new Date();
+const todayIso = today.toISOString().slice(0,10);
+
 const mismatchedQuery = {
   id: 'UTQ-2026-037', tourFileId: 'TF-037', groupName: 'UTT Golden Triangle', clientName: 'Golden Triangle Tour',
-  destination: 'Golden Triangle', travelDate: '2026-08-01', paxDisplay: '20 pax', status: 'operations', cancelled: false,
+  destination: 'Golden Triangle', travelDate: todayIso, nights: 3, paxDisplay: '20 pax', status: 'operations', cancelled: false,
 };
 
 describe('groupName vs clientName priority: groupName (the only actually-editable field) must always win', () => {
