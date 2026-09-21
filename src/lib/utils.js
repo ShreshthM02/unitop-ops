@@ -40,6 +40,21 @@ export function isTourOnGround(q, today = new Date()) {
   return start <= todayMidnight && todayMidnight <= end;
 }
 
+// Pure array-reorder helper, shared by every drag-to-reorder list in the
+// app (Cost Sheet quotation slabs, includes/excludes, ServicesList).
+// Deliberately factored out and unit-testable on its own: jsdom does not
+// implement the HTML5 Drag and Drop API, and fireEvent-simulated drag
+// events are a well-documented, environment-specific unreliability
+// across React/testing-library versions -- this keeps the actual
+// reorder correctness independently verifiable regardless of that.
+export function reorderArray(arr, fromIndex, toIndex) {
+  if (fromIndex === null || fromIndex === undefined || fromIndex === toIndex) return arr;
+  const updated = [...arr];
+  const [moved] = updated.splice(fromIndex, 1);
+  updated.splice(toIndex, 0, moved);
+  return updated;
+}
+
 export function daysFromNights(nights) {
   const n = parseInt(nights) || 0;
   return n > 0 ? n + 1 : 0;

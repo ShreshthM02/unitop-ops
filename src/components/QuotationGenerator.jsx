@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, reorderArray } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery, signatures, docSettings }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -300,6 +300,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   };
   const addSlab = () => { saveScrollForRestore(); setQ(prev => ({ ...prev, slabs: [...prev.slabs, { label:"", price:"" }] })); };
   const removeSlab = (i) => setQ(prev => ({ ...prev, slabs: prev.slabs.filter((_,idx)=>idx!==i) }));
+  // Drag-to-reorder for slabs, and (below) for includes/excludes -- same
+  // pattern already established in ServicesList.jsx: a ref holding the
+  // dragged index, splice-and-reinsert on drop.
+  const slabDragIndex = useRef(null);
+  const reorderSlab = (dropIndex) => {
+    if (slabDragIndex.current === null || slabDragIndex.current === dropIndex) return;
+    setQ(prev => ({ ...prev, slabs: reorderArray(prev.slabs, slabDragIndex.current, dropIndex) }));
+    slabDragIndex.current = null;
+  };
 
   // ── Final Price Agreement: multi-entry composition (e.g. 18 pax on one
   // slab + 2 pax on single supplement) instead of one flat rate. ──
@@ -343,6 +352,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // user's scroll position on add/remove.
   const addListItem = (key) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: [...prev[key], key==="flights"||key==="trains" ? { day:"", detail:"" } : ""] })); };
   const removeListItem = (key, i) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: prev[key].filter((_,idx)=>idx!==i) })); };
+  const listDragIndex = useRef(null);
+  const reorderListItem = (key, dropIndex) => {
+    if (listDragIndex.current === null || listDragIndex.current === dropIndex) return;
+    setQ(prev => ({ ...prev, [key]: reorderArray(prev[key], listDragIndex.current, dropIndex) }));
+    listDragIndex.current = null;
+  };
   // Section show/hide toggles change layout height too, so they need the
   // same treatment as add/remove.
   const setToggle = (key, val) => { saveScrollForRestore(); setF(key, val); };
@@ -843,7 +858,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             </select>
           </div>
           {q.slabs.map((slab,i)=>(
-            <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+            <div key={i} draggable={!readOnly} onDragStart={()=>slabDragIndex.current=i}
+              onDragOver={e=>e.preventDefault()} onDrop={()=>reorderSlab(i)}
+              style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8, cursor:readOnly?"default":"grab" }}>
+              {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
               <input style={{...inputStyle, flex:3}} value={slab.label}
                 onChange={e=>updateSlab(i,"label",e.target.value)}
                 placeholder="e.g. 15–19 Pax + 01 T/L Free (Large Coach)"/>
@@ -863,7 +881,10 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             <div key={key}>
               {secTitle(key==="includes"?"✅ Cost Includes":"❌ Cost Does Not Include")}
               {q[key].map((item,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+                <div key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current=i}
+                  onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem(key,i)}
+                  style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6, cursor:readOnly?"default":"grab" }}>
+                  {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}
                   <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
                   <input style={{...inputStyle,flex:1}} value={item}
                     onChange={e=>updateList(key,i,e.target.value)}/>
