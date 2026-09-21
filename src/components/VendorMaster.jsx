@@ -38,6 +38,16 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [contractedRates,setContractedRates]=useState([]);
   const [loadingContractedRates,setLoadingContractedRates]=useState(false);
   const [editingRateId,setEditingRateId]=useState(null);
+  // Real, direct request: a rate that failed to save was giving no
+  // visible sign at all -- the form closed and the list reloaded as
+  // if it had worked, silently swallowing the actual error into a
+  // console.warn no one would ever see during normal use. A real
+  // cause was found and fixed directly (an RLS policy gap on
+  // vendor_rates), but the silent-failure pattern itself is a
+  // separate, standing risk for any future error -- surfaced from
+  // here on, matching the same Toast pattern already used elsewhere
+  // in this app (ExchangeOrderGenerator, UserManagementPanel).
+  const [rateToast,setRateToast]=useState("");
   const [rateForm,setRateForm]=useState({});
   const reloadContractedRates=async()=>{
     if(!selected) { setContractedRates([]); return; }
@@ -362,18 +372,30 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                         };
                         try{
                           if(editingRateId&&editingRateId!=="new"){
-                            await db.from("vendor_rates").eq("id",editingRateId).update(payload);
+                            const {error}=await db.from("vendor_rates").eq("id",editingRateId).update(payload);
+                            if(error) throw new Error(error.message||String(error));
                           }else{
-                            await db.from("vendor_rates").insert(payload);
+                            const {error}=await db.from("vendor_rates").insert(payload);
+                            if(error) throw new Error(error.message||String(error));
                           }
-                        }catch(e){ console.warn("Save vendor rate failed:",e); }
+                        }catch(e){
+                          console.warn("Save vendor rate failed:",e);
+                          setRateToast(`Rate was NOT saved: ${e.message||e}`);
+                          return;
+                        }
                         await reloadContractedRates();
                         cancelEdit();
                       };
                       const deleteRate=async(id)=>{
                         if(!window.confirm("Delete this rate? This can only be undone by a developer restoring the record directly."))return;
-                        try{ await db.from("vendor_rates").eq("id",id).update({deleted_at:new Date().toISOString(),deleted_by:currentUser?.id}); }
-                        catch(e){ console.warn("Delete vendor rate failed:",e); }
+                        try{
+                          const {error}=await db.from("vendor_rates").eq("id",id).update({deleted_at:new Date().toISOString(),deleted_by:currentUser?.id});
+                          if(error) throw new Error(error.message||String(error));
+                        }catch(e){
+                          console.warn("Delete vendor rate failed:",e);
+                          setRateToast(`Rate was NOT deleted: ${e.message||e}`);
+                          return;
+                        }
                         await reloadContractedRates();
                       };
                       // Real, direct request: a rate is "effectively active"
@@ -392,8 +414,14 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       };
                       const toggleActive=async(r)=>{
                         const next=!isEffectivelyActive(r);
-                        try{ await db.from("vendor_rates").eq("id",r.id).update({manual_active:next}); }
-                        catch(e){ console.warn("Toggle rate active failed:",e); }
+                        try{
+                          const {error}=await db.from("vendor_rates").eq("id",r.id).update({manual_active:next});
+                          if(error) throw new Error(error.message||String(error));
+                        }catch(e){
+                          console.warn("Toggle rate active failed:",e);
+                          setRateToast(`Could not change active status: ${e.message||e}`);
+                          return;
+                        }
                         await reloadContractedRates();
                       };
                       const visibleRates=contractedRates.filter(r=>rangeOverlapsPeriod(r.season_start,r.season_end,periodFilter));
@@ -615,6 +643,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
         </div>
       </div>
       {openEO && <ExchangeOrderGenerator query={openEO.query} template={docTemplates?.exchange} vendors={vendors} initialOpenOrderNo={openEO.orderNo} currentUser={currentUser} onClose={()=>{setOpenEO(null);refreshEO();}}/>}
+      {rateToast && <Toast msg={rateToast} onDone={()=>setRateToast("")}/>}
     </div>
   );
 }
