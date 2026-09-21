@@ -970,6 +970,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
           {/* 10.2 Day rows */}
           {secH("Day-wise Itinerary & Accommodation","📅")}
+          {!query.travelDate && days.some(d=>d.hotelVendorId) && (
+            <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:8,padding:"8px 14px",fontSize:11,color:"#92400E",marginBottom:8}}>
+              ⚠ No travel date set on this query -- showing all rates, unfiltered by date, for {days.filter(d=>d.hotelVendorId).map(d=>d.day).join(", ")}.
+            </div>
+          )}
           <div style={{overflowX:"auto",marginBottom:8}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:820}}>
               <thead>
@@ -1034,7 +1039,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                           </select>
                         );
                       })()}
-                      {!query.travelDate&&d.hotelVendorId&&<div style={{fontSize:9,color:"#92400E",marginTop:2}}>⚠ No travel date set on this query -- showing all rates, unfiltered by date.</div>}
+                      {/* Warning consolidated into one banner above the table (see "No travel date set" block) -- was previously repeated under every affected hotel row, which was reported as very annoying. */}
                     </td>
                     <td style={{padding:"2px 3px",minWidth:90}}>
                       <SearchableSelect
