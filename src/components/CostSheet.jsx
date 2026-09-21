@@ -866,7 +866,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   return (
     <div className="overlay">
-      <div style={{background:G.white,width:"min(960px, 100vw)",height:"100vh",overflowY:"hidden",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
+      <div style={{background:G.white,width:"min(1400px, 100vw)",height:"100vh",overflowY:"hidden",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
 
         {/* Header */}
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
