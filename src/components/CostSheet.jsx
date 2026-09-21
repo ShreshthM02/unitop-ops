@@ -137,7 +137,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // per sector, each with its own per-pax/lumpsum cost.
   const [localHandlers, setLocalHandlers] = useState([]);
   const updateLocalHandler = (i,f,v) => setLocalHandlers(p=>p.map((h,idx)=>idx===i?{...h,[f]:v}:h));
-  const addLocalHandler = () => setLocalHandlers(p=>[...p,{id:Date.now(),sector:"",dateFrom:"",dateTo:"",mode:"pp",cost:"",singleSupp:"",remarks:""}]);
+  const addLocalHandler = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+  setLocalHandlers(p=>[...p,{id:Date.now(),sector:"",dateFrom:"",dateTo:"",mode:"pp",cost:"",singleSupp:"",remarks:""}]); };
   const removeLocalHandler = i => setLocalHandlers(p=>p.filter((_,idx)=>idx!==i));
 
   // 10.4 Slabs
@@ -179,7 +180,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       if (winY != null) window.scrollTo(0, winY);
       scrollRestoreRef.current = null;
     }
-  }, [tlSlabs.length]);
+  }, [tlSlabs.length, transports.length, days.length, localHandlers.length, slabs.length]);
   // Direct, guaranteed scroll preservation -- after two CSS-based
   // theories (scroll-anchoring, then flexbox min-height) were confirmed
   // deployed but did NOT stop the reported "jumps to top" behavior, this
@@ -188,6 +189,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // useLayoutEffect (runs after DOM mutation, before paint -- so there's
   // no visible flash). This works regardless of which element actually
   // turns out to be responsible, without needing to identify it first.
+  // Originally wired to T/L Slabs only -- reported again for Transport,
+  // and on inspection all five "+Add" buttons in this file shared the
+  // exact same root cause and were equally affected (only one had
+  // actually been fixed). All five now share this one mechanism.
   const addTlSlab = () => {
     scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
     setTlSlabs(p=>[...p, {
@@ -304,7 +309,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   }, [query.id]);
 
   const updateDay = (i,f,v) => setDays(p=>p.map((d,idx)=>idx===i?{...d,[f]:v}:d));
-  const addDay = () => setDays(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",movement:"",mealPlan:"B/L/D",mealCost:"",hotel:"",hotelAlt:"",hotelPlan:"CP",hotelNetPP:"",singleSupp:"",notes:""}]);
+  const addDay = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+  setDays(p=>[...p,{id:Date.now(),day:`Day ${p.length+1}`,date:"",movement:"",mealPlan:"B/L/D",mealCost:"",hotel:"",hotelAlt:"",hotelPlan:"CP",hotelNetPP:"",singleSupp:"",notes:""}]); };
   const removeDay = i => setDays(p=>p.filter((_,idx)=>idx!==i));
 
   const updateTransport = (i,f,v) => setTransports(p=>p.map((t,idx)=>idx===i?{...t,[f]:v}:t));
@@ -313,11 +319,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const slabs = t.slabs.includes(slabId) ? t.slabs.filter(s=>s!==slabId) : [...t.slabs, slabId];
     return {...t, slabs};
   }));
-  const addTransport = () => setTransports(p=>[...p,{id:Date.now(),sector:"",vehicleType:"Large Coach",cost:"",slabs:[],notes:""}]);
+  const addTransport = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+  setTransports(p=>[...p,{id:Date.now(),sector:"",vehicleType:"Large Coach",cost:"",slabs:[],notes:""}]); };
   const removeTransport = i => setTransports(p=>p.filter((_,idx)=>idx!==i));
 
   const updateSlab = (i,f,v) => setSlabs(p=>p.map((s,idx)=>idx===i?{...s,[f]:v}:s));
-  const addSlab = () => setSlabs(p=>[...p,{id:Date.now(),label:"New Slab",foc:15,vehicle:"Large Coach"}]);
+  const addSlab = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
+  setSlabs(p=>[...p,{id:Date.now(),label:"New Slab",foc:15,vehicle:"Large Coach"}]); };
 
   const toggleMonument = i => setMonuments(p=>p.map((m,idx)=>idx===i?{...m,include:!m.include}:m));
   const updateMonument = (i,f,v) => setMonuments(p=>p.map((m,idx)=>idx===i?{...m,[f]:v}:m));
