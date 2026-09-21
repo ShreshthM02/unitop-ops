@@ -997,6 +997,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                           updateDay(i,"hotelRateId","");
                           if(vid) fetchHotelRates(vid);
                         }}
+                        onFreeText={text=>{
+                          updateDay(i,"hotelVendorId","");
+                          updateDay(i,"hotel",text);
+                          updateDay(i,"hotelRateId","");
+                        }}
                         options={hotelVendors}
                         getValue={v=>v.id}
                         getLabel={v=>`${v.name} (${v.city||"—"})`}
@@ -1038,6 +1043,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                           const v=hotelVendors.find(hv=>hv.id===vid);
                           updateDay(i,"hotelAltVendorId",vid);
                           updateDay(i,"hotelAlt",v?v.name:"");
+                        }}
+                        onFreeText={text=>{
+                          updateDay(i,"hotelAltVendorId","");
+                          updateDay(i,"hotelAlt",text);
                         }}
                         options={hotelVendors}
                         getValue={v=>v.id}

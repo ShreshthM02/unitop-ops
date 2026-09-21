@@ -301,7 +301,7 @@ export function TimePeriodFilter({ value, onChange }) {
 // shows the current selection, opens a filtered dropdown as you type,
 // and closes on an outside click or Escape -- exactly the "type to
 // search" affordance a plain <select> can't offer.
-export function SearchableSelect({ value, onChange, options, getLabel, getValue, placeholder = "Type to search…", style, emptyLabel = "— None —", fallbackDisplay }) {
+export function SearchableSelect({ value, onChange, options, getLabel, getValue, placeholder = "Type to search…", style, emptyLabel = "— None —", fallbackDisplay, onFreeText }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const boxRef = useRef(null);
@@ -317,6 +317,17 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
     ? options.filter(o => getLabel(o).toLowerCase().includes(query.trim().toLowerCase()))
     : options;
 
+  // Real, direct request: picking a vendor shouldn't be the only option
+  // when the real one (e.g. a hotel) isn't in the vendor list yet --
+  // typing something that matches nothing offers an explicit "use this
+  // as free text" choice, rather than forcing either a vendor pick or
+  // an empty field. onFreeText is opt-in per usage, since most
+  // SearchableSelect pickers in this app (staff, agents, etc.)
+  // genuinely shouldn't accept arbitrary text.
+  const trimmedQuery = query.trim();
+  const exactMatch = trimmedQuery && options.some(o => getLabel(o).toLowerCase() === trimmedQuery.toLowerCase());
+  const showFreeTextOption = onFreeText && trimmedQuery && !exactMatch;
+
   return (
     <div ref={boxRef} style={{ position: "relative", ...style }}>
       <input
@@ -326,7 +337,10 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
         placeholder={selected ? getLabel(selected) : (fallbackDisplay || placeholder)}
         onFocus={() => { setQuery(""); setOpen(true); }}
         onChange={e => setQuery(e.target.value)}
-        onKeyDown={e => { if (e.key === "Escape") setOpen(false); }}
+        onKeyDown={e => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Enter" && showFreeTextOption) { onFreeText(trimmedQuery); setOpen(false); }
+        }}
       />
       {open && (
         <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: G.white,
@@ -334,7 +348,16 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
           boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
           <div style={{ padding: "7px 9px", fontSize: 12, color: G.gray400, cursor: "pointer" }}
             onMouseDown={e => { e.preventDefault(); onChange(""); setOpen(false); }}>{emptyLabel}</div>
-          {filtered.length === 0 && <div style={{ padding: "7px 9px", fontSize: 12, color: G.gray400 }}>No matches</div>}
+          {showFreeTextOption && (
+            <div style={{ padding: "7px 9px", fontSize: 12, cursor: "pointer", color: G.accent, fontWeight: 600,
+              borderBottom: `1px solid ${G.gray200}` }}
+              onMouseDown={e => { e.preventDefault(); onFreeText(trimmedQuery); setOpen(false); }}
+              onMouseEnter={e => e.currentTarget.style.background = G.gray50}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              + Use "{trimmedQuery}" (not in vendor list)
+            </div>
+          )}
+          {filtered.length === 0 && !showFreeTextOption && <div style={{ padding: "7px 9px", fontSize: 12, color: G.gray400 }}>No matches</div>}
           {filtered.map(o => (
             <div key={getValue(o)} style={{ padding: "7px 9px", fontSize: 12, cursor: "pointer" }}
               onMouseDown={e => { e.preventDefault(); onChange(getValue(o)); setOpen(false); }}
