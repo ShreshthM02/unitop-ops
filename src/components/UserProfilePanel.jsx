@@ -39,7 +39,7 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
   };
   const handlePwChange=async()=>{setPwError("");if(newPw.length<8){setPwError("Min 8 chars");return;}if(newPw!==confirmPw){setPwError("Don't match");return;}setSaving(true);try{const res=await db.auth.changePassword(currentUser.id,newPw);if(res?.success){setShowPw(false);setTimeout(async()=>{await db.auth.logout();window.location.reload();},1500);}else setPwError(res?.error||"Failed");}catch(e){setPwError(e.message);}setSaving(false);};
   return(
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div style={{position:"fixed",bottom:80,left:220,background:G.white,width:340,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:`1px solid ${G.gray200}`,overflow:"hidden",zIndex:200}}>
         <div style={{background:G.navy,padding:"20px 20px 16px",textAlign:"center"}}>
           <div style={{width:64,height:64,margin:"0 auto 10px"}}>

@@ -408,7 +408,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
   const tabBtn=(id,label)=>(<button key={id} onClick={()=>setActiveTab(id)} style={{padding:"7px 12px",border:"none",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:11,background:activeTab===id?G.navy:"transparent",color:activeTab===id?"#fff":G.gray600,borderBottom:`2px solid ${activeTab===id?G.accent:"transparent"}`,fontWeight:activeTab===id?600:400,whiteSpace:"nowrap"}}>{label}</button>);
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div style={{background:G.white,width:"min(880px, 100vw)",height:"100vh",display:"flex",flexDirection:"column",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}>

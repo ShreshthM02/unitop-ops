@@ -865,7 +865,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const hasFinalPrice = hasAnyPricedSlab && !!lastSavedCostSheetId;
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div style={{background:G.white,width:"min(960px, 100vw)",height:"100vh",overflowY:"hidden",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
 
         {/* Header */}

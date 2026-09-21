@@ -817,7 +817,7 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   const TYPE_TEXT={advance:"#1E40AF",second:"#166534",third:"#166534",final:"#065F46",credit:"#92400E",refund:"#991B1B"};
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div style={{background:G.white,width:"min(660px, 100vw)",height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
         <div style={{background:G.navy,padding:"14px 20px",flexShrink:0}}>
           <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>PAYMENT TRACKER</div>

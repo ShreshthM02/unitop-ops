@@ -598,7 +598,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     : (dayImages[itinDays[0] && itinDays[0].id] || null);
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div style={{ background:G.white, width:"min(780px, 100vw)", height:"100vh", overflowY:"auto", boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
 
         {/* Header */}

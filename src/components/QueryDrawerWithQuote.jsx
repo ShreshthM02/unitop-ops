@@ -140,7 +140,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const docs = (isCaseFile ? caseFileDocs : queryDocs).filter(d => !d.perm || can(d.perm));
 
   return (
-    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay">
       <div className="drawer" style={{width:"min(520px, 100vw)"}}>
 
         {/* Header */}
