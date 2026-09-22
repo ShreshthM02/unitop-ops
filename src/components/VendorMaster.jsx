@@ -346,11 +346,36 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                       const startEdit=(r)=>{setRateForm({...r});setEditingRateId(r.id);};
                       const cancelEdit=()=>{setEditingRateId(null);setRateForm({});};
                       const saveRate=async()=>{
+                        // Real, direct finding while fixing the meal_plan
+                        // bug above: room_category is a genuinely required
+                        // field for every vendor type (it's what the vendor
+                        // rate is actually FOR -- room category, menu,
+                        // particulars, depending on type), with a real
+                        // NOT NULL constraint at the database level, but
+                        // nothing here ever checked for it before trying to
+                        // save -- an empty field reached the database and
+                        // came back as a raw Postgres constraint error
+                        // instead of a clear, immediate message.
+                        if(!rateForm.room_category || !rateForm.room_category.trim()){
+                          setRateToast(`${sc.itemLabel} is required before this can be saved.`);
+                          return;
+                        }
                         const payload={
                           vendor_id:selected.id,
                           market_segment:rateForm.market_segment||null,
                           room_category:rateForm.room_category||null,
-                          meal_plan:sc.mealPlan?(rateForm.meal_plan||null):null,
+                          // Real, direct bug: the Meal Plan <select> below
+                          // shows "CP" as its visual default whenever
+                          // nothing's been explicitly chosen yet (value=
+                          // {rateForm.meal_plan||"CP"}) -- but this payload
+                          // was reading rateForm.meal_plan RAW, with no
+                          // matching default, so a rate saved without ever
+                          // touching that dropdown sent meal_plan:null even
+                          // though "CP" was what the user visibly saw
+                          // selected, tripping the column's real NOT NULL
+                          // constraint. Now matches the same "CP" default
+                          // the dropdown itself already shows.
+                          meal_plan:sc.mealPlan?(rateForm.meal_plan||"CP"):null,
                           season_start:rateForm.season_start||null,
                           season_end:rateForm.season_end||null,
                           single_rate:sc.singleDouble?(rateForm.single_rate||null):null,

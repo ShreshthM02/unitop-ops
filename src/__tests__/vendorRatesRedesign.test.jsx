@@ -191,6 +191,7 @@ describe('Vendor Rates Redesign: Local Handler -- full new field set', () => {
     fireEvent.click(screen.getByText('Contracted Rates'));
     await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
     fireEvent.click(screen.getByText('+ Add Rate'));
+    fireEvent.change(screen.getByText('Particulars').parentElement.querySelector('input'), { target: { value: 'City Guide, Full Day' } });
     fireEvent.change(screen.getByText('Rate (per person)').parentElement.querySelector('input'), { target: { value: '1500' } });
     fireEvent.change(screen.getByText('Single Supplement').parentElement.querySelector('input'), { target: { value: '500' } });
     fireEvent.click(screen.getByText('💾 Save Rate'));
