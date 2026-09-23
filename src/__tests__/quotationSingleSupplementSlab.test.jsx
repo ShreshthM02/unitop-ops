@@ -38,7 +38,7 @@ describe('Quotation pulls Single Supplement in as its own slab', () => {
     await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v1/)).toBeTruthy());
 
     // Single supplement total = 2500 (day) with 0% gst/markup, roe 1 -> 2500 flat.
-    expect(screen.getByDisplayValue('Single Supplement')).toBeTruthy();
+    expect(screen.getByDisplayValue('Single Room Supplement')).toBeTruthy();
     expect(screen.getByDisplayValue('2500')).toBeTruthy();
   });
 
@@ -56,6 +56,6 @@ describe('Quotation pulls Single Supplement in as its own slab', () => {
     render(<QG query={fakeQuery} template={fakeTemplate} costSheetId="cs-ss-2" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v1/)).toBeTruthy());
 
-    expect(screen.queryByDisplayValue('Single Supplement')).toBeFalsy();
+    expect(screen.queryByDisplayValue('Single Room Supplement')).toBeFalsy();
   });
 });

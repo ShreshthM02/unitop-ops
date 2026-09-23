@@ -18,7 +18,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     slabs: [
       { label: "15–19 Pax Paying + 01 T/L Free (Using A/C Large Coach)", price: "" },
       { label: "10–14 Pax Paying + 01 T/L Free (Using A/C Mini Coach)",  price: "" },
-      { label: "Single Supplement",                                        price: "" },
+      { label: "Single Room Supplement",                                   price: "" },
     ],
     itinerary: [
       { day:"Day 01", date:"", movement:"", bf:"", lunch:"", dinner:"" },
@@ -135,7 +135,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
       // buried inside the Cost Sheet only. Omitted entirely when there's
       // no actual single supplement cost on this Cost Sheet.
       const ssFX = calcCostSheetSingleSupplementFX(match);
-      const singleSuppSlab = ssFX > 0 ? [{ label: "Single Supplement", price: String(ssFX) }] : [];
+      const singleSuppSlab = ssFX > 0 ? [{ label: "Single Room Supplement", price: String(ssFX) }] : [];
       const slabs = [...groupSlabs, ...tlSlabs, ...singleSuppSlab];
 
       // Monuments: only the ones actually included in the price (an
@@ -549,7 +549,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   );
 
   return (
-    <div className="overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+    <div className="overlay">
       <div style={{ background:G.white, width:"min(680px, 100vw)", height:"100vh", overflowY:"auto",
         boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
 
@@ -911,7 +911,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         {activeTab==='final' && (
           <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
             <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16,fontSize:11,color:"#784212"}}>
-              Required before this version can be marked final ★. Compose the actual agreed price as one or more lines — e.g. 18 pax on one slab + 2 pax on Single Supplement — pulling rates from this quotation's own slabs, or typing a custom rate when the agreed amount doesn't match any slab exactly.
+              Required before this version can be marked final ★. Compose the actual agreed price as one or more lines — e.g. 18 pax on one slab + 2 pax on Single Room Supplement — pulling rates from this quotation's own slabs, or typing a custom rate when the agreed amount doesn't match any slab exactly.
             </div>
 
             {q.finalPriceEntries.map((e,i)=>(
@@ -939,7 +939,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                       {q.slabs.filter(s=>s.label).map((s,si)=><option key={si} value={s.label}>{s.label} — {q.currency} {s.price||0}/pax</option>)}
                     </select>
                   ) : (
-                    <input style={{...inputStyle,width:"100%"}} value={e.slabLabel} onChange={ev=>updateFinalPriceEntry(i,"slabLabel",ev.target.value)} placeholder="e.g. Single Supplement"/>
+                    <input style={{...inputStyle,width:"100%"}} value={e.slabLabel} onChange={ev=>updateFinalPriceEntry(i,"slabLabel",ev.target.value)} placeholder="e.g. Single Room Supplement"/>
                   )}
                 </div>
                 <div>

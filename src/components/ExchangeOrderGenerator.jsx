@@ -561,7 +561,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
   );
 
   return (
-    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div style={{ background: G.white, width: "min(760px, 100vw)", height: "100vh", overflowY: "auto", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column" }}>
 
         <div style={{ background: G.navy, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>

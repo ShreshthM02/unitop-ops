@@ -94,7 +94,7 @@ export function UserManagementPanel({ currentUser, onClose, asTab = false }) {
     color:G.gray800, background:G.white };
 
   return (
-    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined} onClick={asTab ? undefined : (e=>e.target===e.currentTarget&&onClose())}>
+    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined}>
       <div style={{ background:G.white, width:asTab?"100%":"min(760px, 100vw)", height:asTab?"100%":"100vh", display:"flex",
         flexDirection:"column", boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)" }}>
 

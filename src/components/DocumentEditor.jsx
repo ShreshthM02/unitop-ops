@@ -671,7 +671,7 @@ export default function DocumentEditor({ query, onClose, currentUser, readOnly }
   const existingVersionsForOpenDoc = allDocs.filter(d => d.docKey === openDocKey);
 
   return (
-    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div style={{ background: G.white, width: "min(900px, 100vw)", height: "100vh", display: "flex", flexDirection: "column", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)" }}>
         {openDocKey
           ? <EditorView query={query} docKey={openDocKey} existingVersions={existingVersionsForOpenDoc} onBack={back} onSaved={refresh} currentUser={currentUser} readOnly={readOnly} importedContent={importedContent} />

@@ -121,7 +121,7 @@ export default function AgentMaster({ agents, setAgents, queries, payments, curr
   };
   const inp={padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   return (
-    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined} onClick={asTab ? undefined : (e=>e.target===e.currentTarget&&onClose())}>
+    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined}>
       <div style={{background:G.white,width:asTab?"100%":"min(900px, 100vw)",height:asTab?"100%":"100vh",display:"flex",flexDirection:"column",boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"14px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>MASTER DATA</div><div style={{fontSize:17,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Agent & Client Repository</div></div>

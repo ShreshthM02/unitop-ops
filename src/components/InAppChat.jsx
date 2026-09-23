@@ -231,7 +231,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
     : messages;
 
   return (
-    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined} onClick={asTab ? undefined : (e=>e.target===e.currentTarget&&onClose())}>
+    <div className={asTab ? undefined : "overlay"} style={asTab ? {height:"100%"} : undefined}>
       <div style={{background:G.white,width:asTab?"100%":"min(880px, 100vw)",height:asTab?"100%":"100vh",display:"flex",flexDirection:"column",boxShadow:asTab?"none":"-4px 0 24px rgba(0,0,0,0.15)"}}>
         <div style={{background:G.navy,padding:"12px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{flex:1}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>TEAM CHAT</div><div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"'Playfair Display',serif"}}>Unitop Workspace</div></div>
@@ -264,7 +264,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
           </div>
 
           {newDMPicker && (
-            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}} onClick={e=>e.target===e.currentTarget&&setNewDMPicker(false)}>
+            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}}>
               <div style={{background:G.white,borderRadius:10,padding:16,width:320,maxHeight:400,overflowY:"auto"}}>
                 <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>Start a Direct Message</div>
                 {(staff||[]).filter(s=>s.id!==currentUser?.id).map(s=>(
@@ -277,7 +277,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
           )}
 
           {newGroupDraft && (
-            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}} onClick={e=>e.target===e.currentTarget&&setNewGroupDraft(null)}>
+            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}}>
               <div style={{background:G.white,borderRadius:10,padding:16,width:340,maxHeight:460,overflowY:"auto"}}>
                 <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>New Group</div>
                 <input value={newGroupDraft.name} onChange={e=>setNewGroupDraft(d=>({...d,name:e.target.value}))} placeholder="Group name" style={{width:"100%",padding:"7px 9px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:13,marginBottom:10,outline:"none"}}/>
@@ -300,7 +300,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
           )}
 
           {manageMembers && activeConv && (
-            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}} onClick={e=>e.target===e.currentTarget&&setManageMembers(false)}>
+            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}}>
               <div style={{background:G.white,borderRadius:10,padding:16,width:340,maxHeight:480,overflowY:"auto"}}>
                 {renameDraft!==null ? (
                   <div style={{marginBottom:12}}>
