@@ -46,6 +46,9 @@ export function DocRegistryInline({ queryId, tourFileId, groupName, clientName, 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   const fileInputRef = useRef(null);
 
   const loadDocs = () => {
@@ -98,6 +101,24 @@ export function DocRegistryInline({ queryId, tourFileId, groupName, clientName, 
     logAudit(db, queryId, currentUser?.name, `Document deleted: "${doc.file_name}"`);
   };
 
+  // Direct request: a document's file name should be changeable from
+  // within the app after it's already been uploaded, not just fixed at
+  // upload time.
+  const startRename = (doc) => { setRenamingId(doc.id); setRenameValue(doc.file_name); setUploadError(""); };
+  const cancelRename = () => { setRenamingId(null); setRenameValue(""); };
+  const saveRename = async (doc) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === doc.file_name) { cancelRename(); return; }
+    setRenameSaving(true);
+    const res = await db.drive.renameFile(doc.id, trimmed);
+    setRenameSaving(false);
+    if (!res.success) { setUploadError(res.error || "Could not rename this document"); return; }
+    const oldName = doc.file_name;
+    setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, file_name: trimmed } : d));
+    logAudit(db, queryId, currentUser?.name, `Document renamed: "${oldName}" → "${trimmed}"`);
+    cancelRename();
+  };
+
   return (
     <fieldset disabled={readOnly} style={{ border: "none", margin: 0, padding: 0, minWidth: 0 }}>
       {readOnly && (
@@ -121,7 +142,29 @@ export function DocRegistryInline({ queryId, tourFileId, groupName, clientName, 
         <div key={d.id} style={{ background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 7, padding: "9px 12px", marginBottom: 7, display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 18, flexShrink: 0 }}>{fileIcon(d.file_type)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.file_name}</div>
+            {renamingId === d.id ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveRename(d); if (e.key === "Escape") cancelRename(); }}
+                  style={{ fontSize: 12, padding: "3px 6px", border: `1px solid ${G.gray200}`, borderRadius: 4, flex: 1, minWidth: 0, outline: "none", fontFamily: "'Inter',sans-serif" }} />
+                <button onClick={() => saveRename(d)} disabled={renameSaving}
+                  style={{ fontSize: 10, padding: "3px 7px", borderRadius: 4, border: "none", background: "#1A5276", color: "#fff", cursor: "pointer", fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
+                  {renameSaving ? "…" : "Save"}
+                </button>
+                <button onClick={cancelRename} disabled={renameSaving}
+                  style={{ fontSize: 10, padding: "3px 7px", borderRadius: 4, border: `1px solid ${G.gray200}`, background: G.white, cursor: "pointer", fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.file_name}</div>
+                {!readOnly && (
+                  <span onClick={() => startRename(d)} title="Rename"
+                    style={{ fontSize: 11, color: G.gray400, cursor: "pointer", flexShrink: 0 }}>✎</span>
+                )}
+              </div>
+            )}
             <div style={{ fontSize: 10.5, color: G.gray400, marginTop: 2 }}>
               {humanSize(d.file_size)} · {d.uploaded_by_name || "Unknown"} · {formatDateSlash(d.created_at?.slice(0, 10))}
             </div>

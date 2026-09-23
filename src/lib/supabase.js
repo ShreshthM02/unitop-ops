@@ -400,6 +400,9 @@ export const _supa = (() => {
     // scope/parent folder -- see MaintenancePanel's Backup tab.
     createRootFolder: (name) => drive.call({ action: "create-root-folder", name }),
     renameFolder: (queryId, newName) => drive.call({ action: "rename-folder", queryId, newName }),
+    // Direct request: a document's own name can be changed after
+    // upload, not just fixed at upload time.
+    renameFile: (documentId, newName) => drive.call({ action: "rename-file", documentId, newName }),
   };
 
   return { from, auth, rpc, drive };
