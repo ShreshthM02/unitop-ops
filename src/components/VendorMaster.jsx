@@ -668,7 +668,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
         </div>
       </div>
       {openEO && <ExchangeOrderGenerator query={openEO.query} template={docTemplates?.exchange} vendors={vendors} initialOpenOrderNo={openEO.orderNo} currentUser={currentUser} onClose={()=>{setOpenEO(null);refreshEO();}}/>}
-      {rateToast && <Toast msg={rateToast} onDone={()=>setRateToast("")}/>}
+      {rateToast && <Toast msg={rateToast} type="error" onDone={()=>setRateToast("")}/>}
     </div>
   );
 }

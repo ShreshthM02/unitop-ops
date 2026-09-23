@@ -1,25 +1,5 @@
 import { extractMentions } from "./Mentions.jsx";
 
-// The single, authoritative nights->days conversion. A tour of N nights
-// spans N+1 calendar days (arrival day through departure day) -- the
-// standard travel-industry convention, and the one Shreshth explicitly
-// asked for directly: "when a user inputs '3 nights', the cost sheet and
-// every subsequent document should open with 4 days, not 3."
-//
-// This directly REVERSES an earlier, deliberate decision in this same
-// codebase (CostSheet's buildDefaultDays used to treat nights and days
-// as numerically equal, confirmed at the time against a specific 10-
-// night tour that happened to have exactly 10 day rows) -- that decision
-// is now superseded by this direct instruction.
-//
-// Callers that derive an END DATE by offsetting a start date by `nights`
-// calendar days (GanttView's tourEnd, DestinationOverlapView's overlap
-// window, getMovementChartRows below) are NOT part of this bug:
-// `start + nights days = departure date` already correctly spans
-// nights+1 calendar days inclusive, so those are left untouched. This
-// helper is only for call sites that need the actual COUNT of days
-// (day-row counts, "X Days" labels), which is exactly where the bug
-// was: several places used the raw nights number directly as that count.
 // Single source of truth for "is this tour physically on ground today" --
 // found duplicated in two places (Dashboard's stat card and UnitopApp's
 // drill-through view) with two DIFFERENT status scopes, and neither
@@ -55,6 +35,26 @@ export function reorderArray(arr, fromIndex, toIndex) {
   return updated;
 }
 
+// The single, authoritative nights->days conversion. A tour of N nights
+// spans N+1 calendar days (arrival day through departure day) -- the
+// standard travel-industry convention, and the one Shreshth explicitly
+// asked for directly: "when a user inputs '3 nights', the cost sheet and
+// every subsequent document should open with 4 days, not 3."
+//
+// This directly REVERSES an earlier, deliberate decision in this same
+// codebase (CostSheet's buildDefaultDays used to treat nights and days
+// as numerically equal, confirmed at the time against a specific 10-
+// night tour that happened to have exactly 10 day rows) -- that decision
+// is now superseded by this direct instruction.
+//
+// Callers that derive an END DATE by offsetting a start date by `nights`
+// calendar days (GanttView's tourEnd, DestinationOverlapView's overlap
+// window, getMovementChartRows below) are NOT part of this bug:
+// `start + nights days = departure date` already correctly spans
+// nights+1 calendar days inclusive, so those are left untouched. This
+// helper is only for call sites that need the actual COUNT of days
+// (day-row counts, "X Days" labels), which is exactly where the bug
+// was: several places used the raw nights number directly as that count.
 export function daysFromNights(nights) {
   const n = parseInt(nights) || 0;
   return n > 0 ? n + 1 : 0;

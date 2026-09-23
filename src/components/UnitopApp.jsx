@@ -121,6 +121,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [showProfile,    setShowProfile]    = useState(false);
   const [statFilter,     setStatFilter]     = useState(null); // {key, label, items}
   const [toast, setToast] = useState(null);
+  const [toastType, setToastType] = useState("success");
   // Build currentUser from authUser (Supabase) or fall back to demo
   const currentUser = authUser ? {
     id:     authUser.id,
@@ -451,7 +452,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       return true;
     } catch(e) {
       console.warn("Save to DB failed:", e);
-      showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`);
+      showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`, "error");
       return false;
     }
   };
@@ -463,7 +464,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // the same current serial, so the preview and the actually-assigned
   // id always agree as long as nothing else creates a query in between.
   const nextQueryId = () => nextDocNumber(docSettings, "query", {}).number;
-  const showToast = msg => setToast(msg);
+  const showToast = (msg, type = "success") => { setToast(msg); setToastType(type); };
   const updatePayments = (queryId, data, auditAction) => {
     setPayments(p => ({ ...p, [queryId]: data })); // optimistic local update, same as before
     savePaymentsToDB(db, queryId, data); // fire-and-forget persistence, mirrors saveQueryToDB's pattern
@@ -1042,7 +1043,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         )}
 
         {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents} staff={staff} series={series} queries={queries}/>}
-        {toast && <Toast msg={toast} onDone={()=>setToast(null)}/>}
+        {toast && <Toast msg={toast} type={toastType} onDone={()=>setToast(null)}/>}
       </div>
     </>
   );

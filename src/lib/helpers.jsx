@@ -86,9 +86,17 @@ export function FileTypeBadge({ fileType }) {
   );
 }
 
-export function Toast({ msg, onDone }) {
+// Real, pre-existing bug caught on review: this always prefixed "✓"
+// regardless of the message's actual content, so an error toast (e.g.
+// "Error: ...", "Failed to save...") displayed with a checkmark as if
+// it had succeeded -- misleading on every one of its several call
+// sites (UnitopApp, UserManagementPanel), not just newly-added ones.
+// type defaults to "success" so every existing call site (none of
+// which pass it) keeps its exact current behavior; only genuinely
+// error messages need to opt in explicitly.
+export function Toast({ msg, onDone, type = "success" }) {
   useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, []);
-  return <div className="toast">✓ {msg}</div>;
+  return <div className="toast">{type === "error" ? "⚠" : "✓"} {msg}</div>;
 }
 
 // Workflow progress — manual check/uncheck with clear visual distinction

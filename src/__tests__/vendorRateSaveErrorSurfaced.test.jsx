@@ -46,6 +46,10 @@ describe('Vendor Rates: a failed save is no longer silent', () => {
     fireEvent.click(screen.getByText('💾 Save Rate'));
 
     await waitFor(() => expect(screen.getByText(/Rate was NOT saved/)).toBeTruthy());
+    // Real, pre-existing bug caught on review: Toast always showed a
+    // checkmark regardless of message content -- this error should
+    // show a warning icon, not one.
+    expect(screen.getByText(/⚠ Rate was NOT saved/)).toBeTruthy();
     // The form should still be open with what was typed -- not silently
     // closed as if the save had gone through.
     expect(screen.getByDisplayValue('Deluxe Room')).toBeTruthy();
