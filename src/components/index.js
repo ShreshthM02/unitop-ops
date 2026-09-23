@@ -30,5 +30,5 @@ export { default as VendorMaster } from './VendorMaster.jsx';
 export { default as PricingTimeline } from './PricingTimeline.jsx';
 export { CostSheet } from './CostSheet.jsx';
 export { ServicesList } from './ServicesList.jsx';
-export { DocumentRegistry, DocRegistryInline } from './DocumentRegistry.jsx';
+export { DocRegistryInline } from './DocumentRegistry.jsx';
 export { UserManagementPanel } from './UserManagementPanel.jsx';
