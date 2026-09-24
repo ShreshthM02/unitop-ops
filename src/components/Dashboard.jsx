@@ -106,7 +106,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 500 }}>{t.name}<FileTypeBadge fileType={t.query.fileType}/></div>
-                <div style={{ fontSize: 11, color: G.gray400 }}>{t.dates} · {t.pax} pax</div>
+                <div style={{ fontSize: 11, color: G.gray400 }}>{t.dates} · {t.pax}</div>
               </div>
               <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,
                 background: t.statusLabel === "On Ground" ? "#EAFAF1" : t.statusLabel === "Completed" ? G.gray100 : "#DBEAFE",

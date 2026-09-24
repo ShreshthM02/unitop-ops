@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 const queryWithPax = {
   id: 'UTQ-1', tourFileId: 'TF-1', groupName: 'Test Group', destination: 'Kerala',
@@ -38,5 +38,43 @@ describe('The q.pax bug: paxDisplay now actually shows up everywhere it is suppo
     const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
     render(<InvoiceGenerator query={queryWithPax} payments={{}} agents={[]} onClose={()=>{}}/>);
     expect(await screen.findByDisplayValue('18 pax')).toBeTruthy();
+  });
+
+  // Two more instances of the exact same bug, found on a direct report
+  // that Dashboard's own Tour Calendar widget was ALSO showing
+  // "18 pax pax" -- neither was caught in the original sweep above.
+
+  it('Dashboard "Tour Calendar" widget shows the real pax count, not doubled up as "pax pax"', async () => {
+    const { default: Dashboard } = await import('../components/Dashboard.jsx');
+    render(<Dashboard queries={[{ ...queryWithPax, status: 'new_query' }]} onOpenQuery={()=>{}} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
+    expect(screen.getByText(/18 pax/)).toBeTruthy();
+    expect(screen.queryByText(/pax pax/)).not.toBeInTheDocument();
+  });
+
+  it('Exchange Order Generator\'s own saved-order Repository list shows the real pax count, not doubled up as "pax pax"', async () => {
+    const fakeVendors = [{ id: 'VND-001', name: 'Test Vendor', type: 'Restaurant', active: true }];
+    const versionRows = [
+      { id:'row-1', order_no: 'EO-2026-060', query_id: queryWithPax.id, vendor_id: 'VND-001', version: 1, is_final: false,
+        content: { serviceType:'restaurant', drawnOn:'Nanking Restaurant', confirmed:false, settled:false, issueDate:'2026-08-01', pax:'18 pax' } },
+    ];
+    const db = {
+      from: vi.fn(() => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: versionRows, error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: EOG } = await import('../components/ExchangeOrderGenerator.jsx');
+    render(<EOG query={queryWithPax} template={{}} vendors={fakeVendors} onClose={()=>{}} currentUser={{id:'x',name:'Test'}}/>);
+    fireEvent.click(await screen.findByText(/Repository/));
+    expect(await screen.findByText(/18 pax/)).toBeTruthy();
+    expect(screen.queryByText(/pax pax/)).not.toBeInTheDocument();
+    vi.doUnmock('../lib/supabase.js');
   });
 });

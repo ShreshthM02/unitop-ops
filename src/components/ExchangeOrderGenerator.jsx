@@ -635,7 +635,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
                         <span style={{ fontSize: 10, color: G.gray400 }}>v{group.latest.version}{group.finalVersion && " ★"}</span>
                       </div>
                       <div style={{ fontSize: 12, color: G.gray800, fontWeight: 500 }}>{order.drawnOn}</div>
-                      <div style={{ fontSize: 11, color: G.gray600 }}>{formatDateSlash(order.issueDate) || order.issueDate} · {order.pax} pax</div>
+                      <div style={{ fontSize: 11, color: G.gray600 }}>{formatDateSlash(order.issueDate) || order.issueDate} · {order.pax}</div>
                     </div>
                     <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleGroupConfirmed(group)}>
                       {order.confirmed ? "✗ Unconfirm" : "✓ Confirm"}
