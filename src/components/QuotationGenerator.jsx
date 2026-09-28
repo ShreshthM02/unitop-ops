@@ -1,13 +1,20 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, reorderArray } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, formatDateDayDMY, cascadeItineraryDates, isIsoDateString, reorderArray, hotelPropertyLabel } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery, signatures, docSettings }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
 
   // Editable quotation fields (pre-filled from query)
   const [q, setQ] = useState({
-    attnName:    query.agentName || "",
+    // Item 7: auto-fetch from the query form's correspondent field
+    // (query.correspondent -- the actual field name/agent-contact
+    // person entered at query intake). This used to read
+    // query.agentName, a field that is never actually set anywhere in
+    // the app (mapDbQueryRow never produces it), so Kind Attn always
+    // silently started blank regardless of what was on the query.
+    // Left blank, as asked, if the query has no correspondent on file.
+    attnName:    query.correspondent || "",
     attnCompany: query.agentCompany || "",
     attnCity:    query.agentCountry || "",
     date:        today,
@@ -35,6 +42,12 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     monuments: [...template.monuments],
     showMonuments: template.showMonuments,
     monumentNote: template.monumentNote,
+    // Item 11: the monument fees table's own column headings are now
+    // editable (a small ✏ button next to the header row), same idea as
+    // every other table in this document having real column headers --
+    // this one just also lets the wording be changed per-quotation
+    // (e.g. "Monument / Activity" -> "Entrance Fees").
+    monumentColLabels: template.monumentColLabels || { name: "Monument / Activity", fee: "Fee" },
     // Domestic flights/trains: plain free-text, multiple entries, optional
     // display -- quotation-only for now (only actually serviced if the
     // client accepts our rates), same optional-toggle pattern as monuments.
@@ -85,6 +98,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // once one exists (Phase 3 of the Document Chain plan).
   const [pulling, setPulling] = useState(false);
   const [pullMessage, setPullMessage] = useState("");
+  // Item 11: small inline toggle for editing the monument fees table's
+  // own column headings.
+  const [editingMonumentHeaders, setEditingMonumentHeaders] = useState(false);
   const pullFromCostSheet = async (targetMatch) => {
     if (!targetMatch && !costSheetId) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
     setPulling(true);
@@ -336,8 +352,15 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const [finalPriceAudits, setFinalPriceAudits] = useState([]);
   useEffect(() => { loadFinalPriceAgreementAudits(db, query.id).then(setFinalPriceAudits); }, [query.id]);
 
+  // Item 8: picking one row's date chronologically auto-fills the later
+  // rows (one calendar day per row) that don't already have their own
+  // date -- still individually editable afterward, since a row that
+  // already carries a real date is never overwritten by this cascade.
   const updateItinerary = (i, field, val) => setQ(prev => ({
-    ...prev, itinerary: prev.itinerary.map((r,idx) => idx===i ? {...r,[field]:val} : r)
+    ...prev,
+    itinerary: field === "date"
+      ? cascadeItineraryDates(prev.itinerary, i, val)
+      : prev.itinerary.map((r,idx) => idx===i ? {...r,[field]:val} : r)
   }));
   const addItinRow = () => setQ(prev => ({
     ...prev, itinerary: [...prev.itinerary, { day:`Day ${String(prev.itinerary.length+1).padStart(2,"0")}`, date:"", movement:"", bf:"", lunch:"", dinner:"" }]
@@ -345,22 +368,56 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const updateHotel = (i, field, val) => setQ(prev => ({
     ...prev, hotels: prev.hotels.map((r,idx) => idx===i ? {...r,[field]:val} : r)
   }));
-  const addHotelRow = () => setQ(prev => ({ ...prev, hotels: [...prev.hotels, {place:"",nights:"",hotel:""}] }));
+  const addHotelRow = () => setQ(prev => ({ ...prev, hotels: [...prev.hotels, {place:"",nights:"",hotel:"",hotelAlt:""}] }));
   const updateList = (key, i, val) => setQ(prev => ({ ...prev, [key]: prev[key].map((x,idx)=>idx===i?val:x) }));
   // saveScrollForRestore here (rather than at each call site) so every
   // list-backed section -- flights, trains, includes, excludes -- keeps the
   // user's scroll position on add/remove.
-  const addListItem = (key) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: [...prev[key], key==="flights"||key==="trains" ? { day:"", detail:"" } : ""] })); };
+  // Item 9: every flight/train entry now also carries its own optional
+  // remark, alongside day/detail.
+  const addListItem = (key) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: [...prev[key], key==="flights"||key==="trains" ? { day:"", detail:"", remark:"" } : ""] })); };
   const removeListItem = (key, i) => { saveScrollForRestore(); setQ(prev => ({ ...prev, [key]: prev[key].filter((_,idx)=>idx!==i) })); };
+  // Item 13, real bug found and fixed here: this ref used to store just a
+  // bare index, shared across EVERY list section (includes, excludes, and
+  // now itinerary/hotels/flights/trains/monuments too) -- starting a drag
+  // in one section (e.g. "includes", index 2) and dropping in a
+  // DIFFERENT section (e.g. "excludes") silently reordered the wrong
+  // list using an index that belonged to the other one, since nothing
+  // ever checked the two drags were even the same array. Exactly the
+  // kind of thing that reads as "draggable items not responsive" --
+  // dragging visibly did *something*, just never reliably the thing the
+  // row you dragged suggested. Now tracks {key, index} and refuses to
+  // reorder across a key mismatch.
   const listDragIndex = useRef(null);
   const reorderListItem = (key, dropIndex) => {
-    if (listDragIndex.current === null || listDragIndex.current === dropIndex) return;
-    setQ(prev => ({ ...prev, [key]: reorderArray(prev[key], listDragIndex.current, dropIndex) }));
+    const drag = listDragIndex.current;
+    if (!drag || drag.key !== key || drag.index === dropIndex) return;
+    setQ(prev => ({ ...prev, [key]: reorderArray(prev[key], drag.index, dropIndex) }));
     listDragIndex.current = null;
   };
   // Section show/hide toggles change layout height too, so they need the
   // same treatment as add/remove.
-  const setToggle = (key, val) => { saveScrollForRestore(); setF(key, val); };
+  const setToggle = (key, val) => {
+    saveScrollForRestore();
+    // Item 8: turning the Date column on auto-fetches the query's own
+    // confirmed travel date for Day 1 (query.travelDate is only ever a
+    // real ISO date once travel dates are actually confirmed -- it's
+    // still a plain "TBC"/month/season placeholder otherwise, which
+    // cascadeItineraryDates leaves alone), then cascades the later rows
+    // chronologically from it, same as a manual edit would. Never
+    // overwrites a date already on the itinerary.
+    if (key === "showItinDate" && val) {
+      setQ(prev => ({
+        ...prev,
+        showItinDate: true,
+        itinerary: (!prev.itinerary[0]?.date && isIsoDateString(query.travelDate))
+          ? cascadeItineraryDates(prev.itinerary, 0, query.travelDate)
+          : prev.itinerary,
+      }));
+      return;
+    }
+    setF(key, val);
+  };
   const updateMonument = (i, field, val) => setQ(prev => ({
     ...prev, monuments: prev.monuments.map((m,idx)=>idx===i?{...m,[field]:val}:m)
   }));
@@ -389,7 +446,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         : `<tr><th>Day</th><th>Itinerary</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>`,
       rowsHTML: q.itinerary.map(r=>
         '<tr><td><strong>'+r.day+'</strong></td>'+
-        (q.showItinDate ? '<td>'+(r.date?formatDateSlash(r.date):'—')+'</td>' : '')+
+        (q.showItinDate ? '<td>'+(r.date?formatDateDayDMY(r.date):'—')+'</td>' : '')+
         '<td>'+r.movement+'</td><td>'+(r.bf||'—')+'</td><td>'+(r.lunch||'—')+'</td><td>'+(r.dinner||'—')+'</td></tr>'),
     };
     const itineraryHeading = `<h2>Day-wise Itinerary</h2>`;
@@ -399,23 +456,30 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     // Flights"` fallbacks matter: a doc_templates row saved before these
     // heading fields existed used to yield undefined here and print the
     // literal word "undefined" as the section heading.
+    // Item 9: an optional remark now renders as its own small line
+    // directly below the flight/train detail (not a separate table
+    // column in the printed document -- the content tab's editor is
+    // where the remark gets its own column, per the same request).
+    const travelDetailCell = (item) => '<td>'+((item&&item.detail)||'')+
+      ((item&&item.remark) ? '<div style="font-size:0.85em;color:#666;margin-top:2pt;">'+item.remark+'</div>' : '')+'</td>';
     const flightsHeadingBlock = q.showFlights ? `<h2>${q.flightsHeading || "Domestic Flights"}</h2>` : "";
     const flightsBlock = (q.showFlights && q.flights.length) ? {
       type: "table",
       headerHTML: `<tr><th>Day</th><th>Flight Details</th></tr>`,
-      rowsHTML: q.flights.map(f=>'<tr><td>'+((f&&f.day)||'—')+'</td><td>'+((f&&f.detail)||'')+'</td></tr>'),
+      rowsHTML: q.flights.map(f=>'<tr><td>'+((f&&f.day)||'—')+'</td>'+travelDetailCell(f)+'</tr>'),
     } : null;
     const trainsHeadingBlock = q.showTrains ? `<h2>${q.trainsHeading || "Domestic Trains"}</h2>` : "";
     const trainsBlock = (q.showTrains && q.trains.length) ? {
       type: "table",
       headerHTML: `<tr><th>Day</th><th>Train Details</th></tr>`,
-      rowsHTML: q.trains.map(t=>'<tr><td>'+((t&&t.day)||'—')+'</td><td>'+((t&&t.detail)||'')+'</td></tr>'),
+      rowsHTML: q.trains.map(t=>'<tr><td>'+((t&&t.day)||'—')+'</td>'+travelDetailCell(t)+'</tr>'),
     } : null;
 
+    // Item 10: printed as "{hotel name} / {alt hotel} (if given) / Similar".
     const accommodationBlock = {
       type: "table",
       headerHTML: `<tr><th>Place</th><th>Nights</th><th>Hotel</th></tr>`,
-      rowsHTML: q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+h.hotel+'</td></tr>'),
+      rowsHTML: q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+hotelPropertyLabel(h.hotel,h.hotelAlt)+'</td></tr>'),
     };
     const accommodationHeading = `<h2>Accommodation</h2>`;
 
@@ -433,12 +497,14 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     const monumentsHeadingBlock = q.showMonuments ? `<h2>${q.monumentNote || "Monument Fees"}</h2>` : "";
     const monumentsBlock = q.showMonuments ? {
       type: "table",
-      headerHTML: `<tr><th>Monument</th><th>Fee</th></tr>`,
+      headerHTML: `<tr><th>${(q.monumentColLabels&&q.monumentColLabels.name)||"Monument"}</th><th>${(q.monumentColLabels&&q.monumentColLabels.fee)||"Fee"}</th></tr>`,
       rowsHTML: q.monuments.map(m=>'<tr><td>'+m.name+'</td><td>'+m.fee+'</td></tr>'),
     } : null;
 
-    // 1.5: Remarks -- single free-text field, optional display, placed
-    // directly below the (now relocated) Monument Fees section.
+    // 1.5: Remarks -- single free-text field, optional display. Item 12:
+    // moved to sit below Cost Per Pax (the price table), per direct
+    // instruction -- was previously placed right after Monument Fees,
+    // above pricing.
     const remarksHeadingBlock = q.showRemarks ? `<h2>${q.remarksHeading || "Remarks"}</h2>` : "";
     const remarksBlock = (q.showRemarks && q.remarks) ? `<p style="font-size:9.5pt;white-space:pre-wrap;">${q.remarks}</p>` : "";
 
@@ -478,8 +544,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         ...(q.showTrains && trainsBlock ? [trainsHeadingBlock, trainsBlock] : []),
         accommodationHeading, accommodationBlock,
         ...(monumentsBlock ? [monumentsHeadingBlock, monumentsBlock] : []),
-        ...(q.showRemarks && remarksBlock ? [remarksHeadingBlock, remarksBlock] : []),
         priceHeadingBlock, priceBlock,
+        ...(q.showRemarks && remarksBlock ? [remarksHeadingBlock, remarksBlock] : []),
         inclusionsBlock,
         closingBlock,
       ],
@@ -546,6 +612,50 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   const secTitle = (t) => (
     <div style={{ fontSize:11, fontWeight:700, color:G.white, background:G.navy,
       padding:"5px 10px", borderRadius:5, marginBottom:8, marginTop:16, letterSpacing:"0.5px" }}>{t}</div>
+  );
+
+  // Item 9: flights/trains now render as a real table with column
+  // headers -- matching every other table in this document (Day-wise
+  // Itinerary, Accommodation, Monuments) -- and every entry carries its
+  // own optional Remark field. Item 13: rows are draggable to reorder,
+  // same shared listDragIndex/reorderListItem pattern as the rest of
+  // the document. Flights and trains are identical in shape, so this
+  // one render function covers both rather than risking the two
+  // diverging from each other over time.
+  const TravelTable = ({ listKey, dayPlaceholder, detailPlaceholder }) => (
+    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
+      <thead>
+        <tr style={{ background:G.gray100 }}>
+          {(!readOnly ? [""] : []).concat(["Day","Detail","Remark",""]).map((h,hi)=>(
+            <th key={hi} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
+              fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {q[listKey].map((item,i)=>(
+          <tr key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current={key:listKey,index:i}}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem(listKey,i)}
+            style={{ cursor:readOnly?"default":"grab" }}>
+            {!readOnly && <td style={{ padding:"3px 2px", width:18, textAlign:"center" }}>
+              <span style={{color:G.gray400,fontSize:14}} title="Drag to reorder">⠿</span></td>}
+            <td style={{ padding:"3px 4px", width:120 }}>
+              <input style={{...inputStyle,padding:"3px 5px"}} value={item.day||""}
+                onChange={e=>updateList(listKey,i,{...item,day:e.target.value})} placeholder={dayPlaceholder}/></td>
+            <td style={{ padding:"3px 4px" }}>
+              <input style={{...inputStyle,padding:"3px 5px"}} value={item.detail||""}
+                onChange={e=>updateList(listKey,i,{...item,detail:e.target.value})} placeholder={detailPlaceholder}/></td>
+            <td style={{ padding:"3px 4px", width:160 }}>
+              <input style={{...inputStyle,padding:"3px 5px"}} value={item.remark||""}
+                onChange={e=>updateList(listKey,i,{...item,remark:e.target.value})} placeholder="Optional remark"/></td>
+            <td style={{ padding:"3px 4px", width:24, textAlign:"center" }}>
+              <span style={{ cursor:"pointer", color:G.gray400, fontSize:13 }}
+                onClick={()=>removeListItem(listKey,i)}>✕</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 
   return (
@@ -686,15 +796,22 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
             <thead>
               <tr style={{ background:G.gray100 }}>
-                {(q.showItinDate ? ["Day","Date","Movement / Itinerary","Breakfast","Lunch","Dinner",""] : ["Day","Movement / Itinerary","Breakfast","Lunch","Dinner",""]).map(h=>(
-                  <th key={h} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
+                {(!readOnly ? [""] : []).concat(q.showItinDate ? ["Day","Date","Movement / Itinerary","Breakfast","Lunch","Dinner",""] : ["Day","Movement / Itinerary","Breakfast","Lunch","Dinner",""]).map((h,hi)=>(
+                  <th key={hi} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
                     fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
+              {/* Item 13: itinerary rows are now draggable to reorder, same
+                  shared listDragIndex/reorderListItem pattern as every
+                  other reorderable list in this document. */}
               {q.itinerary.map((row,i)=>(
-                <tr key={i}>
+                <tr key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current={key:"itinerary",index:i}}
+                  onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem("itinerary",i)}
+                  style={{ cursor:readOnly?"default":"grab" }}>
+                  {!readOnly && <td style={{ padding:"3px 2px", width:18, textAlign:"center" }}>
+                    <span style={{color:G.gray400,fontSize:14}} title="Drag to reorder">⠿</span></td>}
                   <td style={{ padding:"3px 4px", width:52 }}>
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.day}
                       onChange={e=>updateItinerary(i,"day",e.target.value)}/></td>
@@ -733,17 +850,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
           {q.showFlights && (
             <>
-              {q.flights.map((item,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
-                  <input style={{...inputStyle,width:110,flex:"0 0 110px"}} value={item.day||""}
-                    onChange={e=>updateList("flights",i,{...item,day:e.target.value})} placeholder="Day 02 / 12 Oct"/>
-                  <input style={{...inputStyle,flex:1}} value={item.detail||""}
-                    onChange={e=>updateList("flights",i,{...item,detail:e.target.value})} placeholder="e.g. Delhi / Varanasi — 6E 2134"/>
-                  <span style={{ cursor:"pointer", color:G.gray400 }}
-                    onClick={()=>removeListItem("flights",i)}>✕</span>
-                </div>
-              ))}
+              <TravelTable listKey="flights" dayPlaceholder="Day 02 / 12 Oct" detailPlaceholder="e.g. Delhi / Varanasi — 6E 2134"/>
               <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("flights")}>+ Add Flight</button>
             </>
           )}
@@ -758,17 +865,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
           {q.showTrains && (
             <>
-              {q.trains.map((item,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:12, color:G.gray400, minWidth:16 }}>{i+1}.</span>
-                  <input style={{...inputStyle,width:110,flex:"0 0 110px"}} value={item.day||""}
-                    onChange={e=>updateList("trains",i,{...item,day:e.target.value})} placeholder="Day 03 / 13 Oct"/>
-                  <input style={{...inputStyle,flex:1}} value={item.detail||""}
-                    onChange={e=>updateList("trains",i,{...item,detail:e.target.value})} placeholder="e.g. Delhi / Agra — Shatabdi Express"/>
-                  <span style={{ cursor:"pointer", color:G.gray400 }}
-                    onClick={()=>removeListItem("trains",i)}>✕</span>
-                </div>
-              ))}
+              <TravelTable listKey="trains" dayPlaceholder="Day 03 / 13 Oct" detailPlaceholder="e.g. Delhi / Agra — Shatabdi Express"/>
               <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("trains")}>+ Add Train</button>
             </>
           )}
@@ -778,15 +875,25 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
             <thead>
               <tr style={{ background:G.gray100 }}>
-                {["Place","Nights","Hotel / Property",""].map(h=>(
-                  <th key={h} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
+                {(!readOnly ? [""] : []).concat(["Place","Nights","Hotel Name","Alt Hotel (optional)",""]).map((h,hi)=>(
+                  <th key={hi} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
                     fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
+              {/* Item 10: hotel name and alt hotel are now separate
+                  fields -- the printed document composes them into
+                  "{hotel name} / {alt hotel} (if given) / Similar"
+                  itself (hotelPropertyLabel), rather than relying on the
+                  user to type that whole phrase by hand every time.
+                  Item 13: draggable to reorder. */}
               {q.hotels.map((row,i)=>(
-                <tr key={i}>
+                <tr key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current={key:"hotels",index:i}}
+                  onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem("hotels",i)}
+                  style={{ cursor:readOnly?"default":"grab" }}>
+                  {!readOnly && <td style={{ padding:"3px 2px", width:18, textAlign:"center" }}>
+                    <span style={{color:G.gray400,fontSize:14}} title="Drag to reorder">⠿</span></td>}
                   <td style={{ padding:"3px 4px" }}>
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.place}
                       onChange={e=>updateHotel(i,"place",e.target.value)} placeholder="e.g. Agra"/></td>
@@ -796,7 +903,11 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                   <td style={{ padding:"3px 4px" }}>
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.hotel}
                       onChange={e=>updateHotel(i,"hotel",e.target.value)}
-                      placeholder="e.g. Saura / Golden Tulip / Similar"/></td>
+                      placeholder="e.g. Saura"/></td>
+                  <td style={{ padding:"3px 4px" }}>
+                    <input style={{...inputStyle,padding:"3px 5px"}} value={row.hotelAlt||""}
+                      onChange={e=>updateHotel(i,"hotelAlt",e.target.value)}
+                      placeholder="e.g. Golden Tulip"/></td>
                   <td style={{ padding:"3px 4px", width:24, textAlign:"center" }}>
                     <span style={{ cursor:"pointer", color:G.gray400 }}
                       onClick={()=>setQ(p=>({...p,hotels:p.hotels.filter((_,idx)=>idx!==i)}))}>✕</span>
@@ -805,6 +916,11 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               ))}
             </tbody>
           </table>
+          {q.hotels.some(r=>r.hotel) && (
+            <div style={{ fontSize:10.5, color:G.gray600, marginBottom:8 }}>
+              Will print as: {q.hotels.filter(r=>r.hotel).map((r,i)=><span key={i}>{i>0&&"; "}<strong>{hotelPropertyLabel(r.hotel,r.hotelAlt)}</strong></span>)}
+            </div>
+          )}
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addHotelRow}>+ Add Hotel</button>
 
           {/* ── MONUMENTS ── */}
@@ -821,31 +937,55 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                 <label style={labelStyle}>Section note</label>
                 <input style={inputStyle} value={q.monumentNote} onChange={e=>setF("monumentNote",e.target.value)}/>
               </div>
-              {q.monuments.map((m,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
-                  <input style={{...inputStyle,flex:2}} value={m.name}
-                    onChange={e=>updateMonument(i,"name",e.target.value)} placeholder="Monument name"/>
-                  <input style={{...inputStyle,flex:1}} value={m.fee}
-                    onChange={e=>updateMonument(i,"fee",e.target.value)} placeholder="₹ 750"/>
-                  <span style={{ cursor:"pointer", color:G.gray400 }}
-                    onClick={()=>setQ(p=>({...p,monuments:p.monuments.filter((_,idx)=>idx!==i)}))}>✕</span>
-                </div>
-              ))}
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
+                <thead>
+                  <tr style={{ background:G.gray100 }}>
+                    {!readOnly && <th style={{ width:18 }}/>}
+                    <th style={{ padding:"5px 6px", textAlign:"left", fontSize:10, fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>
+                      {editingMonumentHeaders
+                        ? <input style={{...inputStyle,padding:"2px 4px",fontSize:10}} value={q.monumentColLabels.name}
+                            onChange={e=>setF("monumentColLabels",{...q.monumentColLabels,name:e.target.value})}/>
+                        : q.monumentColLabels.name}
+                    </th>
+                    <th style={{ padding:"5px 6px", textAlign:"left", fontSize:10, fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>
+                      {editingMonumentHeaders
+                        ? <input style={{...inputStyle,padding:"2px 4px",fontSize:10}} value={q.monumentColLabels.fee}
+                            onChange={e=>setF("monumentColLabels",{...q.monumentColLabels,fee:e.target.value})}/>
+                        : q.monumentColLabels.fee}
+                    </th>
+                    <th style={{ padding:"5px 6px", textAlign:"left", fontSize:10, fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>
+                      {!readOnly && (
+                        <span style={{ cursor:"pointer" }} title="Edit column headings"
+                          onClick={()=>setEditingMonumentHeaders(v=>!v)}>{editingMonumentHeaders ? "✓" : "✏"}</span>
+                      )}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Item 13: draggable to reorder, same shared pattern. */}
+                  {q.monuments.map((m,i)=>(
+                    <tr key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current={key:"monuments",index:i}}
+                      onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem("monuments",i)}
+                      style={{ cursor:readOnly?"default":"grab" }}>
+                      {!readOnly && <td style={{ padding:"3px 2px", width:18, textAlign:"center" }}>
+                        <span style={{color:G.gray400,fontSize:14}} title="Drag to reorder">⠿</span></td>}
+                      <td style={{ padding:"3px 4px" }}>
+                        <input style={{...inputStyle,padding:"3px 5px"}} value={m.name}
+                          onChange={e=>updateMonument(i,"name",e.target.value)} placeholder="Monument name"/></td>
+                      <td style={{ padding:"3px 4px" }}>
+                        <input style={{...inputStyle,padding:"3px 5px"}} value={m.fee}
+                          onChange={e=>updateMonument(i,"fee",e.target.value)} placeholder="₹ 750"/></td>
+                      <td style={{ padding:"3px 4px", width:24, textAlign:"center" }}>
+                        <span style={{ cursor:"pointer", color:G.gray400 }}
+                          onClick={()=>setQ(p=>({...p,monuments:p.monuments.filter((_,idx)=>idx!==i)}))}>✕</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               <button className="btn btn-ghost" style={{ fontSize:11 }}
                 onClick={()=>{saveScrollForRestore();setQ(p=>({...p,monuments:[...p.monuments,{name:"",fee:""}]}));}}>+ Add</button>
             </>
-          )}
-
-          {/* ── REMARKS ── */}
-          {secTitle("📝 Remarks")}
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
-              <input type="checkbox" checked={q.showRemarks}
-                onChange={e=>setToggle("showRemarks",e.target.checked)}/> Show remarks in quotation
-            </label>
-          </div>
-          {q.showRemarks && (
-            <RichTextEditor value={q.remarks} onChange={v=>setF("remarks",v)}/>
           )}
 
           {/* ── PRICE SLABS ── */}
@@ -876,12 +1016,27 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           ))}
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addSlab}>+ Add Slab</button>
 
+          {/* ── REMARKS ── */}
+          {/* Item 12: moved to sit below Cost Per Pax (Price Slabs),
+              per direct instruction -- was previously right after
+              Monument Fees, above the pricing section. */}
+          {secTitle("📝 Remarks")}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+            <label style={{ fontSize:12, color:G.gray800, display:"flex", alignItems:"center", gap:6 }}>
+              <input type="checkbox" checked={q.showRemarks}
+                onChange={e=>setToggle("showRemarks",e.target.checked)}/> Show remarks in quotation
+            </label>
+          </div>
+          {q.showRemarks && (
+            <RichTextEditor value={q.remarks} onChange={v=>setF("remarks",v)}/>
+          )}
+
           {/* ── INCLUDES / EXCLUDES ── */}
           {["includes","excludes"].map(key=>(
             <div key={key}>
               {secTitle(key==="includes"?"✅ Cost Includes":"❌ Cost Does Not Include")}
               {q[key].map((item,i)=>(
-                <div key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current=i}
+                <div key={i} draggable={!readOnly} onDragStart={()=>listDragIndex.current={key,index:i}}
                   onDragOver={e=>e.preventDefault()} onDrop={()=>reorderListItem(key,i)}
                   style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6, cursor:readOnly?"default":"grab" }}>
                   {!readOnly && <span style={{color:G.gray400,fontSize:14,flexShrink:0}} title="Drag to reorder">⠿</span>}

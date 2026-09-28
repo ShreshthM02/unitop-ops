@@ -41,13 +41,24 @@ describe('extractHotelsFromCostSheetDays: consolidates consecutive same-hotel da
       { movement: 'SXR-LEH', hotel: 'Hotel B' },
     ]);
     expect(result).toEqual([
-      { place: 'SXR', nights: 2, hotel: 'Hotel A' },
-      { place: 'LEH', nights: 1, hotel: 'Hotel B' },
+      { place: 'SXR', nights: 2, hotel: 'Hotel A', hotelAlt: '' },
+      { place: 'LEH', nights: 1, hotel: 'Hotel B', hotelAlt: '' },
     ]);
   });
   it('skips days with no hotel set', () => {
     const result = extractHotelsFromCostSheetDays([{ movement: 'DEL-SXR', hotel: '' }, { movement: 'SXR-LEH', hotel: 'Hotel B' }]);
-    expect(result).toEqual([{ place: 'LEH', nights: 1, hotel: 'Hotel B' }]);
+    expect(result).toEqual([{ place: 'LEH', nights: 1, hotel: 'Hotel B', hotelAlt: '' }]);
+  });
+  it('item 10: carries the alt hotel through, and only groups consecutive days when both hotel and alt hotel match', () => {
+    const result = extractHotelsFromCostSheetDays([
+      { movement: 'DEL-AGR', hotel: 'Hotel A', hotelAlt: 'Hotel A2' },
+      { movement: 'AGR-JAI', hotel: 'Hotel A', hotelAlt: 'Hotel A2' },
+      { movement: 'JAI-DEL', hotel: 'Hotel A', hotelAlt: '' },
+    ]);
+    expect(result).toEqual([
+      { place: 'AGR', nights: 2, hotel: 'Hotel A', hotelAlt: 'Hotel A2' },
+      { place: 'DEL', nights: 1, hotel: 'Hotel A', hotelAlt: '' },
+    ]);
   });
 });
 

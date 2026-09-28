@@ -86,6 +86,17 @@ export function mealPlanLabel(mealPlan, taxInclusive) {
   return mealPlan.toUpperCase().endsWith("AI") ? mealPlan : `${mealPlan}AI`;
 }
 
+// Item 10: Quotation's accommodation section displays a hotel/property
+// as "{hotel name} / {alt hotel} (if available) / Similar" -- the alt
+// hotel segment only appears when one's actually on file, but "/
+// Similar" is always appended (that's the whole point of the phrasing:
+// naming the intended property/properties while leaving room for an
+// equivalent substitute).
+export function hotelPropertyLabel(hotel, hotelAlt) {
+  if (!hotel) return "";
+  return hotelAlt ? `${hotel} / ${hotelAlt} / Similar` : `${hotel} / Similar`;
+}
+
 export const nextInvoiceNo = (prefix, existing) => {
   const nums = existing.filter(n=>n.startsWith(prefix)).map(n=>parseInt(n.split("-").pop())||0);
   return `${prefix}-${new Date().getFullYear()}-${String(Math.max(0,...nums)+1).padStart(3,"0")}`;
@@ -1369,11 +1380,15 @@ export function extractHotelsFromCostSheetDays(csDays) {
   (csDays || []).forEach(d => {
     if (!d.hotel) return;
     const last = hotels[hotels.length - 1];
-    if (last && last.hotel === d.hotel) {
+    // Item 10: carries the Cost Sheet's own alt hotel through too, so
+    // Quotation's accommodation section doesn't lose it on auto-pull --
+    // grouped consecutive days only when BOTH the hotel and its alt
+    // agree, same as the existing hotel-only grouping did.
+    if (last && last.hotel === d.hotel && (last.hotelAlt || "") === (d.hotelAlt || "")) {
       last.nights = (parseInt(last.nights) || 0) + 1;
     } else {
       const place = (d.movement || "").split("-").pop().trim() || d.hotel;
-      hotels.push({ place, nights: 1, hotel: d.hotel });
+      hotels.push({ place, nights: 1, hotel: d.hotel, hotelAlt: d.hotelAlt || "" });
     }
   });
   return hotels;
@@ -2188,6 +2203,58 @@ export function formatDateDMY(isoDate) {
 // fallback behaviour as formatDateDMY itself.
 export function formatDateSlash(isoDate) {
   return formatDateDMY(isoDate).replace(/-/g, "/");
+}
+
+// Direct request, Quotation's itinerary Date column specifically:
+// "{day}, dd/mm/yyyy" (e.g. "Mon, 12/10/2026") -- a different, more
+// specific format than the plain dd/mm/yyyy formatDateSlash gives
+// everywhere else. Parses y/m/d manually (not `new Date(isoDate)`
+// directly) so the weekday can never shift a day off because of the
+// browser's local timezone interpreting a bare "YYYY-MM-DD" as UTC
+// midnight.
+export function formatDateDayDMY(isoDate) {
+  if (!isoDate || typeof isoDate !== "string") return "";
+  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+  return `${dayName}, ${m[3]}/${m[2]}/${m[1]}`;
+}
+
+// Adds `n` whole days to an ISO "YYYY-MM-DD" date string, returning
+// another ISO date string. Used to chronologically cascade-fill the
+// itinerary's later day rows once one row's date is set (Quotation,
+// item 8) -- built on plain y/m/d arithmetic via the Date object (which
+// correctly rolls over month/year boundaries) rather than string
+// splicing, and deliberately constructed from local y/m/d components
+// (not `new Date(isoDate)`) so it isn't shifted a day off by timezone
+// interpretation of a bare date string.
+// Quotation's itinerary Date column (item 8): once one row's date is set
+// (manually, or auto-filled from the query's confirmed travel date), the
+// later rows chronologically cascade-fill from it -- one calendar day
+// per itinerary row -- while staying individually editable afterward
+// (a row that already carries its own date, distinct from what the
+// cascade would have produced, is left alone rather than overwritten on
+// every subsequent edit).
+export function cascadeItineraryDates(itinerary, changedIndex, newDate) {
+  return itinerary.map((row, idx) => {
+    if (idx === changedIndex) return { ...row, date: newDate };
+    if (idx < changedIndex) return row;
+    if (row.date) return row; // already has its own real date -- never overwritten
+    return isIsoDateString(newDate) ? { ...row, date: addDaysToIsoDate(newDate, idx - changedIndex) } : row;
+  });
+}
+
+export function addDaysToIsoDate(isoDate, n) {
+  if (!isoDate || typeof isoDate !== "string") return "";
+  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  d.setDate(d.getDate() + n);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 // ─── WORKFLOW PROGRESS (real auto-detection, not pipeline-stage guessing) ──

@@ -73,11 +73,11 @@ describe('Quotation feedback batch (2026-07-30): 1.1-1.6', () => {
     expect(labels).toEqual(['🏨 Accommodation', '🏛 Monument Fees', '💰 Cost Per Person']);
   });
 
-  it('1.5: Remarks section exists between Monument Fees and Cost Per Person, off by default', async () => {
+  it('1.5 (superseded by item 12, 2026-09-28): Remarks section exists, now below Cost Per Person rather than above it', async () => {
     await renderQuotation();
     expect(screen.getByText('📝 Remarks')).toBeTruthy();
     const labels = screen.getAllByText(/🏛 Monument Fees|📝 Remarks|💰 Cost Per Person/).map(el => el.textContent);
-    expect(labels).toEqual(['🏛 Monument Fees', '📝 Remarks', '💰 Cost Per Person']);
+    expect(labels).toEqual(['🏛 Monument Fees', '💰 Cost Per Person', '📝 Remarks']);
     fireEvent.click(screen.getByText(/Show remarks/).closest('label').querySelector('input'));
     const editors = document.querySelectorAll('[contenteditable="true"]');
     const editor = editors[1]; // [0]=Re:Line, [1]=Remarks, [2]=Closing, [3]=Sign-off
