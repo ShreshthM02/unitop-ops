@@ -176,3 +176,69 @@ describe('item 2 (real fix): realtimeClient now actually receives the JWT, not j
     expect(occurrences).toBe(2); // once in login(), once in validateSession()
   });
 });
+
+describe('item 4 robustness: a 401 on an authenticated request is surfaced, not silently swallowed as empty data', () => {
+  // Real root cause behind "all users/team vanished": staff_login()/
+  // validate_session() issue a JWT good for only 12 hours; nothing
+  // refreshed it proactively, so a stale JWT just 401'd forever and the
+  // wrapper resolved {data:null, error} like any ordinary failure --
+  // indistinguishable, to the rest of the app, from "there's genuinely
+  // nothing here". onSessionExpired is the safety net: registered once
+  // by App.jsx, fired the moment any authenticated request 401s.
+  let originalFetch;
+  beforeEach(() => { originalFetch = global.fetch; localStorage.clear(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  const loginThenExpire = async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('rpc/staff_login')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          success: true, token: 'tok', jwt: 'stale.jwt', expiry: '2026-12-01T00:00:00Z',
+          user: { id: 'staff-1', name: 'Priya', role: 'sales' },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    await db.auth.login('priya', 'whatever');
+  };
+
+  it('fires the registered onSessionExpired callback when a plain read comes back 401', async () => {
+    await loginThenExpire();
+    let fired = false;
+    db.auth.onSessionExpired(() => { fired = true; });
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 401, text: async () => 'JWT expired' }));
+    await db.from('queries').select('*');
+    expect(fired).toBe(true);
+  });
+
+  it('fires on insert/update/delete too, not just reads', async () => {
+    for (const op of ['insert', 'update', 'delete']) {
+      await loginThenExpire();
+      let fired = false;
+      db.auth.onSessionExpired(() => { fired = true; });
+      global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 401, text: async () => 'JWT expired' }));
+      if (op === 'insert') await db.from('queries').insert({ id: 'x' });
+      if (op === 'update') await db.from('queries').update({ notes: 'x' });
+      if (op === 'delete') await db.from('queries').delete();
+      expect(fired).toBe(true);
+    }
+  });
+
+  it('does NOT fire on an ordinary non-auth error (e.g. a 500 or a validation 400) -- only a real 401', async () => {
+    await loginThenExpire();
+    let fired = false;
+    db.auth.onSessionExpired(() => { fired = true; });
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 400, text: async () => 'bad request' }));
+    await db.from('queries').select('*');
+    expect(fired).toBe(false);
+  });
+
+  it('clears the stored session on a 401 so a stale JWT is never resent', async () => {
+    await loginThenExpire();
+    expect(localStorage.getItem('unitop_session')).not.toBeNull();
+    db.auth.onSessionExpired(() => {});
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 401, text: async () => 'JWT expired' }));
+    await db.from('queries').select('*');
+    expect(localStorage.getItem('unitop_session')).toBeNull();
+  });
+});

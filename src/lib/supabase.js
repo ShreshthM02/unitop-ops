@@ -35,6 +35,31 @@ export const _supa = (() => {
   // Auth token storage
   let _session = null;
 
+  // Item 4 robustness fix (root cause investigated below, see login()):
+  // the JWT staff_login()/validate_session() issue is only good for 12
+  // hours, and until now nothing ever refreshed it proactively -- a tab
+  // left open past that (overnight, over a weekend) kept sending an
+  // expired JWT on every request forever, PostgREST correctly rejected
+  // every one with 401, and this wrapper's `then()`/insert/update/
+  // delete never surfaced that: they just resolved `{data:null,
+  // error}` like any other failure, which most call sites in the app
+  // render as "no data" rather than "you're logged out" -- exactly the
+  // "everyone/everything vanished" symptom. `onSessionExpired` lets the
+  // app register a single callback (App.jsx forces the login screen
+  // with it) so a 401 caused by a stale JWT is never silently
+  // mistaken for "there's nothing here". This does not replace fixing
+  // the actual staleness -- see App.jsx's periodic validateSession()
+  // refresh -- it's the safety net for whenever that isn't enough
+  // (session genuinely revoked, clock skew, etc).
+  let _onSessionExpired = null;
+  const noteIfExpired = (status) => {
+    if (status === 401 && _session) {
+      _session = null;
+      try { localStorage.removeItem("unitop_session"); } catch(e) {}
+      if (typeof _onSessionExpired === "function") _onSessionExpired();
+    }
+  };
+
   const authHeaders = () => ({
     "apikey": key,
     // Was `_session?.access_token`, a field that never existed on the
@@ -94,6 +119,7 @@ export const _supa = (() => {
           method:"POST", headers:authHeaders(),
           body: JSON.stringify(Array.isArray(rows)?rows:[rows])
         });
+        noteIfExpired(r.status);
         const data = r.ok ? await r.json().catch(()=>[]) : null;
         return { data, error: r.ok ? null : { message: await r.text() } };
       },
@@ -103,6 +129,7 @@ export const _supa = (() => {
           headers:{...authHeaders(), "Prefer":"resolution=merge-duplicates,return=representation"},
           body: JSON.stringify(Array.isArray(rows)?rows:[rows])
         });
+        noteIfExpired(r.status);
         const data = r.ok ? await r.json().catch(()=>[]) : null;
         return { data, error: r.ok ? null : { message: await r.text() } };
       },
@@ -111,6 +138,7 @@ export const _supa = (() => {
         const r = await fetch(`${url}/rest/v1/${table}${filterStr}`, {
           method:"PATCH", headers:authHeaders(), body:JSON.stringify(row)
         });
+        noteIfExpired(r.status);
         const data = r.ok ? await r.json().catch(()=>[]) : null;
         return { data, error: r.ok ? null : { message: await r.text() } };
       },
@@ -119,6 +147,7 @@ export const _supa = (() => {
         const r = await fetch(`${url}/rest/v1/${table}${filterStr}`, {
           method:"DELETE", headers:authHeaders()
         });
+        noteIfExpired(r.status);
         return { data: null, error: r.ok ? null : { message: await r.text() } };
       },
       then: async (resolve, reject) => {
@@ -126,6 +155,7 @@ export const _supa = (() => {
           const filterStr = _filters.length ? "&" + _filters.join("&") : "";
           const qs = (_query||"?select=*") + filterStr + _order + _limit;
           const r = await fetch(`${url}/rest/v1/${table}${qs}`, { headers: authHeaders() });
+          noteIfExpired(r.status);
           const data = r.ok ? await r.json() : null;
           const error = r.ok ? null : { message: await r.text() };
           resolve({ data, error });
@@ -136,6 +166,12 @@ export const _supa = (() => {
   };
 
   const auth = {
+    // Registers the single callback fired when a request comes back 401
+    // with a session that thought it was still logged in -- see
+    // noteIfExpired() above. App.jsx uses this to drop back to the
+    // login screen instead of leaving the user staring at silently
+    // empty data.
+    onSessionExpired: (cb) => { _onSessionExpired = cb; },
     // Custom auth via Supabase RPC functions (no email required)
     login: async (username, password) => {
       try {
