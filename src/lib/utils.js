@@ -280,7 +280,31 @@ export function applyQueryRealtimeEvent(queries, eventType, newRow, oldRow) {
   const mapped = mapDbQueryRow(newRow);
   const idx = queries.findIndex(q => q.id === mapped.id);
   if (idx === -1) {
-    // New query from another user -- no local audit/remarks history yet.
+    // Real, confirmed bug (reported as "a blank new query appears in the
+    // Dashboard's Recent Queries widget when editing any other query",
+    // observed specifically during multi-user activity and always cleared
+    // by a refresh -- meaning it was never a real saved row, purely a
+    // client-side illusion): this branch used to fire identically for
+    // BOTH "INSERT" and "UPDATE" events, treating any unrecognized id as
+    // "a brand-new query from another user" and prepending it. That
+    // assumption only holds for a genuine INSERT. An UPDATE event for an
+    // id this client has never seen locally does not mean the query is
+    // new -- it means THIS CLIENT missed that query's original INSERT
+    // event entirely, most commonly because its Realtime websocket
+    // briefly disconnected and reconnected (a backgrounded/idle browser
+    // tab, a network blip) -- Supabase Realtime never backfills events
+    // missed during a disconnect gap, so the client's local `queries`
+    // never got that row in the first place. Synthesizing a "new" local
+    // entry purely from that UPDATE's payload built a record with no
+    // local audit/remarks history and whatever fields that one UPDATE
+    // happened to touch -- which is exactly what showed up looking like
+    // a "blank" phantom entry. An UPDATE in this situation is now simply
+    // ignored: the out-of-sync client has no reliable full picture of
+    // that row to show, and it will appear correctly, in the right order,
+    // the next time `queries` is actually reloaded (a refresh, or the
+    // next full navigation) -- consistent with what was actually
+    // observed. Only a genuine INSERT ever adds a new entry here.
+    if (eventType !== "INSERT") return queries;
     return [{ ...mapped, audit: [], remarks: [] }, ...queries];
   }
   // Existing query updated -- keep local audit/remarks (a plain `queries`

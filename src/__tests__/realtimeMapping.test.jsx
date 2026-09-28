@@ -65,8 +65,16 @@ describe('applyQueryRealtimeEvent (pure reducer, no live connection needed)', ()
     expect(result.length).toBe(2);
   });
 
-  it('UPDATE for a query not yet in local state adds it (covers a client that missed the INSERT)', () => {
+  it('Bug fix (reported as "a blank new query appears in the Recent Queries widget when editing any other query", cleared by a refresh, seen during multi-user activity): UPDATE for a query not yet in local state is now IGNORED, not synthesized into a new entry. An UPDATE for an unrecognized id means this client missed that row\'s original INSERT (most commonly a Realtime websocket reconnect gap, which never backfills missed events) -- fabricating a local entry from just that one UPDATE\'s payload, with no real audit/remarks history, is exactly what showed up looking like a blank phantom query. The previous version of this test asserted the old (buggy) behavior as correct; it no longer is.', () => {
     const result = applyQueryRealtimeEvent(existingQueries, 'UPDATE', dbRow, { id: 'UTQ-2026-070' });
+    expect(result.length).toBe(2);
+    expect(result.some(q => q.id === 'UTQ-2026-070')).toBe(false);
+    // Existing queries are completely untouched.
+    expect(result).toEqual(existingQueries);
+  });
+
+  it('INSERT for a query not yet in local state still adds it -- only UPDATE is now ignored on a miss, not INSERT', () => {
+    const result = applyQueryRealtimeEvent(existingQueries, 'INSERT', dbRow, null);
     expect(result.length).toBe(3);
     expect(result.some(q => q.id === 'UTQ-2026-070')).toBe(true);
   });
