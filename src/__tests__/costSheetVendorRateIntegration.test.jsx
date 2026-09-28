@@ -66,8 +66,8 @@ describe('CostSheet: real vendor-linked hotel picker, replacing free text', () =
     const hotelInput = screen.getAllByPlaceholderText('Primary hotel…')[0];
     fireEvent.focus(hotelInput);
     fireEvent.mouseDown(screen.getByText(/Test Hotel/));
-    await waitFor(() => expect(screen.getByText('Deluxe (CP)')).toBeTruthy());
-    fireEvent.change(screen.getByText('Deluxe (CP)').closest('select'), { target: { value: 'r1' } });
+    await waitFor(() => expect(screen.getByText('Deluxe (CPAI)')).toBeTruthy());
+    fireEvent.change(screen.getByText('Deluxe (CPAI)').closest('select'), { target: { value: 'r1' } });
     // Hotel Net PP = double_rate / 2 = 2500 (tax-inclusive already); Single
     // Supp is now set to that exact same 2500 -- direct instruction,
     // deliberately ignoring the rate's own single_rate (4000) entirely.
@@ -92,9 +92,9 @@ describe('CostSheet: real vendor-linked hotel picker, replacing free text', () =
     const hotelInput = screen.getAllByPlaceholderText('Primary hotel…')[0];
     fireEvent.focus(hotelInput);
     fireEvent.mouseDown(screen.getByText(/Test Hotel/));
-    await waitFor(() => expect(screen.getByText('Winter Only (CP)')).toBeTruthy());
-    expect(screen.getByText('Evergreen Rate (CP)')).toBeTruthy(); // no date range -- always included
-    expect(screen.queryByText('Summer Only (CP)')).toBeFalsy(); // outside the query's travel date
+    await waitFor(() => expect(screen.getByText('Winter Only (CPAI)')).toBeTruthy());
+    expect(screen.getByText('Evergreen Rate (CPAI)')).toBeTruthy(); // no date range -- always included
+    expect(screen.queryByText('Summer Only (CPAI)')).toBeFalsy(); // outside the query's travel date
     vi.doUnmock('../lib/supabase.js');
   });
 
@@ -111,7 +111,7 @@ describe('CostSheet: real vendor-linked hotel picker, replacing free text', () =
     const hotelInput = screen.getAllByPlaceholderText('Primary hotel…')[0];
     fireEvent.focus(hotelInput);
     fireEvent.mouseDown(screen.getByText(/Test Hotel/));
-    await waitFor(() => expect(screen.getByText('Any Season (CP)')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Any Season (CPAI)')).toBeTruthy());
     expect(screen.getByText(/No travel date set on this query/)).toBeTruthy();
     vi.doUnmock('../lib/supabase.js');
   });

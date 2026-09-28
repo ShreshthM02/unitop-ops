@@ -343,7 +343,19 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
           fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white }}
         value={open ? query : (selected ? getLabel(selected) : (fallbackDisplay || ""))}
         placeholder={selected ? getLabel(selected) : (fallbackDisplay || placeholder)}
-        onFocus={() => { setQuery(""); setOpen(true); }}
+        // Real, direct bug found here: focusing the input used to reset
+        // query to "" immediately, which -- since the input's displayed
+        // value switches to `query` the instant `open` becomes true --
+        // wiped the visible text the moment you clicked in, before you'd
+        // typed anything at all. For a free-text value (no matching
+        // vendor, e.g. a hotel not on file, or the last day's
+        // "Departure" placeholder) that meant every click to amend it
+        // cleared the whole field, forcing a full retype from scratch,
+        // with no cursor to place into existing text. Now seeds query
+        // with whatever's currently showing, so clicking in behaves like
+        // an ordinary text input -- existing text stays, cursor lands in
+        // it, and typing narrows the dropdown from there.
+        onFocus={() => { setQuery(selected ? getLabel(selected) : (fallbackDisplay || "")); setOpen(true); }}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Escape") setOpen(false);

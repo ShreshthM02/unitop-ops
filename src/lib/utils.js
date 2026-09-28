@@ -71,6 +71,21 @@ export function nightsDaysLabel(nights) {
   return n > 0 ? `${n}N/${n + 1}D` : "";
 }
 
+// Direct request: a tax-inclusive contracted rate should show its meal
+// plan with an "AI" suffix (e.g. "CPAI" for a tax-inclusive CP rate) so
+// it's visibly distinct from a tax-exclusive rate showing the plain code
+// ("CP"). Shared so Vendor Master's contracted-rate cards and the Cost
+// Sheet's rate picker (both display a vendor rate's meal plan) can never
+// disagree on the format.
+export function mealPlanLabel(mealPlan, taxInclusive) {
+  if (!mealPlan) return "";
+  if (!taxInclusive) return mealPlan;
+  // Some real imported rate sheets already have "AI" baked directly into
+  // the stored meal_plan text (a manual workaround from before this
+  // auto-suffix existed) -- guard against turning that into "CPAIAI".
+  return mealPlan.toUpperCase().endsWith("AI") ? mealPlan : `${mealPlan}AI`;
+}
+
 export const nextInvoiceNo = (prefix, existing) => {
   const nums = existing.filter(n=>n.startsWith(prefix)).map(n=>parseInt(n.split("-").pop())||0);
   return `${prefix}-${new Date().getFullYear()}-${String(Math.max(0,...nums)+1).padStart(3,"0")}`;
