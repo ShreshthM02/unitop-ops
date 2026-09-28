@@ -582,8 +582,21 @@ export async function buildPaginatedLetterheadDocument({
     });
     if (headerInner) renderedBlocks.unshift(headerInner);
     if (footerInner) renderedBlocks.push(footerInner);
+    // Wrapped in .print-page-flow purely as a marker for the on-screen
+    // preview (see PREVIEW_SCREEN_CSS below) -- it carries no print-time
+    // styling of its own, so real print/PDF output (which ignores
+    // @media screen entirely) is completely unaffected by this wrapper.
+    // Without it, the preview's grey page backdrop (added to simulate a
+    // real A4 sheet) has no white "page" element to paint on top of in
+    // this non-repeating case, since only the paginated branch below
+    // produces real .print-page divs -- that mismatch was item 14: grey
+    // areas in the live/print preview whenever "Header + Footer on all
+    // pages" is off, while the actual export/download (unaffected by
+    // @media screen) rendered correctly the whole time.
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>${headBlock}</head><body>
-      ${renderedBlocks.join("\n")}
+      <div class="print-page-flow">
+        ${renderedBlocks.join("\n")}
+      </div>
     </body></html>`;
   }
 
@@ -678,6 +691,24 @@ export function buildAddresseeBlock({ name, company, address, city, fontSizePt =
 //     them, which is what makes page breaks legible at a glance.
 // Because box-sizing is already border-box document-wide, the resulting
 // content box is exactly 182mm x 281mm -- identical geometry to print.
+//
+// .print-page-flow (item 14, 2026-09-28) handles the OTHER shape a built
+// document can take: buildPaginatedLetterheadDocument's non-repeating
+// branch ("Header + Footer on all pages" off, and not printing on
+// letterhead) never produces .print-page divs at all -- there's no
+// pre-computed pagination in that case, just one flowing document exactly
+// like a plain web page, with real page breaks left entirely to the
+// browser at print time. Styling only .print-page above meant that
+// perfectly correct document had literally nothing for the grey backdrop
+// rule to paint a white sheet on top of, so the preview showed the raw
+// content floating on grey -- the reported "grey areas" bug. Real
+// print/PDF output was never affected, since @media screen never applies
+// there. Unlike .print-page, this can't use a fixed height (there's no
+// measured per-page split to size it to) or overflow:hidden (that would
+// clip real content) -- it grows with its content instead, which reads on
+// screen as one continuous sheet rather than separate stacked pages. That
+// is a reasonable approximation for a preview whose whole point, in this
+// branch, is that page breaks aren't known yet.
 export const PREVIEW_SCREEN_CSS = `
 @media screen {
   html, body { background: #525659 !important; margin: 0 !important; padding: 0 !important; }
@@ -692,6 +723,15 @@ export const PREVIEW_SCREEN_CSS = `
     overflow: hidden !important;
   }
   .print-page:last-child { margin-bottom: 0 !important; }
+  .print-page-flow {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    box-sizing: border-box !important;
+    padding: ${PRINT_MARGIN.top} ${PRINT_MARGIN.right} ${PRINT_MARGIN.bottom} ${PRINT_MARGIN.left} !important;
+    margin: 0 auto !important;
+    background: #fff !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.45) !important;
+  }
 }
 `;
 
