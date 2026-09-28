@@ -25,6 +25,12 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
   const [newSvc, setNewSvc]     = useState({name:"",date:"",status:"requested"});
   const [adding, setAdding]     = useState(false);
   const dragIndex = useRef(null);
+  // Serializes every saveQueryServices call behind a promise chain (see
+  // persist() below) -- the real, reproducible cause of a real data-loss
+  // incident (tour file UT-3495, 2026-09-24: 4 confirmed hotel entries
+  // silently vanished after being renamed from the default placeholder
+  // rows and marked confirmed in quick succession).
+  const saveChainRef = useRef(Promise.resolve());
 
   useEffect(() => {
     loadQueryServices(db, query.id).then(loadedServices => {
@@ -38,7 +44,29 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
     });
   }, [query.id]);
 
-  const persist = (updated) => { setServices(updated); saveQueryServices(db, query.id, updated); };
+  // saveQueryServices does a whole-list sync: it upserts everything in the
+  // array it's given, then DELETES any DB row whose id isn't in that same
+  // array (see lib/utils.js) -- necessary so removing/reordering a service
+  // actually persists, but only safe if calls never overlap. Every field
+  // in this component (name, date, status, notes) fires its own persist()
+  // independently, and each was previously an unawaited, fire-and-forget
+  // saveQueryServices call -- so two calls fired close together (e.g.
+  // renaming a service, then immediately confirming its status) could run
+  // concurrently, each against its own snapshot of `services`. If the
+  // OLDER call's delete step happened to finish AFTER the newer call had
+  // already inserted something the older snapshot didn't know about, it
+  // silently deleted it. That's exactly what happened to tour file
+  // UT-3495 on 2026-09-24: 4 hotel entries, renamed from the default
+  // placeholders and marked confirmed in quick succession, vanished
+  // entirely (recovered from the audit trail + Cost Sheet data on
+  // 2026-09-28). Chaining every save through this ref guarantees each one
+  // fully completes -- both the upserts AND the delete -- before the next
+  // starts, so saves always apply in the same order they were fired, and
+  // the most recent (most complete) snapshot is what's left standing.
+  const persist = (updated) => {
+    setServices(updated);
+    saveChainRef.current = saveChainRef.current.then(() => saveQueryServices(db, query.id, updated));
+  };
 
   const addService = () => {
     if(!newSvc.name) return;
