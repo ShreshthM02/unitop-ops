@@ -348,7 +348,7 @@ export const _supa = (() => {
       // never appear here again, unlike a deactivated one (which stays
       // fully visible/manageable, the whole point of that being
       // reversible).
-      const r = await fetch(`${url}/rest/v1/staff?select=id,username,name,role,color,avatar,avatar_url,active,last_login,permissions&deleted_at=is.null&order=name.asc`, {
+      const r = await fetch(`${url}/rest/v1/staff_public?select=id,username,name,role,color,avatar,avatar_url,active,last_login,permissions&deleted_at=is.null&order=name.asc`, {
         headers: authHeaders(),
       });
       return r.ok ? await r.json() : [];

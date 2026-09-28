@@ -41,7 +41,13 @@ describe('exportAllData', () => {
     const db = makeDb({
       queries: [{ id: 'q1', groupName: 'Test' }],
       agents: [{ id: 'a1', company: 'Test Agent' }],
-      staff: [{ id: 's1', name: 'Priya', password_hash: 'secret-hash', session_token: 'secret-token', role: 'admin', active: true }],
+      // Mocked as staff_public (the real read target now, not the raw
+      // staff table) -- still carrying password_hash/session_token here
+      // deliberately, so the test below still proves the client-side
+      // STAFF_SAFE_COLUMNS filter is a genuine second layer, not the
+      // only thing keeping credentials out, even though the real
+      // staff_public view structurally can't return these columns at all.
+      staff_public: [{ id: 's1', name: 'Priya', password_hash: 'secret-hash', session_token: 'secret-token', role: 'admin', active: true }],
     });
     const clickSpy = vi.fn();
     const origCreateElement = document.createElement.bind(document);
@@ -68,7 +74,7 @@ describe('exportAllData', () => {
   });
 
   it('never includes staff credentials in the export, even though the raw staff table has them', async () => {
-    const db = makeDb({ staff: [{ id: 's1', name: 'Priya', password_hash: 'REAL-SECRET-HASH', session_token: 'REAL-SECRET-TOKEN', role: 'admin' }] });
+    const db = makeDb({ staff_public: [{ id: 's1', name: 'Priya', password_hash: 'REAL-SECRET-HASH', session_token: 'REAL-SECRET-TOKEN', role: 'admin' }] });
     const origCreateElement = document.createElement.bind(document); // captured BEFORE mocking, so the mock doesn't call itself
     vi.spyOn(document, 'createElement').mockImplementation((tag) => { const el = origCreateElement(tag); if (tag === 'a') el.click = vi.fn(); return el; });
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock');
@@ -156,7 +162,7 @@ describe('exportAllData / runHealthCheck use the real server clock, not the devi
   });
 
   it('runHealthCheck timestamps its report with the real server time, not Date.now()', async () => {
-    const db = makeDb({ staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
+    const db = makeDb({ staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
     db.auth.getServerTime = async () => '2026-09-10T09:30:00.000Z';
     const report = await runHealthCheck(db);
     expect(report.ranAt).toBe('2026-09-10T09:30:00.000Z');
@@ -189,7 +195,7 @@ describe('MaintenancePanel UI: Health Check tab shows real "last run" info, matc
   });
 
   it('after running a fresh health check, its own info is saved and shown as the new "last run"', async () => {
-    const db = makeDb({ staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
+    const db = makeDb({ staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }] });
     db.auth.getServerTime = async () => '2026-09-10T11:00:00.000Z';
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
@@ -217,7 +223,7 @@ describe('runHealthCheck', () => {
       queries: [{ id: 'q1' }],
       cost_sheets: [{ id: 'cs1', query_id: 'q1' }, { id: 'cs2', query_id: 'DELETED-QUERY' }],
       quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -249,7 +255,7 @@ describe('runHealthCheck', () => {
           then: (res) => {
             const rows = table === 'queries' ? [{ id: 'q1' }]
               : table === 'tour_execution' ? tourExecRows
-              : table === 'staff' ? [{ id: 's1', role: 'admin', active: true, deleted_at: null }]
+              : table === 'staff_public' ? [{ id: 's1', role: 'admin', active: true, deleted_at: null }]
               : [];
             res({ data: rows, error: null });
           },
@@ -269,7 +275,7 @@ describe('runHealthCheck', () => {
       app_settings: [], queries: [{ id: 'q1' }],
       cost_sheets: [{ id: 'cs1', query_id: 'q1' }],
       quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -281,7 +287,7 @@ describe('runHealthCheck', () => {
       app_settings: [], queries: [{ id: 'q1' }], cost_sheets: [], quotations: [], tour_execution: [],
       payment_incoming: [{ id: 'p1', query_id: 'q1', in_currency: 'USD', amount_inr: null }],
       payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -294,7 +300,7 @@ describe('runHealthCheck', () => {
       app_settings: [], queries: [{ id: 'q1' }], cost_sheets: [], quotations: [], tour_execution: [],
       payment_incoming: [{ id: 'p1', query_id: 'q1', in_currency: 'INR', amount_inr: null }],
       payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -305,7 +311,7 @@ describe('runHealthCheck', () => {
     const db = makeDb({
       app_settings: [], queries: [], cost_sheets: [], quotations: [], tour_execution: [],
       payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: false, deleted_at: null }, { id: 's2', role: 'sales', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: false, deleted_at: null }, { id: 's2', role: 'sales', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -323,7 +329,7 @@ describe('runHealthCheck', () => {
         { id: 'q2', status: 'operations', travel_date_to: recent.toISOString().slice(0,10), cancelled: false },
       ],
       cost_sheets: [], quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report = await runHealthCheck(db);
@@ -336,7 +342,7 @@ describe('runHealthCheck', () => {
     const dbWithBackup = makeDb({
       app_settings: [{ key: 'last_backup', value: { by: 'Priya', at: new Date().toISOString(), summary: [] } }],
       queries: [], cost_sheets: [], quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report1 = await runHealthCheck(dbWithBackup);
@@ -344,7 +350,7 @@ describe('runHealthCheck', () => {
 
     const dbNoBackup = makeDb({
       app_settings: [], queries: [], cost_sheets: [], quotations: [], tour_execution: [], payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
-      staff: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
       chat_conversations: [], chat_conversation_members: [],
     });
     const report2 = await runHealthCheck(dbNoBackup);

@@ -108,9 +108,13 @@ export async function exportAllData(db, currentUser) {
     summary.push({ sheet, rows: rows.length });
   }
 
-  // Staff, with credentials stripped
+  // Staff, with credentials stripped. Reads from staff_public (never
+  // the raw staff table) so password_hash/session_token never cross
+  // the wire in the first place -- the STAFF_SAFE_COLUMNS filter below
+  // is a second, independent layer, not the only thing keeping them
+  // out of this export.
   try {
-    const { data: staffRows } = await db.from("staff").select("*").order("name", { ascending: true });
+    const { data: staffRows } = await db.from("staff_public").select("*").order("name", { ascending: true });
     const safeRows = (staffRows || []).map(r => {
       const safe = {};
       STAFF_SAFE_COLUMNS.forEach(c => { safe[c] = r[c]; });
@@ -322,7 +326,7 @@ export async function runHealthCheck(db) {
   // 5. Staff/access sanity -- at least one active admin must exist, or
   // the whole team could genuinely get locked out of admin-only
   // features with no way back in.
-  const { data: staffRows } = await safeSelect(db, "staff", "id,role,active,deleted_at");
+  const { data: staffRows } = await safeSelect(db, "staff_public", "id,role,active,deleted_at");
   if (staffRows === null) {
     results.push({ id: "admin_exists", label: "At least one active admin account", status: "error", detail: "Could not check this." });
   } else {

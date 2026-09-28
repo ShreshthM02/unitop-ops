@@ -127,7 +127,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
         return queries.filter(q=>!q.cancelled).map(q=>{
           const pt=payments[q.id];
           const tv=(parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);
-          const rc=(pt?.entries||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+          const rc=(pt?.entries||[]).reduce((s,e)=>s+entryINR(e),0);
           const co=((pt?.outgoing||[]).filter(e=>["cash","voucher"].includes(e.paymentType||"cash")).reduce((s,e)=>s+(parseFloat(e.amount)||0),0));
           return {"Tour File":q.tourFileId||q.id,"Group":q.groupName||q.clientName,"Sector":q.destination||q.sector||"—",
             "Tour Value (₹)":Math.round(tv).toLocaleString(),"Received (₹)":Math.round(rc).toLocaleString(),
@@ -143,7 +143,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
           if(q.tourFileId) aMap[ag].tourFiles++;
           const pt=payments[q.id];
           aMap[ag].rev+=(parseFloat(pt?.tourValue)||0)*(parseFloat(pt?.roeUsed)||1);
-          aMap[ag].rec+=(pt?.entries||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+          aMap[ag].rec+=(pt?.entries||[]).reduce((s,e)=>s+entryINR(e),0);
         });
         return Object.values(aMap).sort((a,b)=>b.rev-a.rev).map(a=>({
           "Agent":a.agent,"Queries":a.queries,"Tour Files":a.tourFiles,
