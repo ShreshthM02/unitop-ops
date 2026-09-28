@@ -35,16 +35,35 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
   // Built fresh from live queries every render -- was previously a
   // one-time snapshot captured at Tour File conversion that never
   // reflected later edits (name/dates/pax changes, status progression).
+  // Real, reported bug: statusLabel used to key off raw pipeline status
+  // ("operations" -> "On Ground") with no check on whether today's date
+  // actually falls within the tour's real travel dates -- so every query
+  // sitting in Operations showed as "on ground" forever, including ones
+  // from a completely different month. Now shares the same isTourOnGround
+  // predicate as the stat cards above. Display order also now follows the
+  // requested priority: On Ground first, then Upcoming (soonest first),
+  // then Completed (most recently traveled first) -- rather than one flat
+  // chronological list that buried on-ground tours under future ones.
   const activeTours = queries
     .filter(q=>q.tourFileId&&!q.cancelled)
-    .sort((a,b)=>new Date(a.travelDate||0)-new Date(b.travelDate||0))
-    .map((q,idx)=>({
-      id: q.id, query: q,
-      name: `${q.groupName||q.clientName||""} — ${q.destination||q.sector||""}`,
-      dates: formatDateSlash(q.travelDate)||"TBC", pax: q.paxDisplay||"",
-      color: DEST_COLORS[idx%DEST_COLORS.length],
-      statusLabel: q.status==="completed"?"Completed":q.status==="operations"?"On Ground":"Upcoming",
-    }));
+    .map((q,idx)=>{
+      const onGroundNow = isTourOnGround(q);
+      const statusLabel = onGroundNow ? "On Ground" : q.status==="completed" ? "Completed" : "Upcoming";
+      return {
+        id: q.id, query: q,
+        name: `${q.groupName||q.clientName||""} — ${q.destination||q.sector||""}`,
+        dates: formatDateSlash(q.travelDate)||"TBC", pax: q.paxDisplay||"",
+        color: DEST_COLORS[idx%DEST_COLORS.length],
+        statusLabel, travelDate: q.travelDate,
+      };
+    })
+    .sort((a,b)=>{
+      const rank = s => s==="On Ground" ? 0 : s==="Upcoming" ? 1 : 2;
+      const ra = rank(a.statusLabel), rb = rank(b.statusLabel);
+      if (ra !== rb) return ra - rb;
+      const da = new Date(a.travelDate||0), db = new Date(b.travelDate||0);
+      return ra===2 ? (db-da) : (da-db); // Completed: latest first; others: chronological
+    });
 
   const counts = {
     new_query:   queries.filter(q=>q.status==="new_query"&&!q.cancelled).length,
@@ -67,7 +86,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
     <div>
       <div className="stats-row">
         <StatCard label="Active Queries" value={active.length} sub="across all stages" filterKey="active"/>
-        <StatCard label="New This Week"  value={newThisWeek.length} color="#1D6FA4" sub="awaiting acknowledgement" filterKey="new_query"/>
+        <StatCard label="New This Week"  value={newThisWeek.length} color="#1D6FA4" sub="received in the last 7 days" filterKey="new_query"/>
         <StatCard label="In Operations"  value={inOps.length} color="#AD1457" sub="confirmed + being serviced" filterKey="operations"/>
         <StatCard label="Tours On Ground" value={onGround.length} color={G.accent} sub="currently running" filterKey="onground"/>
         <StatCard label="Completed" value={seasonDone.length} color="#145A32" sub={`this season (Apr ${seasonStartYear}–Mar ${seasonStartYear+1})`} filterKey="completed"/>

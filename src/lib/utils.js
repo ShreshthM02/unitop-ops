@@ -1181,6 +1181,18 @@ export function isIsoDateString(v) {
 // exactly what happened with agent_id: the demo/fallback agent list (shown
 // until a real agent exists) uses ids like "AGT-001", not real uuids, and
 // Postgres rejected the whole row because of it.
+// A partial query update (e.g. {reviewerId:'...'} from the Reviewer
+// dropdown, or {paxDisplay:'...'} from Quotation's confirmed-pax sync)
+// must never be handed to buildQuerySavePayload on its own --
+// buildQuerySavePayload always emits every column, force-defaulting any
+// field the input doesn't have (nights/pax fields -> null, cancelled ->
+// false, manual_wf -> [], etc.), so a bare diff would silently wipe
+// every other column in the database. This is the one safe way to save
+// a partial edit: merge it onto the full existing record first.
+export function mergeQueryForSave(existing, updates) {
+  return existing ? { ...existing, ...updates } : { ...updates };
+}
+
 export function buildQuerySavePayload(q) {
   return {
     id:                  q.id,
