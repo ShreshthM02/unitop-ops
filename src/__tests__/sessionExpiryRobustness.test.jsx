@@ -27,8 +27,8 @@ describe('App.jsx: periodic session re-validation while logged in', () => {
     };
     vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
     vi.doMock('../components/index.js', () => ({
-      LoginScreen: () => null,
-      UnitopApp: () => null,
+      LoginScreen: () => <div>LOGIN_SCREEN</div>,
+      UnitopApp: () => <div>MAIN_APP</div>,
       VendorLedgerPanel: () => null,
       AgentLedgerPanel: () => null,
     }));
@@ -36,6 +36,16 @@ describe('App.jsx: periodic session re-validation while logged in', () => {
     render(<App />);
 
     await vi.waitFor(() => expect(validateCalls).toBe(1)); // the initial mount check
+    // The periodic-revalidate effect only registers its setInterval once
+    // `loggedIn` flips true, and that flip happens inside the initial
+    // validateSession().then() -- outside any act(). Without a rendered
+    // signal to wait on, advancing fake timers here can race ahead of
+    // that state update actually landing, so the interval was never set
+    // up yet and the 31-minute jump silently fires nothing. Waiting for
+    // the logged-in UI (as the other two tests in this file already do)
+    // guarantees the effect -- and its setInterval -- is registered
+    // before time moves forward.
+    await vi.waitFor(() => expect(screen.getByText('MAIN_APP')).toBeTruthy());
 
     await vi.advanceTimersByTimeAsync(31 * 60 * 1000); // past the 30-min re-validate interval
     await vi.waitFor(() => expect(validateCalls).toBeGreaterThanOrEqual(2));
