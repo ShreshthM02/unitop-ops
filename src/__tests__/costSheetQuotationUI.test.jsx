@@ -133,7 +133,7 @@ describe('QuotationGenerator: "Pull from Cost Sheet" (#11/#12 -- addressee, itin
           order: () => builder,
           insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'new-id' }], error: null })),
           update: vi.fn(async () => ({ data: [], error: null })),
-          then: (resolve) => resolve({ data: t === 'cost_sheets' ? [row] : [], error: null }),
+          then: (resolve) => resolve({ data: t === 'cost_sheets' ? (row ? [row] : []) : [], error: null }),
         };
         return builder;
       }),
@@ -179,24 +179,43 @@ describe('QuotationGenerator: "Pull from Cost Sheet" (#11/#12 -- addressee, itin
     expect(screen.getByDisplayValue('10-14 pax + 1 FOC')).toBeTruthy();
   });
 
-  it('shows a message and does not crash when no Cost Sheet version matches costSheetId', async () => {
-    const db = makeDbWithCostSheetRow({ id: 'some-other-id', version: 1, days: [], slabs: [] });
+  it('shows a message and does not crash when there is genuinely no Cost Sheet version for this query at all (Item 2 fix superseded the old "costSheetId must match exactly" behavior -- the pull now always targets whatever the latest saved version is, matched or not, so this only errors when zero versions exist)', async () => {
+    const db = makeDbWithCostSheetRow(null); // no row at all for cost_sheets
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QG } = await import('../components/QuotationGenerator.jsx');
     render(<QG query={fakeQuery} template={fakeTemplate} costSheetId="cs-does-not-exist" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
-    await waitFor(() => expect(screen.getByText(/Could not find the linked Cost Sheet/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No Cost Sheet linked to this Quotation yet/)).toBeTruthy());
   });
 
-  it('the button does not render at all when there is no linked Cost Sheet (costSheetId is null)', async () => {
-    const db = makeDbWithCostSheetRow({ id: 'irrelevant', version: 1, days: [], slabs: [] });
+  it('a costSheetId that no longer matches any saved version (e.g. that exact version was superseded) still pulls successfully from whatever the latest version now is -- Item 2 fix: pulls are never pinned to a stale id', async () => {
+    const db = makeDbWithCostSheetRow({ id: 'cs-now-different-id', version: 7, days: [], slabs: [], client_agent_name: 'Superseded Version Co' });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    render(<QG query={fakeQuery} template={fakeTemplate} costSheetId="cs-does-not-exist" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    fireEvent.click(await screen.findByText('↻ Pull from Cost Sheet'));
+    await waitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v7/)).toBeTruthy());
+  });
+
+  it('the button does not render at all when there is genuinely no Cost Sheet for this query (costSheetId is null and none exists)', async () => {
+    const db = makeDbWithCostSheetRow(null);
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: QG } = await import('../components/QuotationGenerator.jsx');
     render(<QG query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
     await screen.findByText('Kind Attn (Name)');
     expect(screen.queryByText('↻ Pull from Cost Sheet')).toBeNull();
+  });
+
+  it('Item 2 fix: the button DOES render when costSheetId is null but a Cost Sheet nonetheless exists for this query (previously invisible whenever opened outside the "Proceed to Quotation" handoff)', async () => {
+    const db = makeDbWithCostSheetRow({ id: 'cs-exists', version: 1, days: [], slabs: [] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QG } = await import('../components/QuotationGenerator.jsx');
+    render(<QG query={fakeQuery} template={fakeTemplate} costSheetId={null} onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await waitFor(() => expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy());
   });
 });
 

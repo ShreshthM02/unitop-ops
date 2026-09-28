@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
   const n = v => parseFloat(v)||0;
@@ -478,7 +478,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       </div>`;
 
     const dayRows = days.map((d,i) => rowHTML([
-      d.day, d.date||"", d.movement||"", d.mealPlan||"",
+      // Item 4 fix: d.date is kept as a raw ISO "YYYY-MM-DD" string in
+      // state (required by the native <input type="date"> editor above --
+      // see the comment near dayDateFromTravelDate), but the printed
+      // document is read-only text, so it should show the app-wide
+      // dd/mm/yyyy convention like every other date in this app, not the
+      // raw ISO string.
+      d.day, formatDateSlash(d.date)||"", d.movement||"", d.mealPlan||"",
       n(d.mealCost)?"₹"+n(d.mealCost).toLocaleString():"—",
       d.hotel||"", d.hotelAlt||"—", d.hotelPlan||"",
       n(d.hotelNetPP)?"₹"+n(d.hotelNetPP).toLocaleString():"—",
@@ -641,7 +647,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     row++;
     const dayFirstRow = row;
     days.forEach((d,i)=>{
-      inputCell(row,1,d.day); inputCell(row,2,d.date||""); inputCell(row,3,d.movement||""); inputCell(row,4,d.mealPlan||"");
+      inputCell(row,1,d.day); inputCell(row,2,formatDateSlash(d.date)||""); inputCell(row,3,d.movement||""); inputCell(row,4,d.mealPlan||"");
       inputCell(row,5,n(d.mealCost)||0,"#,##0"); inputCell(row,6,d.hotel||""); inputCell(row,7,d.hotelAlt||""); inputCell(row,8,d.hotelPlan||"");
       inputCell(row,9,n(d.hotelNetPP)||0,"#,##0"); inputCell(row,10,n(d.singleSupp)||0,"#,##0"); inputCell(row,11,d.notes||"");
       if(i%2===1) for(let c=1;c<=11;c++) sheet.getCell(row,c).fill = sheet.getCell(row,c).fill.fgColor?.argb===INPUT_BG ? sheet.getCell(row,c).fill : {type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};

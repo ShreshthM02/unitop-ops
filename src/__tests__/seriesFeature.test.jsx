@@ -85,6 +85,28 @@ describe('SeriesManagement', () => {
     document.removeEventListener('unitop-activate-query', listener);
   });
 
+  // Real bug: "Unassign" used to write straight to the DB via
+  // db.from("queries").upsert(buildQuerySavePayload(...)), bypassing
+  // handleUpdateQuery's merge-then-save path entirely -- the same class
+  // of "editing a query makes it look blank/reverted" bug fixed
+  // elsewhere via mergeQueryForSave, just via a second, overlooked
+  // bypass. It also never updated the app's own `queries` state, so the
+  // rest of the app only ever found out via a realtime echo, if at all.
+  it('Unassign calls onUpdateQuery with the real merge-safe path, not a direct DB write', () => {
+    const onUpdateQuery = vi.fn();
+    render(<SeriesManagement series={series} setSeries={()=>{}} queries={queries} currentUser={{id:1}} onClose={()=>{}} onUpdateQuery={onUpdateQuery}/>);
+    fireEvent.click(screen.getByText('Golden Triangle Winter'));
+    fireEvent.click(screen.getByText('Unassign'));
+    expect(onUpdateQuery).toHaveBeenCalledTimes(1);
+    expect(onUpdateQuery).toHaveBeenCalledWith('UTQ-1', { seriesId: null });
+  });
+
+  it('does not throw when onUpdateQuery is not provided (older callers stay safe)', () => {
+    render(<SeriesManagement series={series} setSeries={()=>{}} queries={queries} currentUser={{id:1}} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('Golden Triangle Winter'));
+    expect(() => fireEvent.click(screen.getByText('Unassign'))).not.toThrow();
+  });
+
   it('creating a new series calls saveSeries and adds it to the list', async () => {
     const mockDb = { from: () => ({ insert: async () => ({ data: [{ id: 'new-s' }], error: null }) }) };
     vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));

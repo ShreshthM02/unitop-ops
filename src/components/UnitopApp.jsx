@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -72,6 +72,23 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
   const [activeQuery, setActiveQuery]   = useState(null);
   const isFirstActiveQueryEffect = useRef(true);
+  // Serializes saveQueryToDB calls PER QUERY ID (see saveQueryToDB below).
+  // Same class of bug, same fix shape, as the real data-loss incident on
+  // tour file UT-3495's Service Status list (ServicesList.jsx): every
+  // caller of handleUpdateQuery/saveQueryToDB fires its own unawaited,
+  // fire-and-forget upsert. Two edits to the SAME query fired close
+  // together -- e.g. changing Reviewer then Series in QueryDrawerWithQuote,
+  // or a Quotation pax-sync landing moments after a Tour Details save --
+  // each merge onto whatever `queries` looked like when THEY fired, then
+  // race to the DB independently. Whichever save's network round-trip
+  // happens to resolve LAST wins, even if it was fired first and is
+  // therefore working from a now-stale base -- so it can silently
+  // overwrite a newer edit with old values for every field it didn't
+  // itself touch. This is a very plausible remaining cause of "editing a
+  // query makes it look blank/reverted" reports after the original
+  // mergeQueryForSave fix (which only ever addressed a bare partial
+  // object being force-defaulted, not this ordering race).
+  const querySaveChainsRef = useRef({});
   useEffect(() => {
     // Skip the very first run (component mount): activeQuery's initial
     // value is always null, and without this guard, that fires this
@@ -428,33 +445,45 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   });
 
   // ── Persist query to Supabase ──────────────────────────────────────────────
-  const saveQueryToDB = async (q, auditAction) => {
-    try {
-      // upsert() never throws on a failed save -- it resolves normally
-      // with { data: null, error: {...} } even on a 4xx/5xx response,
-      // since the underlying fetch() only rejects on network-level
-      // failures, not HTTP error statuses. This try/catch alone was
-      // never actually capable of catching a real save failure; the
-      // error field was silently ignored, so a query could appear
-      // created (optimistic UI update) while never actually persisting,
-      // with nothing in the console or UI hinting why. Checking it
-      // explicitly is what makes both the catch block and the toast
-      // below actually work.
-      const { error } = await db.from("queries").upsert(buildQuerySavePayload(q));
-      if (error) throw new Error(error.message || "Query save failed");
-      if (auditAction) {
-        await db.from("query_audit").insert({
-          query_id: q.id,
-          by_name:  currentUser.name,
-          action:   auditAction,
-        });
+  // Every caller's actual DB work happens here, but always queued behind
+  // querySaveChainsRef, keyed per query id -- see that ref's own comment
+  // above for why. Chaining through .then() (rather than calling doSave
+  // directly) guarantees a save for query X never starts until any
+  // earlier-fired save for that SAME query X has fully finished, so saves
+  // land in the DB in the same order the user actually made the edits,
+  // regardless of which network round-trip happens to come back first.
+  // Saves for two DIFFERENT queries are unrelated and still run fully in
+  // parallel, keyed separately.
+  const saveQueryToDB = (q, auditAction) => {
+    const doSave = async () => {
+      try {
+        // upsert() never throws on a failed save -- it resolves normally
+        // with { data: null, error: {...} } even on a 4xx/5xx response,
+        // since the underlying fetch() only rejects on network-level
+        // failures, not HTTP error statuses. This try/catch alone was
+        // never actually capable of catching a real save failure; the
+        // error field was silently ignored, so a query could appear
+        // created (optimistic UI update) while never actually persisting,
+        // with nothing in the console or UI hinting why. Checking it
+        // explicitly is what makes both the catch block and the toast
+        // below actually work.
+        const { error } = await db.from("queries").upsert(buildQuerySavePayload(q));
+        if (error) throw new Error(error.message || "Query save failed");
+        if (auditAction) {
+          await db.from("query_audit").insert({
+            query_id: q.id,
+            by_name:  currentUser.name,
+            action:   auditAction,
+          });
+        }
+        return true;
+      } catch(e) {
+        console.warn("Save to DB failed:", e);
+        showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`, "error");
+        return false;
       }
-      return true;
-    } catch(e) {
-      console.warn("Save to DB failed:", e);
-      showToast(`⚠ Failed to save "${q.groupName||q.id}" — changes may be lost on refresh. ${e.message||""}`, "error");
-      return false;
-    }
+    };
+    return queueSequential(querySaveChainsRef.current, q.id, doSave);
   };
 
   // Preview-only: used for the "Query Number (auto-assigned)" text shown
@@ -850,7 +879,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 away from what the user was doing. */}
             {view==="chat" && <InAppChat asTab currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>{}}/>}
             {view==="usermgmt" && <UserManagementPanel asTab currentUser={currentUser} onClose={()=>{}}/>}
-            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId}/>}
+            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
             {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}} initialSelectedId={focusAgentId}/>}
             {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}} initialSelectedId={focusVendorId}/>}
 
@@ -1012,7 +1041,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{setShowAgents(false);setFocusAgentId(null);}} initialSelectedId={focusAgentId}/>}
-        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{setShowSeries(false);setFocusSeriesId(null);}} initialSelectedId={focusSeriesId}/>}
+        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{setShowSeries(false);setFocusSeriesId(null);}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
         {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{setShowVendors(false);setFocusVendorId(null);}} initialSelectedId={focusVendorId}/>}
 
         {/* Cancel modal */}

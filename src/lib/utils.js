@@ -1207,6 +1207,38 @@ export function isIsoDateString(v) {
 // exactly what happened with agent_id: the demo/fallback agent list (shown
 // until a real agent exists) uses ids like "AGT-001", not real uuids, and
 // Postgres rejected the whole row because of it.
+// ─── SEQUENTIAL SAVE QUEUE (per key) ────────────────────────────────────────
+// Chains async tasks sharing the same key so they never run concurrently --
+// each one fully completes before the next, even unrelated, task for that
+// same key starts. Real, confirmed bug this exists to prevent (found on
+// tour file UT-3495's Service Status list, and structurally identical for
+// any "save the whole current record" write, including queries): two
+// overlapping saves for the same entity race on the network, and whichever
+// one's response happens to come back LAST wins -- even if it was fired
+// FIRST and is therefore working from an older, now-stale snapshot. That
+// stale save then silently overwrites every field the newer save had just
+// changed. Serializing removes the race entirely: saves always land in the
+// DB in the same order they were fired, so the most recent snapshot is
+// always what's left standing.
+// `chains` is a plain mutable object used as the queue store (typically a
+// React ref's .current) rather than module-level state, so each call site
+// -- and each test -- gets its own isolated queue. Tasks for DIFFERENT keys
+// are completely unrelated and still run fully in parallel.
+export function queueSequential(chains, key, taskFn) {
+  const prior = chains[key] || Promise.resolve();
+  // Wait for the prior task regardless of whether IT succeeded or
+  // failed -- a task that rejects must not permanently jam this key's
+  // queue for everything fired after it.
+  const settled = prior.then(() => {}, () => {});
+  const result = settled.then(taskFn);
+  // Store a version that itself never rejects, so a failure in THIS task
+  // doesn't block whatever's queued next either. The real outcome
+  // (including any rejection) still goes to this call's own caller via
+  // the returned `result`.
+  chains[key] = result.then(() => {}, () => {});
+  return result;
+}
+
 // A partial query update (e.g. {reviewerId:'...'} from the Reviewer
 // dropdown, or {paxDisplay:'...'} from Quotation's confirmed-pax sync)
 // must never be handed to buildQuerySavePayload on its own --

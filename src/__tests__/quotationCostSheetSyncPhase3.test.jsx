@@ -152,6 +152,40 @@ describe('QuotationGenerator: "Pull from Cost Sheet" button visibility (bug fix 
   });
 });
 
+describe('QuotationGenerator Item 2 fix: "Pull from Cost Sheet" always fetches the LATEST saved Cost Sheet version, not the one this Quotation happened to be created from', () => {
+  it('a routine Cost Sheet edit (e.g. filling in Alt Hotel) made AFTER the Quotation was created, on a newer DRAFT version never marked final, is picked up on the next pull -- the old bug pinned every pull to the original costSheetId version forever', async () => {
+    // The version this Quotation was originally created from (via "Proceed
+    // to Quotation") -- no Alt Hotel set yet.
+    const originalCS = {
+      id: 'cs-original', version: 1, is_final: false,
+      days: [{ movement: 'DEL-AGRA', hotel: 'Taj View', hotelAlt: '' }],
+      slabs: [], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [],
+      gst_pct: 0, markup_pct: 20, roe: 80, currency: 'US $',
+    };
+    // A later, genuinely newer Cost Sheet version -- a routine draft save
+    // (never marked final) that fills in the Alt Hotel.
+    const newerDraftCS = {
+      id: 'cs-newer-draft', version: 2, is_final: false,
+      days: [{ movement: 'DEL-AGRA', hotel: 'Taj View', hotelAlt: 'Golden Tulip' }],
+      slabs: [], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [],
+      gst_pct: 0, markup_pct: 20, roe: 80, currency: 'US $',
+    };
+    const savedQuotation = { version: 1, attn_company: 'X', itinerary: [], hotels: [{ place: 'AGRA', nights: 1, hotel: 'Taj View', hotelAlt: '' }], slabs: [], monuments: [], includes: [], excludes: [], is_final: false, cost_sheet_id: 'cs-original', pulled_from_cost_sheet_version: 1 };
+    const db = makeDb({ costSheetRows: [originalCS, newerDraftCS], quotationRows: [savedQuotation] });
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: QuotationGenerator } = await import('../components/QuotationGenerator.jsx');
+    // Opened with the ORIGINAL pinned costSheetId prop, exactly like the
+    // real "Proceed to Quotation" handoff would leave it.
+    render(<QuotationGenerator query={fakeQuery} template={fakeTemplate} costSheetId="cs-original" onClose={()=>{}} onSaved={()=>{}} currentUser={{id:'x'}}/>);
+    await rtlWaitFor(() => expect(screen.getByText('↻ Pull from Cost Sheet')).toBeTruthy());
+    fireEvent.click(screen.getByText('↻ Pull from Cost Sheet'));
+    // Must show the newer version's Alt Hotel, not the stale pinned one.
+    await rtlWaitFor(() => expect(screen.getByText(/Pulled from Cost Sheet v2/)).toBeTruthy());
+    expect(screen.getByDisplayValue('Golden Tulip')).toBeTruthy();
+  });
+});
+
 describe('QuotationGenerator: "pulling" state bug fix (button stuck on "Pulling…" forever after a successful pull, since the success path\'s early return skipped setPulling(false) entirely)', () => {
   it('after a successful pull, the button returns to its normal label -- not stuck on "Pulling…"', async () => {
     const finalCS = { id: 'cs-stuck', version: 3, is_final: true, days: [], slabs: [{id:'s1',label:'STUCK-TEST-SLAB',foc:10}], tl_slabs: [], monuments: [], transports: [], local_handlers: [], extras: [], gst_pct:0, markup_pct:20, roe:80, currency:'US $' };

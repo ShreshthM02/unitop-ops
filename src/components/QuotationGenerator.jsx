@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, loadFinalCostSheetVersion, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, formatDateDayDMY, cascadeItineraryDates, isIsoDateString, reorderArray, hotelPropertyLabel } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, formatDateDayDMY, cascadeItineraryDates, isIsoDateString, reorderArray, hotelPropertyLabel } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery, signatures, docSettings }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -102,14 +102,27 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // own column headings.
   const [editingMonumentHeaders, setEditingMonumentHeaders] = useState(false);
   const pullFromCostSheet = async (targetMatch) => {
-    if (!targetMatch && !costSheetId) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
     setPulling(true);
     setPullMessage("");
     try {
       let match = targetMatch;
       if (!match) {
         const versions = await loadCostSheetVersions(db, query.id);
-        match = versions.find(v => v.id === costSheetId);
+        if (!versions.length) { setPullMessage("No Cost Sheet linked to this Quotation yet."); return; }
+        // Item 2 fix: always pull the LATEST saved Cost Sheet version --
+        // not whichever specific version this Quotation happened to be
+        // created from (the old behavior: `versions.find(v => v.id ===
+        // costSheetId)`, pinned once at "Proceed to Quotation" time and
+        // never advancing), and not gated on that version being marked
+        // "final". Before this fix, an ordinary Cost Sheet edit made
+        // after the Quotation already existed -- most commonly filling
+        // in or changing an Alt Hotel -- was invisible to every future
+        // "Pull from Cost Sheet" click, because the pull kept
+        // re-fetching the same stale pinned/final version forever.
+        // versions[] is already ordered oldest-first (loadCostSheetVersions),
+        // so the last entry is always the latest saved version, draft or
+        // final.
+        match = versions[versions.length - 1];
       }
       if (!match) { setPullMessage("Could not find the linked Cost Sheet version."); return; }
 
@@ -246,8 +259,22 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // Quotation as "out of sync," since the salesperson may be
   // deliberately working from an earlier, already-agreed number.
   const [finalCostSheetVersion, setFinalCostSheetVersion] = useState(null);
+  // Item 2 fix: also tracks whether ANY Cost Sheet version exists for
+  // this tour file at all (draft or final), independent of the
+  // `costSheetId` prop -- which is only ever set when this Quotation was
+  // opened via Cost Sheet's "Proceed to Quotation" button, and stays null
+  // for every other way of opening a Quotation (the Documents list, the
+  // pipeline's quick-action icon, "Generate Quote"). Without this, the
+  // "Pull from Cost Sheet" button used to disappear entirely for a
+  // Quotation opened one of those other ways whenever the linked Cost
+  // Sheet's latest version hadn't been marked "final" -- leaving no way
+  // to pull in a routine edit like a newly-filled-in Alt Hotel.
+  const [hasCostSheetVersions, setHasCostSheetVersions] = useState(false);
   useEffect(() => {
-    loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
+    loadCostSheetVersions(db, query.id).then(versions => {
+      setHasCostSheetVersions(versions.length > 0);
+      setFinalCostSheetVersion(versions.find(v => v.isFinal) || null);
+    });
   }, [query.id]);
   const isStaleVsCostSheet = finalCostSheetVersion &&
     q.pulledFromCostSheetVersion !== finalCostSheetVersion.version;
@@ -660,7 +687,18 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
   return (
     <div className="overlay">
-      <div style={{ background:G.white, width:"min(680px, 100vw)", height:"100vh", overflowY:"auto",
+      {/* Item 3 fix: same double-scroll-container bug already fixed in
+          Cost Sheet (v1.32.0-era commits f6649cb/dbc9212/5c18a9f) -- this
+          outer overlay wrapper AND the inner fieldset below were both
+          independently scrollable (overflowY:"auto" on both). Clicking
+          into any text field inside the inner fieldset triggers the
+          browser's native "scroll focused element into view," which the
+          OUTER container also responded to, visibly jerking the whole
+          panel upward the instant the cursor landed -- before a single
+          key was pressed. Only the inner fieldset should ever scroll;
+          overflowY:"hidden" here stops the outer wrapper from having a
+          scroll position of its own to jump. */}
+      <div style={{ background:G.white, width:"min(680px, 100vw)", height:"100vh", overflowY:"hidden",
         boxShadow:"-4px 0 24px rgba(0,0,0,0.15)", display:"flex", flexDirection:"column" }}>
 
         {/* Header */}
@@ -699,8 +737,8 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             readOnly={readOnly}
             G={G}
           />
-          {(costSheetId || finalCostSheetVersion) && !readOnly && (
-            <button onClick={()=>pullFromCostSheet(costSheetId ? undefined : finalCostSheetVersion)} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
+          {(costSheetId || hasCostSheetVersions) && !readOnly && (
+            <button onClick={()=>pullFromCostSheet()} disabled={pulling} className="btn btn-ghost" style={{ fontSize:11 }}
               title="Pull addressee, itinerary, accommodation, and pricing from the linked Cost Sheet">
               {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
             </button>
@@ -745,7 +783,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           ))}
         </div>
 
-        {activeTab==='content' && <fieldset ref={fieldsetRef} disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
+        {activeTab==='content' && <fieldset ref={fieldsetRef} disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0, minHeight:0, overflowAnchor:"none" }}>
 
           {/* ── ADDRESSEE ── */}
           {secTitle("📬 Addressee")}
@@ -1064,7 +1102,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
 
         {/* FINAL PRICE AGREEMENT TAB */}
         {activeTab==='final' && (
-          <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0 }}>
+          <fieldset disabled={readOnly} style={{ flex:1, overflowY:"auto", padding:"16px 20px", border:"none", margin:0, minWidth:0, minHeight:0, overflowAnchor:"none" }}>
             <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,padding:12,marginBottom:16,fontSize:11,color:"#784212"}}>
               Required before this version can be marked final ★. Compose the actual agreed price as one or more lines — e.g. 18 pax on one slab + 2 pax on Single Room Supplement — pulling rates from this quotation's own slabs, or typing a custom rate when the agreed amount doesn't match any slab exactly.
             </div>

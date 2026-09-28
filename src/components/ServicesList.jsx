@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, logAudit, db, formatDateSlash, reorderArray } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, logAudit, db, formatDateSlash, reorderArray, queueSequential } = Lib;
 
 const SERVICE_STATUSES = ["requested","pending","confirmed","Ex. Order Issued","sold out","cancelled"];
 
@@ -25,12 +25,13 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
   const [newSvc, setNewSvc]     = useState({name:"",date:"",status:"requested"});
   const [adding, setAdding]     = useState(false);
   const dragIndex = useRef(null);
-  // Serializes every saveQueryServices call behind a promise chain (see
-  // persist() below) -- the real, reproducible cause of a real data-loss
-  // incident (tour file UT-3495, 2026-09-24: 4 confirmed hotel entries
-  // silently vanished after being renamed from the default placeholder
-  // rows and marked confirmed in quick succession).
-  const saveChainRef = useRef(Promise.resolve());
+  // Serializes every saveQueryServices call via queueSequential (see
+  // persist() below and queueSequential's own comment in lib/utils.js) --
+  // the real, reproducible cause of a real data-loss incident (tour file
+  // UT-3495, 2026-09-24: 4 confirmed hotel entries silently vanished
+  // after being renamed from the default placeholder rows and marked
+  // confirmed in quick succession).
+  const saveChainsRef = useRef({});
 
   useEffect(() => {
     loadQueryServices(db, query.id).then(loadedServices => {
@@ -65,7 +66,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
   // the most recent (most complete) snapshot is what's left standing.
   const persist = (updated) => {
     setServices(updated);
-    saveChainRef.current = saveChainRef.current.then(() => saveQueryServices(db, query.id, updated));
+    queueSequential(saveChainsRef.current, query.id, () => saveQueryServices(db, query.id, updated));
   };
 
   const addService = () => {

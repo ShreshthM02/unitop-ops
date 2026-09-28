@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, saveSeries, buildQuerySavePayload, db } = Lib;
+const { G, saveSeries, db } = Lib;
 
-export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId, asTab = false }) {
+export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId, asTab = false, onUpdateQuery }) {
   const [selected, setSelected] = useState(()=>series.find(s=>s.id===initialSelectedId)||null);
   // Same real bug/fix as AgentMaster/VendorMaster's own selected
   // state: the lazy initializer above only ever runs once, at first
@@ -54,13 +54,17 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
     await saveSeries(db, updated);
   };
 
-  const unassign = async (q) => {
-    const updatedQuery = { ...q, seriesId: null };
-    db.from("queries").upsert(buildQuerySavePayload(updatedQuery));
-    // Local list refresh happens via the same realtime/reload path every
-    // other cross-panel query edit already relies on -- this panel
-    // doesn't own the queries array, so it doesn't try to mutate it
-    // directly beyond what's needed to make the current view accurate.
+  // Real bug, same class as the "editing a query makes it look
+  // blank/reverted" reports fixed in UnitopApp.jsx: this used to call
+  // db.from("queries").upsert(buildQuerySavePayload(updatedQuery))
+  // directly -- bypassing handleUpdateQuery's merge-then-save path (and
+  // its now-serialized saves) entirely, silently swallowing any save
+  // error, and never updating the app's own `queries` state, leaving
+  // this panel dependent on a realtime echo to ever reflect the change.
+  // Routing through onUpdateQuery gets all of that for free, exactly
+  // like every other cross-panel query edit in the app.
+  const unassign = (q) => {
+    onUpdateQuery && onUpdateQuery(q.id, { seriesId: null });
     setSelected(s => ({ ...s })); // force a re-render of the assigned-queries list
   };
 
