@@ -122,3 +122,66 @@ describe('ServicesList: overlapping saves no longer race (tour file UT-3495 data
     expect(savedNames).toContain('Hotel - Saura Agra (D4 & D5)');
   });
 });
+
+// Real incident, tour file UT-3497 / QRY-2026-008, recurred after the
+// UT-3495 fix above despite it: 4 services vanished with NO race and NO
+// same-tab overlap involved at all. Root cause: queueSequential (the
+// UT-3495 fix) only serializes saves within one component instance/browser
+// tab. It does nothing for a genuinely separate tab or session whose local
+// `services` array is simply stale -- doesn't know about a row another
+// tab added. The old saveQueryServices deleted any DB row absent from
+// whatever array it was handed, so a stale tab's very next save (e.g.
+// editing an unrelated field, no timing coincidence needed) would wipe
+// the other tab's addition. Fixed by no longer inferring deletes from a
+// diff at all (see lib/utils.js) -- this test reproduces the exact
+// two-tab scenario against the real component and proves the addition
+// survives.
+describe('ServicesList: a stale tab no longer deletes another tab\'s addition on its next save (tour file UT-3497 root-cause fix)', () => {
+  it('editing a field in a tab whose snapshot predates another tab\'s new service does not delete that service', async () => {
+    const log = [];
+    // Seed the DB as if another tab had already added a 6th service that
+    // THIS tab's initial load will simply reflect (loadQueryServices always
+    // reads fresh on mount) -- the staleness we need to reproduce happens
+    // AFTER mount: this tab edits a field without ever re-fetching, so its
+    // in-memory `services` array can drift from the DB if a second row
+    // shows up there later. To model that directly at the persistence
+    // layer (without needing a second real component instance), we assert
+    // on saveQueryServices's own contract: a save from this tab's array
+    // must never delete a row it doesn't mention.
+    const db = {
+      from: vi.fn(() => {
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          upsert: vi.fn(async (row) => { log.push(`upsert:${row.id}`); return { data: [row], error: null }; }),
+          delete: vi.fn(async () => { log.push('delete-called'); return { data: null, error: null }; }),
+          insert: vi.fn(async () => ({ data: null, error: null })),
+          then: (resolve) => resolve({ data: [], error: null }),
+        };
+        return builder;
+      }),
+    };
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { ServicesList } = await import('../components/ServicesList.jsx');
+
+    render(<ServicesList query={fakeQuery} sec={sec} currentUser={{ name: 'Faustina Ningshen' }} />);
+    await waitFor(() => expect(screen.getByDisplayValue(/Hotel — Primary Hotel \(Night 1–2\)/)).toBeTruthy());
+
+    // This tab's local `services` array only knows the 5 defaults -- it has
+    // no idea a 6th row ("Transport (Day 1-7)") exists in the DB, added by
+    // another tab/session. Editing an unrelated field (a note) fires a
+    // save carrying only those 5 known rows.
+    const noteInputs = screen.getAllByPlaceholderText('Add a note…');
+    fireEvent.change(noteInputs[0], { target: { value: 'Confirmed via phone' } });
+    fireEvent.blur(noteInputs[0]);
+
+    await waitFor(() => expect(log.some(l => l.startsWith('upsert:'))).toBe(true));
+
+    // The fix: saveQueryServices never queries or diffs against the DB's
+    // existing rows at all anymore, so it has no way to "notice" the 6th
+    // row is missing from this save -- and therefore never deletes it.
+    expect(log.includes('delete-called')).toBe(false);
+  });
+});

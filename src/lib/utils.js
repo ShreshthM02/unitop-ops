@@ -2387,10 +2387,33 @@ export async function loadQueryServices(db, queryId) {
   }
 }
 
-// Saves the whole current list: upserts everything present (including each
-// item's current sort_order, so drag-reorder persists), deletes anything
-// removed locally. Same sync pattern as saveDocRegistry/savePaymentsToDB.
-export async function saveQueryServices(db, queryId, services) {
+// Saves the current list: upserts everything present (including each item's
+// current sort_order, so drag-reorder persists), and deletes ONLY the ids
+// explicitly passed in `deletedIds`.
+//
+// This used to be a "whole-list sync": it diffed the DB's full row set
+// against the local `services` array and deleted whatever wasn't present
+// locally. That's safe against overlapping saves from the SAME browser tab
+// (queueSequential, added for tour file UT-3495, serializes those), but it
+// is NOT safe across two independent tabs/sessions -- if tab A's local
+// `services` snapshot is stale (loaded before, or simply unaware of, a
+// service tab B just added), any save tab A makes -- however serialized
+// locally -- diffs against ITS OWN stale snapshot and deletes tab B's
+// addition, because tab A has no way to tell "a row I don't know about"
+// apart from "a row the user deleted". That is exactly what happened to
+// tour file UT-3497 (2026-09-2x): 4 services vanished again, via the same
+// bug class as UT-3495 but through the cross-tab gap the earlier fix never
+// covered (queueSequential is scoped to one component instance's local ref
+// and has no cross-tab effect at all).
+//
+// The fix: never infer a deletion from a diff. The caller (ServicesList)
+// now tracks explicit deletes -- only the id the user actually clicked ✕
+// on -- and passes just that id here. A stale local snapshot can still
+// upsert rows it knows about (harmless -- each upsert only touches its own
+// row, keyed by id) but can no longer delete a row it simply doesn't know
+// about, because "don't know about it" and "user deleted it" are no longer
+// conflated.
+export async function saveQueryServices(db, queryId, services, deletedIds = []) {
   try {
     for (let i = 0; i < services.length; i++) {
       const s = services[i];
@@ -2398,10 +2421,8 @@ export async function saveQueryServices(db, queryId, services) {
         id: s.id, query_id: queryId, name: s.name, status: s.status, date: s.date || null, notes: s.notes || null, sort_order: i,
       });
     }
-    const { data: existing } = await db.from("query_services").select("id").eq("query_id", queryId);
-    const keepIds = new Set(services.map(s => String(s.id)));
-    for (const row of (existing || [])) {
-      if (!keepIds.has(String(row.id))) await db.from("query_services").eq("id", row.id).delete();
+    for (const id of deletedIds) {
+      await db.from("query_services").eq("id", id).delete();
     }
   } catch (e) {
     console.warn("Save query services failed:", e);

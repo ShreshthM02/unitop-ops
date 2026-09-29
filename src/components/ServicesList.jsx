@@ -45,28 +45,32 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
     });
   }, [query.id]);
 
-  // saveQueryServices does a whole-list sync: it upserts everything in the
-  // array it's given, then DELETES any DB row whose id isn't in that same
-  // array (see lib/utils.js) -- necessary so removing/reordering a service
-  // actually persists, but only safe if calls never overlap. Every field
-  // in this component (name, date, status, notes) fires its own persist()
-  // independently, and each was previously an unawaited, fire-and-forget
-  // saveQueryServices call -- so two calls fired close together (e.g.
-  // renaming a service, then immediately confirming its status) could run
-  // concurrently, each against its own snapshot of `services`. If the
-  // OLDER call's delete step happened to finish AFTER the newer call had
-  // already inserted something the older snapshot didn't know about, it
-  // silently deleted it. That's exactly what happened to tour file
-  // UT-3495 on 2026-09-24: 4 hotel entries, renamed from the default
-  // placeholders and marked confirmed in quick succession, vanished
-  // entirely (recovered from the audit trail + Cost Sheet data on
-  // 2026-09-28). Chaining every save through this ref guarantees each one
-  // fully completes -- both the upserts AND the delete -- before the next
-  // starts, so saves always apply in the same order they were fired, and
-  // the most recent (most complete) snapshot is what's left standing.
-  const persist = (updated) => {
+  // Two layers of protection against services silently vanishing, for two
+  // different failure modes:
+  //
+  // 1. Same-tab overlapping saves (tour file UT-3495, 2026-09-24): every
+  //    field in this component (name, date, status, notes) fires its own
+  //    persist() independently. Two calls fired close together (e.g.
+  //    renaming a service, then immediately confirming its status) used to
+  //    be able to run concurrently. Chaining every save through this ref
+  //    guarantees each one fully completes before the next starts, so
+  //    saves always apply in the order they were fired.
+  //
+  // 2. Cross-tab/cross-session staleness (tour file UT-3497, recurred
+  //    2026-09-2x despite #1 above): queueSequential only serializes calls
+  //    within THIS component instance -- it has no effect across two
+  //    different browser tabs, or two different staff logged in at once.
+  //    saveQueryServices used to delete any DB row not present in whatever
+  //    `services` array it was handed; a tab with a stale snapshot (it
+  //    simply hasn't reloaded since another tab added a service) would
+  //    delete that other tab's addition on its very next save, with no
+  //    race required at all. Fixed at the root in saveQueryServices itself
+  //    (see lib/utils.js): deletion is no longer inferred from a diff --
+  //    it only happens for ids explicitly passed here as `deletedIds`,
+  //    which is only ever the one id the user just clicked ✕ on below.
+  const persist = (updated, deletedIds = []) => {
     setServices(updated);
-    queueSequential(saveChainsRef.current, query.id, () => saveQueryServices(db, query.id, updated));
+    queueSequential(saveChainsRef.current, query.id, () => saveQueryServices(db, query.id, updated, deletedIds));
   };
 
   const addService = () => {
@@ -132,7 +136,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
             </select>
             {!readOnly && (
               <span style={{cursor:"pointer",color:G.gray400,fontSize:13,flexShrink:0}}
-                onClick={()=>{persist(services.filter((_,xi)=>xi!==i));logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
+                onClick={()=>{persist(services.filter((_,xi)=>xi!==i),[s.id]);logAudit(db,query.id,currentUser?.name,`Service "${s.name}" removed`);}}>✕</span>
             )}
           </div>
           {/* Note: deliberately NEVER disabled, even when the rest of this

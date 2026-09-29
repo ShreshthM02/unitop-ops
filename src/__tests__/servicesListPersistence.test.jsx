@@ -54,7 +54,7 @@ describe('saveQueryServices', () => {
     expect(calls[1]).toMatchObject({ id: 1, sort_order: 1 });
   });
 
-  it('deletes a service that existed in DB but is no longer in the local array', async () => {
+  it('deletes only ids explicitly passed as deletedIds -- never inferred from a diff against the local array (root-cause fix for the UT-3495/UT-3497 vanishing-services bug)', async () => {
     const calls = { deletes: [] };
     const db = {
       from: () => {
@@ -69,8 +69,30 @@ describe('saveQueryServices', () => {
         return builder;
       },
     };
-    await saveQueryServices(db, 'UTQ-1', [{ id: 1, name: 'Kept', status: 'requested' }]);
+    await saveQueryServices(db, 'UTQ-1', [{ id: 1, name: 'Kept', status: 'requested' }], [2]);
     expect(calls.deletes.some(d => d.id === 2)).toBe(true);
+  });
+
+  it('a service present in the DB but missing from a stale local array is NOT deleted when deletedIds is omitted -- this is the actual UT-3497 fix: a local snapshot that simply does not know about another tab\'s row must never cause that row to be deleted', async () => {
+    const calls = { deletes: [], selectCalled: false };
+    const db = {
+      from: () => {
+        const filters = {};
+        const builder = {
+          upsert: vi.fn(async (row) => ({ data: [row] })),
+          select: () => { calls.selectCalled = true; return builder; },
+          eq: (col, val) => { filters[col] = val; return builder; },
+          delete: async () => { calls.deletes.push({ ...filters }); return { data: null }; },
+          then: (resolve) => resolve({ data: [{ id: 1 }, { id: 2 }] }), // id:2 exists in DB (e.g. added by another tab) but this tab's snapshot never saw it
+        };
+        return builder;
+      },
+    };
+    // Stale/incomplete local snapshot -- only knows about id:1. No deletedIds passed.
+    await saveQueryServices(db, 'UTQ-1', [{ id: 1, name: 'Kept', status: 'requested' }]);
+    expect(calls.deletes.length).toBe(0);
+    // saveQueryServices no longer even needs to query the existing rows to diff against.
+    expect(calls.selectCalled).toBe(false);
   });
 
   it('does not throw when the db call fails', async () => {
