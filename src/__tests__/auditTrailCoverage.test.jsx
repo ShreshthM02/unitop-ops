@@ -126,7 +126,7 @@ describe('Payments: updatePayments now accepts and logs an audit action (the cen
     const fs = await import('fs');
     const path = await import('path');
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/components/UnitopApp.jsx'), 'utf-8');
-    const fnMatch = src.match(/const updatePayments = \(queryId, data, auditAction\) => \{[\s\S]*?\};/);
+    const fnMatch = src.match(/const updatePayments = \(queryId, data, auditAction, deletedIds\) => \{[\s\S]*?\};/);
     expect(fnMatch).toBeTruthy();
     expect(fnMatch[0]).toContain('logAudit');
   });

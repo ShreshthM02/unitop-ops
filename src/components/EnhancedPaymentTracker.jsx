@@ -9,7 +9,7 @@ function IncomingEntryRow({ entry: e, TYPE_COLORS, TYPE_TEXT, TYPE_LABELS, query
   const deleteEntry = () => {
     const updated = { ...pt, entries: pt.entries.filter(x => x.id !== e.id) };
     setPt(updated);
-    onUpdatePayments(query.id, updated, `Payment entry deleted: ${e.inCurrency||""} ${e.amount} (receipt ${e.receipt||"n/a"})`);
+    onUpdatePayments(query.id, updated, `Payment entry deleted: ${e.inCurrency||""} ${e.amount} (receipt ${e.receipt||"n/a"})`, { incoming: [e.id] });
   };
 
   // ─── Amend (edit) with version history ───────────────────────────────
@@ -396,7 +396,7 @@ function OutgoingEntryRow({ entry: e, query, pt, setPt, onUpdatePayments, COMPAN
     if (e.receiptDocId) await db.drive.delete(e.receiptDocId);
     const updated = { ...pt, outgoing: pt.outgoing.filter(x => x.id !== e.id) };
     setPt(updated);
-    onUpdatePayments(query.id, updated, `Payment out to ${e.vendor} deleted: ₹${e.amount}`);
+    onUpdatePayments(query.id, updated, `Payment out to ${e.vendor} deleted: ₹${e.amount}`, { outgoing: [e.id] });
   };
 
   const EDIT_FIELDS = ["vendor","category","amount","date","mode","modeOther","ref","note","bankName"];

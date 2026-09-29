@@ -424,11 +424,22 @@ export function mergePaymentsRows(payRows, incomingRows, outgoingRows) {
 }
 
 // Persists a payments record (header + incoming + outgoing entries) to
-// Supabase, syncing entries by upserting everything currently present and
-// deleting any DB rows no longer present locally (handles deleted entries).
-// Takes `db` as a parameter (rather than importing it directly) so it's
-// testable against a mock without a live Supabase connection.
-export async function savePaymentsToDB(db, queryId, data) {
+// Supabase: upserts everything currently present, and deletes ONLY the ids
+// explicitly listed in `deletedIds`.
+//
+// This used to be a "whole-list sync" -- upsert everything given, then
+// DELETE any DB row not present in that same array -- the identical
+// pattern to the old saveQueryServices, and the identical bug: two
+// independent tabs/sessions (this is financial data -- Finance and
+// Operations staff plausibly have the same tour file's Payments panel
+// open at once) can each hold their own possibly-stale `entries`/
+// `outgoing` snapshot, and a save from the stale one would silently
+// delete a payment the other tab had just logged, with no race required.
+// Fixed the same way as saveQueryServices (see its own comment): deletion
+// is never inferred from a diff against the DB -- only the specific ids
+// the caller says were actually removed (the one entry a user clicked
+// Delete on) are ever deleted.
+export async function savePaymentsToDB(db, queryId, data, deletedIds = {}) {
   try {
     await db.from("payments").upsert({
       query_id: queryId,
@@ -446,10 +457,8 @@ export async function savePaymentsToDB(db, queryId, data) {
         amount_inr: parseFloat(e.amountINR) || null, version: e.version || 1, history: e.history || [],
       });
     }
-    const { data: dbIncoming } = await db.from("payment_incoming").select("id").eq("query_id", queryId);
-    const keepIncomingIds = new Set((data.entries || []).map(e => String(e.id)));
-    for (const row of (dbIncoming || [])) {
-      if (!keepIncomingIds.has(String(row.id))) await db.from("payment_incoming").eq("id", row.id).delete();
+    for (const id of (deletedIds.incoming || [])) {
+      await db.from("payment_incoming").eq("id", id).delete();
     }
 
     for (const o of (data.outgoing || [])) {
@@ -458,10 +467,8 @@ export async function savePaymentsToDB(db, queryId, data) {
         date: o.date || null, mode: o.mode, ref: o.ref, note: o.note, receipt_name: o.receiptName,
       });
     }
-    const { data: dbOutgoing } = await db.from("payment_outgoing").select("id").eq("query_id", queryId);
-    const keepOutgoingIds = new Set((data.outgoing || []).map(o => String(o.id)));
-    for (const row of (dbOutgoing || [])) {
-      if (!keepOutgoingIds.has(String(row.id))) await db.from("payment_outgoing").eq("id", row.id).delete();
+    for (const id of (deletedIds.outgoing || [])) {
+      await db.from("payment_outgoing").eq("id", id).delete();
     }
   } catch (e) { console.warn("Save payments to DB failed:", e); }
 }

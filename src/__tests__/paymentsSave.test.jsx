@@ -47,26 +47,26 @@ describe('savePaymentsToDB', () => {
     });
   });
 
-  it('deletes an incoming entry that existed in DB but is no longer in the local array (the actual delete-entry case)', async () => {
+  it('deletes an incoming entry ONLY when its id is explicitly passed in deletedIds.incoming (root-cause fix, same class as the UT-3495/UT-3497 services bug: deletion must never be inferred from a diff against a possibly-stale local array)', async () => {
     const { db, calls } = makeMockDb({ existingIncomingIds: [111, 222] });
     const entry = { id: 111, type: 'advance', inCurrency: 'INR', amount: '100', date: '', mode: '', ref: '', note: '', receipt: '' };
-    await savePaymentsToDB(db, 'UTQ-001', { entries: [entry], outgoing: [] });
+    await savePaymentsToDB(db, 'UTQ-001', { entries: [entry], outgoing: [] }, { incoming: [222] });
     const del = calls.deletes.find(d => d.table === 'payment_incoming');
     expect(del).toBeTruthy();
     expect(del.filters.id).toBe(222);
   });
 
-  it('does not delete anything when the local array still matches DB exactly', async () => {
-    const { db, calls } = makeMockDb({ existingIncomingIds: [111] });
+  it('does not delete anything when deletedIds is omitted -- even if the DB has a row the local array does not mention (a genuinely different tab/session added it, not something this user deleted)', async () => {
+    const { db, calls } = makeMockDb({ existingIncomingIds: [111, 222] });
     const entry = { id: 111, type: 'advance', inCurrency: 'INR', amount: '100', date: '', mode: '', ref: '', note: '', receipt: '' };
     await savePaymentsToDB(db, 'UTQ-001', { entries: [entry], outgoing: [] });
     expect(calls.deletes.filter(d => d.table === 'payment_incoming').length).toBe(0);
   });
 
-  it('handles outgoing entries the same way (upsert current, delete removed)', async () => {
+  it('handles outgoing entries the same way (upsert current, delete only explicit deletedIds.outgoing)', async () => {
     const { db, calls } = makeMockDb({ existingOutgoingIds: [55, 66] });
     const outgoing = { id: 55, vendor: 'Hotel A', amount: '1000', date: '', mode: '', ref: '', note: '', receiptName: '' };
-    await savePaymentsToDB(db, 'UTQ-001', { entries: [], outgoing: [outgoing] });
+    await savePaymentsToDB(db, 'UTQ-001', { entries: [], outgoing: [outgoing] }, { outgoing: [66] });
     const upsert = calls.upserts.find(u => u.table === 'payment_outgoing');
     expect(upsert.row.vendor).toBe('Hotel A');
     const del = calls.deletes.find(d => d.table === 'payment_outgoing');

@@ -494,9 +494,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // id always agree as long as nothing else creates a query in between.
   const nextQueryId = () => nextDocNumber(docSettings, "query", {}).number;
   const showToast = (msg, type = "success") => { setToast(msg); setToastType(type); };
-  const updatePayments = (queryId, data, auditAction) => {
+  const updatePayments = (queryId, data, auditAction, deletedIds) => {
     setPayments(p => ({ ...p, [queryId]: data })); // optimistic local update, same as before
-    savePaymentsToDB(db, queryId, data); // fire-and-forget persistence, mirrors saveQueryToDB's pattern
+    savePaymentsToDB(db, queryId, data, deletedIds); // fire-and-forget persistence, mirrors saveQueryToDB's pattern
     if (auditAction) logAudit(db, queryId, currentUser.name, auditAction);
   };
 
