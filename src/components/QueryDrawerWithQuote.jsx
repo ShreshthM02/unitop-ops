@@ -31,6 +31,9 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [editForm, setEditForm] = useState({...query});
   const [showUploadsInline, setShowUploadsInline] = useState(false);
   const [infoSubTab, setInfoSubTab] = useState("details");
+  // Visible half of the double-submit guard -- see convertInFlightRef's
+  // comment in UnitopApp.jsx.
+  const [converting, setConverting] = useState(false);
   const blankTE = { queryId: query.id, days: [], facilitators: [], localHandlers: [], transporters: [], flights: [], arrFlightDetails: "", depFlightDetails: "" };
   const [te, setTe] = useState(tourExecution || blankTE);
   useEffect(() => { setTe(tourExecution || blankTE); }, [query.id]); // resync working copy if the drawer is opened for a different tour
@@ -117,27 +120,34 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   // for the Detailed flavor is simply unresolved (shows "no match yet",
   // same as any day not yet filled in) rather than the whole document being
   // hidden.
-  const queryDocs = [
-    {icon:"📊",label:"Cost Sheet",    panel:"costsheet", perm:"cost_sheet"},
-    {icon:"🗺",label:"Itinerary",     panel:"itinerary", perm:"itinerary"},
-    {icon:"📋",label:"Quotation",     panel:"quotation", perm:"quotation"},
-  ];
-  const caseFileDocs = [
-    {icon:"📊",label:"Cost Sheet",        panel:"costsheet", perm:"cost_sheet"},
-    {icon:"🗺",label:"Itinerary",         panel:"itinerary", perm:"itinerary"},
-    {icon:"📋",label:"Quotation",         panel:"quotation", perm:"quotation"},
-    {icon:"🧾",label:"Invoices",          panel:"proforma", perm:"invoices"},
-    {icon:"🎫",label:"Exchange Orders",   panel:"voucher", perm:"exchange_orders"},
+  // Root-cause change (2026-09-29, direct request): only Invoices and
+  // Exchange Orders remain gated by conversion to Tour File -- both carry
+  // real GST/legal/financial-voucher weight tied to a confirmed booking,
+  // which is what the conversion actually represents. Uploads, Editor and
+  // Tour Briefing Sheet were gated behind the same `isCaseFile` flag as
+  // those two for no reason specific to them (unlike Invoices/Exchange
+  // Orders, none of the three carries any financial or numbering
+  // significance) -- staff routinely need to attach documents, draft a
+  // free-form note, or start prepping a briefing sheet WHILE a query is
+  // still being won, well before "confirmation received" triggers a real
+  // Tour File. `gated:true` is the only thing that still separates them
+  // from Cost Sheet/Itinerary/Quotation, which have never been gated.
+  const ALL_DOCS = [
+    {icon:"📊",label:"Cost Sheet",         panel:"costsheet",   perm:"cost_sheet"},
+    {icon:"🗺",label:"Itinerary",          panel:"itinerary",   perm:"itinerary"},
+    {icon:"📋",label:"Quotation",          panel:"quotation",   perm:"quotation"},
     {icon:"📋",label:"Tour Briefing Sheet",panel:"tourbriefing"},
-    {icon:"📝",label:"Editor",            panel:"editor"},
+    {icon:"📝",label:"Editor",             panel:"editor"},
     {icon:"📁",label:"Uploads",            panel:"docregistry"},
+    {icon:"🧾",label:"Invoices",           panel:"proforma",    perm:"invoices",        gated:true},
+    {icon:"🎫",label:"Exchange Orders",    panel:"voucher",     perm:"exchange_orders", gated:true},
   ];
   // Hidden, not disabled, matching how every other permission-gated
   // control in this app already behaves (New Query button, Templates/
   // User Management sidebar sections, etc) -- a doc type with no perm
   // key at all (Tour Briefing Sheet, Editor, Uploads) has no dedicated
   // permission defined in ROLE_DEFAULTS, so it stays visible to everyone.
-  const docs = (isCaseFile ? caseFileDocs : queryDocs).filter(d => !d.perm || can(d.perm));
+  const docs = ALL_DOCS.filter(d => (!d.gated || isCaseFile) && (!d.perm || can(d.perm)));
 
   return (
     <div className="overlay">
@@ -325,7 +335,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     {!isCaseFile&&query.status==="operations"&&(
                       <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:10,marginBottom:8}}>
                         <div style={{fontSize:12,color:"#1A5276",marginBottom:6}}>🎉 Confirmation received? Open a dedicated Tour File.</div>
-                        <button className="convert-case-btn" onClick={()=>onConvert(query)}>📁 Convert to Tour File</button>
+                        <button className="convert-case-btn" disabled={converting}
+                          style={{opacity:converting?0.6:1,cursor:converting?"not-allowed":"pointer"}}
+                          onClick={async ()=>{
+                            if (converting) return;
+                            setConverting(true);
+                            try { await onConvert(query); }
+                            finally { setConverting(false); }
+                          }}>
+                          {converting ? "Converting…" : "📁 Convert to Tour File"}
+                        </button>
                       </div>
                     )}
                     {canAdvance&&(
@@ -588,10 +607,10 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               </div>
               {!isCaseFile&&(
                 <div style={{padding:"10px 12px",background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,fontSize:11,color:"#784212"}}>
-                  ℹ Invoices, Exchange Orders and Payment Tracker become available after this query is converted to a Tour File.
+                  ℹ Invoices and Exchange Orders become available after this query is converted to a Tour File.
                 </div>
               )}
-              {isCaseFile&&showUploadsInline&&(
+              {showUploadsInline&&(
                 <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${G.gray200}`}}>
                   {sec("Document Registry")}
                   <div style={{fontSize:12,color:G.gray600,marginBottom:10}}>

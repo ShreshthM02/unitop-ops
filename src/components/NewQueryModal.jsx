@@ -3,6 +3,17 @@ import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES, nightsDaysLabel } = Lib;
 
 export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, series, queries }) {
+  // Real, confirmed bug (2026-09-29): this button never disabled itself
+  // while a save was in flight. Harmless while query-id assignment was
+  // synchronous, but nextDocNumberAtomic (v1.58.0) added a real network
+  // round-trip before the query is created, opening a window where a
+  // double-click/double-tap fires onSave(form) twice -- the atomic serial
+  // guarantees each call gets a genuinely different, valid id, so this
+  // silently created a real duplicate query rather than erroring. Guarded
+  // centrally in handleNewQuery too (belt-and-suspenders); this local
+  // `saving` state is the visible half -- disables the button and shows
+  // real progress instead of looking unresponsive during the round-trip.
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     // Series (optional) -- see docs/DATA_OWNERSHIP.md-style reasoning:
     // this only tags the query into a group and, if a reference tour
@@ -308,11 +319,17 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
         </div>
         <div className="modal-foot">
           <div style={{flex:1,fontSize:11,color:G.gray400,alignSelf:"center"}}>* Required</div>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn btn-primary"
-            style={{opacity:canSave?1:0.5,cursor:canSave?"pointer":"not-allowed"}}
-            onClick={()=>canSave&&onSave(form)}>
-            Save & Acknowledge ↗
+            style={{opacity:(canSave&&!saving)?1:0.5,cursor:(canSave&&!saving)?"pointer":"not-allowed"}}
+            disabled={saving}
+            onClick={async ()=>{
+              if (!canSave || saving) return;
+              setSaving(true);
+              try { await onSave(form); }
+              finally { setSaving(false); }
+            }}>
+            {saving ? "Saving…" : "Save & Acknowledge ↗"}
           </button>
         </div>
       </div>

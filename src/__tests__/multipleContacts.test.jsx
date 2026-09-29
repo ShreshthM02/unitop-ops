@@ -127,7 +127,11 @@ describe('VendorMaster: multiple contacts UI, including the Tour Facilitator spe
   it('a Tour Facilitator still shows Languages/Areas alongside the new contacts section, not replaced by it', () => {
     render(<VendorMaster vendors={vendors} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onClose={()=>{}}/>);
     fireEvent.click(screen.getByText('Prithvi'));
-    expect(screen.getByText('English')).toBeTruthy();
+    // "English" also now appears as an <option> in the language filter
+    // dropdown (2026-09-29, vendor-searchable-by-language feature), so
+    // this asserts on the specific profile-detail value, not a bare
+    // getByText('English') which would now match both.
+    expect(screen.getAllByText('English').length).toBeGreaterThan(0);
     expect(screen.getByText('Delhi')).toBeTruthy();
     expect(screen.getByText(/999/)).toBeTruthy(); // the contact's phone, shown in the new Contact Persons section
   });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -39,6 +39,15 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // user. Showing a brief loading state instead avoids that entirely.
   const [dataLoading, setDataLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Real-time sidebar clock (direct request, 2026-09-29): day, dd/mm/yyyy
+  // date, 24H time, ticking every second. Lives entirely in this one
+  // piece of state -- a single setInterval re-renders just the sidebar
+  // clock line, not the rest of the app.
+  const [sidebarClock, setSidebarClock] = useState(new Date());
+  useEffect(() => {
+    const tick = setInterval(() => setSidebarClock(new Date()), 1000);
+    return () => clearInterval(tick);
+  }, []);
   // Real, serious bug found and fixed here: these five used to start as
   // hardcoded demo constants (INITIAL_QUERIES etc, "Anderson Family" and
   // similar sample records) on the theory that the real fetch below
@@ -89,6 +98,29 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // mergeQueryForSave fix (which only ever addressed a bare partial
   // object being force-defaulted, not this ordering race).
   const querySaveChainsRef = useRef({});
+
+  // Root-cause fix (2026-09-29, follow-up to the v1.58.0 atomic-serial
+  // change): handleNewQuery and handleConvertToCaseFile now both `await`
+  // a real DB round-trip (nextDocNumberAtomic) BEFORE the optimistic
+  // local-state update and modal close that used to happen synchronously,
+  // right at click time. Neither NewQueryModal's "Create" button nor the
+  // "Convert to Tour File" button (KanbanView / QueryDrawerWithQuote) ever
+  // disabled themselves while a save was in flight -- previously a
+  // harmless gap, since the old nextDocNumber() was fully synchronous and
+  // the window for an accidental double-click/double-submit before the
+  // modal closed was only a few milliseconds. The new real network
+  // round-trip (bump_doc_serial) widens that window to a few hundred
+  // milliseconds, which is exactly what a user double-clicking (or
+  // double-tapping on a slow connection) can land in -- and unlike the
+  // OLD numbering, the atomic RPC guarantees each concurrent call gets a
+  // genuinely DIFFERENT serial, so a double-submit here doesn't collide,
+  // it silently creates a second, real, fully-valid duplicate query --
+  // which is exactly what shows up as an unexpected/duplicate entry
+  // disturbing the Recent Queries widget right after creating one query.
+  // Guarded here, at the handler level (not just a button's `disabled`),
+  // so it holds regardless of which UI element triggers it.
+  const newQueryInFlightRef = useRef(false);
+  const convertInFlightRef = useRef(new Set());
   useEffect(() => {
     // Skip the very first run (component mount): activeQuery's initial
     // value is always null, and without this guard, that fires this
@@ -564,6 +596,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleNewQuery = async (form) => {
+    // Double-submit guard -- see newQueryInFlightRef's own comment above.
+    if (newQueryInFlightRef.current) return;
+    newQueryInFlightRef.current = true;
+    try {
     // Real-DB atomic serial (see nextDocNumberAtomic's own comment) --
     // this id becomes the new query's primary key, so it must never be
     // computable identically by two concurrent callers the way the old
@@ -600,9 +636,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     // the correct one.
     const saved = await saveQueryToDB(newQ, newQ.audit[0].action);
     if (saved !== false) showToast(`Query ${id} created and acknowledged`);
+    } finally {
+      newQueryInFlightRef.current = false;
+    }
   };
 
   const handleConvertToCaseFile = async (query) => {
+    // Double-submit guard, keyed per query id -- see convertInFlightRef's
+    // own comment above. Only blocks a second click converting the SAME
+    // query while its own conversion is still in flight; a different
+    // query converting at the same time is unaffected.
+    if (convertInFlightRef.current.has(query.id)) return;
+    convertInFlightRef.current.add(query.id);
+    try {
     // Same atomic-serial fix as handleNewQuery above -- a tour file
     // number isn't a primary key, but it's still a real, meaningful
     // business identifier staff rely on being unique; two concurrent
@@ -658,6 +704,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         saveTourExecutionToDB(db, teData);
         logAudit(db, query.id, currentUser.name, `Tour Info Day-wise Itinerary/Hotels pre-filled from Cost Sheet v${source.version} at conversion`);
       })();
+    }
+    } finally {
+      convertInFlightRef.current.delete(query.id);
     }
   };
 
@@ -881,6 +930,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           </div>
           <div style={{textAlign:"center",padding:"4px 0 8px",fontSize:9,color:"rgba(255,255,255,0.18)",letterSpacing:"0.5px"}}>
             {APP_VERSION}
+          </div>
+          <div style={{textAlign:"center",padding:"0 0 10px",fontSize:9,color:"rgba(255,255,255,0.18)",letterSpacing:"0.5px"}}>
+            {formatSidebarClock(sidebarClock)}
           </div>
         </div>
 

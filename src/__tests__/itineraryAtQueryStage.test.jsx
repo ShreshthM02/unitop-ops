@@ -17,14 +17,21 @@ describe('1.3 Itinerary is available at query stage, not only after tour-file co
     expect(screen.getByText('Quotation')).toBeTruthy();
   });
 
-  it('does NOT leak the tour-file-only documents into the query stage', () => {
+  // Updated 2026-09-29 (direct request): Uploads, Editor and Tour
+  // Briefing Sheet no longer wait for conversion -- only Invoices and
+  // Exchange Orders, which carry real GST/financial-voucher weight tied
+  // to a confirmed booking, still do. See queryStageDocGating.test.jsx
+  // for the fuller regression coverage of this change.
+  it('does NOT leak the still-gated financial documents into the query stage, but does offer Uploads/Editor/Tour Briefing Sheet', () => {
     render(<QueryDrawerWithQuote query={baseQuery} {...props}/>);
     fireEvent.click(screen.getByText('📋 Docs'));
     // These stay gated behind conversion.
     expect(screen.queryByText('Invoices')).toBeNull();
     expect(screen.queryByText('Exchange Orders')).toBeNull();
-    expect(screen.queryByText('Meal Plan')).toBeNull();
-    expect(screen.queryByText('Tour Briefing Sheet')).toBeNull();
+    // These no longer are.
+    expect(screen.getByText('Tour Briefing Sheet')).toBeTruthy();
+    expect(screen.getByText('Editor')).toBeTruthy();
+    expect(screen.getByText('Uploads')).toBeTruthy();
   });
 
   it('a converted tour file still offers the full document set including Itinerary', () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
@@ -135,6 +135,12 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
   const [finalVersion, setFinalVersion] = useState(null);
   const [viewingVersion, setViewingVersion] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Guards the effect below from burning a real invoice/proforma serial
+  // number more than once for the same query+flavor -- see refreshVersions'
+  // own comment (still more places this could bite, 2026-09-29 follow-up
+  // to v1.58.0). Keyed per "queryId:flavor" so switching flavors, or a
+  // different query's drawer opening, is never blocked by this.
+  const numberingInFlightRef = useRef(null);
 
   const loadVersionIntoDraft = (v) => {
     const c = v.content || {};
@@ -165,11 +171,27 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         // invoice number has real GST/legal compliance weight and must
         // be unique across the whole business, so it can no longer be
         // computed from a client-cached, possibly-hours-stale serial.
+        // Double-invoke guard (2026-09-29, "still more places this could
+        // bite" follow-up): this whole `.then` runs from a useEffect keyed
+        // on [query.id, docFlavor] -- if it ever fires twice in a row for
+        // the same query+flavor before the first call's state update
+        // lands (e.g. a fast flavor toggle bouncing back, or the effect
+        // re-running before `loaded.length > 0` becomes true), each run
+        // independently calls the atomic RPC and permanently burns a real,
+        // legally-relevant invoice serial that's simply thrown away when
+        // the second call's result overwrites the first's. Not the same
+        // failure shape as the Recent Queries duplicate-row bug (no extra
+        // row is created here), but the same root class: an awaited
+        // atomic-serial call with no in-flight guard around it.
+        const flightKey = `${query.id}:${flavor}`;
+        if (numberingInFlightRef.current === flightKey) return;
+        numberingInFlightRef.current = flightKey;
         const docType = flavor === "proforma" ? "proforma" : "taxinvoice";
         const number = await nextDocNumberAtomic(db, docSettings, docType, {
           group: query.groupName || query.clientName, sector: query.destination || query.sector,
           id: query.id, tourfile: query.tourFileId,
         });
+        numberingInFlightRef.current = null;
         setF("invoiceNo", number);
         // Deliberately no local docSettings update here -- this
         // component only receives docSettings as a read-only prop (no

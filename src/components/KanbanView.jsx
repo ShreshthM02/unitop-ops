@@ -7,6 +7,11 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
   const [dragId,    setDragId]    = React.useState(null);
   const [dragOver,  setDragOver]  = React.useState(null);
   const [highlight, setHighlight] = React.useState(null);
+  // Visible half of the double-submit guard -- see convertInFlightRef's
+  // comment in UnitopApp.jsx. Disables just the one card's button while
+  // its conversion round-trip is in flight, rather than looking clickable
+  // (and inviting a second click) the whole time.
+  const [convertingId, setConvertingId] = React.useState(null);
 
   const handleDragStart = (e, queryId) => {
     setDragId(queryId);
@@ -113,10 +118,19 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     </div>
                     {/* Convert button */}
                     {q.status==="operations" && !q.tourFileId && (
-                      <button onClick={e=>{e.stopPropagation();onConvert(q);}}
+                      <button disabled={convertingId===q.id}
+                        onClick={async e=>{
+                          e.stopPropagation();
+                          if (convertingId===q.id) return;
+                          setConvertingId(q.id);
+                          try { await onConvert(q); }
+                          finally { setConvertingId(null); }
+                        }}
                         style={{width:"100%",marginTop:7,padding:"4px 0",borderRadius:5,border:"none",
-                          background:"#EBF5FB",color:"#1A5276",fontSize:10,fontWeight:600,cursor:"pointer"}}>
-                        📁 Convert to Tour File
+                          background:"#EBF5FB",color:"#1A5276",fontSize:10,fontWeight:600,
+                          cursor:convertingId===q.id?"not-allowed":"pointer",
+                          opacity:convertingId===q.id?0.6:1}}>
+                        {convertingId===q.id ? "Converting…" : "📁 Convert to Tour File"}
                       </button>
                     )}
                   </div>

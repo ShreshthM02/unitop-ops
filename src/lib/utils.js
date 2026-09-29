@@ -2317,6 +2317,22 @@ export function formatDateSlash(isoDate) {
   return formatDateDMY(isoDate).replace(/-/g, "/");
 }
 
+// Sidebar real-time clock (direct request, 2026-09-29): "Weekday,
+// dd/mm/yyyy · hh:mm:ss" in 24-hour time. Pure and kept separate from the
+// component's setInterval tick so the formatting itself is trivially
+// testable without faking a live clock inside a rendered component --
+// same reasoning as every other pure formatter/reducer in this file.
+const SIDEBAR_CLOCK_DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+export function formatSidebarClock(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${SIDEBAR_CLOCK_DAY_NAMES[d.getDay()]}, ${dd}/${mm}/${d.getFullYear()} · ${hh}:${min}:${ss}`;
+}
+
 // Direct request, Quotation's itinerary Date column specifically:
 // "{day}, dd/mm/yyyy" (e.g. "Mon, 12/10/2026") -- a different, more
 // specific format than the plain dd/mm/yyyy formatDateSlash gives
@@ -2581,6 +2597,52 @@ export async function loadFinalPriceAgreementAudits(db, queryId) {
 }
 
 // ─── VENDOR ASSIGNMENT HISTORY (the real "Service History") ────────────────
+// ─── VENDOR LANGUAGE SEARCH (direct request, 2026-09-29) ───────────────────
+// vendors.languages is free text on Tour Facilitator records (e.g. "English,
+// Thai, Mandarin") -- there was never a real list behind it, just a comma-
+// separated string typed once at data entry. Two pure helpers, kept
+// separate from VendorMaster's own filtering/rendering so the actual
+// matching logic is trivially testable without mounting the component:
+// parseLanguagesList splits/trims/dedupes one vendor's string into real
+// tokens (used both to build the filter dropdown's option list across all
+// vendors, and to test one vendor's membership); vendorHasLanguage does a
+// real per-token match (case-insensitive), not a raw substring test --
+// a plain `.includes("Thai")` would also match "Thailand" or false-match
+// a facilitator whose OWN name/notes happened to contain "thai" as a
+// substring elsewhere, once this same token list feeds general search.
+export function parseLanguagesList(languagesStr) {
+  if (!languagesStr) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of String(languagesStr).split(",")) {
+    const t = raw.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+export function vendorHasLanguage(vendor, language) {
+  if (!language) return true;
+  const target = language.trim().toLowerCase();
+  if (!target) return true;
+  return parseLanguagesList(vendor?.languages).some(l => l.toLowerCase() === target);
+}
+// Every distinct language across a vendor list, alphabetically sorted --
+// what the language filter dropdown's option list is built from.
+export function allVendorLanguages(vendors) {
+  const seen = new Map(); // lowercase -> first-seen display casing
+  for (const v of vendors || []) {
+    for (const l of parseLanguagesList(v.languages)) {
+      const key = l.toLowerCase();
+      if (!seen.has(key)) seen.set(key, l);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
 // The old "Service History" tab in VendorMaster was actually payment
 // history matched by fuzzy name substring against payment_outgoing.vendor
 // (a free-text field, since outgoing payments can go to non-vendor payees

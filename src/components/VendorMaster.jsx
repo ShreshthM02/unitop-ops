@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport, mealPlanLabel } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport, mealPlanLabel, parseLanguagesList, vendorHasLanguage, allVendorLanguages } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
@@ -24,6 +24,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   const [editing,setEditing]=useState(false);
   const [form,setForm]=useState({});
   const [filterType,setFilterType]=useState("All");
+  const [filterLanguage,setFilterLanguage]=useState("");
   const [search,setSearch]=useState("");
   const [showInactive,setShowInactive]=useState(false);
   const [tab,setTab]=useState("profile");
@@ -129,13 +130,21 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
   };
   const TABS=[{id:"profile",label:"Profile"},{id:"history",label:"Service History"},{id:"rates",label:"Contracted Rates"},{id:"ledger",label:"Financial Ledger"},{id:"eo",label:"Exchange Orders"}];
   // Same meta search treatment as AgentMaster -- matches contact
-  // persons and other relevant fields too, not just name/city.
+  // persons and other relevant fields too, not just name/city. Also
+  // matches languages (direct request, 2026-09-29) so typing "Thai" in
+  // the plain search box already finds facilitators speaking it.
+  // Language also gets its own dedicated filter below (parallel to the
+  // Type pills) since a free-text-in-a-search-box match is easy to miss
+  // -- someone specifically looking for "who speaks Japanese" shouldn't
+  // have to know to type it into a general search box first.
+  const availableLanguages = useMemo(() => allVendorLanguages(vendors), [vendors]);
   const filtered=vendors.filter(v=>{
     if(!(showInactive||v.active!==false)) return false;
     if(!(filterType==="All"||v.type===filterType)) return false;
+    if(filterLanguage&&!vendorHasLanguage(v,filterLanguage)) return false;
     if(!search) return true;
     const q=search.toLowerCase();
-    const directHit=[v.name,v.city,v.type,v.gstin,v.website,v.address].some(f=>f?.toLowerCase().includes(q));
+    const directHit=[v.name,v.city,v.type,v.gstin,v.website,v.address,v.languages].some(f=>f?.toLowerCase().includes(q));
     const contactHit=(v.contacts||[]).some(c=>[c.name,c.phone,c.email,c.designation].some(f=>f?.toLowerCase().includes(q)));
     return directHit||contactHit;
   });
@@ -215,6 +224,13 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
             <div style={{padding:"8px 12px",borderBottom:`1px solid ${G.gray200}`}}>
               <input style={{...inp,padding:"6px 9px",marginBottom:6}} placeholder="Search vendors..." value={search} onChange={e=>setSearch(e.target.value)}/>
               <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["All",...VENDOR_TYPES].map(t=><button key={t} onClick={()=>setFilterType(t)} style={{padding:"2px 7px",borderRadius:10,border:`1px solid ${filterType===t?G.accent:G.gray200}`,background:filterType===t?"#FDEDEC":G.white,color:filterType===t?G.accent:G.gray600,fontSize:10,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{t}</button>)}</div>
+              {availableLanguages.length>0&&(
+                <select value={filterLanguage} onChange={e=>setFilterLanguage(e.target.value)}
+                  style={{...inp,padding:"4px 6px",marginBottom:6,fontSize:11}} title="Filter by language spoken">
+                  <option value="">🌐 Any language</option>
+                  {availableLanguages.map(l=><option key={l} value={l}>{l}</option>)}
+                </select>
+              )}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                 <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:G.gray600,cursor:"pointer"}}>
                   <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} style={{accentColor:G.accent}}/>
@@ -226,7 +242,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                 </select>
               </div>
             </div>
-            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates(v.rates||[]);setShowDetailMobile(true);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div><div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
+            {sortedFiltered.map(v=>{const s=vendorStats.get(v.id);const langs=parseLanguagesList(v.languages);return(<div key={v.id} onClick={()=>{setSelected(v);setEditing(false);setTab("profile");setRates(v.rates||[]);setShowDetailMobile(true);}} style={{padding:"12px 14px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",background:selected?.id===v.id?"#EBF5FB":G.white,opacity:v.active===false?0.5:1}}><div style={{fontSize:13,fontWeight:600}}>{v.name}{v.active===false?" (inactive)":""}</div><div style={{fontSize:11,color:G.accent,fontWeight:500}}>{v.type}</div><div style={{fontSize:11,color:G.gray400}}>{v.city}</div>{langs.length>0&&<div style={{fontSize:10,color:G.gray600,marginTop:2}}>🌐 {langs.join(", ")}</div>}<div style={{fontSize:10,color:G.gray400,marginTop:2}}>{s?.assignmentCount||0} assignments{s?.lastActive?" · last "+formatDateSlash(s.lastActive):""}</div></div>);})}
           </div>}
           {(!isNarrow || showDetailMobile) && <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{padding:"10px 14px",borderBottom:`1px solid ${G.gray200}`,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600,flexShrink:0}}>← Back to list</div>}
