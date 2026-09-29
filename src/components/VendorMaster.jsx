@@ -64,6 +64,29 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
     // degrade gracefully to an empty list, never leave VendorMaster
     // itself uncaught-crashing.
     reloadContractedRates();
+    // Real, confirmed bug fixed here (root cause of "the Add Rate button
+    // vanishes and only comes back after a full page refresh"): switching
+    // to a different vendor (via the list's onClick, or a mention-focus
+    // navigation via initialSelectedId) changed `selected` but never reset
+    // this sub-state. If a user had clicked "+ Add Rate" or "Edit" on
+    // Vendor A (setting editingRateId to "new" or a rate's real id) and
+    // then navigated to Vendor B without explicitly saving or cancelling,
+    // editingRateId stayed set -- permanently hiding "+ Add Rate" on Vendor
+    // B (gated on `!editingRateId`), AND silently showing Vendor A's
+    // half-filled edit form under Vendor B's own rate list (gated on
+    // `editingRateId==="new"`/`editingRateId===r.id`, neither of which
+    // reset just because the vendor changed). Nothing inside this
+    // component's own render path ever cleared it again, so the button
+    // stayed hidden no matter what was clicked afterwards -- only a full
+    // page reload (which remounts VendorMaster fresh, re-running every
+    // useState initializer) actually fixed it, exactly matching the
+    // report. Resetting here, keyed on the same selected?.id change that
+    // already reloads the rates themselves, covers every path that
+    // changes `selected` -- not just the vendor list's own onClick, which
+    // happened to reset it in that one specific case already.
+    setEditingRateId(null);
+    setRateForm({});
+    setRateToast("");
   }, [selected?.id]);
   const [periodFilter,setPeriodFilter]=useState({preset:"all"});
 

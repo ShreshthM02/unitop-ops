@@ -123,9 +123,36 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // these three panels manage their own `selected` state internally, so
   // this seeds it via an initialSelectedId prop rather than controlling
   // selection from here.
-  const [focusAgentId,   setFocusAgentId]   = useState(null);
-  const [focusVendorId,  setFocusVendorId]  = useState(null);
-  const [focusSeriesId,  setFocusSeriesId]  = useState(null);
+  //
+  // Also persisted to localStorage, same pattern as `view` above -- real,
+  // confirmed bug fixed here (part of "refreshing drops the user back to
+  // the top-level list instead of where they actually were", reported
+  // together with the vanishing Add Rate button): `view` alone survives a
+  // refresh (restores "Vendor Repository", say), but WHICH vendor was
+  // drilled into did not -- these three ids were plain in-memory state,
+  // reset to null on every fresh mount, so a refresh always dropped back
+  // to the bare list even when `view` correctly remembered the tab.
+  // Restoring these the same way `view` already is closes that gap for
+  // the specific "list -> record" drill-down these three panels share
+  // (Vendors/Agents/Series); a still-deeper level (which tab *within*
+  // that record, e.g. Contracted Rates vs Profile) is not covered here
+  // and would need its own, per-panel follow-up if it turns out to matter
+  // as much in practice.
+  const [focusAgentId,   setFocusAgentId]   = useState(() => localStorage.getItem("unitop_focus_agent") || null);
+  const [focusVendorId,  setFocusVendorId]  = useState(() => localStorage.getItem("unitop_focus_vendor") || null);
+  const [focusSeriesId,  setFocusSeriesId]  = useState(() => localStorage.getItem("unitop_focus_series") || null);
+  useEffect(() => {
+    if (focusAgentId) localStorage.setItem("unitop_focus_agent", focusAgentId);
+    else localStorage.removeItem("unitop_focus_agent");
+  }, [focusAgentId]);
+  useEffect(() => {
+    if (focusVendorId) localStorage.setItem("unitop_focus_vendor", focusVendorId);
+    else localStorage.removeItem("unitop_focus_vendor");
+  }, [focusVendorId]);
+  useEffect(() => {
+    if (focusSeriesId) localStorage.setItem("unitop_focus_series", focusSeriesId);
+    else localStorage.removeItem("unitop_focus_series");
+  }, [focusSeriesId]);
   const [focusConvId,    setFocusConvId]    = useState(null);
   const [showUserMgmt,   setShowUserMgmt]   = useState(false);
   const [cancelTarget,   setCancelTarget]   = useState(null);

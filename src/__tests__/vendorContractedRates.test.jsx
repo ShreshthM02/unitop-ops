@@ -152,4 +152,47 @@ describe('Contracted Rates: the real imported rate sheet (vendor_rates table), n
     await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
     vi.doUnmock('../lib/supabase.js');
   });
+
+  // Real, reported bug: "certain buttons like 'add rate' vanish and only
+  // appear after refreshing." Root cause found: editingRateId (and its
+  // rateForm) were never reset when the SELECTED VENDOR changed -- only
+  // an explicit Save/Cancel on the edit form cleared them. Clicking "+ Add
+  // Rate" (or "Edit") on one vendor, then switching to a different vendor
+  // WITHOUT saving or cancelling first, left editingRateId set -- which
+  // permanently hid "+ Add Rate" (gated on `!editingRateId`) on every
+  // vendor selected afterwards, and would have shown the first vendor's
+  // half-filled edit form under the new vendor's own rate list. Nothing
+  // in the normal click flow ever cleared it again -- only a full page
+  // reload (remounting VendorMaster fresh) did, exactly matching the
+  // "only appears after refreshing" report.
+  it('switching to a different vendor while "+ Add Rate" is open on the first one clears editingRateId, so "+ Add Rate" reappears for the new vendor (root-cause fix)', async () => {
+    const mockDb = { from: () => {
+      const builder = { select: () => builder, eq: () => builder,
+        is: () => ({ then: (res) => res({ data: [], error: null }) }) };
+      return builder;
+    }};
+    vi.doMock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
+    vi.resetModules();
+    const { default: VendorMasterFresh } = await import('../components/VendorMaster.jsx');
+    const hotelA = { id: 'v-a', name: 'Hotel Alpha', type: 'Hotel', city: 'Delhi', active: true, rates: [] };
+    const hotelB = { id: 'v-b', name: 'Hotel Beta', type: 'Hotel', city: 'Agra', active: true, rates: [] };
+    render(<VendorMasterFresh vendors={[hotelA, hotelB]} setVendors={()=>{}} queries={[]} tourExecutions={{}} currentUser={{id:1,role:'admin'}} onSaveVendor={()=>{}} onClose={()=>{}}/>);
+
+    fireEvent.click(screen.getByText('Hotel Alpha'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+    await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Rate')); // editingRateId -> "new", button now hidden for THIS vendor (expected)
+    expect(screen.queryByText('+ Add Rate')).toBeFalsy();
+
+    // Switch vendors WITHOUT saving or cancelling the open edit form.
+    fireEvent.click(screen.getByText('Hotel Beta'));
+    fireEvent.click(screen.getByText('Contracted Rates'));
+
+    // Before the fix: editingRateId stayed "new", so "+ Add Rate" never
+    // came back for Hotel Beta either -- only a full page reload fixed
+    // it. After the fix: switching vendors clears it, so the button is
+    // back for the newly-selected vendor.
+    await waitFor(() => expect(screen.getByText('+ Add Rate')).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
 });
