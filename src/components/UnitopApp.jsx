@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -564,8 +564,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   };
 
   const handleNewQuery = async (form) => {
-    const { number: id, updatedSettings } = nextDocNumber(docSettings, "query", { group: form.groupName, sector: form.sector });
-    saveDocSettings(updatedSettings);
+    // Real-DB atomic serial (see nextDocNumberAtomic's own comment) --
+    // this id becomes the new query's primary key, so it must never be
+    // computable identically by two concurrent callers the way the old
+    // client-cached-serial version could be.
+    const id = await nextDocNumberAtomic(db, docSettings, "query", { group: form.groupName, sector: form.sector });
+    // Optimistic, LOCAL-ONLY bump of the on-screen preview for the *next*
+    // new query -- deliberately never saved back to the DB (see
+    // nextDocNumberAtomic's comment on why re-saving the whole blob here
+    // would silently undo the atomic bump this just performed, or anyone
+    // else's concurrent one).
+    setDocSettings(s => ({ ...s, query: { ...(s.query||{}), serial: (s.query?.serial||1) + 1 } }));
     const now = new Date().toLocaleString("en-IN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
     const paxDisplay = form.paxKnown?`${form.paxExact} pax`:`${form.paxMin||"?"}–${form.paxMax||"?"} pax (TBC)`;
     const dateDisplay = form.dateKnown?`${formatDateSlash(form.travelDateFrom)}${form.travelDateTo?" → "+formatDateSlash(form.travelDateTo):""}`:`${form.travelMonth||""}${form.travelSeason?" · "+form.travelSeason:""} (TBC)`;
@@ -593,9 +602,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     if (saved !== false) showToast(`Query ${id} created and acknowledged`);
   };
 
-  const handleConvertToCaseFile = (query) => {
-    const { number: tourNum, updatedSettings } = nextDocNumber(docSettings, "tourfile", { group: query.groupName || query.clientName, sector: query.destination || query.sector, id: query.id });
-    saveDocSettings(updatedSettings);
+  const handleConvertToCaseFile = async (query) => {
+    // Same atomic-serial fix as handleNewQuery above -- a tour file
+    // number isn't a primary key, but it's still a real, meaningful
+    // business identifier staff rely on being unique; two concurrent
+    // conversions must never be able to compute the same one.
+    const tourNum = await nextDocNumberAtomic(db, docSettings, "tourfile", { group: query.groupName || query.clientName, sector: query.destination || query.sector, id: query.id });
+    setDocSettings(s => ({ ...s, tourfile: { ...(s.tourfile||{}), serial: (s.tourfile?.serial||1) + 1 } }));
     const now = new Date().toLocaleString("en-IN");
     const auditMsg = `Converted to Tour File — Tour No. ${tourNum} assigned`;
     const updQ = {...query,tourFileId:tourNum,audit:[...(query.audit||[]),{by:currentUser.name,at:now,action:auditMsg}]};

@@ -4,7 +4,7 @@ const {
   COMPANY_INFO, G, STAMP_B64, ExportMenu, VersionDropdown, DocTabBar, DocPreviewFrame,
   LetterheadToggleBar, useLetterheadToggles, buildAddresseeBlock, RichTextEditor,
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
-  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, buildDownloadFilename, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
+  DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, nextDocNumberAtomic, buildDownloadFilename, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
   logAudit, db, nightsDaysLabel,
 } = Lib;
@@ -148,7 +148,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     Promise.all([
       loadInvoiceVersions(db, query.id, flavor),
       loadExistingInvoiceNumbers(db, "invoices"),
-    ]).then(([loaded, existingNumbers]) => {
+    ]).then(async ([loaded, existingNumbers]) => {
       setVersions(loaded);
       if (loaded.length > 0) {
         setVersion(Math.max(...loaded.map(v => v.version)) + 1);
@@ -160,12 +160,27 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         setFinalVersion(null);
         setViewingVersion(null);
         const setF = flavor === "proforma" ? setP : setT;
-        const { number, updatedSettings } = nextDocNumber(docSettings, flavor === "proforma" ? "proforma" : "taxinvoice", {
+        // Real-DB atomic serial (same root-cause fix as query/tour file
+        // numbering -- see nextDocNumberAtomic's own comment): an
+        // invoice number has real GST/legal compliance weight and must
+        // be unique across the whole business, so it can no longer be
+        // computed from a client-cached, possibly-hours-stale serial.
+        const docType = flavor === "proforma" ? "proforma" : "taxinvoice";
+        const number = await nextDocNumberAtomic(db, docSettings, docType, {
           group: query.groupName || query.clientName, sector: query.destination || query.sector,
           id: query.id, tourfile: query.tourFileId,
         });
         setF("invoiceNo", number);
-        onSaveDocSettings && onSaveDocSettings(updatedSettings);
+        // Deliberately no local docSettings update here -- this
+        // component only receives docSettings as a read-only prop (no
+        // setter passed down), and calling onSaveDocSettings with the
+        // whole locally-held blob would be exactly the blind,
+        // last-write-wins overwrite this fix removes (see
+        // nextDocNumberAtomic's comment). Nothing is lost by skipping it:
+        // nextDocNumberAtomic always gets its serial fresh from the DB
+        // via bump_doc_serial(), never from this local docSettings copy,
+        // so every invoice generated here -- in this session or any
+        // other -- is correct regardless of what this prop shows.
       }
     });
   };

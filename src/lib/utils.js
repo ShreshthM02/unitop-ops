@@ -152,6 +152,46 @@ export function nextDocNumber(docSettings, docType, ctx = {}) {
   return { number, updatedSettings };
 }
 
+// Root-cause fix for a real, confirmed multi-user race (2026-09-29
+// audit): every ACTUAL document-number assignment (a new query, a tour
+// file conversion, an invoice) used to go through nextDocNumber() above,
+// which computes the next serial from `docSettings` -- a copy cached in
+// memory for the entire session (loaded once at login, can go stale for
+// hours) -- then the caller persisted the bump with a plain
+// saveAppSetting() upsert of the WHOLE doc_numbering blob, last-write-
+// wins, no DB-side atomicity. Two staff creating a new query close
+// together could compute the IDENTICAL serial from their own stale
+// snapshot; for a new query specifically, that id is the `queries`
+// table's own primary key, so the second save would silently overwrite
+// the first query's entire row via upsert's merge-duplicates resolution.
+//
+// This is the atomic replacement for every call site that actually
+// PERSISTS a document (nextDocNumber() itself stays as-is, unchanged --
+// NewQueryModal's live preview text still uses it deliberately, since
+// that's a display-only estimate that was never the authoritative
+// assignment anyway). It gets the real serial from the database's own
+// bump_doc_serial() RPC (a `select ... for update` row lock, genuinely
+// serializing concurrent callers) instead of the local cache, so two
+// concurrent calls can never receive the same number regardless of
+// either caller's staleness.
+//
+// Deliberately returns ONLY the formatted number -- there is no
+// "updatedSettings" for the caller to persist anymore, because
+// bump_doc_serial() already committed the new serial in the same
+// database round trip. Callers must NOT call saveDocSettings with a
+// locally-held full docSettings copy for this -- that was exactly the
+// blind, whole-blob, last-write-wins overwrite this fix removes from the
+// numbering path; doing it anyway would silently revert another user's
+// concurrent serial bump (or their concurrent settings edit) back to
+// this caller's own stale snapshot. A caller MAY still update its own
+// local `docSettings` state optimistically (for on-screen previews of
+// what's next), but that update must stay local, never re-saved.
+export async function nextDocNumberAtomic(db, docSettings, docType, ctx = {}) {
+  const cfg = (docSettings && docSettings[docType]) || {};
+  const seq = await db.bumpDocSerial(docType);
+  return formatDocPattern(cfg.pattern, { ...ctx, prefix: cfg.prefix, seq });
+}
+
 // Item 1: one shared filename builder, used for every export format
 // (PDF's <title> tag, Word's downloadDocx filename, Excel where
 // applicable) so the SAME document always produces the SAME filename
@@ -1896,13 +1936,22 @@ export async function loadExchangeOrderVersionHistory(db, orderNo) {
 // else. Takes the live docSettings + generation context and returns
 // both the number and the settings with that type's serial bumped,
 // same contract as nextDocNumber() itself -- the caller persists it.
+// Root-cause fix, same audit as nextDocNumberAtomic above: this used to
+// be a thin wrapper around nextDocNumber() -- despite already taking `db`
+// as a parameter, it never actually used it, and still computed the
+// serial from the client-cached docSettings snapshot. An Exchange Order
+// number has real business weight (vendors are paid against it), so it
+// gets the same atomic fix as query/tour file/invoice numbering: the
+// serial now genuinely comes from bump_doc_serial() via db, not from
+// whatever docSettings this caller happens to be holding.
 export async function nextExchangeOrderNo(db, docSettings, ctx = {}) {
   try {
-    return nextDocNumber(docSettings, "exchange", ctx);
+    const number = await nextDocNumberAtomic(db, docSettings, "exchange", ctx);
+    return { number };
   } catch (e) {
     console.warn("Generate next exchange order number failed:", e);
     const prefix = (docSettings?.exchange?.prefix) || "EO";
-    return { number: `${prefix}-${new Date().getFullYear()}-001`, updatedSettings: docSettings };
+    return { number: `${prefix}-${new Date().getFullYear()}-001` };
   }
 }
 

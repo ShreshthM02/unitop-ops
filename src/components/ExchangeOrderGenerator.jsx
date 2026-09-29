@@ -244,11 +244,16 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
   const saveNewOrder = async () => {
     if (!form.drawnOn) return;
     setSaving(true);
-    const { number: orderNo, updatedSettings } = await nextExchangeOrderNo(db, docSettings, {
+    // nextExchangeOrderNo now gets its serial atomically from the DB
+    // (bump_doc_serial) rather than this locally-held docSettings copy --
+    // there is no updatedSettings to persist back anymore, and doing so
+    // with this component's own possibly-stale full docSettings would
+    // silently undo another user's concurrent bump or settings edit
+    // (same root-cause fix as query/tour file/invoice numbering).
+    const { number: orderNo } = await nextExchangeOrderNo(db, docSettings, {
       group: query.groupName || query.clientName, sector: query.destination || query.sector,
       id: query.id, tourfile: query.tourFileId,
     });
-    onSaveDocSettings && onSaveDocSettings(updatedSettings);
     const vendorIdForSave = form.drawnOnVendorId === CUSTOM_VENDOR ? null : form.drawnOnVendorId;
     const { error } = await saveExchangeOrderVersion(db, orderNo, query.id, vendorIdForSave, { version: 1, order: form }, currentUser?.id);
     if (error) {

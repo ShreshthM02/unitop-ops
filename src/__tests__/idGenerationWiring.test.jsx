@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { nextInvoiceNo, formatDocPattern, nextDocNumber } from '../lib/utils.js';
+import { nextInvoiceNo, formatDocPattern, nextDocNumber, nextDocNumberAtomic } from '../lib/utils.js';
 
 // This round originally wired Query ID and Tour File ID generation to
 // real settings by reusing nextInvoiceNo(prefix, existing) -- both were
@@ -74,20 +74,32 @@ describe('nextInvoiceNo: the shared, collision-safe id generator now driving Que
 });
 
 describe('InvoiceGenerator (Tax Invoice flavor): a custom prefix AND pattern are now genuinely respected, not just the prefix half of the old hardcoded shape', () => {
-  const makeDb = () => ({
-    from: vi.fn(() => {
-      const builder = {
-        select: () => builder, eq: () => builder, order: () => builder,
-        insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'x' }], error: null })),
-        update: vi.fn(async () => ({ data: [], error: null })),
-        then: (resolve) => resolve({ data: [], error: null }),
-      };
-      return builder;
-    }),
-  });
+  // Root-cause fix (2026-09-29 multi-user audit): invoice numbering now
+  // gets its serial atomically from the database (bump_doc_serial via
+  // db.bumpDocSerial), not from the client-cached docSettings snapshot --
+  // see nextDocNumberAtomic's own comment in lib/utils.js. The mock db
+  // here needs a real bumpDocSerial implementation, matching the real
+  // one's contract: returns the serial to use (starting from whatever
+  // this test configures as docSettings.taxinvoice.serial, since there's
+  // no real Postgres row backing this unit test).
+  const makeDb = (startingSerial = 1) => {
+    let serial = startingSerial;
+    return {
+      from: vi.fn(() => {
+        const builder = {
+          select: () => builder, eq: () => builder, order: () => builder,
+          insert: vi.fn(async (r) => ({ data: [{ ...r, id: 'x' }], error: null })),
+          update: vi.fn(async () => ({ data: [], error: null })),
+          then: (resolve) => resolve({ data: [], error: null }),
+        };
+        return builder;
+      }),
+      bumpDocSerial: vi.fn(async () => serial++),
+    };
+  };
 
   it('a custom prefix set under the correct lowercase key "taxinvoice" is now actually used for the generated invoice number', async () => {
-    const db = makeDb();
+    const db = makeDb(1);
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: InvoiceGenerator } = await import('../components/InvoiceGenerator.jsx');
@@ -97,6 +109,9 @@ describe('InvoiceGenerator (Tax Invoice flavor): a custom prefix AND pattern are
       const input = screen.getByDisplayValue(new RegExp(`^GST-${new Date().getFullYear()}-`));
       expect(input).toBeTruthy();
     });
+    // The atomic RPC was genuinely used to get the serial, not the local
+    // docSettings copy directly.
+    expect(db.bumpDocSerial).toHaveBeenCalledWith('taxinvoice');
   });
 });
 
@@ -169,11 +184,59 @@ describe('nextDocNumber: real persistent-serial generation, replacing string-par
   });
 });
 
+describe('nextDocNumberAtomic: root-cause fix for the query/tour-file/invoice/exchange-order numbering race (2026-09-29 multi-user audit)', () => {
+  // Real, confirmed bug: nextDocNumber() (tested above) computes its
+  // serial from a `docSettings` object the caller already has in hand --
+  // fine for a pure, synchronous, display-only preview, but every call
+  // site that actually PERSISTS a document used it too, meaning the
+  // serial came from whatever this client's own cached docSettings
+  // happened to hold (loaded once per session, can go stale for hours).
+  // Two staff creating a query/tour file/invoice/exchange order close
+  // together could compute the identical serial. nextDocNumberAtomic
+  // fixes this by getting the serial from db.bumpDocSerial() (backed by
+  // a real Postgres `select ... for update` row lock) instead.
+  const makeDb = (serialToReturn) => ({ bumpDocSerial: vi.fn(async () => serialToReturn) });
+
+  it('formats the DB-returned serial into the configured pattern, exactly like nextDocNumber does -- just from a different, race-proof source', async () => {
+    const db = makeDb(42);
+    const docSettings = { quotation: { prefix: 'QT', pattern: '{prefix}-{seq}-{group}', serial: 999 /* deliberately wrong/stale -- must be ignored */ } };
+    const number = await nextDocNumberAtomic(db, docSettings, 'quotation', { group: 'Test Group' });
+    expect(number).toBe('QT-042-Test_Group');
+  });
+
+  it('calls db.bumpDocSerial with the exact doc type requested, not something derived from docSettings', async () => {
+    const db = makeDb(7);
+    await nextDocNumberAtomic(db, { tourfile: { prefix: 'UT', serial: 1 } }, 'tourfile', {});
+    expect(db.bumpDocSerial).toHaveBeenCalledWith('tourfile');
+  });
+
+  it('the serial used is whatever the DB call returns, completely independent of docSettings\u2019 own (possibly very stale) cached serial -- this is the actual fix', async () => {
+    const dbA = makeDb(100); // simulates a colleague having already created 99 queries this session
+    const staleLocalDocSettings = { query: { prefix: 'QRY', pattern: '{prefix}-{seq}', serial: 5 } }; // this client's own stale view
+    const number = await nextDocNumberAtomic(dbA, staleLocalDocSettings, 'query', {});
+    expect(number).toBe('QRY-100'); // NOT QRY-005 -- proves the local stale serial was never used to compute the number
+  });
+
+  it('does not return an "updatedSettings" object at all -- there is nothing left for the caller to persist, since the atomic RPC already committed the bump', async () => {
+    const db = makeDb(1);
+    const result = await nextDocNumberAtomic(db, {}, 'query', {});
+    expect(typeof result).toBe('string');
+  });
+});
+
 describe('Exchange Order numbering: two real, separate bugs fixed together', () => {
   const fakeVendors = [{ id: 'VND-001', name: 'Nanking Restaurant', type: 'Restaurant', active: true }];
   const fakeQuery = { id: 'UTQ-2026-900', groupName: 'EO Numbering Test', tourFileId: 'TUR-900', destination: 'Kerala' };
 
-  function makeDb() {
+  // Root-cause fix (2026-09-29 multi-user audit): nextExchangeOrderNo now
+  // gets its serial atomically from the database (bump_doc_serial via
+  // db.bumpDocSerial) instead of the client-cached docSettings snapshot,
+  // the same fix as query/tour file/invoice numbering -- see
+  // nextDocNumberAtomic's comment in lib/utils.js for why. There is no
+  // "updatedSettings" to persist back anymore; onSaveDocSettings is no
+  // longer called for this.
+  function makeDb(startingSerial = 1) {
+    let serial = startingSerial;
     return {
       from: (table) => {
         const builder = {
@@ -184,11 +247,12 @@ describe('Exchange Order numbering: two real, separate bugs fixed together', () 
         };
         return builder;
       },
+      bumpDocSerial: vi.fn(async () => serial++),
     };
   }
 
-  it('a custom configured pattern is genuinely used, not the hardcoded {prefix}-{year}-{seq} default -- and docSettings is real, not the static DEFAULT_DOC_SETTINGS constant', async () => {
-    const db = makeDb();
+  it('a custom configured pattern is genuinely used, not the hardcoded {prefix}-{year}-{seq} default -- and the serial comes from the atomic DB RPC, not the locally-held docSettings', async () => {
+    const db = makeDb(9);
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: ExchangeOrderGenerator } = await import('../components/ExchangeOrderGenerator.jsx');
@@ -198,8 +262,12 @@ describe('Exchange Order numbering: two real, separate bugs fixed together', () 
     fireEvent.change(await screen.findByDisplayValue('Select vendor...'), { target: { value: 'VND-001' } });
     fireEvent.click(screen.getByText('✓ Save Exchange Order'));
     await waitFor(() => expect(screen.getByText(/VOUCHER-009-EO_Numbering_Test saved/)).toBeTruthy());
-    // The bump was actually persisted, not just used locally
-    expect(onSaveDocSettings).toHaveBeenCalledWith(expect.objectContaining({ exchange: expect.objectContaining({ serial: 10 }) }));
+    // The serial genuinely came from the atomic RPC (called with the
+    // right doc type), not a locally-computed value -- and the old
+    // whole-blob onSaveDocSettings persistence is gone entirely, since
+    // there is no longer any local serial mutation to save back.
+    expect(db.bumpDocSerial).toHaveBeenCalledWith('exchange');
+    expect(onSaveDocSettings).not.toHaveBeenCalled();
     vi.doUnmock('../lib/supabase.js');
   });
 });

@@ -242,3 +242,61 @@ describe('item 4 robustness: a 401 on an authenticated request is surfaced, not 
     expect(localStorage.getItem('unitop_session')).toBeNull();
   });
 });
+
+describe('bumpDocSerial: atomic doc-number serial increment (2026-09-29 multi-user audit root-cause fix)', () => {
+  // Real, confirmed bug this exists to prevent: query/tour-file/invoice
+  // numbers used to be computed from a docSettings copy cached in memory
+  // for the whole session, then persisted with a plain last-write-wins
+  // upsert of the whole doc_numbering blob -- no DB-side atomicity. Two
+  // staff creating a new query close together could compute the
+  // IDENTICAL serial; for a new query, that id is the `queries` table's
+  // own primary key, so the second save would silently overwrite the
+  // first query's entire row. bump_doc_serial() (a Postgres RPC using
+  // `select ... for update` to genuinely serialize concurrent callers)
+  // is the fix; this tests that the client wrapper calls it correctly.
+  let originalFetch;
+  beforeEach(() => { originalFetch = global.fetch; localStorage.clear(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  const loginFirst = async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('rpc/staff_login')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          success: true, token: 'tok', jwt: 'real.signed.jwt', expiry: '2026-12-01T00:00:00Z',
+          user: { id: 'staff-1', name: 'Priya', role: 'sales' },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    await db.auth.login('priya', 'whatever');
+  };
+
+  it('calls the bump_doc_serial RPC with the real per-user JWT (authHeaders) -- NOT the plain anon-key rpc() helper, which is only for public RPCs like search_gazetteer', async () => {
+    await loginFirst();
+    let capturedUrl = null, capturedHeaders = null, capturedBody = null;
+    global.fetch = vi.fn((url, opts) => {
+      capturedUrl = url; capturedHeaders = opts?.headers; capturedBody = opts?.body;
+      return Promise.resolve({ ok: true, json: async () => 11 });
+    });
+    const serial = await db.bumpDocSerial('query');
+    expect(String(capturedUrl)).toContain('/rest/v1/rpc/bump_doc_serial');
+    expect(capturedHeaders.Authorization).toBe('Bearer real.signed.jwt');
+    expect(JSON.parse(capturedBody)).toEqual({ p_doc_type: 'query' });
+    expect(serial).toBe(11);
+  });
+
+  it('passes through whichever doc type is requested', async () => {
+    await loginFirst();
+    let capturedBody = null;
+    global.fetch = vi.fn((url, opts) => { capturedBody = opts?.body; return Promise.resolve({ ok: true, json: async () => 3498 }); });
+    const serial = await db.bumpDocSerial('tourfile');
+    expect(JSON.parse(capturedBody)).toEqual({ p_doc_type: 'tourfile' });
+    expect(serial).toBe(3498);
+  });
+
+  it('throws (does not silently swallow the failure) when the RPC call fails -- a caller must never proceed and assign a number without a confirmed, atomically-bumped serial', async () => {
+    await loginFirst();
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 500, text: async () => 'db error' }));
+    await expect(db.bumpDocSerial('query')).rejects.toThrow();
+  });
+});

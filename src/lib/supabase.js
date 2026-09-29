@@ -441,7 +441,38 @@ export const _supa = (() => {
     renameFile: (documentId, newName) => drive.call({ action: "rename-file", documentId, newName }),
   };
 
-  return { from, auth, rpc, drive };
+  // Atomic doc-number serial increment -- root-cause fix for a real,
+  // confirmed multi-user race (2026-09-29 audit): query/tour-file/invoice
+  // numbers used to be computed client-side from a copy of
+  // app_settings.doc_numbering cached in memory for the whole session
+  // (potentially hours stale), then persisted with a plain last-write-wins
+  // upsert -- no DB-side atomicity at all. Two staff creating a new query
+  // (or converting a tour file, or generating an invoice) close together
+  // could compute the IDENTICAL next serial from their own stale
+  // snapshot; for a new query specifically that id is the `queries`
+  // table's own primary key, so the second save would silently overwrite
+  // the first query's entire row.
+  //
+  // bump_doc_serial() (Postgres, SECURITY DEFINER) takes a row lock via
+  // `for update` for the read-increment-write, so two concurrent calls
+  // genuinely serialize against each other regardless of either caller's
+  // local staleness -- the actual fix. This wraps it with authHeaders()
+  // (the real per-user JWT), NOT the plain rpc() helper above, which
+  // deliberately sends only the anon key (built for search_gazetteer(), a
+  // public read-only lookup) -- this call mutates shared numbering state
+  // and must only ever run as an authenticated staff member, matching
+  // app_settings' own "Staff full access" RLS policy and this function's
+  // own `grant execute ... to authenticated` (never anon).
+  const bumpDocSerial = async (docType) => {
+    const r = await fetch(`${url}/rest/v1/rpc/bump_doc_serial`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ p_doc_type: docType }),
+    });
+    if (!r.ok) throw new Error((await r.text().catch(() => "")) || `bump_doc_serial(${docType}) failed`);
+    return await r.json(); // the serial to use for THIS document (already bumped in the DB)
+  };
+
+  return { from, auth, rpc, drive, bumpDocSerial };
 })();
 
 const db = _supa;

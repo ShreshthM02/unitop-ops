@@ -20,6 +20,10 @@ const mockDb = {
     };
     return builder;
   }),
+  // Invoice numbering now gets its serial atomically from the DB (root-
+  // cause fix, 2026-09-29 multi-user audit -- see nextDocNumberAtomic's
+  // comment in lib/utils.js) rather than from docSettings directly.
+  bumpDocSerial: vi.fn(async () => 1),
 };
 vi.mock('../lib/supabase.js', () => ({ db: mockDb, realtimeClient: null }));
 
@@ -31,17 +35,21 @@ const fakeAgents = [{ id: 'AGT-1', company: 'NCH Holidays', country: 'Thailand',
 beforeEach(() => { mockDb.from.mockClear(); });
 
 describe('InvoiceGenerator: real, pattern-based invoice numbering (per flavor)', () => {
-  it('Pro-Forma computes its invoice number from docSettings.proforma\u2019s own persistent serial, not by parsing existing saved numbers', async () => {
+  it('Pro-Forma computes its invoice number from the DB\u2019s atomically-bumped serial (via bumpDocSerial), formatted into the configured pattern -- not by parsing existing saved numbers, and not from a locally-cached serial', async () => {
     // Superseded design, not just a superficial test update: numbering
     // used to derive {seq} by parsing the trailing segment of every
     // existing invoice number (existingRows here) -- replaced with a
-    // real persistent serial counter specifically because that parsing
-    // approach can't survive an arbitrary user-configured pattern (a
-    // {group}/{sector} segment can contain almost anything). This test
-    // now confirms the NEW behavior directly: the number comes from
-    // docSettings.proforma.serial and the configured pattern, and the
-    // bump gets persisted via onSaveDocSettings -- existing saved
-    // invoice numbers are irrelevant to what gets generated next.
+    // real persistent serial counter, and THAT in turn was replaced with
+    // this atomic version (2026-09-29 multi-user audit root-cause fix):
+    // an invoice number has real GST/legal compliance weight and must be
+    // unique across the whole business, so the serial now comes from the
+    // database's own bump_doc_serial() RPC, never from a locally cached
+    // docSettings copy that could be hours stale in a real multi-staff
+    // session. This test confirms the number is built from whatever
+    // bumpDocSerial() returns (here, 8) formatted into the configured
+    // pattern -- existing saved invoice numbers, and the local
+    // docSettings.proforma.serial value, are both irrelevant to what
+    // gets generated.
     const db = {
       from: vi.fn(() => {
         const builder = {
@@ -52,16 +60,21 @@ describe('InvoiceGenerator: real, pattern-based invoice numbering (per flavor)',
         };
         return builder;
       }),
+      bumpDocSerial: vi.fn(async () => 8),
     };
     vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
     vi.resetModules();
     const { default: InvoiceGenerator2 } = await import('../components/InvoiceGenerator.jsx');
     const onSaveDocSettings = vi.fn();
     render(<InvoiceGenerator2 query={fakeQuery} payments={{}} proformaTemplate={{}} taxinvoiceTemplate={{}}
-      docSettings={{ proforma: { prefix: 'PI', pattern: '{prefix}-{year}-{seq}', serial: 8 }, taxinvoice: { prefix: 'TI', serial: 1 } }}
+      docSettings={{ proforma: { prefix: 'PI', pattern: '{prefix}-{year}-{seq}', serial: 999 /* deliberately wrong/stale -- must be ignored */ }, taxinvoice: { prefix: 'TI', serial: 1 } }}
       onSaveDocSettings={onSaveDocSettings} agents={fakeAgents} onClose={()=>{}} currentUser={{id:'x'}}/>);
     await waitFor(() => expect(screen.getByDisplayValue(`PI-${new Date().getFullYear()}-008`)).toBeTruthy());
-    expect(onSaveDocSettings).toHaveBeenCalledWith(expect.objectContaining({ proforma: expect.objectContaining({ serial: 9 }) }));
+    expect(db.bumpDocSerial).toHaveBeenCalledWith('proforma');
+    // The old whole-blob onSaveDocSettings persistence for the serial
+    // bump is gone entirely -- nothing left to save back, since the
+    // atomic RPC already committed it.
+    expect(onSaveDocSettings).not.toHaveBeenCalled();
     vi.doUnmock('../lib/supabase.js');
   });
 });
