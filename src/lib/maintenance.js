@@ -364,5 +364,41 @@ export async function runHealthCheck(db) {
       : { id: "backup_recency", label: "Recent backup exists", status: "warning", detail: `Last backup was ${Math.floor(daysSince)} days ago (by ${lastBackup.by}) -- worth running a fresh one from the Backup tab.` });
   }
 
+  // 8. Database size vs. the free-tier 500MB cap -- this is the one
+  // check on this list that isn't about data quality but about
+  // capacity: a real Supabase project can go read-only once its
+  // database fills up, and that's worth surfacing as plainly as any
+  // data-quality issue, not something only visible on the Supabase
+  // dashboard. get_database_size() wraps pg_database_size() (see
+  // supabase.js) -- returns null on any failure, so this degrades to
+  // "could not check" rather than throwing.
+  const dbSizeBytes = await db.getDatabaseSize?.();
+  results.push(dbSizeCheck(dbSizeBytes));
+
   return { results, ranAt: nowIso, durationMs: Date.now() - startedAt };
+}
+
+// Free-tier Supabase database cap is 500MB. Thresholds deliberately
+// mirror the same "approx. 95%" the alert scheduled task also uses (see
+// the "Database size alert" scheduled task set up alongside this check),
+// so the in-app Health Check and the background alert never disagree
+// about what counts as urgent.
+export const SUPABASE_FREE_TIER_BYTES = 500 * 1024 * 1024;
+
+export function dbSizeCheck(bytes) {
+  const id = "db_size";
+  const label = "Database size (free-tier 500MB cap)";
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
+    return { id, label, status: "error", detail: "Could not check this -- the database-size RPC didn't return a usable number." };
+  }
+  const pct = (bytes / SUPABASE_FREE_TIER_BYTES) * 100;
+  const mb = (bytes / (1024 * 1024)).toFixed(0);
+  const detail = `${mb} MB used of 500 MB (${pct.toFixed(1)}%).`;
+  if (pct >= 90) {
+    return { id, label, status: "error", detail: `${detail} Very close to the free-tier cap -- the database can go read-only once it's full. See the earlier gazetteer-split work, or plan for a paid tier.` };
+  }
+  if (pct >= 75) {
+    return { id, label, status: "warning", detail: `${detail} Getting close to the free-tier cap -- worth keeping an eye on.` };
+  }
+  return { id, label, status: "ok", detail: `${detail} Comfortably under the free-tier cap.` };
 }

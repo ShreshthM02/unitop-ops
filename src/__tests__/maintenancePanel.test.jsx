@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { exportAllData, saveBackupInfo, getLastBackupInfo, runHealthCheck, saveHealthCheckInfo, getLastHealthCheckInfo } from '../lib/maintenance.js';
+import { exportAllData, saveBackupInfo, getLastBackupInfo, runHealthCheck, saveHealthCheckInfo, getLastHealthCheckInfo, dbSizeCheck, SUPABASE_FREE_TIER_BYTES } from '../lib/maintenance.js';
 
 // New Maintenance feature (admin-only): a real backup export the app
 // can run on itself, and a real, data-level health check -- scoped
@@ -33,6 +33,10 @@ function makeDb(tables = {}) {
     // server time call is exactly the kind of "trusts the outside
     // world" dependency a unit test should never rely on.
     auth: { getServerTime: async () => '2026-09-10T12:00:00.000Z' },
+    // A small, healthy default -- individual tests override this on the
+    // returned db object when they specifically want to test the
+    // db-size check itself.
+    getDatabaseSize: async () => 12345678,
   };
 }
 
@@ -355,6 +359,70 @@ describe('runHealthCheck', () => {
     });
     const report2 = await runHealthCheck(dbNoBackup);
     expect(report2.results.find(r => r.id === 'backup_recency').status).toBe('warning');
+  });
+});
+
+describe('dbSizeCheck: the free-tier 500MB capacity signal', () => {
+  it('reports ok well under the cap', () => {
+    const check = dbSizeCheck(50 * 1024 * 1024); // 50MB of 500MB
+    expect(check.status).toBe('ok');
+    expect(check.detail).toContain('50 MB');
+  });
+
+  it('reports warning at 75%+ but under 90%', () => {
+    const check = dbSizeCheck(Math.round(SUPABASE_FREE_TIER_BYTES * 0.8));
+    expect(check.status).toBe('warning');
+  });
+
+  it('reports error (urgent) at 90%+ -- close enough to the cap that the database can go read-only', () => {
+    const check = dbSizeCheck(Math.round(SUPABASE_FREE_TIER_BYTES * 0.95));
+    expect(check.status).toBe('error');
+    expect(check.detail).toContain('95.0%');
+  });
+
+  it('reports error (could not check) when given a non-number, rather than crashing or silently passing', () => {
+    expect(dbSizeCheck(null).status).toBe('error');
+    expect(dbSizeCheck(undefined).status).toBe('error');
+    expect(dbSizeCheck(NaN).status).toBe('error');
+  });
+});
+
+describe('runHealthCheck includes the db_size check using db.getDatabaseSize()', () => {
+  it('is present and healthy when getDatabaseSize returns a small real number', async () => {
+    const db = makeDb({
+      app_settings: [], queries: [], cost_sheets: [], quotations: [], tour_execution: [],
+      payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      chat_conversations: [], chat_conversation_members: [],
+    });
+    const report = await runHealthCheck(db);
+    const check = report.results.find(r => r.id === 'db_size');
+    expect(check).toBeTruthy();
+    expect(check.status).toBe('ok');
+  });
+
+  it('escalates to error when the db is genuinely close to the free-tier cap', async () => {
+    const db = makeDb({
+      app_settings: [], queries: [], cost_sheets: [], quotations: [], tour_execution: [],
+      payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      chat_conversations: [], chat_conversation_members: [],
+    });
+    db.getDatabaseSize = async () => Math.round(SUPABASE_FREE_TIER_BYTES * 0.96);
+    const report = await runHealthCheck(db);
+    expect(report.results.find(r => r.id === 'db_size').status).toBe('error');
+  });
+
+  it('degrades to "could not check" rather than throwing when getDatabaseSize is missing entirely', async () => {
+    const db = makeDb({
+      app_settings: [], queries: [], cost_sheets: [], quotations: [], tour_execution: [],
+      payment_incoming: [], payment_outgoing: [], invoices: [], exchange_orders: [],
+      staff_public: [{ id: 's1', role: 'admin', active: true, deleted_at: null }],
+      chat_conversations: [], chat_conversation_members: [],
+    });
+    delete db.getDatabaseSize;
+    const report = await runHealthCheck(db);
+    expect(report.results.find(r => r.id === 'db_size').status).toBe('error');
   });
 });
 

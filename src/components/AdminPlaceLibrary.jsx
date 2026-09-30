@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 const {
-  G, db, realtimeClient,
+  G, db, gazetteerDb, realtimeClient,
   loadPhotoLibrary, updateLibraryPhoto, deleteLibraryPhoto, uploadLibraryPhoto,
   listCustomPlaces, updateCustomPlace, deleteCustomPlace,
   isValidCoordinate,
@@ -45,7 +45,7 @@ export default function AdminPlaceLibrary() {
 
   const reload = () => {
     setLoading(true);
-    Promise.all([loadPhotoLibrary(db), listCustomPlaces(db)]).then(([p, c]) => {
+    Promise.all([loadPhotoLibrary(db), listCustomPlaces(gazetteerDb)]).then(([p, c]) => {
       setPhotos(p.photos);
       setPlaces(c.places);
       setError(p.error || c.error || null);
@@ -87,14 +87,14 @@ export default function AdminPlaceLibrary() {
   };
 
   const savePlace = async (id) => {
-    const { error } = await updateCustomPlace(db, id, { name: draft.name, lat: draft.lat, lon: draft.lon, country: draft.country, admin1: draft.admin1 });
+    const { error } = await updateCustomPlace(gazetteerDb, id, { name: draft.name, lat: draft.lat, lon: draft.lon, country: draft.country, admin1: draft.admin1 });
     if (error) { setError(error); return; }
     cancelEdit();
     reload();
   };
   const removePlace = async (id) => {
     if (!window.confirm('Remove this place? Future searches for it will fall back to the gazetteer, or come up empty if it genuinely is not in GeoNames.')) return;
-    const { error } = await deleteCustomPlace(db, id);
+    const { error } = await deleteCustomPlace(gazetteerDb, id);
     if (error) { setError(error); return; }
     reload();
   };

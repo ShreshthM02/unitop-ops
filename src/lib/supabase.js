@@ -3,6 +3,90 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
 
+// Gazetteer split (2026-09): the 1M+-row GeoNames place-name table (plus
+// its two search RPCs and the small custom_places table) now lives in
+// its OWN free-tier Supabase project, moved out of the main business
+// project purely to relieve that project's 500MB cap -- gazetteer alone
+// was ~96% of it, and has no foreign-key relationship to any business
+// table. Only gazetteerQuery.js ever talks to this project.
+const GAZETTEER_SUPABASE_URL = import.meta.env.VITE_GAZETTEER_SUPABASE_URL;
+const GAZETTEER_SUPABASE_KEY = import.meta.env.VITE_GAZETTEER_SUPABASE_KEY;
+
+// Deliberately a small, standalone client rather than reusing the big
+// `_supa` wrapper below: gazetteer/custom_places access is anon-key-only
+// (this app never uses authenticated writes here either -- same standing
+// note as authHeaders() below), there's no staff/session concept for
+// this project at all, and the business client's JWT wouldn't even be a
+// valid credential against a different Supabase project. Same PostgREST
+// filter/builder surface as `_supa.from()` (select/ilike/eq/gte/lte/
+// order/limit/insert/update/delete), since that's exactly what
+// gazetteerQuery.js's existing calls need -- see its own db-shaped `db`
+// parameter usage.
+function makeGazetteerClient(url, key) {
+  const headers = () => ({ "apikey": key, "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "Prefer": "return=representation" });
+  const from = (table) => {
+    let _query = "", _order = "", _limit = "", _filters = [];
+    const builder = {
+      select: (cols="*") => { _query = `?select=${cols}`; return builder; },
+      eq: (col, val) => { _filters.push(`${col}=eq.${val}`); return builder; },
+      gte: (col, val) => { _filters.push(`${col}=gte.${val}`); return builder; },
+      lte: (col, val) => { _filters.push(`${col}=lte.${val}`); return builder; },
+      ilike: (col, val) => { _filters.push(`${col}=ilike.${encodeURIComponent(val)}`); return builder; },
+      or: (expr) => { _filters.push(`or=(${expr})`); return builder; },
+      order: (col, {ascending=true}={}) => { _order = `&order=${col}.${ascending?"asc":"desc"}`; return builder; },
+      limit: (n) => { _limit = `&limit=${n}`; return builder; },
+      insert: async (rows) => {
+        const r = await fetch(`${url}/rest/v1/${table}`, { method:"POST", headers:headers(), body: JSON.stringify(Array.isArray(rows)?rows:[rows]) });
+        const data = r.ok ? await r.json().catch(()=>[]) : null;
+        return { data, error: r.ok ? null : { message: await r.text() } };
+      },
+      update: async (row) => {
+        const filterStr = _filters.length ? "?" + _filters.join("&") : "";
+        const r = await fetch(`${url}/rest/v1/${table}${filterStr}`, { method:"PATCH", headers:headers(), body:JSON.stringify(row) });
+        const data = r.ok ? await r.json().catch(()=>[]) : null;
+        return { data, error: r.ok ? null : { message: await r.text() } };
+      },
+      delete: async () => {
+        const filterStr = _filters.length ? "?" + _filters.join("&") : "";
+        const r = await fetch(`${url}/rest/v1/${table}${filterStr}`, { method:"DELETE", headers:headers() });
+        return { data: null, error: r.ok ? null : { message: await r.text() } };
+      },
+      then: async (resolve) => {
+        try {
+          const filterStr = _filters.length ? "&" + _filters.join("&") : "";
+          const qs = (_query||"?select=*") + filterStr + _order + _limit;
+          const r = await fetch(`${url}/rest/v1/${table}${qs}`, { headers: headers() });
+          const data = r.ok ? await r.json() : null;
+          const error = r.ok ? null : { message: await r.text() };
+          resolve({ data, error });
+        } catch(e) { resolve({ data: null, error: { message: e.message } }); }
+      },
+    };
+    return builder;
+  };
+  const rpc = async (fnName, params = {}) => {
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/${fnName}`, { method: "POST", headers: headers(), body: JSON.stringify(params) });
+      const data = r.ok ? await r.json() : null;
+      return { data, error: r.ok ? null : { message: await r.text().catch(() => "") } };
+    } catch (e) {
+      return { data: null, error: { message: e.message } };
+    }
+  };
+  return { from, rpc };
+}
+
+// null when unconfigured (e.g. a fresh checkout before the new env vars
+// are set) -- gazetteerQuery.js's own try/catch already degrades every
+// call gracefully when a db object's methods fail or are missing, same
+// as any other network hiccup it already tolerates.
+export const gazetteerDb = (GAZETTEER_SUPABASE_URL && GAZETTEER_SUPABASE_KEY)
+  ? makeGazetteerClient(GAZETTEER_SUPABASE_URL, GAZETTEER_SUPABASE_KEY)
+  : null;
+if (!gazetteerDb && typeof console !== "undefined") {
+  console.warn("Gazetteer Supabase project not configured: VITE_GAZETTEER_SUPABASE_URL/VITE_GAZETTEER_SUPABASE_KEY not set.");
+}
+
 // Real Supabase client — used ONLY for Realtime (postgres_changes)
 // subscriptions, since that's a WebSocket protocol the hand-rolled REST
 // wrapper below can't do. All regular reads/writes still go through `_supa`;
@@ -369,6 +453,26 @@ export const _supa = (() => {
         localStorage.setItem("unitop_session", JSON.stringify(_session));
       }
       return data;
+    },
+    // Health Check's database-size line item. get_database_size() (Postgres,
+    // SECURITY DEFINER, `grant execute ... to authenticated` only, same
+    // shape as bump_doc_serial) wraps pg_database_size() -- PostgREST has
+    // no way to expose that built-in directly. Uses authHeaders() (the
+    // real per-user JWT), matching every other authenticated-only RPC in
+    // this file, not the anon-key rpc() helper below. Returns null on any
+    // failure so a transient hiccup here degrades to "could not check
+    // this" in the Health Check panel rather than throwing.
+    getDatabaseSize: async () => {
+      try {
+        const r = await fetch(`${url}/rest/v1/rpc/get_database_size`, {
+          method: "POST", headers: authHeaders(), body: JSON.stringify({}),
+        });
+        if (!r.ok) return null;
+        const bytes = await r.json();
+        return typeof bytes === "number" ? bytes : null;
+      } catch (e) {
+        return null;
+      }
     },
     getStaffList: async () => {
       // Was hardcoding `Authorization: Bearer ${key}` (the plain anon

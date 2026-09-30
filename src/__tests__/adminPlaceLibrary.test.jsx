@@ -24,7 +24,10 @@ function makeDb() {
   };
 }
 
-vi.mock('../lib/supabase.js', () => ({ get db() { return makeDb(); }, realtimeClient: null }));
+// custom_places now lives in the separate gazetteer Supabase project
+// (2026-09 split) -- AdminPlaceLibrary reads/writes it via gazetteerDb,
+// not db, so the mock needs both (photos still come from the main db).
+vi.mock('../lib/supabase.js', () => ({ get db() { return makeDb(); }, get gazetteerDb() { return makeDb(); }, realtimeClient: null }));
 
 const { default: AdminPlaceLibrary } = await import('../components/AdminPlaceLibrary.jsx');
 
@@ -73,8 +76,9 @@ describe('AdminPlaceLibrary: the shared-library review screen', () => {
   });
 
   it('shows an empty-state message rather than a blank table when nothing has been saved', async () => {
+    const emptyDb = { from: () => ({ select: () => ({ order: () => ({ then: (res) => res({ data: [], error: null }) }) }) }) };
     vi.doMock('../lib/supabase.js', () => ({
-      db: { from: () => ({ select: () => ({ order: () => ({ then: (res) => res({ data: [], error: null }) }) }) }) },
+      db: emptyDb, gazetteerDb: emptyDb,
       realtimeClient: null,
     }));
     vi.resetModules();

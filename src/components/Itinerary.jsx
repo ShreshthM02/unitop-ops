@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -286,7 +286,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       if (!q || q.trim().length < 2) return;
       const cached = placeCandidates[d.id];
       if (cached && cached.query === q) return;
-      const rows = await fetchPlaceCandidates(db, q);
+      const rows = await fetchPlaceCandidates(gazetteerDb, q);
       if (!cancelled) setPlaceCandidates(prev => ({ ...prev, [d.id]: { query: q, rows } }));
     });
     return () => { cancelled = true; };
@@ -506,7 +506,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       if (ground.length) {
         try {
           const bbox = computeBBox(ground);
-          gazetteerContext = await fetchGazetteerInBBox(db, bbox);
+          gazetteerContext = await fetchGazetteerInBBox(gazetteerDb, bbox);
         } catch (e) {
           // A failed gazetteer query degrades to no passive towns, not a
           // broken export -- the map still works, just plainer, exactly
@@ -759,8 +759,8 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                       candidatesFor={(slot) => slot === 0 ? ((placeCandidates[d.id] && placeCandidates[d.id].rows) || []) : []}
                       queryFor={(slot) => slot === 0 ? placeQueryFor(d) : ""}
                       context={itinDays.flatMap((x, xi) => xi === i ? [] : placesFor(x)).filter(Boolean)}
-                      onSearch={(term) => searchGazetteerDb(db, term)}
-                      onSaveCustomPlace={(place) => saveCustomPlace(db, place)}
+                      onSearch={(term) => searchGazetteerDb(gazetteerDb, term)}
+                      onSaveCustomPlace={(place) => saveCustomPlace(gazetteerDb, place)}
                       G={G}
                       inp={inp}
                       readOnly={readOnly}
