@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Lib from "../lib/index.js";
 const { G, db, exportAllData, getLastBackupInfo, runHealthCheck, saveHealthCheckInfo, getLastHealthCheckInfo, USER_MANUAL_SECTIONS,
-  buildManualBodyHTML, buildPaginatedLetterheadDocument, printHTML, APP_VERSION } = Lib;
+  buildManualBodyHTML, buildPaginatedLetterheadDocument, printHTML, APP_VERSION, dbSizeCheck } = Lib;
 
 const STATUS_STYLE = {
   ok:      { icon: "✓", color: "#059669", bg: "#ECFDF5" },
@@ -29,6 +29,7 @@ export default function MaintenancePanel({ currentUser }) {
 
   return (
     <div>
+      <DbStorageStrip />
       <div style={{ display: "flex", gap: 4, marginBottom: 18, borderBottom: `1px solid ${G.gray200}` }}>
         {[["backup", "🗄 Backup & Export"], ["health", "🩺 Health Check"], ["manual", "📖 User Manual"]].map(([id, label]) => (
           <div key={id} onClick={() => setTab(id)}
@@ -43,6 +44,36 @@ export default function MaintenancePanel({ currentUser }) {
       {tab === "backup" && <BackupTab currentUser={currentUser} />}
       {tab === "health" && <HealthCheckTab currentUser={currentUser} />}
       {tab === "manual" && <ManualTab />}
+    </div>
+  );
+}
+
+// A real, no-click "trigger" for database storage status -- requested
+// specifically because the scheduled daily check only helps someone who
+// opens Claude every day, and clicking "Run Health Check" every time
+// just to see one number is friction for something worth glancing at
+// often. This fetches ONLY the one lightweight size RPC (not the whole
+// health check's dozen queries) the moment Maintenance is opened, on
+// every tab, so the answer is just... there. Uses the exact same
+// dbSizeCheck() thresholds/colors as the Health Check tab's own db_size
+// item, so the two never disagree.
+function DbStorageStrip() {
+  const [bytes, setBytes] = useState(undefined); // undefined = still loading
+  useEffect(() => { db.getDatabaseSize?.().then(setBytes).catch(() => setBytes(null)); }, []);
+
+  if (bytes === undefined) {
+    return (
+      <div style={{ fontSize: 11.5, color: G.gray400, padding: "0 0 10px" }}>
+        Checking database storage…
+      </div>
+    );
+  }
+  const check = dbSizeCheck(bytes);
+  const s = STATUS_STYLE[check.status];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: s.color, background: s.bg, borderRadius: 6, padding: "6px 10px", marginBottom: 12 }}>
+      <span style={{ fontWeight: 700 }}>{s.icon}</span>
+      <span>{check.detail}</span>
     </div>
   );
 }

@@ -426,6 +426,43 @@ describe('runHealthCheck includes the db_size check using db.getDatabaseSize()',
   });
 });
 
+describe('MaintenancePanel: the no-click database storage strip -- visible immediately on open, on every tab, without running the full Health Check', () => {
+  it('loads and shows the real storage status as soon as Maintenance is opened, before any button is clicked', async () => {
+    const db = makeDb({});
+    db.getDatabaseSize = async () => 50 * 1024 * 1024; // 50MB of 500MB -- healthy
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    await waitFor(() => expect(screen.getByText(/50 MB used of 500 MB/)).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('stays visible across tab switches, not just on the Health Check tab', async () => {
+    const db = makeDb({});
+    db.getDatabaseSize = async () => 50 * 1024 * 1024;
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    await waitFor(() => expect(screen.getByText(/50 MB used of 500 MB/)).toBeTruthy());
+    fireEvent.click(screen.getByText(/📖 User Manual/));
+    expect(screen.getByText(/50 MB used of 500 MB/)).toBeTruthy();
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  it('reflects an urgent near-cap size with the same thresholds the Health Check tab itself uses', async () => {
+    const db = makeDb({});
+    db.getDatabaseSize = async () => Math.round(SUPABASE_FREE_TIER_BYTES * 0.95);
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { default: MaintenancePanel } = await import('../components/MaintenancePanel.jsx');
+    render(<MaintenancePanel currentUser={{ id: 's1', name: 'Priya' }} />);
+    await waitFor(() => expect(screen.getByText(/95.0%/)).toBeTruthy());
+    vi.doUnmock('../lib/supabase.js');
+  });
+});
+
 describe('MaintenancePanel UI', () => {
   it('renders all three tabs, defaulting to Backup', async () => {
     vi.doMock('../lib/supabase.js', () => ({ db: makeDb({}), realtimeClient: null }));
