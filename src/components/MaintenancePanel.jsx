@@ -59,7 +59,23 @@ export default function MaintenancePanel({ currentUser }) {
 // item, so the two never disagree.
 function DbStorageStrip() {
   const [bytes, setBytes] = useState(undefined); // undefined = still loading
-  useEffect(() => { db.getDatabaseSize?.().then(setBytes).catch(() => setBytes(null)); }, []);
+  useEffect(() => {
+    // Defensive by construction, not just by what db.getDatabaseSize
+    // happens to be today: a real bug here (db.getDatabaseSize missing
+    // or not a function) previously threw OUTSIDE this try, which meant
+    // nothing ever called setBytes and the strip was stuck on "Checking…"
+    // forever with no visible error. Now any failure -- missing method,
+    // a thrown error, a rejected promise -- always resolves to the same
+    // "could not check" state dbSizeCheck(null) already renders.
+    (async () => {
+      try {
+        const result = await db.getDatabaseSize();
+        setBytes(result);
+      } catch (e) {
+        setBytes(null);
+      }
+    })();
+  }, []);
 
   if (bytes === undefined) {
     return (

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // Items 1 & 2 of the 2026-09-28 amendments list, both in Dashboard's Tour
 // Calendar widget.
@@ -58,5 +58,18 @@ describe('Dashboard Tour Calendar: status label uses real dates, and ordering fo
     // Completed latest-first (D before A).
     const order = names.map(n => queries.find(q => n.startsWith(q.groupName))?.id).filter(Boolean);
     expect(order).toEqual(['C', 'E', 'B', 'D', 'A']);
+  });
+
+  it('clicking a Tour Calendar row opens its drawer via onOpenQuery, same as Recent Queries -- real reported bug: rows had no click handler at all', async () => {
+    const { default: Dashboard } = await import('../components/Dashboard.jsx');
+    const onOpenQuery = vi.fn();
+    const query = { id: 'UTQ-9', tourFileId: 'TF-9', status: 'operations', cancelled: false, travelDate: daysFromToday(-1), nights: 5, groupName: 'Click Me' };
+    render(<Dashboard queries={[query]} onOpenQuery={onOpenQuery} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
+    // The same query can legitimately appear in both the Recent Queries
+    // and Tour Calendar widgets -- click the row that also shows the
+    // Tour Calendar's own "On Ground" status badge, not just the first match.
+    const row = screen.getByText('On Ground').closest('div[style*="cursor: pointer"]');
+    fireEvent.click(row);
+    expect(onOpenQuery).toHaveBeenCalledWith(expect.objectContaining({ id: 'UTQ-9' }));
   });
 });

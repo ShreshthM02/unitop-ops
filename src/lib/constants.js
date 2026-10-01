@@ -123,7 +123,24 @@ export const SOURCE_COLORS = { WhatsApp:"#25D366", Email:"#4A90D9", Website:"#E6
 export const GANTT_DAYS = ["Jun 16","Jun 17","Jun 18","Jun 19","Jun 20","Jun 21","Jun 22","Jun 23","Jun 24","Jun 25","Jun 26","Jun 27","Jun 28","Jun 29","Jun 30","Jul 1","Jul 2","Jul 3","Jul 4","Jul 5","Jul 6","Jul 7","Jul 8","Jul 9","Jul 10"];
 export const TODAY_IDX = 3;
 
-export const APP_VERSION = "v1.60.1";
+export const APP_VERSION = "v1.60.2";
+
+// Shared highlighter palette for every rich text editor in the app (the
+// plain contentEditable RichTextEditor in helpers.jsx AND the Tiptap-based
+// document Editor) -- one real request: the swatches were pastel/too
+// light to read as an actual highlighter. These are genuinely bright,
+// marker-pen-saturated colors, not pastel tints of them -- picked to still
+// keep black text legible under each one.
+export const RICH_TEXT_HIGHLIGHT_COLORS = [
+  "#FFEE00", // yellow
+  "#39FF14", // green
+  "#00E5FF", // cyan
+  "#FF36A8", // pink/magenta
+  "#FF8A00", // orange
+  "#B026FF", // purple
+  "#FF3131", // red
+  "#2E7DFF", // blue
+];
 export const COMPANY_INFO = {
   name:    "Unitop Tours & Travel Pvt. Ltd.",
   address: "506, DDA 2F, District Centre, Janakpuri, New Delhi – 110058",

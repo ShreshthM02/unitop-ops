@@ -120,8 +120,11 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
             <span style={{ fontSize: 11, color: G.gray400 }}>active tours</span>
           </div>
           {activeTours.map(t => (
-            <div key={t.id} style={{ padding: "10px 16px", borderBottom: `1px solid ${G.gray100}`,
-              display: "flex", alignItems: "center", gap: 10 }}>
+            <div key={t.id} onClick={() => onOpenQuery(t.query)}
+              style={{ padding: "10px 16px", borderBottom: `1px solid ${G.gray100}`, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 10, transition: "background .15s" }}
+              onMouseEnter={e => e.currentTarget.style.background = G.gray50}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 500 }}>{t.name}<FileTypeBadge fileType={t.query.fileType}/></div>

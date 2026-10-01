@@ -13,7 +13,7 @@ import { TableCell as BaseTableCell } from '@tiptap/extension-table-cell';
 import { TableHeader as BaseTableHeader } from '@tiptap/extension-table-header';
 import * as Lib from '../lib/index.js';
 const { G, VersionDropdown, ExportMenu, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, printHTML,
-  loadEditorDocuments, saveEditorDocumentVersion, markEditorDocumentVersionFinal, logAudit, db, STAMP_B64 } = Lib;
+  loadEditorDocuments, saveEditorDocumentVersion, markEditorDocumentVersionFinal, logAudit, db, STAMP_B64, RICH_TEXT_HIGHLIGHT_COLORS } = Lib;
 
 // Phase 1 scope, deliberately: rich-text formatting, tables, images, A4
 // page sizing, save/name/version, document-drawer listing, Print + Word
@@ -95,7 +95,10 @@ const FONT_FAMILIES = [
   ['Courier New', "'Courier New',Courier,monospace"],
 ];
 const FONT_SIZES = ['8pt','9pt','10pt','11pt','12pt','14pt','16pt','18pt','20pt','24pt','28pt','32pt'];
-const HIGHLIGHT_COLORS = ['#FEF08A','#BBF7D0','#BFDBFE','#FBCFE8','#FED7AA','#DDD6FE'];
+// Real, direct request: the previous pastel set (#FEF08A etc) read as
+// too light to actually function as a highlighter. Shared with every
+// other rich text editor in the app -- see RICH_TEXT_HIGHLIGHT_COLORS.
+const HIGHLIGHT_COLORS = RICH_TEXT_HIGHLIGHT_COLORS;
 const TEXT_COLORS = ['#1a1a1a','#DC2626','#059669','#2563EB','#D97706','#7C3AED','#0D1B2A'];
 
 const TOOLBAR_BTN = { border: `1px solid ${G.gray200}`, background: G.white, borderRadius: 4, padding: "4px 8px",

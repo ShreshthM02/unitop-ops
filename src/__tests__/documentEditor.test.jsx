@@ -176,11 +176,14 @@ describe('DocumentEditor toolbar reactivity and new controls', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 
-  it('highlight color swatch picker offers multiple colors, not just an on/off toggle', async () => {
+  it('highlight color swatch picker offers multiple real highlighter-bright colors, not just an on/off toggle', async () => {
+    // Shared with every other rich text editor in the app
+    // (RICH_TEXT_HIGHLIGHT_COLORS) -- genuinely bright/saturated now,
+    // not the pastel set this test used to pin.
+    const { RICH_TEXT_HIGHLIGHT_COLORS } = await import('../lib/constants.js');
     await openBlankEditor();
     fireEvent.click(screen.getByTitle('Highlight color'));
-    expect(screen.getByTitle('#FEF08A')).toBeTruthy();
-    expect(screen.getByTitle('#BFDBFE')).toBeTruthy();
+    RICH_TEXT_HIGHLIGHT_COLORS.forEach(c => expect(screen.getByTitle(c)).toBeTruthy());
     vi.doUnmock('../lib/supabase.js');
   });
 

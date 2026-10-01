@@ -576,7 +576,16 @@ export const _supa = (() => {
     return await r.json(); // the serial to use for THIS document (already bumped in the DB)
   };
 
-  return { from, auth, rpc, drive, bumpDocSerial };
+  // Real bug found live: getDatabaseSize was only ever defined on `auth`
+  // (db.auth.getDatabaseSize), but every caller -- maintenance.js's
+  // runHealthCheck AND MaintenancePanel's own no-click storage strip --
+  // calls it as db.getDatabaseSize. In production that's always
+  // undefined, so db.getDatabaseSize?.() silently evaluated to
+  // `undefined` and calling .then() on THAT threw, leaving the strip
+  // stuck on "Checking database storage…" forever with no visible
+  // error. Exposed here at the top level too, matching every call site,
+  // rather than chasing down and rewriting each one to the nested path.
+  return { from, auth, rpc, drive, bumpDocSerial, getDatabaseSize: auth.getDatabaseSize };
 })();
 
 const db = _supa;

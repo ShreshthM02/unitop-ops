@@ -2,7 +2,7 @@
 // permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, RichTextEditor.
 
 import { useEffect, useRef, useState } from "react";
-import { ROLE_DEFAULTS, G, WF_STEPS } from "./constants.js";
+import { ROLE_DEFAULTS, G, WF_STEPS, RICH_TEXT_HIGHLIGHT_COLORS } from "./constants.js";
 import { getWFStepStatus } from "./utils.js";
 
 // Merge role defaults with per-user overrides
@@ -158,6 +158,7 @@ export function OtherInput({ value, onChange, placeholder="Please specify..." })
 export function RichTextEditor({ value, onChange, readOnly, minHeight = 90, signatures, placeholder }) {
   const ref = useRef(null);
   const [sigOpen, setSigOpen] = useState(false);
+  const [hlOpen, setHlOpen] = useState(false);
   useEffect(() => {
     if (ref.current && ref.current.innerHTML !== (value || "")) ref.current.innerHTML = value || "";
   }, [value]);
@@ -179,6 +180,18 @@ export function RichTextEditor({ value, onChange, readOnly, minHeight = 90, sign
     document.execCommand("insertText", false, text);
     onChange(ref.current.innerHTML);
   };
+  // Real, direct request: highlighting selected text, with real
+  // marker-bright colors (not a pastel tint) -- same execCommand
+  // mechanism and the same shared palette as the Tiptap-based document
+  // Editor's own highlight picker (RICH_TEXT_HIGHLIGHT_COLORS), so the
+  // two editors never look inconsistent with each other.
+  const execHighlight = (color) => {
+    document.execCommand("hiliteColor", false, color);
+    ref.current?.focus();
+    onChange(ref.current.innerHTML);
+    setHlOpen(false);
+  };
+  const clearHighlight = () => execHighlight("transparent");
   const btn = (lbl, cmd, title) => (
     <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => exec(cmd)} title={title}
       style={{ padding: "2px 7px", fontSize: 10, fontWeight: 500, border: `1px solid ${G.gray200}`, borderRadius: 4, background: "transparent", color: G.gray400, cursor: "pointer", marginRight: 3 }}>
@@ -207,12 +220,27 @@ export function RichTextEditor({ value, onChange, readOnly, minHeight = 90, sign
           {btn("I", "italic", "Italic")}
           {btn("U", "underline", "Underline")}
           {btn("List", "insertUnorderedList", "Bullet list")}
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setHlOpen(o => !o)} title="Highlight selected text"
+            style={{ padding: "2px 7px", fontSize: 10, fontWeight: 500, border: `1px solid ${G.gray200}`, borderRadius: 4, background: hlOpen ? G.gray50 : "transparent", color: G.gray600, cursor: "pointer", marginRight: 3 }}>
+            🖍 Highlight
+          </button>
           {signatures && signatures.length > 0 && (
             <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setSigOpen(o => !o)} title="Insert a saved signature"
               style={{ padding: "2px 7px", fontSize: 10, fontWeight: 500, border: `1px solid ${G.gray200}`, borderRadius: 4, background: sigOpen ? G.gray50 : "transparent", color: G.gray600, cursor: "pointer" }}>
               ✒ Signature ▾
             </button>
           )}
+        </div>
+      )}
+      {hlOpen && (
+        <div style={{ position: "absolute", zIndex: 20, top: 26, left: 0, background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 6, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", padding: 6, display: "flex", gap: 4 }}>
+          {RICH_TEXT_HIGHLIGHT_COLORS.map(c => (
+            <div key={c} onMouseDown={e => e.preventDefault()} onClick={() => execHighlight(c)} title={c}
+              style={{ width: 20, height: 20, borderRadius: 4, background: c, cursor: "pointer", border: `1px solid ${G.gray200}` }} />
+          ))}
+          <div onMouseDown={e => e.preventDefault()} onClick={clearHighlight} title="Remove highlight"
+            style={{ width: 20, height: 20, borderRadius: 4, cursor: "pointer", border: `1px solid ${G.gray200}`,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: G.gray400 }}>✕</div>
         </div>
       )}
       {sigOpen && (
