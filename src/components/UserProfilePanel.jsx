@@ -41,7 +41,18 @@ export default function UserProfilePanel({currentUser,onClose,onSave}){
   return(
     <div className="overlay">
       <div style={{position:"fixed",bottom:80,left:220,background:G.white,width:340,borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:`1px solid ${G.gray200}`,overflow:"hidden",zIndex:200}}>
-        <div style={{background:G.navy,padding:"20px 20px 16px",textAlign:"center"}}>
+        <div style={{background:G.navy,padding:"20px 20px 16px",textAlign:"center",position:"relative"}}>
+          {/* Real, reported bug: since backdrop clicks no longer close any
+              overlay (see overlayBackdropNeverCloses.test.jsx), this panel
+              had NO way to close it at all short of refreshing the page --
+              every other overlay in the app already has its own explicit
+              close control. */}
+          <button type="button" onClick={onClose} title="Close" aria-label="Close"
+            style={{position:"absolute",top:10,right:10,width:24,height:24,border:"none",borderRadius:6,
+              background:"rgba(255,255,255,0.12)",color:"#fff",fontSize:13,lineHeight:1,cursor:"pointer",
+              display:"flex",alignItems:"center",justifyContent:"center"}}>
+            ✕
+          </button>
           <div style={{width:64,height:64,margin:"0 auto 10px"}}>
             <Avatar user={{name,color}} size={64} style={{border:"3px solid rgba(255,255,255,0.2)",fontSize:22}}/>
           </div>

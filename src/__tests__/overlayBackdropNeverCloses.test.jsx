@@ -82,11 +82,13 @@ describe('No overlay closes on a backdrop click -- only its own explicit close c
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('User Profile Panel', () => {
+  it('User Profile Panel -- real reported bug: this one had NO close button at all, so once backdrop-close stopped working it could not be dismissed without a page refresh', () => {
     const onClose = vi.fn();
     const { container } = render(<UserProfilePanel currentUser={{ id: 1, name: 'Old Name', color: '#1A5276', role: 'ops' }} onClose={onClose} onSave={()=>{}}/>);
     clickBackdrop(container);
     expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTitle('Close'));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('Vendor Ledger Panel', () => {

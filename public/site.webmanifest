@@ -1,0 +1,11 @@
+{
+  "name": "Unitop Ops",
+  "short_name": "Unitop Ops",
+  "icons": [
+    { "src": "/favicon-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/favicon-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#0D1B2A",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}

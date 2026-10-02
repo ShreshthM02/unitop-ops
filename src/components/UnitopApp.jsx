@@ -923,9 +923,21 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               <div className="user-name">{currentUser.name}</div>
               <div className="user-role">{ROLE_LABELS[currentUser.role]}</div>
             </div>
-            <span title="Sign out" style={{cursor:"pointer",color:"rgba(255,255,255,0.3)",fontSize:14,flexShrink:0}}
+            {/* Real, reported bug: the old power-symbol character (U+23FB)
+                doesn't exist in Inter (the app's font throughout), so it
+                rendered as a blank/missing-glyph box instead of an icon --
+                not a CSS sizing issue, the glyph itself was never there.
+                Replaced with an inline SVG power icon, which renders
+                identically regardless of font. */}
+            <span title="Sign out" role="button" aria-label="Sign out"
+              style={{cursor:"pointer",color:"rgba(255,255,255,0.4)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}
+              onMouseEnter={e=>e.currentTarget.style.color="#fff"}
+              onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.4)"}
               onClick={async()=>{ await db.auth.logout(); window.location.reload(); }}>
-              ⏻
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                <line x1="12" y1="2" x2="12" y2="12"/>
+              </svg>
             </span>
           </div>
           <div style={{textAlign:"center",padding:"4px 0 8px",fontSize:9,color:"rgba(255,255,255,0.18)",letterSpacing:"0.5px"}}>

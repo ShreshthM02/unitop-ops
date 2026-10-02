@@ -32,6 +32,19 @@ describe('UserProfilePanel: Save Profile now actually persists (was a client-sid
   });
 });
 
+describe('UserProfilePanel: has its own explicit close control', () => {
+  // Real, reported bug: since backdrop clicks no longer close any overlay
+  // in the app, this panel -- which had no dedicated close button at all --
+  // became impossible to dismiss without refreshing the page.
+  it('renders a close button that calls onClose when clicked', async () => {
+    const { default: UserProfilePanel } = await import('../components/UserProfilePanel.jsx');
+    const onClose = vi.fn();
+    render(<UserProfilePanel currentUser={{ id: 1, name: 'Old Name', color: '#1A5276', role: 'ops' }} onClose={onClose} onSave={()=>{}}/>);
+    fireEvent.click(screen.getByTitle('Close'));
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 describe('UnitopApp: onSave is no longer a no-op, wired to actually update auth state', async () => {
   const fs = await import('fs');
   const path = await import('path');
