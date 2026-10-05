@@ -266,7 +266,14 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
           {newDMPicker && (
             <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30}}>
               <div style={{background:G.white,borderRadius:10,padding:16,width:320,maxHeight:400,overflowY:"auto"}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>Start a Direct Message</div>
+                {/* Real, reported bug: this picker had no close control at
+                    all -- not even a Cancel button, let alone a ✕ -- the
+                    only way out was picking someone or (since backdrop
+                    clicks no longer close any overlay) refreshing the page. */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:700,flex:1}}>Start a Direct Message</div>
+                  <span onClick={()=>setNewDMPicker(false)} title="Close" aria-label="Close" style={{cursor:"pointer",color:G.gray400,fontSize:14,padding:"0 2px"}}>✕</span>
+                </div>
                 {(staff||[]).filter(s=>s.id!==currentUser?.id).map(s=>(
                   <div key={s.id} onClick={()=>startDM(s.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:6,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=G.gray50} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <Avatar user={s} size={26}/><span style={{fontSize:13}}>{s.name}</span>

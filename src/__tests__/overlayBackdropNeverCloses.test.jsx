@@ -53,7 +53,14 @@ describe('No overlay closes on a backdrop click -- only its own explicit close c
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('Enhanced Payment Tracker', () => {
+  it('Enhanced Payment Tracker ("Full Payment Tracker") -- real reported bug: only close was a "Close" button at the very bottom of a long form, no header ✕ like every other overlay', () => {
+    const onClose = vi.fn();
+    render(<EnhancedPaymentTracker query={{ id: 'UTQ-1' }} payments={{}} onUpdatePayments={()=>{}} onClose={onClose}/>);
+    fireEvent.click(screen.getByTitle('Close'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('Enhanced Payment Tracker: backdrop click still does not close it', () => {
     const onClose = vi.fn();
     const { container } = render(<EnhancedPaymentTracker query={{ id: 'UTQ-1' }} payments={{}} onUpdatePayments={()=>{}} onClose={onClose}/>);
     clickBackdrop(container);
@@ -183,7 +190,7 @@ describe('In-App Chat: its own sub-modals also no longer close on a backdrop cli
   const staff = [{ id: 's1', name: 'Priya' }];
   const baseProps = { currentUser:{id:'s1',name:'Priya'}, queries:[], staff, agents:[], vendors:[], series:[], onClose:()=>{} };
 
-  it('the "New DM" picker', () => {
+  it('the "New DM" picker -- real reported bug: had no close control at all, not even Cancel', () => {
     render(<InAppChat {...baseProps}/>);
     fireEvent.click(screen.getByText('+ New'));
     fireEvent.click(screen.getByText('💬 New Direct Message'));
@@ -191,6 +198,9 @@ describe('In-App Chat: its own sub-modals also no longer close on a backdrop cli
     fireEvent.click(heading.closest('div[style*="position:absolute"], div[style*="position: absolute"]'));
     // Still open: the picker's own heading is still there.
     expect(screen.getByText('Start a Direct Message')).toBeTruthy();
+    // But its own ✕ does close it.
+    fireEvent.click(screen.getByTitle('Close'));
+    expect(screen.queryByText('Start a Direct Message')).toBeNull();
   });
 
   it('the "New Group" draft', () => {

@@ -819,10 +819,19 @@ export default function EnhancedPaymentTracker({ query, payments, onUpdatePaymen
   return (
     <div className="overlay">
       <div style={{background:G.white,width:"min(660px, 100vw)",height:"100vh",overflowY:"auto",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}}>
-        <div style={{background:G.navy,padding:"14px 20px",flexShrink:0}}>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>PAYMENT TRACKER</div>
-          <div style={{fontSize:17,fontWeight:700,color:G.white,fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.tourFileId||query.id} · {query.destination||query.sector}{query.nights?" · "+nightsDaysLabel(query.nights):""}</div>
+        <div style={{background:G.navy,padding:"14px 20px",flexShrink:0,display:"flex",alignItems:"flex-start",gap:12}}>
+          {/* Real, reported bug: this panel's only way to close was a
+              "Close" button at the very bottom of a long scrollable form
+              -- every other overlay in the app has a dedicated ✕ pinned in
+              its header, which this one was missing. Footer button left in
+              place too; this just matches the app-wide convention. */}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>PAYMENT TRACKER</div>
+            <div style={{fontSize:17,fontWeight:700,color:G.white,fontFamily:"'Playfair Display',serif"}}>{query.groupName||query.clientName}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{query.tourFileId||query.id} · {query.destination||query.sector}{query.nights?" · "+nightsDaysLabel(query.nights):""}</div>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost" title="Close" aria-label="Close"
+            style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",flexShrink:0}}>✕</button>
         </div>
 
         <fieldset disabled={readOnly} style={{flex:1,overflowY:"auto",padding:"16px 20px",border:"none",margin:0,minWidth:0}}>

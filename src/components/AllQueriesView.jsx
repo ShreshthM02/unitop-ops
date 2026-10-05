@@ -45,7 +45,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
   const SortIcon=({col})=>sortCol===col?<span style={{marginLeft:3,fontSize:10}}>{sortDir==='asc'?'▲':'▼'}</span>:<span style={{marginLeft:3,fontSize:10,opacity:0.3}}>⇅</span>;
   const exportCSV=()=>{const cols=['ID','Group/Client','Destination','Agent','Stage','Travel Date','Pax','Source','Tour File'];const rows=sorted.map(q=>[q.id,q.groupName||q.clientName,q.destination||q.sector,q.agentCompany,stageLabel(q.status),formatDateSlash(q.travelDate),q.paxDisplay,q.source,q.tourFileId||'']);const csv=[cols,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='queries.csv';a.click();URL.revokeObjectURL(url);};
   const inp={padding:"6px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none",color:G.gray800,background:G.white};
-  const th={padding:"9px 10px",textAlign:"left",fontSize:11,fontWeight:700,color:G.white,background:G.navy,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderRight:"1px solid rgba(255,255,255,0.1)"};
+  const th={padding:"9px 10px",textAlign:"left",fontSize:11,fontWeight:700,color:G.white,background:G.navy,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",borderRight:"1px solid rgba(255,255,255,0.1)"};
   const td={padding:"8px 10px",fontSize:11,borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle"};
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%",margin:"-16px -20px"}}>
@@ -62,8 +62,14 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
           <button className="btn btn-ghost" style={{fontSize:11}} onClick={exportCSV}>📥 CSV</button>
         </div>
       </div>
-      <div style={{flex:1,overflowY:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed"}}>
+      {/* Real, reported bug: on a phone-width screen, this table's
+          table-layout:fixed columns had no horizontal-scroll escape
+          hatch, so header/cell text from adjacent columns visually
+          overlapped instead of the table simply scrolling sideways --
+          same overflow-x:auto + explicit minWidth pattern already used
+          for the (smaller) tables in ReportsView. */}
+      <div style={{flex:1,overflowY:"auto",overflowX:"auto"}}>
+        <table style={{width:"100%",minWidth:760,borderCollapse:"collapse",tableLayout:"fixed"}}>
           <colgroup>
             <col style={{width:90}}/><col style={{width:68}}/><col style={{width:"18%"}}/>
             <col style={{width:"13%"}}/><col style={{width:"13%"}}/><col style={{width:100}}/>

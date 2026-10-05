@@ -1,9 +1,17 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, loadSignatures, saveSignature, deleteSignature, db } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, TEMPLATE_FIELD_SCHEMAS, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadAppSetting, saveAppSetting, mergeDocTemplates, loadSignatures, saveSignature, deleteSignature, db, useIsNarrowViewport } = Lib;
 
 export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSettings,setDocSettings,onSignaturesChanged}){
+  // Real, reported bug: this screen's fixed-width (220px) document list
+  // beside a flex:1 settings/content/preview pane squeezed both into a
+  // sliver on a phone, cutting off the Settings/Template Content/Preview
+  // tabs and the filename-pattern preview box. Same fix already applied
+  // to Vendor/Agent/User Management and Reports: collapse to a single
+  // pane on real phone widths, with a "Back to list" affordance.
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile,setShowDetailMobile]=React.useState(false);
   const [selectedDoc,setSelectedDoc]=React.useState("quotation");
   const [activePane,setActivePane]=React.useState("settings");
   const [settings,setSettings]=React.useState(()=>({...DEFAULT_DOC_SETTINGS,...(docSettings||{})}));
@@ -97,13 +105,13 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
   const schema=TEMPLATE_FIELD_SCHEMAS[selectedDoc]; // undefined for costsheet/monument/receipt -> placeholder shown
   return(
     <div style={{display:"flex",height:"100%",minHeight:500,margin:"-16px -20px"}}>
-      <div style={{width:220,borderRight:`1px solid ${G.gray200}`,display:"flex",flexDirection:"column",flexShrink:0,background:"#FAFAFA"}}>
+      {(!isNarrow || !showDetailMobile) && <div style={{width:isNarrow?"100%":220,borderRight:isNarrow?"none":`1px solid ${G.gray200}`,display:"flex",flexDirection:"column",flexShrink:0,background:"#FAFAFA"}}>
         <div style={{padding:"12px 14px 8px",fontSize:10,fontWeight:700,color:G.gray400,textTransform:"uppercase",letterSpacing:"1px",borderBottom:`1px solid ${G.gray100}`}}>Documents</div>
         <div style={{flex:1,overflowY:"auto"}}>
           {sideItems.map((d,idx)=>(
             <React.Fragment key={d.id}>
               {idx===DOC_TYPES.length&&<div style={{borderTop:`1px solid ${G.gray200}`,margin:"6px 0"}}/>}
-              <div onClick={()=>{setSelectedDoc(d.id);setActivePane(d.id==="_typography"?"typography":"settings");}} style={{padding:"10px 14px",cursor:"pointer",background:selectedDoc===d.id?"#EBF5FB":"transparent",borderLeft:`3px solid ${selectedDoc===d.id?"#1A5276":"transparent"}`}}>
+              <div onClick={()=>{setSelectedDoc(d.id);setActivePane(d.id==="_typography"?"typography":"settings");setShowDetailMobile(true);}} style={{padding:"10px 14px",cursor:"pointer",background:selectedDoc===d.id?"#EBF5FB":"transparent",borderLeft:`3px solid ${selectedDoc===d.id?"#1A5276":"transparent"}`}}>
                 <div style={{fontSize:13,fontWeight:selectedDoc===d.id?600:400,color:selectedDoc===d.id?G.navy:G.gray800}}>{d.icon} {d.label}</div>
                 {d.formats&&<div style={{fontSize:10,color:G.gray400,marginTop:1}}>{d.formats.join(" · ")}</div>}
               </div>
@@ -114,8 +122,9 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
           <button className="btn btn-primary" style={{width:"100%",fontSize:12}} onClick={saveAll}>💾 Save All Settings</button>
           {saved&&<div style={{fontSize:11,color:"#059669",fontWeight:600,marginTop:6,textAlign:"center"}}>{saved}</div>}
         </div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",padding:"16px 22px"}}>
+      </div>}
+      {(!isNarrow || showDetailMobile) && <div style={{flex:1,minWidth:0,overflowY:"auto",padding:"16px 22px"}}>
+        {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{marginBottom:10,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600}}>← Back to list</div>}
         {isTypo&&(
           <div>
             <div style={{fontSize:16,fontWeight:700,color:G.navy,fontFamily:"'Playfair Display',serif",marginBottom:14}}>🎨 Typography & Brand Colours</div>
@@ -232,7 +241,7 @@ export default function TemplatesHub({docTemplates,onSaveDocTemplates,docSetting
             </div>}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

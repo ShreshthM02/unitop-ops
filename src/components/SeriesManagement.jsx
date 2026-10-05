@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, saveSeries, db } = Lib;
+const { G, saveSeries, db, useIsNarrowViewport } = Lib;
 
 export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId, asTab = false, onUpdateQuery }) {
+  // Real, reported bug: this screen's fixed-width (260px) series list
+  // beside a flex:1 detail pane squeezed both into a sliver on a phone.
+  // Same fix as Vendor/Agent/User Management, Templates and Reports:
+  // single pane on real phone widths, with a "Back to list" affordance.
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
   const [selected, setSelected] = useState(()=>series.find(s=>s.id===initialSelectedId)||null);
   // Same real bug/fix as AgentMaster/VendorMaster's own selected
   // state: the lazy initializer above only ever runs once, at first
@@ -78,16 +84,16 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1 }}>MASTER DATA</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: "'Playfair Display',serif" }}>Series</div>
           </div>
-          <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={() => { setForm({ name: "", notes: "", active: true }); setEditing(true); setSelected(null); }}>+ New Series</button>
+          <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={() => { setForm({ name: "", notes: "", active: true }); setEditing(true); setSelected(null); setShowDetailMobile(true); }}>+ New Series</button>
           {!asTab && <button onClick={onClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>}
         </div>
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          <div style={{ width: 260, borderRight: `1px solid ${G.gray200}`, overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column" }}>
+          {(!isNarrow || !showDetailMobile) && <div style={{ width: isNarrow?"100%":260, borderRight: isNarrow?"none":`1px solid ${G.gray200}`, overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "8px 12px", borderBottom: `1px solid ${G.gray200}` }}><input style={{ ...inp, padding: "6px 9px" }} placeholder="Search series..." value={search} onChange={e => setSearch(e.target.value)} /></div>
             <div style={{ flex: 1, overflowY: "auto" }}>
               {filtered.length === 0 && <div style={{ padding: 16, fontSize: 12, color: G.gray400, textAlign: "center" }}>No series yet — create one above.</div>}
               {filtered.map(s => (
-                <div key={s.id} onClick={() => { setSelected(s); setEditing(false); }}
+                <div key={s.id} onClick={() => { setSelected(s); setEditing(false); setShowDetailMobile(true); }}
                   style={{ padding: "12px 14px", borderBottom: `1px solid ${G.gray100}`, cursor: "pointer", background: selected?.id === s.id ? "#EBF5FB" : G.white, opacity: s.active ? 1 : 0.55 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                     {s.name}
@@ -97,8 +103,9 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
                 </div>
               ))}
             </div>
-          </div>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          </div>}
+          {(!isNarrow || showDetailMobile) && <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{ padding: "10px 14px", borderBottom: `1px solid ${G.gray200}`, cursor: "pointer", color: G.accent, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>← Back to list</div>}
             {editing ? (
               <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: G.navy, marginBottom: 14 }}>{form.id ? "Edit Series" : "New Series"}</div>
@@ -152,7 +159,7 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
                 Select a series, or create a new one.
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </div>

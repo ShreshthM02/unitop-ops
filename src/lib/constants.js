@@ -123,7 +123,7 @@ export const SOURCE_COLORS = { WhatsApp:"#25D366", Email:"#4A90D9", Website:"#E6
 export const GANTT_DAYS = ["Jun 16","Jun 17","Jun 18","Jun 19","Jun 20","Jun 21","Jun 22","Jun 23","Jun 24","Jun 25","Jun 26","Jun 27","Jun 28","Jun 29","Jun 30","Jul 1","Jul 2","Jul 3","Jul 4","Jul 5","Jul 6","Jul 7","Jul 8","Jul 9","Jul 10"];
 export const TODAY_IDX = 3;
 
-export const APP_VERSION = "v1.61.1";
+export const APP_VERSION = "v1.62.0";
 
 // Shared highlighter palette for every rich text editor in the app (the
 // plain contentEditable RichTextEditor in helpers.jsx AND the Tiptap-based
@@ -359,6 +359,26 @@ export const css = `
     .content{padding:12px!important;}
     .hamburger{display:flex!important;}
     .gantt-wrap{overflow-x:auto;}
+
+    /* Real, reported bug: "the app opens as zoomed in when the app first
+       opens in mobile browser." Root cause is the classic iOS Safari/
+       Chrome behavior where tapping into a text input with a computed
+       font-size under 16px makes the browser auto-zoom the whole page to
+       that input -- and since this is a single-page app that never does a
+       full navigation/reload, that zoom level then sticks across every
+       other screen the person visits afterwards, until they manually
+       pinch back out. Nearly every input/select/textarea in this app is
+       11-13px by design (a dense admin tool), so on mobile only, bump
+       form controls up to the 16px safe threshold -- desktop is
+       untouched. */
+    input[type="text"],input[type="number"],input[type="email"],input[type="password"],
+    input[type="date"],input[type="tel"],input[type="search"],input:not([type]),
+    select,textarea{font-size:16px!important;}
+
+    /* Real, reported bug: Team view's 2-up card grid squeezed each card
+       to roughly half the phone's width, wrapping/truncating the
+       working/reviewing counts. One column reads fine at any width. */
+    .team-grid{grid-template-columns:1fr!important;}
   }
   .hamburger{display:none;align-items:center;justify-content:center;width:36px;height:36px;cursor:pointer;border-radius:6px;background:${G.gray100};border:none;font-size:18px;margin-right:8px;}
   .sidebar-nav{flex:1;padding:12px 0;overflow-y:auto;}

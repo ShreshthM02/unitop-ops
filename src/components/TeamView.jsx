@@ -15,7 +15,7 @@ export default function TeamView({ queries, staff }) {
     return workloadOf(b) - workloadOf(a);
   });
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+    <div className="team-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
       {sortedStaff.map(user => {
         // Doer/Reviewer (4.1): each person now has two separate lists --
         // what they're doing (assignedTo, always set), and what they're

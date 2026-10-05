@@ -1,13 +1,19 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, isIsoDateString, formatDateDMY, db, entryINR, loadAllExchangeOrders, groupExchangeOrderVersions } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, isIsoDateString, formatDateDMY, db, entryINR, loadAllExchangeOrders, groupExchangeOrderVersions, useIsNarrowViewport } = Lib;
 
 const filterSelectStyle = { padding:"4px 8px", border:`1px solid ${G.gray200}`, borderRadius:5, fontSize:11,
   fontFamily:"'Inter',sans-serif", color:G.gray800, background:G.white, outline:"none" };
 
 export default function ReportsView({ queries, payments, currentUser, vendors, tourExecutions, staff, onOpenQuery }) {
   const can = useCan(currentUser);
+  // Real, reported bug: this screen's fixed-width (260px) report list
+  // beside a flex:1 detail/table pane squeezed both into a sliver on a
+  // phone. Same fix as Vendor/Agent/User Management and now Templates:
+  // single pane on real phone widths, with a "Back to list" affordance.
+  const isNarrow = useIsNarrowViewport();
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
   const [filterCat, setFilterCat] = useState("All");
   const [search, setSearch] = useState("");
@@ -606,7 +612,7 @@ function ReportChart({ reportId, data }) {
 
   return (
     <div style={{display:"flex",height:"100%",minHeight:500,margin:"-16px -20px"}}>
-      <div style={{width:260,borderRight:`1px solid ${G.gray200}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+      {(!isNarrow || !showDetailMobile) && <div style={{width:isNarrow?"100%":260,borderRight:isNarrow?"none":`1px solid ${G.gray200}`,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"12px 14px",background:G.gray50,borderBottom:`1px solid ${G.gray200}`}}>
           <input style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white,marginBottom:6}} placeholder="Search reports..." value={search} onChange={e=>setSearch(e.target.value)}/>
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -622,7 +628,7 @@ function ReportChart({ reportId, data }) {
             return <div key={cat}>
               <div style={{padding:"8px 14px 4px",fontSize:10,fontWeight:700,color:G.gray400,textTransform:"uppercase",letterSpacing:"1px",background:G.gray50,borderBottom:`1px solid ${G.gray100}`}}>{cat}</div>
               {catReports.map(r=>(
-                <div key={r.id} onClick={()=>setSelectedReport(r)} style={{padding:"10px 14px",cursor:"pointer",background:selectedReport?.id===r.id?"#EBF5FB":G.white,borderBottom:`1px solid ${G.gray100}`,borderLeft:`3px solid ${selectedReport?.id===r.id?"#1A5276":"transparent"}`}}>
+                <div key={r.id} onClick={()=>{setSelectedReport(r);setShowDetailMobile(true);}} style={{padding:"10px 14px",cursor:"pointer",background:selectedReport?.id===r.id?"#EBF5FB":G.white,borderBottom:`1px solid ${G.gray100}`,borderLeft:`3px solid ${selectedReport?.id===r.id?"#1A5276":"transparent"}`}}>
                   <div style={{fontSize:12,fontWeight:selectedReport?.id===r.id?600:400,color:selectedReport?.id===r.id?G.navy:G.gray800}}>{r.icon} {r.label}</div>
                   <div style={{fontSize:10,color:G.gray400,marginTop:2,lineHeight:1.3}}>{r.desc.slice(0,55)}…</div>
                 </div>
@@ -631,8 +637,9 @@ function ReportChart({ reportId, data }) {
           })}
         </div>
         <div style={{padding:"8px 14px",background:G.gray50,borderTop:`1px solid ${G.gray200}`,fontSize:10,color:G.gray400}}>{ALL_REPORTS.length} reports available</div>
-      </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      </div>}
+      {(!isNarrow || showDetailMobile) && <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{padding:"10px 14px",borderBottom:`1px solid ${G.gray200}`,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600,flexShrink:0}}>← Back to list</div>}
         {selectedReport ? <ReportPreview report={selectedReport}/> : (
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,color:G.gray400,padding:32}}>
             <div style={{fontSize:48,marginBottom:12}}>📈</div>
@@ -640,7 +647,7 @@ function ReportChart({ reportId, data }) {
             <div style={{fontSize:12,textAlign:"center",maxWidth:300,lineHeight:1.6}}>{ALL_REPORTS.length} reports across 4 categories. Select any report to view data and export.</div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
