@@ -167,3 +167,47 @@ describe('GanttView UI: Ground View tab', () => {
     expect(screen.getByText(/No tours running on this date/)).toBeTruthy();
   });
 });
+
+describe('GanttView UI: Ground View Yesterday / Today / Tomorrow buttons', () => {
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const offset = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return fmt(d); };
+  // One single-day tour per relative day, so each button's effect is
+  // unambiguous -- real relative dates so the test doesn't rot over time.
+  const mk = (id, name, n) => ({ id, tourFileId: id, groupName: name, status: 'operations', cancelled: false, travelDate: offset(n), nights: 0 });
+  const queries = [mk('Q-Y', 'Yesterday Group', -1), mk('Q-T', 'Today Group', 0), mk('Q-N', 'Tomorrow Group', 1)];
+
+  const open = async () => {
+    const { default: GanttView } = await import('../components/GanttView.jsx');
+    render(<GanttView queries={queries} onOpenQuery={()=>{}} staff={[]} vendors={[]} tourExecutions={{}}/>);
+    fireEvent.click(screen.getByText(/Ground View/));
+  };
+
+  it('Yesterday shows only the tour running yesterday', async () => {
+    await open();
+    fireEvent.click(screen.getByText('Yesterday'));
+    expect(screen.getByText('Yesterday Group')).toBeTruthy();
+    expect(screen.queryByText('Today Group')).toBeNull();
+    expect(screen.queryByText('Tomorrow Group')).toBeNull();
+  });
+
+  it('Tomorrow shows only the tour running tomorrow', async () => {
+    await open();
+    fireEvent.click(screen.getByText('Tomorrow'));
+    expect(screen.getByText('Tomorrow Group')).toBeTruthy();
+    expect(screen.queryByText('Today Group')).toBeNull();
+  });
+
+  it('Today still returns to the real current date after moving away', async () => {
+    await open();
+    fireEvent.click(screen.getByText('Tomorrow'));
+    fireEvent.click(screen.getByText('Today'));
+    expect(screen.getByText('Today Group')).toBeTruthy();
+    expect(screen.queryByText('Tomorrow Group')).toBeNull();
+  });
+
+  it('the date input reflects the chosen button', async () => {
+    await open();
+    fireEvent.click(screen.getByText('Yesterday'));
+    expect(document.querySelector('input[type="date"]').value).toBe(offset(-1));
+  });
+});

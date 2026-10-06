@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport, mealPlanLabel, parseLanguagesList, vendorHasLanguage, allVendorLanguages } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, getVendorServiceHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport, mealPlanLabel, parseLanguagesList, vendorHasLanguage, allVendorLanguages } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
   const can = useCan(currentUser);
@@ -107,7 +107,8 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
     });
   },[selected]);
 
-  useEffect(()=>{ if(tab==="eo"&&selected) refreshEO(); },[tab,selected,refreshEO]);
+  // Service History now also lists confirmed EOs, so it needs the same data.
+  useEffect(()=>{ if((tab==="eo"||tab==="history")&&selected) refreshEO(); },[tab,selected,refreshEO]);
 
   const toggleEOSettled=async(group)=>{
     const row=group.latest;
@@ -298,7 +299,7 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                   ))}
                   {selected.notes&&<div style={{marginTop:12,background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:12,color:G.gray600,borderLeft:`3px solid ${G.accent}`}}>{selected.notes}</div>}</div>}
                   {tab==="history"&&(()=>{
-                    const assignmentsAll = getVendorAssignmentHistory(selected.id, tourExecutions, queries);
+                    const assignmentsAll = getVendorServiceHistory(selected, tourExecutions, queries, eoGroups);
                     const assignments = assignmentsAll.filter(a=>isWithinPeriod(a.travelDate,periodFilter));
                     const ledgerTourFiles = [...new Set(getLedger(selected).map(e=>e.tourFileId).filter(Boolean))];
                     return (
@@ -308,13 +309,14 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                         {assignments.length===0?<div style={{textAlign:"center",padding:24,color:G.gray400,border:`1px dashed ${G.gray200}`,borderRadius:8,marginBottom:20,fontSize:12}}>No tours assigned in this period.</div>:(
                           <div style={{marginBottom:20}}>
                             {assignments.map((a,i)=>{
-                              const rs=ROLE_STYLE[a.role]||ROLE_STYLE["Tour Facilitator"];
+                              const rs=ROLE_STYLE[a.role]||{bg:G.gray100,color:G.gray600};
                               return (
                                 <div key={i} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"10px 14px",marginBottom:8,opacity:a.cancelled?0.6:1}}>
                                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
                                     <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:rs.bg,color:rs.color,fontWeight:600}}>{a.role}</span>
                                     {a.cancelled&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>Cancelled</span>}
                                     {(()=>{const aq=queries.find(qq=>qq.id===a.queryId);return<span onClick={()=>aq&&document.dispatchEvent(new CustomEvent("unitop-activate-query",{detail:{query:aq}}))} style={{fontSize:12,fontWeight:700,color:aq?"#1A5276":G.navy,cursor:aq?"pointer":"default",textDecoration:aq?"underline":"none"}}>📁 {a.tourFileId}</span>;})()}
+                                    {(a.eoNos||[]).map(no=><span key={no} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#EAFAF1",color:"#0E6655",fontWeight:600}}>✓ EO {no}</span>)}
                                   </div>
                                   <div style={{fontSize:11,color:G.gray600}}>{a.groupName} · {a.sector} · {formatDateSlash(a.travelDate)||"TBC"}</div>
                                   {a.notes&&<div style={{fontSize:11,color:G.gray400,marginTop:2}}>{a.notes}</div>}

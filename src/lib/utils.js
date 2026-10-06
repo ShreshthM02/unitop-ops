@@ -2682,6 +2682,52 @@ export function getVendorAssignmentHistory(vendorId, tourExecutions, queries) {
   return rows.sort((a, b) => new Date(b.travelDate || 0) - new Date(a.travelDate || 0));
 }
 
+// Direct request (2026-10-06): a CONFIRMED Exchange Order now counts as a
+// service in the vendor's Service History, for every vendor type -- not
+// only the three roles Tour Info assigns. Unconfirmed EOs stay only in the
+// vendor's Exchange Orders list, exactly as before; un-confirming one
+// removes its history entry again, since this is derived on every render,
+// never stored.
+//
+// `eoGroups` is the output of groupExchangeOrderVersions; "confirmed" is
+// read from each group's `latest` row -- the same row the Confirm toggle in
+// Exchange Order Generator writes to, so the two always agree.
+//
+// A tour where the vendor is ALSO assigned in Tour Info shows as ONE card
+// (the assignment's role plus an "EO #" tag), not two. Otherwise the card's
+// role is the vendor's own type (Hotel, Transport, ...), since there is no
+// Tour Info role to show. Cancelled tours stay, flagged `cancelled`, so the
+// existing dimmed-with-badge rendering applies unchanged.
+export function getVendorServiceHistory(vendor, tourExecutions, queries, eoGroups) {
+  if (!vendor) return [];
+  const rows = getVendorAssignmentHistory(vendor.id, tourExecutions, queries)
+    .map(r => ({ ...r, eoNos: [] }));
+  (eoGroups || []).forEach(group => {
+    const eo = group?.latest;
+    if (!eo || eo.vendorId !== vendor.id || !eo.order?.confirmed) return;
+    const q = (queries || []).find(qq => qq.id === eo.queryId);
+    if (!q) return;
+    const existing = rows.find(r => r.queryId === q.id);
+    if (existing) {
+      if (!existing.eoNos.includes(group.orderNo)) existing.eoNos.push(group.orderNo);
+      return;
+    }
+    rows.push({
+      tourFileId: q.tourFileId || q.id,
+      queryId: q.id,
+      groupName: q.groupName || q.clientName || "",
+      sector: q.destination || q.sector || "",
+      travelDate: q.travelDate || "",
+      status: q.status,
+      cancelled: !!q.cancelled,
+      role: vendor.type || "Service",
+      notes: "",
+      eoNos: [group.orderNo],
+    });
+  });
+  return rows.sort((a, b) => new Date(b.travelDate || 0) - new Date(a.travelDate || 0));
+}
+
 // ── DOC TEMPLATE MERGING ────────────────────────────────────────────────
 // Merges a saved doc_templates value over DEFAULT_DOC_TEMPLATES *per
 // document*, field by field, rather than replacing whole document objects.

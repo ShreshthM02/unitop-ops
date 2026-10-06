@@ -194,10 +194,16 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
             <div style={{fontSize:12,color:G.gray600}}>Running tours on</div>
             <input type="date" value={groundDate} onChange={e=>setGroundDate(e.target.value)}
               style={{padding:"6px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>
-            <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>{
-              const d = new Date();
-              setGroundDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
-            }}>Today</button>
+            {/* Yesterday / Today / Tomorrow are all relative to the REAL
+                current date, not to whatever date is currently chosen --
+                same meaning as the long-standing Today button. */}
+            {[["Yesterday",-1],["Today",0],["Tomorrow",1]].map(([label,delta])=>(
+              <button key={label} className="btn btn-ghost" style={{fontSize:11}} onClick={()=>{
+                const d = new Date();
+                d.setDate(d.getDate()+delta);
+                setGroundDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
+              }}>{label}</button>
+            ))}
             <div style={{marginLeft:"auto",fontSize:11,color:G.gray400}}>{runningTours.length} tour{runningTours.length!==1?"s":""} on the ground</div>
           </div>
 
