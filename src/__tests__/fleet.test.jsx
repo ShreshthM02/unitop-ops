@@ -53,6 +53,12 @@ describe('fleet lib: mapping and validation', () => {
     expect(validateExpenseRow({ date: '2026-10-01', particulars: 'x' })).toMatch(/amount/i);
     expect(validateExpenseRow({ date: '2026-10-01', particulars: 'x', amount: '0' })).toBe('');
   });
+  it('remarks round-trip and empty rich text becomes null', () => {
+    expect(mapDbFleetVehicle({ id: 'a', name: 'T', remarks: '<p>hi</p>' }).remarks).toBe('<p>hi</p>');
+    expect(fleetVehicleToDb({ id: 'a', name: 'T', remarks: '<p>hi</p>' }).remarks).toBe('<p>hi</p>');
+    expect(fleetVehicleToDb({ id: 'a', name: 'T', remarks: '<p><br></p>' }).remarks).toBeNull();
+    expect(fleetVehicleToDb({ id: 'a', name: 'T' }).remarks).toBeNull();
+  });
   it('Drive folder is named after the vehicle', () => {
     expect(vehicleFolderName({ name: '  Innova 01 ' })).toBe('Innova 01');
     expect(vehicleFolderName({})).toBe('Untitled vehicle');
@@ -83,7 +89,7 @@ function fakeDb(seed) {
 }
 
 const seed = () => ({
-  fleet_vehicles: [{ id: 'v1', name: 'Innova 01', owner: 'Unitop', reg_no: 'DL 1Z 1234', reg_date: '2021-03-04', model: 'Crysta', colour: 'White', capacity: 7 }],
+  fleet_vehicles: [{ id: 'v1', name: 'Innova 01', owner: 'Unitop', reg_no: 'DL 1Z 1234', reg_date: '2021-03-04', model: 'Crysta', colour: 'White', capacity: 7, remarks: '<p>Needs <b>AC check</b></p><script>window.__pwned=1</script>' }],
   fleet_service_history: [{ id: 's1', vehicle_id: 'v1', tour_file_no: 'TF-2026-010', start_date: '2026-09-01', end_date: '2026-09-05', sector: 'Golden Triangle', notes: 'ok' }],
   fleet_expenses: [
     { id: 'e1', vehicle_id: 'v1', expense_date: '2026-09-02', particulars: 'Diesel', amount: 3000, notes: '' },
@@ -220,5 +226,67 @@ describe('FleetMaster', () => {
     render(<FleetMaster asTab currentUser={{ id: 2, name: 'Viewer', role: 'ops', permissions: { vendors_edit: false } }} />);
     await waitFor(() => expect(screen.getByText('Innova 01')).toBeTruthy());
     expect(screen.queryByText('+ Add Vehicle')).toBeNull();
+  });
+
+  it('shows remarks as formatted text with scripts stripped', async () => {
+    await open(); await pick();
+    const box = screen.getByTestId('fleet-remarks');
+    expect(box.querySelector('b').textContent).toBe('AC check');
+    expect(box.innerHTML).not.toMatch(/script/i);
+    expect(window.__pwned).toBeUndefined();
+  });
+
+  it('edits remarks with the rich text editor and saves them', async () => {
+    db.drive = { renameFleetFolder: vi.fn() };
+    await open(); await pick();
+    fireEvent.click(screen.getByText('✏ Edit'));
+    const editor = document.querySelector('[contenteditable="true"]');
+    editor.innerHTML = '<p>New <i>remark</i></p>';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByText('Save Vehicle'));
+    await waitFor(() => expect(fake.store.fleet_vehicles[0].remarks).toBe('<p>New <i>remark</i></p>'));
+    await waitFor(() => expect(screen.getByTestId('fleet-remarks').querySelector('i').textContent).toBe('remark'));
+  });
+
+  it('an emptied editor saves remarks as null', async () => {
+    await open(); await pick();
+    fireEvent.click(screen.getByText('✏ Edit'));
+    const editor = document.querySelector('[contenteditable="true"]');
+    editor.innerHTML = '<p><br></p>';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByText('Save Vehicle'));
+    await waitFor(() => expect(fake.store.fleet_vehicles[0].remarks).toBeNull());
+    await waitFor(() => expect(screen.getByText('No remarks.')).toBeTruthy());
+  });
+
+  it('documents: rename updates Drive and the list, Escape cancels, blank/unchanged does nothing', async () => {
+    db.drive = { renameFile: vi.fn(async () => ({ success: true })) };
+    await open(); await pick('Documents');
+    await screen.findByText('RC.pdf');
+    fireEvent.click(screen.getByLabelText('Rename RC.pdf'));
+    const input = screen.getByLabelText('New file name');
+    expect(input.value).toBe('RC.pdf');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByLabelText('New file name')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Rename RC.pdf'));
+    fireEvent.click(screen.getByText('Save')); // unchanged name
+    expect(db.drive.renameFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText('Rename RC.pdf'));
+    fireEvent.change(screen.getByLabelText('New file name'), { target: { value: 'Registration Certificate.pdf' } });
+    fireEvent.keyDown(screen.getByLabelText('New file name'), { key: 'Enter' });
+    await waitFor(() => expect(db.drive.renameFile).toHaveBeenCalledWith('d1', 'Registration Certificate.pdf', 'fleet'));
+    expect(await screen.findByText('Registration Certificate.pdf')).toBeTruthy();
+    expect(screen.queryByText('RC.pdf')).toBeNull();
+  });
+
+  it('documents: a failed rename keeps the old name and shows the error', async () => {
+    db.drive = { renameFile: vi.fn(async () => ({ success: false, error: 'Could not rename file in Drive: nope' })) };
+    await open(); await pick('Documents');
+    await screen.findByText('RC.pdf');
+    fireEvent.click(screen.getByLabelText('Rename RC.pdf'));
+    fireEvent.change(screen.getByLabelText('New file name'), { target: { value: 'X.pdf' } });
+    fireEvent.click(screen.getByText('Save'));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/nope/);
+    expect(screen.getByLabelText('New file name').value).toBe('X.pdf'); // still editing
   });
 });

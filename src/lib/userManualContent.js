@@ -102,7 +102,7 @@ export const USER_MANUAL_SECTIONS = [
     html: `
       <p><strong>Agents & Clients</strong> -- link a new query to a real agent record rather than retyping details, so Search can instantly show every tour that agent has sent you.</p>
       <p><strong>Vendors</strong> -- every hotel, transporter, and facilitator, including contracted rates. Each vendor's page shows their full ledger and every Exchange Order ever issued to them.</p>
-      <p><strong>Fleet</strong> -- our own vehicles. Each vehicle has a Profile (name, owner, registration number and date, model, colour, passenger capacity), a Service History you add by hand (tour file number, start and end date, sector, notes), an Expense Ledger (date, particulars, amount in INR, notes) with a total you can narrow by date range, and Documents, which are uploaded to Google Drive into a folder named after the vehicle.</p>
+      <p><strong>Fleet</strong> -- our own vehicles. Each vehicle has a Profile (name, owner, registration number and date, model, colour, passenger capacity, and rich-text Remarks), a Service History you add by hand (tour file number, start and end date, sector, notes), an Expense Ledger (date, particulars, amount in INR, notes) with a total you can narrow by date range, and Documents, which are uploaded to Google Drive into a folder named after the vehicle (a document can be renamed with the pencil icon).</p>
       <p><strong>Series</strong> -- groups repeated departures of the same fixed tour running on multiple dates through a season.</p>
     `
   },

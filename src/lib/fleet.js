@@ -3,6 +3,8 @@
 // Dependency-free on purpose (same reason as tourInfo.js): imported by
 // index.js, tested directly, and never imports from utils.js.
 
+import { richHtmlHasContent } from "./tourInfo.js";
+
 export const FLEET_PROFILE_FIELDS = [
   { key: "name", label: "Vehicle Name", type: "text", required: true, placeholder: "e.g. Innova Crysta – Delhi 01" },
   { key: "owner", label: "Vehicle Owner", type: "text" },
@@ -22,7 +24,7 @@ export function newFleetId() {
   });
 }
 
-export const blankVehicle = () => ({ id: null, name: "", owner: "", regNo: "", regDate: "", model: "", colour: "", capacity: "", driveFolderId: null });
+export const blankVehicle = () => ({ id: null, name: "", owner: "", regNo: "", regDate: "", model: "", colour: "", capacity: "", remarks: "", driveFolderId: null });
 
 // The Drive folder is named exactly after the vehicle, as asked.
 export const vehicleFolderName = (v) => String(v?.name || "").trim() || "Untitled vehicle";
@@ -32,7 +34,7 @@ const nz = (v) => (v === "" || v === undefined ? null : v);
 export function mapDbFleetVehicle(r) {
   return {
     id: r.id, name: r.name || "", owner: r.owner || "", regNo: r.reg_no || "", regDate: r.reg_date || "",
-    model: r.model || "", colour: r.colour || "", capacity: r.capacity ?? "", driveFolderId: r.drive_folder_id || null,
+    model: r.model || "", colour: r.colour || "", capacity: r.capacity ?? "", remarks: r.remarks || "", driveFolderId: r.drive_folder_id || null,
   };
 }
 export function fleetVehicleToDb(v) {
@@ -40,6 +42,8 @@ export function fleetVehicleToDb(v) {
   return {
     id: v.id, name: String(v.name || "").trim(), owner: nz(v.owner), reg_no: nz(v.regNo), reg_date: nz(v.regDate),
     model: nz(v.model), colour: nz(v.colour), capacity: Number.isFinite(cap) ? cap : null,
+    // Rich-text HTML from the profile's Remarks editor; empty editors save as null.
+    remarks: richHtmlHasContent(v.remarks) ? v.remarks : null,
   };
 }
 export const mapDbFleetServiceRow = (r) => ({ id: r.id, vehicleId: r.vehicle_id, tourFileNo: r.tour_file_no || "", startDate: r.start_date || "", endDate: r.end_date || "", sector: r.sector || "", notes: r.notes || "" });

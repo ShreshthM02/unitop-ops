@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, db, useCan, useIsNarrowViewport, defaultResizeImage, formatDateSlash,
+const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash,
   FLEET_PROFILE_FIELDS, blankVehicle, loadFleetVehicles, saveFleetVehicle, loadFleetRows, saveFleetRow, deleteFleetRow,
   mapDbFleetServiceRow, fleetServiceRowToDb, mapDbFleetExpenseRow, fleetExpenseRowToDb, newFleetId, vehicleFolderName,
   filterExpensesByRange, totalExpenses, formatINR, sortByDateDesc, validateServiceRow, validateExpenseRow } = Lib;
@@ -190,6 +190,9 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   const fileRef = useRef(null);
   useEffect(() => {
     let live = true;
@@ -219,6 +222,20 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
   };
+  // Same behaviour as renaming an upload on a tour file: renames the real
+  // file in Drive and our record together.
+  const startRename = (d) => { setRenamingId(d.id); setRenameValue(d.file_name); setErr(""); };
+  const cancelRename = () => { setRenamingId(null); setRenameValue(""); };
+  const saveRename = async (d) => {
+    const name = renameValue.trim();
+    if (!name || name === d.file_name) { cancelRename(); return; }
+    setRenameSaving(true);
+    const res = await db.drive.renameFile(d.id, name, "fleet");
+    setRenameSaving(false);
+    if (!res.success) { setErr(res.error || "Could not rename this document"); return; }
+    setDocs(p => p.map(x => x.id === d.id ? { ...x, file_name: name } : x));
+    cancelRename();
+  };
   const remove = async (d) => {
     if (!window.confirm(`Delete "${d.file_name}"? It is also removed from Drive.`)) return;
     setBusyId(d.id);
@@ -239,7 +256,20 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
           <div key={d.id} data-testid="fleet-doc" style={{ display: "flex", alignItems: "center", gap: 10, background: G.gray50, borderRadius: 6, padding: "8px 12px", marginBottom: 4 }}>
             <span>{d.file_type?.startsWith("image/") ? "🖼" : d.file_type === "application/pdf" ? "📕" : "📄"}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <a href={d.drive_view_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: G.accent, wordBreak: "break-word" }}>{d.file_name}</a>
+              {renamingId === d.id ? (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input autoFocus aria-label="New file name" value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveRename(d); if (e.key === "Escape") cancelRename(); }}
+                    style={{ ...inp, padding: "3px 6px", flex: 1, minWidth: 0 }} />
+                  <button className="btn btn-primary" style={{ fontSize: 10.5, padding: "3px 8px" }} disabled={renameSaving} onClick={() => saveRename(d)}>{renameSaving ? "…" : "Save"}</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 10.5, padding: "3px 8px" }} disabled={renameSaving} onClick={cancelRename}>Cancel</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <a href={d.drive_view_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: G.accent, wordBreak: "break-word" }}>{d.file_name}</a>
+                  {canEdit && <span role="button" aria-label={`Rename ${d.file_name}`} title="Rename" style={{ cursor: "pointer", color: G.gray400, fontSize: 12 }} onClick={() => startRename(d)}>✏</span>}
+                </div>
+              )}
               <div style={{ fontSize: 10.5, color: G.gray400 }}>{[humanSize(d.file_size), d.uploaded_by_name && `by ${d.uploaded_by_name}`, d.created_at && new Date(d.created_at).toLocaleDateString("en-IN")].filter(Boolean).join(" · ")}</div>
             </div>
             {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} disabled={busyId === d.id} onClick={() => remove(d)}>{busyId === d.id ? "…" : "Delete"}</button>}
@@ -265,6 +295,10 @@ function ProfileView({ v }) {
           </div>
         ))}
       </div>
+      <div style={{ ...kicker, marginTop: 16 }}>Remarks</div>
+      {richHtmlHasContent(v.remarks)
+        ? <div data-testid="fleet-remarks" className="rich-content" style={{ background: G.gray50, borderRadius: 6, padding: "8px 12px", fontSize: 12.5, borderLeft: `3px solid ${G.accent}` }} dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(v.remarks) }} />
+        : <div style={{ fontSize: 12, color: G.gray400 }}>No remarks.</div>}
     </div>
   );
 }
@@ -360,6 +394,10 @@ export default function FleetMaster({ currentUser, asTab = false, onClose }) {
                         <input aria-label={f.label} style={inp} type={f.type} min={f.type === "number" ? 1 : undefined} placeholder={f.placeholder || ""} value={form[f.key] ?? ""} onChange={e => setF(f.key, e.target.value)} />
                       </div>
                     ))}
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={lbl}>Remarks</div>
+                    <RichTextEditor value={form.remarks || ""} onChange={v => setF("remarks", v)} minHeight={110} placeholder="Anything worth noting about this vehicle" />
                   </div>
                   <ErrorLine msg={formErr} />
                   <div style={{ display: "flex", gap: 10 }}>
