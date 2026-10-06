@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { resolvePlace, searchGazetteer, manualPlace, isValidCoordinate } from './placeResolver.js';
 
@@ -24,6 +24,27 @@ import { resolvePlace, searchGazetteer, manualPlace, isValidCoordinate } from '.
 // Resolution happens HERE, while the day is being written, not at export
 // time. That is deliberate: it means there is no moment before sending a
 // document to a client where the map turns out not to work.
+
+// Where the floating panel goes. It used to be pinned a fixed 4px under the
+// "Change" link, which is fine until that link sits low on the screen (the
+// usual case once a day has several items): the panel then hung off the
+// bottom of the window and the search box -- the thing being typed into --
+// was below the fold, so the user couldn't see what they were typing.
+// Rules: prefer below the link; if it doesn't fit there, flip above it; if
+// it fits neither way, pin it inside the window (the panel then scrolls
+// itself, see maxHeight). Always keep it fully horizontally on screen.
+export function computePanelPosition({ anchor, panelHeight, panelWidth = 280, viewportW, viewportH, margin = 8, gap = 4 }) {
+  const maxHeight = Math.max(120, viewportH - margin * 2);
+  const h = Math.min(panelHeight || 0, maxHeight);
+  const spaceBelow = viewportH - anchor.bottom - gap - margin;
+  const spaceAbove = anchor.top - gap - margin;
+  let top;
+  if (h <= spaceBelow) top = anchor.bottom + gap;
+  else if (h <= spaceAbove) top = anchor.top - gap - h;
+  else top = Math.max(margin, viewportH - margin - h);
+  const left = Math.max(margin, Math.min(anchor.left, viewportW - panelWidth - margin));
+  return { top, left, maxHeight };
+}
 
 const STATUS_STYLE = {
   resolved:  { dot: "#15803D", label: "Located" },
@@ -72,19 +93,25 @@ export function PlacePicker({
   // toggle button's real screen coordinates, so no ancestor's overflow can
   // clip it regardless of where in the page this picker is used.
   const [panelPos, setPanelPos] = useState(null);
+  const reposition = () => {
+    if (!toggleBtnRef.current) return;
+    const r = toggleBtnRef.current.getBoundingClientRect();
+    setPanelPos(computePanelPosition({
+      anchor: { top: r.top, bottom: r.bottom, left: r.left },
+      panelHeight: panelRef.current ? panelRef.current.offsetHeight : 0,
+      viewportW: window.innerWidth, viewportH: window.innerHeight,
+    }));
+  };
   useEffect(() => {
     if (!open || !toggleBtnRef.current) { setPanelPos(null); return; }
-    const place = () => {
-      const r = toggleBtnRef.current.getBoundingClientRect();
-      setPanelPos({ top: r.bottom + 4, left: r.left });
-    };
-    place();
-    window.addEventListener('scroll', place, true);
-    window.addEventListener('resize', place);
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
     return () => {
-      window.removeEventListener('scroll', place, true);
-      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Dismissal for a portal-rendered panel: it is no longer visually
@@ -162,6 +189,9 @@ export function PlacePicker({
     ? (onSearch ? dbResults : searchGazetteer(term, gazetteer, { limit: 12 }))
     : [];
   const style = STATUS_STYLE[status] || STATUS_STYLE.unmatched;
+  // The panel grows as results arrive; re-place it so it never ends up
+  // hanging off-screen after it has already opened.
+  useLayoutEffect(() => { if (open) reposition(); }, [open, !!panelPos, dbResults, searching, term, alternatives.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (place) => { onChange && onChange(place); setOpen(false); };
 
@@ -199,7 +229,7 @@ export function PlacePicker({
       {open && !readOnly && panelPos && createPortal(
         <div ref={panelRef} style={{
           position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 1000,
-          width: 280, padding: 10, borderRadius: 8,
+          width: 280, padding: 10, borderRadius: 8, maxHeight: panelPos.maxHeight, overflowY: "auto",
           border: `1px solid ${G.gray200}`, background: G.white, boxShadow: "0 6px 20px rgba(0,0,0,0.14)",
         }}>
           {alternatives.length > 1 && (
@@ -228,6 +258,7 @@ export function PlacePicker({
             onChange={e => setTerm(e.target.value)}
             placeholder="Type any place name…"
             aria-label="Search places"
+            autoFocus
           />
           {results.map((r, i) => (
             <button key={`${r.name}-${r.lat}-${i}`} onClick={() => pick(r)}

@@ -83,6 +83,66 @@ export function resolveDayImages(days, photos, overrides = {}) {
   return out;
 }
 
+// ── Several photos per day (max 3) ─────────────────────────────────────────
+// The brochure now shows a horizontal strip of up to three photographs per
+// day. Same resolution order as the single-photo version above, but the
+// answer is a list:
+//   - an override that is an ARRAY of URLs pins exactly those (first 3);
+//   - an override that is a single URL string (every brochure saved before
+//     this change) is a list of one, so old documents render as before;
+//   - an explicit null is still "no photos, and don't guess" -- [] ;
+//   - no override at all: suggest from the library, walking the day's own
+//     text in the usual order and taking every distinct matching photo
+//     (longest destination name first) until three are found.
+export const MAX_DAY_PHOTOS = 3;
+
+export function normalizePhotoList(value, max = MAX_DAY_PHOTOS) {
+  if (Array.isArray(value)) return [...new Set(value.filter(v => typeof v === 'string' && v))].slice(0, max);
+  if (typeof value === 'string' && value) return [value];
+  return [];
+}
+
+function matchesFor(text, photos) {
+  const hay = norm(text);
+  if (!hay) return [];
+  return photos
+    .map((photo, order) => ({ photo, order, len: norm(photo.destination).length }))
+    .filter(m => m.len > 0 && hay.includes(norm(m.photo.destination)))
+    .sort((a, b) => b.len - a.len || a.order - b.order)
+    .map(m => m.photo);
+}
+
+export function suggestPhotosForDay(day, photos, max = MAX_DAY_PHOTOS) {
+  const library = photos || [];
+  if (!day || library.length === 0) return [];
+  const texts = [];
+  if (day.destination) texts.push(day.destination);
+  texts.push(...dayImageTextCandidates(day));
+  const out = [];
+  const seen = new Set();
+  for (const text of texts) {
+    for (const photo of matchesFor(text, library)) {
+      if (seen.has(photo.url)) continue;
+      seen.add(photo.url);
+      out.push(photo.url);
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}
+
+export function resolveDayPhotos(days, photos, overrides = {}) {
+  const out = {};
+  (days || []).forEach((day) => {
+    const key = day.id;
+    const list = Object.prototype.hasOwnProperty.call(overrides, key)
+      ? normalizePhotoList(overrides[key])
+      : suggestPhotosForDay(day, photos);
+    if (list.length) out[key] = list;
+  });
+  return out;
+}
+
 // Distinct destinations currently in the library, for the picker's filter.
 export function libraryDestinations(photos) {
   const seen = new Map();

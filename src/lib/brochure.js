@@ -38,6 +38,7 @@
 
 import { itemNoteForFlavor, ICON_PATHS } from "./utils.js";
 import { BROCHURE_FONT_FACES } from "./brochureFonts.js";
+import { normalizePhotoList } from "./photoLibrary.js";
 
 export const BROCHURE_PAGE = { widthMm: 210, heightMm: 297 };
 export const BROCHURE_CONTENT_HEIGHT_PX = Math.round((297 - 40) * (96 / 25.4));
@@ -163,8 +164,8 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     line-height: 1.25; white-space: normal;
   }
   .bro-cover-title {
-    font-family: ${DISPLAY}; font-size: 36pt; line-height: 1.06;
-    font-weight: 700; margin: 0; letter-spacing: -0.4px; color: ${theme.ink};
+    font-family: ${DISPLAY}; font-size: 27pt; line-height: 1.12;
+    font-weight: 700; margin: 0; letter-spacing: -0.3px; color: ${theme.ink};
   }
   .bro-cover-rule { width: 24mm; height: 1.6pt; background: ${theme.accent}; margin: 6mm auto; }
   /* The duration as a solid badge rather than a line of letterspaced type.
@@ -200,27 +201,27 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   .bro-cover-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .bro-cover--plain .bro-cover-photo { background: ${theme.panel}; }
 
-  /* PHOTO SIZING. The first version used 46x34mm insets, one per day. Below
-     roughly 60mm wide an image stops reading as a photograph and becomes
-     decoration, and nine identical stamps meant none of them carried any
-     weight. The rule now is ONE dominant image per page, not one per day:
-     a full-width band above the day blocks. Fewer, larger, and it needs
-     less library coverage rather than more. */
-  /* ONE PHOTO PER DAY, fixed 4:3, in a right-hand column. The page-level
-     band was rejected for a concrete reason: a full-width strip forces a
-     very wide crop, and most monument photography is portrait or square, so
-     it cut the top off temples. A 4:3 column accepts ordinary photographs
-     with a survivable crop, and object-position lets a photo be nudged when
-     the automatic centre crop lands badly. Fixed size regardless of how long
-     a day's text runs, so the column edge stays true down the page and the
-     document reads as set rather than assembled. */
-  .bro-day-photo { float: right; width: 52mm; margin: 0 0 4mm 6mm; }
-  .bro-day-photo img {
-    width: 52mm; height: 39mm; object-fit: cover; display: block;
+  /* DAY PHOTO STRIP. Up to three photographs per day, side by side between
+     the day heading and the day's items. History of this decision: one
+     inset per day was too small to read as a photograph; one dominant image
+     per page forced a very wide crop that cut the top off temples; a
+     floating right-hand column squeezed the text beside it into a narrow
+     strip and made the items look cluttered. A full-width horizontal strip
+     of equal tiles fixes all three: the photographs are big enough to be
+     photographs, the crop is a gentle 3:2, and every item below gets the
+     full text width.
+     Tiles are always the SAME size -- one, two or three photos -- so the
+     page rhythm holds whether a day has a lot of photography or a little.
+     Each tile is a third of the row (minus the two 3mm gaps); fewer photos
+     simply leave the right-hand end open rather than stretching. */
+  .bro-day-strip { margin: 0 0 5.5mm; }
+  .bro-day-strip-row { display: flex; gap: 3mm; }
+  .bro-day-shot {
+    margin: 0; flex: 0 0 calc((100% - 6mm) / 3); height: 40mm; overflow: hidden;
     border-radius: 1mm; background: ${theme.panel};
   }
-  .bro-day-photo-empty { width: 52mm; height: 39mm; border-radius: 1mm; background: ${theme.panel}; }
-  .bro-day-photo figcaption {
+  .bro-day-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bro-day-strip-cap {
     font-family: ${LABEL}; font-size: 8pt; letter-spacing: 0.4px;
     color: ${theme.soft}; margin-top: 1.8mm; line-height: 1.35;
   }
@@ -278,26 +279,22 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
   }
 
   /* ── Day block ───────────────────────────────────────────────────── */
-  /* Redesigned so a day can flow across a page break instead of being
-     forced to move wholesale when it does not fit -- confirmed as a real,
-     reported problem: an atomic per-day block meant a day too tall for
-     the remaining page space always jumped entirely to the next page,
-     leaving the remainder of the current one blank and costing pages
-     unnecessarily. The header (rail + title + routes) stays one atomic
-     flex row -- it is short and belongs together -- but the photo and
-     every timeline item are now independent siblings, each indented to
-     align under the header's content column (21mm = the rail's 15mm +
-     the content column's 6mm padding) rather than flex children of it.
-     This is deliberate: flex containers trap floats inside themselves, so
-     keeping the photo as a flex child would have stopped its float from
-     reaching later item blocks once pagination made them siblings instead
-     of nested content. As plain floated/margin-indented siblings, the
-     photo's float continues naturally across as many item blocks as fit
-     on the page it started on, and later items past a page break simply
-     render at full width once the float's height is behind them, exactly
-     like ordinary text flowing past an image. */
-  .bro-day-head { display: flex; gap: 6mm; clear: both; }
-  .bro-day-rail { flex: 0 0 15mm; text-align: right; padding-top: 1mm; }
+  /* Structure, top to bottom:
+       heading   rail (day number) | optional date + title
+       strip     up to three photographs, full width
+       items     every item the same way, on the heading's own column
+       footer    meals + overnight
+     The heading and strip are one atomic block; each item (and each chunk
+     of a long note) is its own block, so a day can run across a page break
+     between items -- see paginateBrochureDays for exactly where it may and
+     may not break. Nothing floats any more: the old right-hand photo was a
+     float, which is what made text wrap awkwardly beside it and made
+     page-break behaviour hard to predict.
+     One shared indent: the heading's divider rule and the items' rule sit
+     on the same vertical line (16mm in), and item text starts 5mm after it,
+     so the day reads as one column instead of two competing ones. */
+  .bro-day-head { display: flex; gap: 4mm; align-items: stretch; margin-bottom: 4.5mm; }
+  .bro-day-rail { flex: 0 0 12mm; text-align: right; padding-top: 0.5mm; }
   .bro-day-num {
     font-family: ${DISPLAY}; font-size: 27pt; font-weight: 700;
     color: ${theme.accent}; line-height: 0.9; letter-spacing: -1px;
@@ -306,41 +303,25 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
     font-family: ${LABEL}; font-size: 8pt; letter-spacing: 1.8px; text-transform: uppercase;
     color: ${theme.soft}; font-weight: 700; margin-top: 1.5mm;
   }
-  .bro-day-main { flex: 1 1 auto; min-width: 0; border-left: 0.5pt solid ${theme.rule}; padding-left: 6mm; }
+  .bro-day-main { flex: 1 1 auto; min-width: 0; min-height: 11mm; border-left: 0.5pt solid ${theme.rule}; padding-left: 5mm; }
+  .bro-day-date {
+    font-family: ${LABEL}; font-size: 8.5pt; letter-spacing: 1.4px; text-transform: uppercase;
+    color: ${theme.soft}; font-weight: 600; line-height: 1.3; margin: 0.5mm 0 1.2mm;
+  }
   .bro-day-title {
     font-family: ${DISPLAY}; font-size: 14.5pt; font-weight: 700;
-    margin: 0 0 2.5mm; line-height: 1.25;
+    margin: 0; line-height: 1.25;
   }
-  .bro-day-routes { margin-bottom: 5mm; }
-  .bro-day-route-meta { color: ${theme.soft}; font-weight: 500; }
-  .bro-day-route {
-    font-family: ${LABEL};
-    font-size: 9.5pt; letter-spacing: 0.7px; color: ${theme.accent};
-    font-weight: 600; margin-bottom: 1.8mm; text-transform: uppercase; line-height: 1.4;
-  }
-  /* Same visual authority as a real title (matches .bro-day-title's own
-     size/weight) when a day has no title and its first route has to stand
-     in as the effective headline -- but deliberately NOT disguised as one:
-     stays the accent red rather than the title's navy, and drops the
-     all-caps treatment, which reads fine as a small label but starts to
-     shout at title size. The red is an honest, low-cost signal (looks
-     like a normal accent to a client; tells the operator at a glance
-     which days still have no authored title) rather than a flaw to hide. */
-  .bro-day-route--lead {
-    font-family: ${DISPLAY}; font-size: 14.5pt; font-weight: 700;
-    letter-spacing: 0; text-transform: none; margin-bottom: 2.5mm; line-height: 1.25;
-  }
-  /* Each item/photo block carries its own indent directly -- deliberately
-     NOT wrapped in a shared container with its own clearfix, which would
-     clear the float after every single block and defeat the point of it
-     persisting across several of them. */
-  .bro-day-body { border-left: 0.5pt solid ${theme.rule}; margin-left: 15mm; padding-left: 6mm; margin-bottom: 1mm; }
+  /* Each item block carries the shared indent directly -- deliberately NOT
+     wrapped in one container, because every block is paginated on its own. */
+  .bro-day-body { border-left: 0.5pt solid ${theme.rule}; margin-left: 16mm; padding-left: 5mm; }
   .bro-day-text { }
 
   /* The day's plan as a timeline. Markers give the eye a spine to run
-     down, so a day reads as a sequence rather than a paragraph. */
+     down, so a day reads as a sequence rather than a paragraph. Route
+     legs, sightseeing, flights and notes all use this one treatment. */
   .bro-tl { list-style: none; margin: 0; padding: 0; }
-  .bro-tl-item { position: relative; padding-left: 6.5mm; margin-bottom: 3.2mm; }
+  .bro-tl-item { position: relative; padding-left: 6.5mm; margin-bottom: 4mm; }
   .bro-tl-icon {
     position: absolute; left: 0; top: 1.8mm; width: 4mm; height: 4mm;
   }
@@ -353,8 +334,8 @@ export const brochureCSS = (theme = BROCHURE_THEME) => `
 
   .bro-day-foot {
     display: flex; align-items: center; gap: 2.5mm; flex-wrap: wrap;
-    margin-top: 4.5mm; padding-top: 3mm; border-top: 0.5pt solid ${theme.rule};
-    clear: both; margin-bottom: 11mm;
+    margin-top: 1.5mm; padding-top: 3mm; border-top: 0.5pt solid ${theme.rule};
+    clear: both; margin-bottom: 10mm;
   }
   .bro-pill {
     font-family: ${LABEL};
@@ -470,10 +451,17 @@ function splitNoteIntoChunks(note) {
   // avoids turning a long note into an excessive number of tiny
   // pagination blocks, while still being small enough that keep-with-next
   // (title + first chunk only) stays cheap.
+  // A lone final sentence is folded into the chunk before it instead of
+  // standing as its own block: that is exactly the "one short line stranded
+  // at the top of the next page" a reader notices, so a note can now only
+  // ever break between pieces that are each at least two sentences long.
   const chunks = [];
   for (let i = 0; i < sentences.length; i += 2) {
-    const chunk = sentences.slice(i, i + 2).join("").trim();
+    const rest = sentences.length - i;
+    const take = rest === 3 ? 3 : 2;
+    const chunk = sentences.slice(i, i + take).join("").trim();
     if (chunk) chunks.push(chunk);
+    if (take === 3) break;
   }
   return chunks.length ? chunks : [note];
 }
@@ -489,6 +477,7 @@ function timelineItemParts(item) {
   const cls = `bro-tl-item${soft ? " bro-tl-item--soft" : ""}`;
 
   const iconName = item.type === "sightseeing" ? "pin"
+    : item.type === "route" ? "route"
     : item.type === "transport" ? (item.mode === "train" ? "train" : "plane")
     : "pencil";
   const iconSVG = `<svg class="bro-tl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[iconName]}</svg>`;
@@ -535,82 +524,81 @@ const stayOf = (day) => ((day.items || []).find(i => i.type === "stay" && (i.tex
 const routesOf = (day) => (day.items || []).filter(i => i.type === "route" && ((i.text || "").trim() || i.distance || i.time));
 const leadRouteOf = (day) => routesOf(day)[0] || null;
 
+// "Tue, 14/10/2026" -- weekday, then dd/mm/yyyy. Parsed as a plain calendar
+// date (never through the local timezone), so the weekday can't drift by a
+// day depending on where the document is generated. Anything that isn't a
+// real yyyy-mm-dd date returns "" and the day simply shows no date.
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export function formatDayDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").trim());
+  if (!m) return "";
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return "";
+  return `${WEEKDAYS[dt.getUTCDay()]}, ${m[3]}/${m[2]}/${m[1]}`;
+}
+
+// Block markers read by paginateBrochureDays, set as attributes on each
+// block's outermost tag:
+//   data-day-start      first block of a day
+//   data-keep-with-next this block must share a page with the one after it
+const block = (cls, inner, { keep = false, dayStart = false } = {}) =>
+  `<div class="${cls}"${dayStart ? ' data-day-start="1"' : ""}${keep ? ' data-keep-with-next="1"' : ""}>${inner}</div>`;
+
 export function brochureDayBlocks(day, index, image) {
   const items = day.items || [];
-  const routes = routesOf(day);
   const stay = stayOf(day);
-  const timelineItems = items.filter(i => !routes.includes(i) && i.type !== "stay");
+  // Every item -- route legs included -- is an ordinary timeline item, in the
+  // order the operator entered them. The overnight stay is the only thing
+  // lifted out (into the footer).
+  const timelineItems = items.filter(i => i.type !== "stay");
 
   const num = String(index + 1).padStart(2, "0");
-  const hasTitle = !!(day.title && day.title.trim());
-  const routeLines = routes.map((r, i) => {
-    const meta = [r.distance, r.time].filter(Boolean).join(" · ");
-    // Only the FIRST route on an untitled day is promoted -- a real
-    // itinerary day often has more than one leg (see the file-level note
-    // on routesOf/leadRouteOf above), and giving every one of them
-    // headline treatment would read as several headlines stacked on top
-    // of each other rather than one strong one.
-    const isLead = !hasTitle && i === 0;
-    const text = esc((r.text || "").trim());
-    // A real arrow, not a hyphen -- unmistakably a journey rather than a
-    // range, and only worth doing at headline size where it's actually
-    // read as a sentence rather than a compact label.
-    const displayText = isLead ? text.replace(/\s+[-–—]\s+/g, " \u2192 ") : text;
-    return `<div class="bro-day-route${isLead ? " bro-day-route--lead" : ""}">${displayText}${meta ? `<span class="bro-day-route-meta"> — ${esc(meta)}</span>` : ""}</div>`;
-  }).join("");
   const meals = (day.meals || []).map(m => `<span class="bro-pill">${MEAL_LABEL[m] || esc(m)}</span>`).join("");
   const caption = (day.imageCaption || "").trim();
+  const photos = normalizePhotoList(image);
+  const dateText = formatDayDate(day.date);
 
+  const strip = photos.length
+    ? `<div class="bro-day-strip"><div class="bro-day-strip-row">${photos.map(u =>
+        `<figure class="bro-day-shot"><img src="${esc(u)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/></figure>`).join("")}</div>${caption ? `<div class="bro-day-strip-cap">${esc(caption)}</div>` : ""}</div>`
+    : "";
   const head = `<div class="bro-day-head">
     <div class="bro-day-rail">
       <div class="bro-day-num">${num}</div>
       <div class="bro-day-word">Day</div>
     </div>
     <div class="bro-day-main">
+      ${dateText ? `<div class="bro-day-date">${esc(dateText)}</div>` : ""}
       ${day.title ? `<h3 class="bro-day-title">${esc(day.title)}</h3>` : ""}
-      ${routeLines ? `<div class="bro-day-routes">${routeLines}</div>` : ""}
     </div>
-  </div>`;
+  </div>${strip}`;
 
-  const blocks = [head];
-
-  // Merged with the FIRST timeline item below, not left as its own block.
-  // Confirmed as the real cause of a reported bug by rendering realistic
-  // content: a photo alone as its own block meant that if IT didn't fit in
-  // whatever space remained on a page, EVERYTHING after it in the day
-  // (every item, even ones that would genuinely have fit on their own)
-  // was deferred right along with it, since the pagination algorithm
-  // processes blocks strictly in order and cannot skip ahead to place a
-  // later, smaller block before an earlier, larger one. The result looked
-  // exactly like the report: a day's header landing with a large blank gap
-  // following it, its actual content pushed entirely to the next page for
-  // no visible reason. A photo genuinely alone (nothing beside it) would
-  // also look wrong regardless, so binding it to the first item -- which
-  // is what a reader's eye actually pairs it with -- is the correct fix,
-  // not just a pagination workaround.
-  const firstItem = timelineItems[0];
-  const restItems = timelineItems.slice(1);
-  const firstParts = firstItem ? timelineItemParts(firstItem) : { titleHTML: "", noteChunksHTML: [], hasNote: false };
-  blocks.push(`<div class="bro-day-body"${firstParts.hasNote ? ' data-keep-with-next="1"' : ""}><figure class="bro-day-photo">
-      ${image ? `<img src="${esc(image)}" alt="" style="object-position:${esc(day.imageFocus || "center")}"/>` : `<div class="bro-day-photo-empty"></div>`}
-      ${caption ? `<figcaption>${esc(caption)}</figcaption>` : ""}
-    </figure>${firstParts.titleHTML ? `<ul class="bro-tl">${firstParts.titleHTML}</ul>` : ""}</div>`);
-  firstParts.noteChunksHTML.forEach(chunkHTML => {
-    blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${chunkHTML}</ul></div>`);
-  });
-
-  restItems.forEach(item => {
+  // Item blocks first, so we know what follows the heading.
+  const itemBlocks = [];
+  timelineItems.forEach(item => {
     const { titleHTML, noteChunksHTML, hasNote } = timelineItemParts(item);
-    if (titleHTML) blocks.push(`<div class="bro-day-body"${hasNote ? ' data-keep-with-next="1"' : ""}><ul class="bro-tl">${titleHTML}</ul></div>`);
-    noteChunksHTML.forEach(chunkHTML => {
-      blocks.push(`<div class="bro-day-body"><ul class="bro-tl">${chunkHTML}</ul></div>`);
+    if (titleHTML) itemBlocks.push({ html: titleHTML, keep: hasNote });
+    // Where a long note may and may not break (see splitNoteIntoChunks): a
+    // two-chunk note stays whole; with three or more, the title stays with
+    // the first chunk and the LAST TWO chunks stay together, so neither the
+    // top nor the bottom of a split note is ever a single stranded piece.
+    const m = noteChunksHTML.length;
+    noteChunksHTML.forEach((chunkHTML, k) => {
+      itemBlocks.push({ html: chunkHTML, keep: m === 2 ? k === 0 : (m >= 3 && k === m - 2) });
     });
   });
 
-  if (meals || stay) {
-    blocks.push(`<div class="bro-day-body"><div class="bro-day-foot">${meals}${stay ? `<span class="bro-stay">Overnight: <strong>${esc(stay)}</strong></span>` : ""}</div></div>`);
-  }
+  const hasFooter = !!(meals || stay);
+  // The footer (meals + overnight) is small. On its own at the top of a page
+  // it reads as an error, so the last item always travels with it.
+  if (hasFooter && itemBlocks.length) itemBlocks[itemBlocks.length - 1].keep = true;
 
+  const blocks = [block("bro-day-top", head, { dayStart: true, keep: itemBlocks.length > 0 || hasFooter })];
+  itemBlocks.forEach(b => blocks.push(block("bro-day-body", `<ul class="bro-tl">${b.html}</ul>`, { keep: b.keep })));
+  if (hasFooter) {
+    blocks.push(block("bro-day-body", `<div class="bro-day-foot">${meals}${stay ? `<span class="bro-stay">Overnight: <strong>${esc(stay)}</strong></span>` : ""}</div>`));
+  }
   return blocks;
 }
 
@@ -657,22 +645,38 @@ const NON_DESTINATION = /\b(arrival|arrive|departure|depart|airport|onward|trans
 // Nepal") but are not themselves destinations on the tour.
 const NOT_A_PLACE = new Set(["nepal","india","bhutan","bangladesh","sri lanka","thailand","myanmar"]);
 
-// Pulls distinct place names out of a day's route and stay items. A route
-// like "Bodhgaya - Rajgir - Nalanda - Bodhgaya" contributes three places, not
-// four, because the return leg is the same town.
+// Reduces a transport leg ("Flight 6E 204 Delhi - Varanasi (dep 06:40, arr 08:30)")
+// to just its places. Flights and trains name their destinations in the leg
+// text exactly as routes do, so they count the same way.
+function legPlaceText(text) {
+  return String(text || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(dep|arr|departs?|arrives?)\b.*$/i, " ")
+    .replace(/\b(by|via|on)\b.*$/i, " ")
+    .replace(/\b\d{1,2}[:.]\d{2}\s*(am|pm|hrs?)?/gi, " ")
+    .replace(/^\s*(flight|train|from)\s+/i, "")
+    .replace(/\b[A-Z0-9]{2}\s?\d{2,4}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Pulls distinct place names out of a day's route AND transport (flight /
+// train) items. A route like "Bodhgaya - Rajgir - Nalanda - Bodhgaya"
+// contributes three places, not four, because the return leg is the same town.
 export function countDestinations(days, knownCountries = COUNTRY_WORDS) {
   const seen = new Set();
   (days || []).forEach(d => {
     (d.items || []).forEach(it => {
-      // ROUTE ITEMS ONLY. Stay items hold hotel names, not places -- counting
-      // them turned "Hotel Oaks Bodhgaya" and "Lotus Nikko Hotel" into
-      // destinations and inflated a real count of 8 to 14.
-      if (it.type !== "route") return;
-      String(it.text || "")
-        .split(/[-\u2013\u2014\/,]| to /i)
+      // Routes and transport legs only. Stay items hold hotel names, not
+      // places -- counting them turned "Hotel Oaks Bodhgaya" and "Lotus Nikko
+      // Hotel" into destinations and inflated a real count of 8 to 14.
+      if (it.type !== "route" && it.type !== "transport") return;
+      const text = it.type === "transport" ? legPlaceText(it.text) : String(it.text || "");
+      text
+        .split(/[-–—\/,>]| to /i)
         .map(x => x.trim())
-        // A country named after a town ("Lumbini, Nepal") is context, not a
-        // separate destination.
+        // A bare airport code ("DEL") is not a place name.
+        .filter(x => !/^[A-Z]{3}$/.test(x))
         .filter(x => x.length > 2 && !NON_DESTINATION.test(x) && !knownCountries.has(x.toLowerCase()))
         .map(x => x.toLowerCase().replace(/\s+/g, " "))
         .filter(x => !NOT_A_PLACE.has(x))
@@ -846,54 +850,61 @@ export function brochureGlanceHTML(days, facts = {}, mapHTML = "", sectorTableHT
 // blocks three "fitting" blocks overflowed by 33mm -- enough to push the page
 // footer outside the clipped area, which is how footers vanished from real
 // output while every block individually looked contained.
-export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, firstPageReservePx = 0, reservePerPagePx = 0, bandPageCount = Infinity, measureFn } = {}) {
+// How the day pages are filled -- the rules, in plain words:
+//  1. Blocks are packed onto a page in order until the next one will not fit.
+//  2. A block marked data-keep-with-next travels with the one after it, and
+//     so on down a chain (heading + photo strip + first item; last item +
+//     the day's footer). A chain is never split across pages.
+//  3. WHOLE-DAY RULE: if a day fits on a fresh page but not in what is left of
+//     this one, and what is left is under WHOLE_DAY_MIN_REMAINING of a page,
+//     the day starts on the next page. Otherwise it flows on from here.
+//  4. A chain taller than a page gets a page of its own.
+// Plain strings without markers simply pack in order (rule 1).
+export const WHOLE_DAY_MIN_REMAINING = 0.4;
+
+export function paginateBrochureDays(dayHTMLs, { pageHeightPx = BROCHURE_CONTENT_HEIGHT_PX, contentWidthPx = BROCHURE_CONTENT_WIDTH_PX, firstPageReservePx = 0, reservePerPagePx = 0, bandPageCount = Infinity, wholeDayMinRemaining = WHOLE_DAY_MIN_REMAINING, measureFn } = {}) {
+  const list = dayHTMLs || [];
+  const n = list.length;
   const pages = [];
   let current = [];
   let used = 0;
-  // A small safety margin against the page's own overflow:hidden -- any
-  // measurement discrepancy (even a small one; measurement is never
-  // perfectly exact) previously had zero buffer before silently clipping
-  // content instead of gracefully deferring it to the next page. ~1.5% of
-  // a page's own height absorbs that without meaningfully reducing how
-  // much content actually fits per page.
+  // A small safety margin against the page's own overflow:hidden, so a tiny
+  // measurement discrepancy defers content to the next page rather than
+  // clipping it.
   const SAFETY_MARGIN_PX = Math.round(pageHeightPx * 0.015);
-  // Reserve band space only on pages that will actually carry one. Bands are
-  // assigned in order and run out when the photographs do, so reserving on
-  // every page starved the tail -- which showed up as a final page holding
-  // one short day and reading as padding.
-  const budget = () => pageHeightPx - SAFETY_MARGIN_PX
-    - (pages.length < bandPageCount ? reservePerPagePx : 0)
-    - (pages.length === 0 ? firstPageReservePx : 0);
-  // Recognises a block marked as introducing the one immediately after it
-  // (a photo+title or a bare title, both ahead of a note that follows as
-  // its own separate block) -- same detection shape as isHeadingHTML in
-  // letterhead.js, checking the outermost tag's own attribute.
-  const isKeepWithNextHTML = (b) => typeof b === "string" && /^\s*<[a-z][a-z0-9]*\s[^>]*data-keep-with-next="1"/i.test(b);
-  const list = dayHTMLs || [];
-  // Caches a peeked-ahead block's height by its own index, so the main
-  // loop's own turn for that same block (the very next iteration) reuses
-  // it instead of measuring it again -- confirmed via a real diagnostic
-  // that roughly a fifth of all blocks in a typical day were being
-  // measured twice without this, each an unnecessary real DOM
-  // insert/measure/remove cycle.
-  const heightCache = new Map();
-  const measureCached = (html, idx) => {
-    if (heightCache.has(idx)) return heightCache.get(idx);
-    const h = measureFn(html, contentWidthPx, idx);
-    heightCache.set(idx, h);
-    return h;
-  };
-  list.forEach((html, index) => {
-    const h = measureCached(html, index);
-    const needed = isKeepWithNextHTML(html)
-      ? h + (list[index + 1] != null ? measureCached(list[index + 1], index + 1) : 0)
-      : h;
-    // A block taller than a page still has to go somewhere: give it its own
-    // page rather than dropping it or looping forever.
-    if (used + needed > budget() && current.length > 0) { pages.push(current); current = []; used = 0; }
-    current.push(html);
-    used += h;
-  });
+  // Reserve band space only on pages that will actually carry one.
+  const budgetFor = (pageIdx) => pageHeightPx - SAFETY_MARGIN_PX
+    - (pageIdx < bandPageCount ? reservePerPagePx : 0)
+    - (pageIdx === 0 ? firstPageReservePx : 0);
+  const hasMarker = (b, name) => typeof b === "string" && new RegExp("^\\s*<[a-z][a-z0-9]*\\s[^>]*" + name + '="1"', "i").test(b);
+  // measureFn returns each block's height INCLUDING its bottom margin.
+  const heights = list.map((html, idx) => measureFn(html, contentWidthPx, idx));
+  const dayEnd = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    if (!hasMarker(list[i], "data-day-start")) continue;
+    let e = i + 1;
+    while (e < n && !hasMarker(list[e], "data-day-start")) e++;
+    dayEnd[i] = e - 1;
+  }
+  const sum = (from, to) => { let t = 0; for (let k = from; k <= to; k++) t += heights[k]; return t; };
+  const flush = () => { pages.push(current); current = []; used = 0; };
+
+  let i = 0;
+  while (i < n) {
+    let e = i;
+    while (e < n - 1 && hasMarker(list[e], "data-keep-with-next")) e++;
+    const needed = sum(i, e);
+
+    if (dayEnd[i] >= 0 && current.length > 0) {
+      const dayH = sum(i, dayEnd[i]);
+      const left = budgetFor(pages.length) - used;
+      if (dayH > left && dayH <= budgetFor(pages.length + 1) && left < wholeDayMinRemaining * pageHeightPx) flush();
+    }
+    if (used + needed > budgetFor(pages.length) && current.length > 0) flush();
+    for (let k = i; k <= e; k++) current.push(list[k]);
+    used += needed;
+    i = e + 1;
+  }
   if (current.length > 0) pages.push(current);
   return pages;
 }

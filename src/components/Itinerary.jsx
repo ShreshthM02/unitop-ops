@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, resolveDayPhotos, MAX_DAY_PHOTOS, formatDayDate, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -537,7 +537,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
           heroImage: resolvedCoverImage,
         },
         days: itinDays,
-        dayImages: resolveDayImages(itinDays, photoLibrary, dayImageOverrides),
+        dayImages: resolveDayPhotos(itinDays, photoLibrary, dayImageOverrides),
         mapHTML, sectorTableHTML, gatewayNote, facts,
         routeMapImage,
         // The brochure is always Detailed's own document regardless of
@@ -592,10 +592,10 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
 
   // Resolved once per render, not per day inside the loop below --
   // resolveDayImages already walks every day in one pass.
-  const dayImages = resolveDayImages(itinDays, photoLibrary, dayImageOverrides);
+  const dayPhotos = resolveDayPhotos(itinDays, photoLibrary, dayImageOverrides);
   const resolvedCoverImage = coverImageOverride !== undefined
     ? coverImageOverride
-    : (dayImages[itinDays[0] && itinDays[0].id] || null);
+    : ((dayPhotos[itinDays[0] && itinDays[0].id] || [])[0] || null);
 
   return (
     <div className="overlay">
@@ -717,6 +717,11 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                   <div style={{ width:32, height:32, borderRadius:"50%", background:G.navy, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</div>
                   <div style={{ flex:1, display:"flex", gap:8 }}>
                     <input style={{...inp, width:70, textAlign:"center", fontWeight:600}} value={d.dayLabel} onChange={e=>updateDay(i,"dayLabel",e.target.value)}/>
+                    <div style={{ display:"flex", flexDirection:"column", flexShrink:0 }}>
+                      <input type="date" aria-label={`Date for day ${i+1}`} title="Optional date for this day" style={{...inp, width:128, fontSize:12}}
+                        value={d.date || ""} onChange={e=>updateDay(i,"date",e.target.value)}/>
+                      {d.date && formatDayDate(d.date) && <span style={{ fontSize:10, color:G.gray400, marginTop:2 }}>Shows as {formatDayDate(d.date)}</span>}
+                    </div>
                     <input style={{...inp, flex:1, fontWeight:600}} value={d.title} onChange={e=>updateDay(i,"title",e.target.value)} placeholder="Day title e.g. Arrival at Delhi"/>
                     {!readOnly && (
                       // Always available, not just while the title is
@@ -768,7 +773,8 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                     <div style={{ marginTop:8 }}>
                       <PhotoPicker
                         day={d}
-                        resolvedUrl={dayImages[d.id]}
+                        max={MAX_DAY_PHOTOS}
+                        resolvedUrls={dayPhotos[d.id] || []}
                         overrideValue={dayImageOverrides[d.id]}
                         library={photoLibrary}
                         onChangeOverride={(value) => setDayImageOverride(d.id, value)}

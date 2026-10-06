@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildBrochureDocument, brochureDayHTML, brochureDayBlocks, brochureCoverHTML,
   paginateBrochureDays, withBrochurePreviewStyles, BROCHURE_PREVIEW_CSS, brochureCSS,
-  brochureGlanceHTML, computeBrochureFacts,
+  brochureGlanceHTML, computeBrochureFacts, formatDayDate, countDestinations, WHOLE_DAY_MIN_REMAINING,
 } from '../lib/brochure.js';
 import { ICON_PATHS } from '../lib/utils.js';
 import { LOGO_B64, LOGO_TRANSPARENT_B64 } from '../lib/images.js';
@@ -233,10 +233,11 @@ describe('day cards', () => {
     expect(html).not.toContain('bro-tl-note');
   });
 
-  it('promotes the first route to a headline under the title, without repeating it in the timeline', () => {
+  it('treats a route like any other timeline item, in entered order, with no headline line under the title', () => {
     const html = brochureDayHTML(day(), 0, null);
-    expect(html).toContain('bro-day-route');
+    expect(html).not.toContain('bro-day-route');
     expect(html.match(/Airport – Hotel/g)).toHaveLength(1);
+    expect(html.indexOf('Airport – Hotel')).toBeLessThan(html.indexOf('Mahabodhi Temple'));
   });
 
   it('renders a day with no items at all without emitting empty rows', () => {
@@ -725,127 +726,142 @@ describe('regression: the tagline is no longer constrained to the logo\u2019s ow
   });
 });
 
-describe('an untitled day\u2019s first route stands in as its headline, honestly (same size, still the accent colour, arrow not hyphen)', () => {
-  const untitledDay = { id:'d1', items:[{ id:'r', type:'route', text:'Bodhgaya - Rajgir', distance:'100 km', time:'3 hrs' }] };
-  const titledDay = { id:'d2', title:'Arrival at Bodhgaya', items:[{ id:'r', type:'route', text:'Bodhgaya - Rajgir', distance:'100 km', time:'3 hrs' }] };
-
-  it('promotes the route to headline size when the day has no title', () => {
-    const html = brochureDayHTML(untitledDay, 0, null);
-    expect(html).toContain('bro-day-route--lead');
+describe('routes are ordinary timeline items; the day title stays navy', () => {
+  const untitled = { id:'d1', items:[{ id:'r', type:'route', text:'Bodhgaya - Rajgir', distance:'100 km', time:'3 hrs' }] };
+  it('an untitled day shows its route as a normal item, text as typed', () => {
+    const html = brochureDayHTML(untitled, 0, null);
+    expect(html).toContain('Bodhgaya - Rajgir');
+    expect(html).not.toContain('bro-day-route');
+    expect(html).not.toContain('<h3');
   });
-
-  it('does NOT promote it when the day has a real title', () => {
-    const html = brochureDayHTML(titledDay, 0, null);
-    expect(html).not.toContain('bro-day-route--lead');
-  });
-
-  it('converts the hyphen separator to an arrow only for the promoted route', () => {
-    const untitled = brochureDayHTML(untitledDay, 0, null);
-    expect(untitled).toContain('Bodhgaya \u2192 Rajgir');
-    expect(untitled).not.toContain('Bodhgaya - Rajgir');
-
-    const titled = brochureDayHTML(titledDay, 0, null);
-    expect(titled).toContain('Bodhgaya - Rajgir'); // small label route keeps its own text as typed
-  });
-
-  it('only the FIRST route is promoted when an untitled day has more than one leg', () => {
-    const multiLegDay = { id:'d3', items:[
-      { id:'r1', type:'route', text:'Bodhgaya - Nalanda', distance:'100 km' },
-      { id:'r2', type:'route', text:'Nalanda - Rajgir', distance:'20 km' },
-    ] };
-    const html = brochureDayHTML(multiLegDay, 0, null);
-    const leadCount = (html.match(/bro-day-route--lead/g) || []).length;
-    expect(leadCount).toBe(1);
-    expect(html).toContain('Bodhgaya \u2192 Nalanda'); // the promoted one
-    expect(html).toContain('Nalanda - Rajgir'); // the second leg stays a plain label, untouched
-  });
-
-  it('the distance/time metadata stays small and muted regardless of promotion', () => {
+  it('no lead-route or red route styling remains in the stylesheet', () => {
     const css = brochureCSS();
-    expect(css).toMatch(/\.bro-day-route-meta\s*\{[^}]*color:/);
-    // Confirm the lead style itself never touches the meta span's colour.
-    const leadRule = css.match(/\.bro-day-route--lead\s*\{([^}]*)\}/)?.[1] || '';
-    expect(leadRule).not.toContain('bro-day-route-meta');
+    expect(css).not.toContain('bro-day-route');
   });
-
-  it('the promoted route still uses the accent red, not the title\u2019s navy -- an honest signal, not a disguise', () => {
-    const css = brochureCSS();
-    const leadRule = css.match(/\.bro-day-route--lead\s*\{([^}]*)\}/)?.[1] || '';
-    // --lead deliberately omits its own colour so it inherits .bro-day-route's
-    // accent red rather than restating theme.ink (the title's navy).
-    expect(leadRule).not.toContain('color:');
+  it('the day title is navy (ink), not the accent red', () => {
+    const rule = brochureCSS().match(/\.bro-day-title\s*\{([^}]*)\}/)?.[1] || '';
+    expect(rule).not.toMatch(/accent|#B[0-9A-F]{5}/i);
   });
 });
 
-describe('regression: a day\u2019s photo is merged with its first item into one block, so a tall photo never needlessly defers items that would genuinely fit', () => {
-  // Confirmed the real cause of a reported bug by rendering realistic
-  // content: the photo used to be its own separate pagination block,
-  // placed before every item. If IT alone didn't fit in whatever space
-  // remained on a page, everything after it -- including items that would
-  // have fit on their own -- was deferred right along with it, since
-  // pagination processes blocks strictly in order. The visible result was
-  // a day's header landing with a large blank gap following it, no
-  // visible reason for the rest of that day's content to have moved.
-  const manyItemsDay = {
-    id: 'd1',
-    items: [
-      { id:'a', type:'sightseeing', text:'MARKER_FIRST' },
-      { id:'b', type:'sightseeing', text:'MARKER_SECOND' },
-    ],
-  };
-
-  it('the photo and the first item always land on the same page -- never split from each other', () => {
-    const measure = (html) => {
-      if (html.includes('bro-day-head')) return 100;
-      if (html.includes('bro-day-photo') || html.includes('bro-day-photo-empty')) return 600;
-      return 50;
-    };
-    const html = buildBrochureDocument({
-      cover: { title: 'T' },
-      days: [manyItemsDay],
-      dayImages: { d1: 'data:image/png;base64,X' },
-      measureFn: measure,
-    });
-    // Checking for the rendered opening tag specifically, not a bare
-    // class-name substring -- .bro-day-photo-empty and .bro-day-body also
-    // legitimately appear as CSS selectors in the embedded stylesheet,
-    // which a plain substring check would mistake for real page content.
-    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
-    const withFirst = dayContentChunks.findIndex(p => p.includes('MARKER_FIRST'));
-    const withPhoto = dayContentChunks.findIndex(p => p.includes('<figure class="bro-day-photo">'));
-    expect(withFirst).toBeGreaterThan(-1);
-    expect(withPhoto).toBeGreaterThan(-1);
-    expect(withFirst).toBe(withPhoto);
+describe('day photo strip: up to three equal tiles between the title and the items', () => {
+  const d = { id:'d1', title:'T', items:[{ id:'a', type:'sightseeing', text:'MARKER_FIRST' }, { id:'b', type:'sightseeing', text:'MARKER_SECOND' }] };
+  const tiles = (html) => (html.match(/class="bro-day-shot"/g) || []).length;
+  it('renders 1, 2 or 3 tiles for that many photos, and caps at 3', () => {
+    expect(tiles(brochureDayHTML(d, 0, ['a.jpg']))).toBe(1);
+    expect(tiles(brochureDayHTML(d, 0, ['a.jpg','b.jpg']))).toBe(2);
+    expect(tiles(brochureDayHTML(d, 0, ['a.jpg','b.jpg','c.jpg','d.jpg']))).toBe(3);
   });
-
-  it('a photo too tall for the remaining space defers itself AND the first item together, not the first item alone stranded without its photo', () => {
-    const measure = (html) => {
-      if (html.includes('bro-day-head')) return 900; // consumes almost the whole first page
-      if (html.includes('bro-day-photo')) return 600;
-      return 50;
-    };
-    const html = buildBrochureDocument({
-      cover: { title: 'T' },
-      days: [manyItemsDay],
-      dayImages: { d1: 'data:image/png;base64,X' },
-      measureFn: measure,
-    });
-    const dayContentChunks = html.split('class="bro-page').filter(p => p.includes('<div class="bro-day-body">'));
-    const photoChunk = dayContentChunks.find(p => p.includes('<figure class="bro-day-photo">'));
-    expect(photoChunk).toContain('MARKER_FIRST');
+  it('still accepts a legacy single URL string', () => {
+    expect(tiles(brochureDayHTML(d, 0, 'a.jpg'))).toBe(1);
   });
+  it('no photos means no strip and no placeholder', () => {
+    const html = brochureDayHTML(d, 0, null);
+    expect(html).not.toContain('bro-day-strip');
+    expect(html).not.toContain('bro-day-shot');
+  });
+  it('the strip sits after the title and before the first item, in the heading block', () => {
+    const blocks = brochureDayBlocks(d, 0, ['a.jpg']);
+    expect(blocks[0]).toContain('bro-day-strip');
+    expect(blocks[0].indexOf('bro-day-title')).toBeLessThan(blocks[0].indexOf('bro-day-strip'));
+    expect(blocks[0]).not.toContain('MARKER_FIRST');
+    expect(blocks[1]).toContain('MARKER_FIRST');
+  });
+  it('tiles are equal width and fixed height so any 1-3 look uniform', () => {
+    const css = brochureCSS();
+    expect(css).toMatch(/\.bro-day-shot\s*\{[^}]*calc\(\(100% - 6mm\) \/ 3\)/);
+    expect(css).toMatch(/\.bro-day-shot\s*\{[^}]*height:\s*40mm/);
+  });
+});
 
-  it('later items remain independently flowable -- the merge only ever applies to the photo and the FIRST item', () => {
-    const blocks = brochureDayBlocks(manyItemsDay, 0, 'data:image/png;base64,X');
-    const photoBlock = blocks.find(b => b.includes('<figure class="bro-day-photo">'));
-    // The photo's own block carries the first item alongside it...
-    expect(photoBlock).toContain('MARKER_FIRST');
-    // ...but the second item is never folded into that same block -- it
-    // gets its own, independently-flowable one.
-    expect(photoBlock).not.toContain('MARKER_SECOND');
-    const secondBlock = blocks.find(b => b.includes('MARKER_SECOND'));
-    expect(secondBlock).toBeTruthy();
-    expect(secondBlock).not.toBe(photoBlock);
+describe('day date: optional, shown as "Tue, 14/10/2026"', () => {
+  it('formats weekday + dd/mm/yyyy', () => {
+    expect(formatDayDate('2026-10-14')).toBe('Wed, 14/10/2026');
+    expect(formatDayDate('2026-01-01')).toBe('Thu, 01/01/2026');
+  });
+  it('returns empty for missing or impossible dates', () => {
+    expect(formatDayDate('')).toBe('');
+    expect(formatDayDate(undefined)).toBe('');
+    expect(formatDayDate('2026-02-31')).toBe('');
+    expect(formatDayDate('14/10/2026')).toBe('');
+  });
+  it('appears above the title when set and is absent when not', () => {
+    const withDate = brochureDayHTML(day({ date:'2026-10-14' }), 0, null);
+    expect(withDate).toContain('Wed, 14/10/2026');
+    expect(withDate.indexOf('bro-day-date')).toBeLessThan(withDate.indexOf('bro-day-title'));
+    expect(brochureDayHTML(day(), 0, null)).not.toContain('bro-day-date"');
+  });
+});
+
+describe('countDestinations counts flight and train legs too', () => {
+  it('includes places that only appear in transport items', () => {
+    const days = [
+      { items:[{ type:'transport', mode:'flight', text:'Delhi \u2013 Varanasi', number:'6E 204' }] },
+      { items:[{ type:'route', text:'Varanasi - Sarnath' }] },
+      { items:[{ type:'transport', mode:'train', text:'Varanasi to Gaya', depTime:'06:00', arrTime:'11:00' }] },
+    ];
+    expect(countDestinations(days)).toBe(4); // delhi, varanasi, sarnath, gaya
+  });
+  it('ignores flight numbers, times, airport codes and carrier tails', () => {
+    const days = [{ items:[{ type:'transport', text:'Flight 6E 204 Delhi - Varanasi (dep 06:40, arr 08:30)' }, { type:'transport', text:'DEL - VNS' }] }];
+    expect(countDestinations(days)).toBe(2);
+  });
+  it('still ignores stay items', () => {
+    expect(countDestinations([{ items:[{ type:'stay', text:'Hotel Oaks' }] }])).toBe(0);
+  });
+});
+
+describe('cover title is sized down', () => {
+  it('uses 27pt', () => {
+    expect(brochureCSS()).toMatch(/\.bro-cover-title\s*\{[^}]*font-size:\s*27pt/);
+  });
+});
+
+describe('pagination rules: chains, whole-day rule, widows', () => {
+  const top = (h) => ({ html:`<div class="bro-day-top" data-day-start="1" data-keep-with-next="1">${h}</div>` });
+  const mk = (id, keep=false, start=false) => `<div class="b"${start?' data-day-start="1"':''}${keep?' data-keep-with-next="1"':''}>${id}</div>`;
+  const run = (blocks, heights, opts={}) => paginateBrochureDays(blocks, { pageHeightPx:1000, measureFn:(h,w,i)=>heights[i], ...opts });
+
+  it('a keep-with-next chain is never split: heading + first item move together', () => {
+    const blocks = [mk('x'), mk('H',true,true), mk('I1'), mk('I2')];
+    const pages = run(blocks, [800,100,100,50]);
+    expect(pages[0]).toEqual([blocks[0]]);
+    expect(pages[1].slice(0,2)).toEqual([blocks[1], blocks[2]]);
+  });
+  it('chains longer than two are honoured end to end', () => {
+    const blocks = [mk('x'), mk('A',true), mk('B',true), mk('C')];
+    const pages = run(blocks, [700,100,100,100]); // chain 300 > 285 left
+    expect(pages.length).toBe(2);
+    expect(pages[1]).toEqual([blocks[1], blocks[2], blocks[3]]);
+  });
+  it('whole-day rule: a day that fits a fresh page starts on it when under 40% of this page remains', () => {
+    const blocks = [mk('prev'), mk('D',true,true), mk('I1'), mk('I2')];
+    const pages = run(blocks, [700,100,200,200]); // left ~285 <400, day=500 fits fresh
+    expect(pages.length).toBe(2);
+    expect(pages[1][0]).toBe(blocks[1]);
+  });
+  it('flows on when 40% or more of the page remains, even if the day does not fit', () => {
+    const blocks = [mk('prev'), mk('D',true,true), mk('I1'), mk('I2')];
+    const pages = run(blocks, [400,100,300,300]); // left ~585 >=400, day=700 > left
+    expect(pages[0]).toContain(blocks[1]);
+    expect(pages[0]).toContain(blocks[2]);
+  });
+  it('a day longer than a page is never pushed whole', () => {
+    const blocks = [mk('prev'), mk('D',true,true), mk('I1'), mk('I2')];
+    const pages = run(blocks, [700,100,100,900]);
+    expect(pages[0]).toContain(blocks[1]);
+  });
+  it('exposes the threshold', () => { expect(WHOLE_DAY_MIN_REMAINING).toBe(0.4); });
+});
+
+describe('long notes split without a lone trailing sentence', () => {
+  it('never produces a final chunk of a single sentence', () => {
+    const note = Array.from({ length: 7 }, (_, i) => `Sentence number ${i + 1} is here.`).join(' ');
+    const html = brochureDayHTML({ id:'d', items:[{ id:'a', type:'sightseeing', text:'Place', note }] }, 0, null);
+    const chunks = html.split('bro-tl-note').slice(1);
+    expect(chunks.length).toBeGreaterThan(0);
+    const last = chunks[chunks.length - 1];
+    expect((last.match(/Sentence number \d is here\./g) || []).length).toBeGreaterThanOrEqual(2);
   });
 });
 

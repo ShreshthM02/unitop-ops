@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { libraryDestinations, dayImageTextCandidates } from './photoLibrary.js';
+import { libraryDestinations, dayImageTextCandidates, normalizePhotoList, MAX_DAY_PHOTOS } from './photoLibrary.js';
 
 // Picking the photo for one day of a brochure.
 //
@@ -20,12 +20,22 @@ import { libraryDestinations, dayImageTextCandidates } from './photoLibrary.js';
 // missing photo is noticed, because that is the moment it is easiest to
 // fix -- not a separate library-management screen to remember to visit
 // later.
+//
+// MULTI-PHOTO MODE (max > 1, used for the day strip): the day shows up to
+// three photographs side by side. The override then becomes an array of
+// URLs (an older single-URL string is read as a list of one), and clicking a
+// library photo adds or removes it rather than choosing it and closing.
+// Whatever is shown is what a click edits, so changing a suggested set
+// starts from the suggestion rather than from nothing. An empty selection is
+// stored as an explicit null ("no photos, don't guess").
 export function PhotoPicker({
   day,
   resolvedUrl,       // what resolveDayImages() currently shows for this day
-  overrideValue,      // undefined | string | null -- the raw override, not the resolved result
+  resolvedUrls,      // multi mode: the resolved list (suggested or chosen)
+  max = 1,           // 1 = single photo (cover); >1 = a strip of that many
+  overrideValue,      // undefined | string | string[] | null -- the raw override, not the resolved result
   library = [],
-  onChangeOverride,    // (value: string | null) => void
+  onChangeOverride,    // (value: string | string[] | null | undefined) => void
   onUpload,            // ({file, destination, label}) => Promise<{photo, error}>
   onDeleteFromLibrary,  // (id) => Promise<{error}>
   G,
@@ -52,12 +62,23 @@ export function PhotoPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const multi = max > 1;
+  const shown = multi
+    ? normalizePhotoList(resolvedUrls !== undefined ? resolvedUrls : (resolvedUrl ? [resolvedUrl] : []), max)
+    : (resolvedUrl ? [resolvedUrl] : []);
+  const commit = (list) => onChangeOverride(list.length ? list : null);
+  const toggle = (url) => {
+    if (shown.includes(url)) { commit(shown.filter(u => u !== url)); return; }
+    if (shown.length >= max) return;       // full: remove one first
+    commit([...shown, url]);
+  };
+
   const status = overrideValue === null
     ? { dot: '#9CA3AF', label: 'No photo', reason: 'Cleared for this day -- will not be auto-suggested again.' }
-    : typeof overrideValue === 'string'
-      ? { dot: '#15803D', label: 'Chosen', reason: 'Set manually for this day.' }
-      : resolvedUrl
-        ? { dot: '#15803D', label: 'Suggested', reason: 'Matched automatically from this day\u2019s own text.' }
+    : (typeof overrideValue === 'string' || Array.isArray(overrideValue))
+      ? { dot: '#15803D', label: multi ? `Chosen (${shown.length} of ${max})` : 'Chosen', reason: 'Set manually for this day.' }
+      : shown.length
+        ? { dot: '#15803D', label: multi ? `Suggested (${shown.length} of ${max})` : 'Suggested', reason: 'Matched automatically from this day\u2019s own text.' }
         : { dot: '#B45309', label: 'None yet', reason: 'Nothing in the library matches this day.' };
 
   const term = filter.trim().toLowerCase();
@@ -65,7 +86,7 @@ export function PhotoPicker({
     ? library.filter(p => (p.destination || '').toLowerCase().includes(term) || (p.label || '').toLowerCase().includes(term))
     : library;
 
-  const pick = (url) => { onChangeOverride(url); setOpen(false); };
+  const pick = (url) => { if (multi) { toggle(url); return; } onChangeOverride(url); setOpen(false); };
   const clear = () => { onChangeOverride(null); setOpen(false); };
 
   const doUpload = async () => {
@@ -77,7 +98,12 @@ export function PhotoPicker({
     const { photo, error } = await onUpload({ file, destination: destination.trim(), label: label.trim() });
     setUploading(false);
     if (error) { setUploadError(error); return; }
-    if (photo && photo.url) pick(photo.url);
+    if (photo && photo.url) {
+      // Multi: add to the strip if there is room, otherwise the upload still
+      // lands in the library and the user is told why it isn't on the day.
+      if (multi && shown.length >= max) setUploadError(`Uploaded to the library. This day already has ${max} photos -- remove one to add it.`);
+      else pick(photo.url);
+    }
     setDestination(''); setLabel('');
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -85,8 +111,10 @@ export function PhotoPicker({
   return (
     <div style={{ fontSize: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {resolvedUrl
-          ? <img src={resolvedUrl} alt="" style={{ width: 40, height: 30, objectFit: 'cover', borderRadius: 4, border: `1px solid ${G.gray200}`, flexShrink: 0 }}/>
+        {shown.length
+          ? <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+              {shown.map(u => <img key={u} src={u} alt="" style={{ width: 40, height: 30, objectFit: 'cover', borderRadius: 4, border: `1px solid ${G.gray200}` }}/>)}
+            </div>
           : <div style={{ width: 40, height: 30, borderRadius: 4, background: G.gray100, flexShrink: 0 }}/>}
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: status.dot, flex: '0 0 auto' }}/>
         <span style={{ color: G.gray600 }}>{status.label}</span>
@@ -97,10 +125,10 @@ export function PhotoPicker({
           </button>
         )}
       </div>
-      <div style={{ fontSize: 10.5, color: G.gray400, marginTop: 2, marginLeft: 48 }}>{status.reason}</div>
+      <div style={{ fontSize: 10.5, color: G.gray400, marginTop: 2, marginLeft: multi ? 0 : 48 }}>{status.reason}</div>
 
       {open && !readOnly && (
-        <div style={{ marginTop: 6, marginLeft: 48, padding: 10, borderRadius: 8, border: `1px solid ${G.gray200}`, background: G.white, maxWidth: 360 }}>
+        <div style={{ marginTop: 6, marginLeft: multi ? 0 : 48, padding: 10, borderRadius: 8, border: `1px solid ${G.gray200}`, background: G.white, maxWidth: multi ? 420 : 360 }}>
           {typeof overrideValue !== 'undefined' && (
             <button onClick={() => { onChangeOverride(undefined); }}
               style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', padding: '4px 0', fontSize: 11, color: G.gray600 }}>
@@ -112,6 +140,17 @@ export function PhotoPicker({
             ✕ No photo for this day
           </button>
 
+          {multi && shown.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, margin: '6px 0' }} data-testid="photo-selected">
+              {shown.map((u, idx) => (
+                <div key={u} style={{ position: 'relative' }}>
+                  <img src={u} alt="" style={{ width: 54, height: 40, objectFit: 'cover', borderRadius: 4, border: `1px solid ${G.gray200}` }}/>
+                  <button type="button" aria-label={`Remove photo ${idx + 1}`} onClick={() => commit(shown.filter(x => x !== u))}
+                    style={{ position: 'absolute', top: -5, right: -5, width: 15, height: 15, borderRadius: '50%', border: 'none', background: '#B91C1C', color: '#fff', fontSize: 9, lineHeight: '15px', cursor: 'pointer', padding: 0 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ height: 1, background: G.gray100, margin: '8px 0' }}/>
           <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: G.gray400, marginBottom: 5 }}>
             Library {library.length ? `(${library.length})` : ''}
@@ -123,12 +162,19 @@ export function PhotoPicker({
               {library.length ? 'No match.' : 'Library is empty -- upload the first photo below.'}
             </div>
           )}
+          {multi && (
+            <div style={{ fontSize: 10.5, color: G.gray400, marginBottom: 5 }}>
+              Click photos to add or remove them. Up to {max} per day, shown left to right in the order added.
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
             {filtered.map(p => (
               <div key={p.id} style={{ position: 'relative' }}>
                 <img src={p.url} alt={p.destination} title={`${p.destination}${p.label ? ' \u2014 ' + p.label : ''}`}
                   onClick={() => pick(p.url)}
-                  style={{ width: '100%', height: 44, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: `1px solid ${G.gray200}` }}/>
+                  style={{ width: '100%', height: 44, objectFit: 'cover', borderRadius: 4, cursor: 'pointer',
+                    border: multi && shown.includes(p.url) ? `2px solid ${G.accent}` : `1px solid ${G.gray200}`,
+                    opacity: multi && !shown.includes(p.url) && shown.length >= max ? 0.45 : 1 }}/>
                 {onDeleteFromLibrary && (
                   <button aria-label={`Remove ${p.destination} from library`}
                     onClick={async (e) => { e.stopPropagation(); await onDeleteFromLibrary(p.id); }}
@@ -153,7 +199,7 @@ export function PhotoPicker({
             onChange={e => setLabel(e.target.value)} placeholder="Caption (optional)" aria-label="Photo caption"/>
           {uploadError && <div style={{ fontSize: 10.5, color: '#B91C1C', marginBottom: 6 }}>{uploadError}</div>}
           <button className="btn btn-primary" style={{ fontSize: 11 }} disabled={uploading} onClick={doUpload}>
-            {uploading ? 'Uploading\u2026' : 'Upload & use for this day'}
+            {uploading ? 'Uploading\u2026' : (multi ? 'Upload & add to this day' : 'Upload & use for this day')}
           </button>
         </div>
       )}
