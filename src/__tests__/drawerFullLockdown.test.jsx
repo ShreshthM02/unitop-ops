@@ -24,9 +24,9 @@ describe('Drawer-level lockdown for cancelled tour files: Itinerary, Hotels, Oth
     expect(fieldset.textContent).not.toContain('✕');
   });
 
-  it('Day-wise Hotels: fieldset is disabled', () => {
+  it('Hotels + Meals: fieldset is disabled', () => {
     render(<QueryDrawerWithQuote {...baseProps} query={cancelledQuery} onUpdateTourExecution={()=>{}}/>);
-    fireEvent.click(screen.getByText('Day-wise Hotels'));
+    fireEvent.click(screen.getByText('Hotels + Meals'));
     const fieldset = document.querySelector('fieldset');
     expect(fieldset.disabled).toBe(true);
   });

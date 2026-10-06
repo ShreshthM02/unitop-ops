@@ -561,7 +561,12 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
   const updateTourExecution = (queryId, data, auditAction) => {
     setTourExecutions(p => ({ ...p, [queryId]: data }));
-    saveTourExecutionToDB(db, data);
+    // A failed save used to be silent. The 2026-10-06 Tour Info restructure
+    // stores new fields in a new `extras` column, so if the migration hasn't
+    // been run yet this is exactly where it would show up.
+    saveTourExecutionToDB(db, data).then(res => {
+      if (res && res.error) showToast("Tour Info could not be saved to the database. If this keeps happening, the latest database migration may not have been run yet.", "error");
+    });
     if (auditAction) db.from("query_audit").insert({ query_id: queryId, by_name: currentUser.name, action: auditAction });
   };
 
@@ -694,6 +699,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         const teDays = mapCostSheetDaysToTourExecutionDays(source.days);
         if (teDays.length === 0) return;
         const teData = {
+          ...(existingTE || {}), // keep hotel rows / other services / arrival & departure legs, if any
           queryId: query.id, days: teDays,
           facilitators: existingTE?.facilitators||[], localHandlers: existingTE?.localHandlers||[],
           transporters: existingTE?.transporters||[], flights: existingTE?.flights||[],

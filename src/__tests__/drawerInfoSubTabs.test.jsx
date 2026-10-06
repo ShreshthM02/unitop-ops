@@ -26,7 +26,7 @@ describe('QueryDrawerWithQuote: Info sub-tabs', () => {
     render(<QueryDrawerWithQuote {...baseProps} onUpdateTourExecution={()=>{}}/>);
     expect(screen.getAllByText('Tour Details').length).toBeGreaterThanOrEqual(2); // tab button + section header
     expect(screen.getByText('Day-wise Itinerary')).toBeTruthy();
-    expect(screen.getByText('Day-wise Hotels')).toBeTruthy();
+    expect(screen.getByText('Hotels + Meals')).toBeTruthy();
     expect(screen.getByText('Others')).toBeTruthy();
   });
 
@@ -43,16 +43,17 @@ describe('QueryDrawerWithQuote: Info sub-tabs', () => {
     expect(screen.getByPlaceholderText('e.g. Delhi – Agra')).toBeTruthy();
   });
 
-  it('Day-wise Hotels: shows empty state until a day exists, then shows hotel/room fields for it', () => {
+  it('Hotels + Meals: shows an empty state until a row is added, then hotel/rooming/meal fields', () => {
     render(<QueryDrawerWithQuote {...baseProps} onUpdateTourExecution={()=>{}}/>);
-    fireEvent.click(screen.getByText('Day-wise Hotels'));
-    expect(screen.getByText(/add them from the Day-wise Itinerary tab first/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Hotels + Meals'));
+    expect(screen.getByText(/No hotel rows yet/)).toBeTruthy();
 
-    fireEvent.click(screen.getByText('Day-wise Itinerary'));
-    fireEvent.click(screen.getByText('+ Add Day'));
-    fireEvent.click(screen.getByText('Day-wise Hotels'));
+    fireEvent.click(screen.getByText('+ Add row'));
     expect(screen.getByPlaceholderText('Hotel name')).toBeTruthy();
     expect(screen.getByPlaceholderText('e.g. 5 Twin, 1 Sgl')).toBeTruthy();
+    expect(screen.getByLabelText('Breakfast')).toBeTruthy();
+    expect(screen.getByLabelText('Lunch')).toBeTruthy();
+    expect(screen.getByLabelText('Dinner')).toBeTruthy();
   });
 
   it('Others: Transporter is now a list (matches Local Handler), Facilitator, and Local Handler dropdowns sourced from vendors, filtered by type', () => {
@@ -69,10 +70,13 @@ describe('QueryDrawerWithQuote: Info sub-tabs', () => {
   it('Others: can add a domestic flight/train leg with separate from/to timing fields', () => {
     render(<QueryDrawerWithQuote {...baseProps} onUpdateTourExecution={()=>{}}/>);
     fireEvent.click(screen.getByText('Others'));
+    // Arrival and Departure now carry the same fields as a domestic leg, so
+    // those two are always on screen: 2 legs x (from/to time) = 4 already.
+    expect(document.querySelectorAll('input[type="time"]').length).toBe(4);
     fireEvent.click(screen.getByText('+ Add Leg'));
-    expect(screen.getByPlaceholderText('No.')).toBeTruthy();
+    expect(screen.getAllByPlaceholderText('No.').length).toBe(3);
     const timeInputs = document.querySelectorAll('input[type="time"]');
-    expect(timeInputs.length).toBe(2); // fromTime and toTime, separately
+    expect(timeInputs.length).toBe(6); // the new leg adds fromTime and toTime, separately
   });
 
   it('Save button only appears after a real change (dirty tracking), and calls onUpdateTourExecution with the query id, edited data, and an audit label', () => {

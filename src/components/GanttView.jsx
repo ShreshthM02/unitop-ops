@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML, getRunningToursForDate } = Lib;
+const { formatFlightLeg, sanitizeRichHtml } = Lib;
 
 export default function GanttView({ queries, onOpenQuery, staff, vendors, tourExecutions }) {
   const [calTab, setCalTab]         = useState("gantt");
@@ -215,7 +216,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
             </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {runningTours.map(({query:q, dayIndex, totalDays, dayInfo, facilitatorNames})=>(
+              {runningTours.map(({query:q, dayIndex, totalDays, dayInfo, facilitatorNames, hotels, services})=>(
                 <div key={q.id} onClick={()=>onOpenQuery(q)}
                   style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:14,cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor=G.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=G.gray200}>
@@ -231,19 +232,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                       </div>
                     )}
                   </div>
-                  {dayInfo ? (
-                    <div style={{background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:11.5,color:G.gray800,display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:8}}>
-                      {dayInfo.route && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Route</span>{dayInfo.route}</div>}
-                      {dayInfo.hotelName && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Hotel</span>{dayInfo.hotelName}{dayInfo.rooms?` (${dayInfo.rooms})`:""}</div>}
-                      {dayInfo.mealPlan && <div><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Meals</span>{dayInfo.mealPlan}</div>}
-                      {dayInfo.notes && <div style={{gridColumn:"1 / -1"}}><span style={{color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"}}>Notes</span>{dayInfo.notes}</div>}
-                      {!dayInfo.route && !dayInfo.hotelName && !dayInfo.mealPlan && !dayInfo.notes && <div style={{color:G.gray400}}>Day {dayIndex} recorded, but no details filled in yet.</div>}
-                    </div>
-                  ) : (
-                    <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#7D6608"}}>
-                      No day-wise itinerary entered yet for Day {dayIndex} in Tour Info.
-                    </div>
-                  )}
+                  <GroundDayDetails dayIndex={dayIndex} dayInfo={dayInfo} hotels={hotels} services={services}/>
                 </div>
               ))}
             </div>
@@ -386,6 +375,66 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+
+// ── Ground View: everything on the ground for ONE tour on ONE date ─────────
+// Route/notes come from that date's itinerary day; hotels and meals from
+// the hotel rows dated that day; every service from its own start/end
+// window (see lib/tourInfo.js getServicesForDate). Nothing here is
+// guessed: an empty section simply doesn't render.
+function GroundDayDetails({ dayIndex, dayInfo, hotels, services }) {
+  const lbl = {color:G.gray400,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",display:"block"};
+  const svc = services || {};
+  const mealsOf = (h) => [["Breakfast",h.breakfast],["Lunch",h.lunch],["Dinner",h.dinner]].filter(([,v])=>v).map(([l,v])=>`${l}: ${v}`).join(" · ");
+  const people = (list) => list.map(x=>`${x.name}${x.sector?` (${x.sector})`:""}${x.notes?` – ${x.notes}`:""}`).join("; ");
+  const legText = (l) => `${l.type||"Flight"} ${formatFlightLeg(l)}`.trim();
+  const items = [];
+  if (svc.localHandlers?.length) items.push([`Local Handler${svc.localHandlers.length>1?"s":""}`, people(svc.localHandlers)]);
+  if (svc.transporters?.length) items.push([`Transporter${svc.transporters.length>1?"s":""}`, people(svc.transporters)]);
+  if (svc.arrival) items.push(["Arrival", legText(svc.arrival)]);
+  if (svc.departure) items.push(["Departure", legText(svc.departure)]);
+  (svc.legs||[]).forEach(l => items.push([l.type==="Train"?"Train":"Flight", legText(l)]));
+  const hasDay = !!(dayInfo && (dayInfo.route || dayInfo.notes));
+  const hasHotels = (hotels||[]).some(h => h.hotelName || h.rooms || mealsOf(h));
+  const hasOther = (svc.other||[]).length > 0;
+  if (!hasDay && !hasHotels && !items.length && !hasOther) {
+    return dayInfo ? (
+      <div style={{background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:11.5,color:G.gray400}}>Day {dayIndex} recorded, but no details filled in yet.</div>
+    ) : (
+      <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#7D6608"}}>
+        No day-wise itinerary entered yet for Day {dayIndex} in Tour Info.
+      </div>
+    );
+  }
+  return (
+    <div style={{background:G.gray50,borderRadius:6,padding:"8px 10px",fontSize:11.5,color:G.gray800,display:"flex",flexDirection:"column",gap:8}}>
+      {hasDay && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:8}}>
+          {dayInfo.route && <div><span style={lbl}>Route</span>{dayInfo.route}</div>}
+          {dayInfo.notes && <div style={{gridColumn:"1 / -1"}}><span style={lbl}>Notes</span>{dayInfo.notes}</div>}
+        </div>
+      )}
+      {hasHotels && (hotels||[]).filter(h => h.hotelName || h.rooms || mealsOf(h)).map((h,i)=>(
+        <div key={h.id||i} data-testid="ground-hotel">
+          <span style={lbl}>{h.hotelName||h.rooms ? "Hotel" : "Meals"}</span>
+          {(h.hotelName||h.rooms) && <span>{h.hotelName}{h.rooms?` (${h.rooms})`:""}</span>}
+          {mealsOf(h) && <div style={{color:G.gray600,fontSize:11}}>{mealsOf(h)}</div>}
+        </div>
+      ))}
+      {items.length>0 && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:8}}>
+          {items.map(([label,text],i)=><div key={i}><span style={lbl}>{label}</span>{text}</div>)}
+        </div>
+      )}
+      {(svc.other||[]).map((o,i)=>(
+        <div key={o.id||i} data-testid="ground-other-service">
+          <span style={lbl}>Other service</span>
+          <div style={{lineHeight:1.45}} dangerouslySetInnerHTML={{__html: sanitizeRichHtml(o.detailsHtml)}}/>
+        </div>
+      ))}
     </div>
   );
 }

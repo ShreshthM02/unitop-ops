@@ -1,4 +1,5 @@
 import { extractMentions } from "./Mentions.jsx";
+import { getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
 
 // Single source of truth for "is this tour physically on ground today" --
 // found duplicated in two places (Dashboard's stat card and UnitopApp's
@@ -605,7 +606,7 @@ export function parseLocalDateStr(str) {
 // actually overnights -- gets the confirmed hotel name attached, since a
 // bare list of place names doesn't answer "where are they staying." A stop
 // that exactly repeats the previous day's last stop is not repeated.
-export function buildRouteLines(days) {
+export function buildRouteLines(days, hotelFor = (d) => d.hotelName) {
   const lines = [];
   let lastStop = null;
   (days || []).forEach(d => {
@@ -615,7 +616,8 @@ export function buildRouteLines(days) {
       const upperStop = stop.toUpperCase();
       if (upperStop === lastStop) return;
       const isLast = idx === stops.length - 1;
-      lines.push(isLast && d.hotelName ? `${upperStop} - ${d.hotelName}` : upperStop);
+      const hotel = isLast ? hotelFor(d) : "";
+      lines.push(hotel ? `${upperStop} - ${hotel}` : upperStop);
       lastStop = upperStop;
     });
   });
@@ -651,10 +653,14 @@ export function getRunningToursForDate(queries, tourExecutions, vendors, dateStr
       // day); fall back to position in the list otherwise, since day
       // rows are always added in order.
       const dayInfo = days.find(d => d.date && parseLocalDateStr(d.date)?.getTime() === chosen.getTime()) || days[dayIndex] || null;
-      const facilitatorNames = (te?.facilitators || [])
-        .map(f => (vendors || []).find(v => v.id === f.vendorId)?.name)
-        .filter(Boolean);
-      return { query: q, dayIndex: dayIndex + 1, totalDays: nights + 1, dayInfo, facilitatorNames };
+      // Everything else in Tour Info reaches Ground View purely by DATE
+      // (2026-10-06): hotel/meal rows by their own date, and every
+      // service by its start/end window -- an entry with no dates does
+      // not appear (direct decision; existing entries are amended by hand).
+      const services = getServicesForDate(te, vendors, dateStr);
+      const hotels = hotelRowsForDate(te, dateStr, dayInfo);
+      const facilitatorNames = services.facilitators.map(f => f.name);
+      return { query: q, dayIndex: dayIndex + 1, totalDays: nights + 1, dayInfo, facilitatorNames, hotels, services };
     })
     .filter(Boolean)
     .sort((a, b) => (a.query.tourFileId || a.query.id).localeCompare(b.query.tourFileId || b.query.id));
@@ -684,8 +690,8 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
       // (e.g. Cost Sheet's own day fields are a separate pricing draft).
       const te = (tourExecutions || {})[r.query.id];
       const days = te?.days || [];
-      const routeLines = buildRouteLines(days);
-      const rooming = [...new Set(days.filter(d => d.hotelName).map(d => `${d.hotelName}${d.rooms ? " (" + d.rooms + ")" : ""}`))].join("; ");
+      const routeLines = buildRouteLines(days, (d) => getOvernightHotel(te, d));
+      const rooming = roomingSummary(te);
       const resolveVendorNames = (list) => [...new Set((list || []).map(x => (vendors || []).find(v => v.id === x.vendorId)?.name).filter(Boolean))].join(", ");
       const transporter = resolveVendorNames(te?.transporters);
       const facilitator = resolveVendorNames(te?.facilitators);
@@ -701,8 +707,11 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
         sector: r.query.destination || r.query.sector || "",
         pax: r.query.paxDisplay || r.query.pax || "",
         remarks: r.query.notes || "",
-        arrFlight: te?.arrFlightDetails || "",
-        depFlight: te?.depFlightDetails || "",
+        // Structured arrival/departure leg when filled in; the old
+        // free-text box stays as the fallback so nothing already typed
+        // disappears.
+        arrFlight: isLegFilled(te?.arrFlight) ? formatFlightLeg(te.arrFlight) : (te?.arrFlightDetails || ""),
+        depFlight: isLegFilled(te?.depFlight) ? formatFlightLeg(te.depFlight) : (te?.depFlightDetails || ""),
         routeLines,
         rooming,
         transporter,
@@ -730,6 +739,13 @@ export function blankTourExecution(queryId) {
     flights: [],
     arrFlightDetails: "",
     depFlightDetails: "",
+    // hotelRows is deliberately ABSENT (undefined) on a blank record, not
+    // []: undefined means "never used the new Hotels + Meals tab", which
+    // is what lets the old per-day hotel/rooms show as legacy rows.
+    otherServices: [],
+    arrFlight: null,
+    depFlight: null,
+    syncedFromQuotationVersion: null,
   };
 }
 
@@ -749,6 +765,13 @@ export function mapDbTourExecutionRow(row) {
     // Chain plan, docs/DATA_OWNERSHIP.md). Never used to auto-overwrite
     // anything; only to decide whether to show a "sync available" banner.
     syncedFromCostSheetVersion: row.synced_from_cost_sheet_version ?? null,
+    // Everything added in the 2026-10-06 Tour Info restructure lives in one
+    // jsonb column (see tourInfo.js for the shapes).
+    hotelRows: Array.isArray(row.extras?.hotelRows) ? row.extras.hotelRows : undefined,
+    otherServices: row.extras?.otherServices || [],
+    arrFlight: row.extras?.arrFlight || null,
+    depFlight: row.extras?.depFlight || null,
+    syncedFromQuotationVersion: row.extras?.syncedFromQuotationVersion ?? null,
   };
 }
 
@@ -784,9 +807,12 @@ export async function loadTourExecutionForQuery(db, queryId) {
 // Migrating those documents to read from/write to this same table is a
 // separate, later piece of work once this foundation is proven out; doing
 // it in the same pass risked destabilizing three already-working documents.
+// Returns { error } instead of swallowing it silently: a failed save used
+// to look identical to a successful one, which matters now that the table
+// gained a column (`extras`) that must exist before this code is deployed.
 export async function saveTourExecutionToDB(db, data) {
   try {
-    await db.from("tour_execution").upsert({
+    const res = await db.from("tour_execution").upsert({
       query_id: data.queryId,
       days: data.days || [],
       facilitators: data.facilitators || [],
@@ -796,8 +822,23 @@ export async function saveTourExecutionToDB(db, data) {
       arr_flight_details: data.arrFlightDetails || null,
       dep_flight_details: data.depFlightDetails || null,
       synced_from_cost_sheet_version: data.syncedFromCostSheetVersion ?? null,
+      extras: {
+        ...(Array.isArray(data.hotelRows) ? { hotelRows: data.hotelRows } : {}),
+        otherServices: data.otherServices || [],
+        arrFlight: data.arrFlight || null,
+        depFlight: data.depFlight || null,
+        syncedFromQuotationVersion: data.syncedFromQuotationVersion ?? null,
+      },
     });
-  } catch (e) { console.warn("Save tour execution to DB failed:", e); }
+    if (res && res.error) {
+      console.warn("Save tour execution to DB failed:", res.error);
+      return { error: res.error.message || String(res.error) };
+    }
+    return { error: null };
+  } catch (e) {
+    console.warn("Save tour execution to DB failed:", e);
+    return { error: e.message || String(e) };
+  }
 }
 
 // Reverse of Phase 1's Cost Sheet pre-fill (movement/hotel FROM

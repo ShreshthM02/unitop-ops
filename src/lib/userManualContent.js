@@ -65,7 +65,8 @@ export const USER_MANUAL_SECTIONS = [
       <h3>3.2 Quotation</h3>
       <p>Generated from the Cost Sheet's final version, priced with your own margin -- raw supplier numbers are never shown to the client. If the Cost Sheet changes afterward, you'll see a banner offering to "pull latest" -- nothing is ever silently overwritten.</p>
       <h3>3.3 Tour Info (Tour Execution)</h3>
-      <p>The real day-wise operational plan: route, hotel, meal plan, and notes for each day, plus Tour Facilitators and other on-ground details. Every operational document (Tour Briefing Sheet, Movement Chart, Ground View) reads from this -- keep it accurate.</p>
+      <p>The real operational plan for a Tour File. Day-wise Itinerary holds each day's route and notes (rows can be dragged, or moved with the arrows, to reorder). Hotels + Meals holds one row per hotel stay -- day, date, hotel, rooming, breakfast, lunch and dinner -- and syncs hotels and meals from the Quotation marked final (add more rows when a group uses more than one hotel in a day). Others holds Transporters, Tour Facilitators, Local Handlers, train/flight legs, the arrival and departure legs, and any Other Services with a rich-text description. Every operational document (Tour Briefing Sheet, Movement Chart, Ground View) reads from this -- keep it accurate.</p>
+      <p>Each service needs a <strong>start and end date</strong>: that is what puts it on the Ground View calendar for the right days. A service with no dates does not appear there.</p>
     `
   },
   {
@@ -109,7 +110,7 @@ export const USER_MANUAL_SECTIONS = [
     title: "7. Tour Calendar",
     html: `
       <p><strong>Gantt</strong> -- a visual month-by-month bar chart of every confirmed tour's dates.</p>
-      <p><strong>Ground View</strong> -- pick any date and see every tour physically running that day, with facilitators and that exact day's real itinerary, pulled live from Tour Info.</p>
+      <p><strong>Ground View</strong> -- pick any date (or use Yesterday / Today / Tomorrow) and see every tour physically running that day: the day's route and notes, hotels and meals, and every service on the ground that day (facilitators, local handlers, transporters, trains/flights, arrival/departure, other services), all pulled live from Tour Info by date.</p>
       <p><strong>Movement Chart</strong> -- a report-style view of tour movements across a chosen month, built for printing.</p>
     `
   },

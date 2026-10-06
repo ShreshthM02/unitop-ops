@@ -272,7 +272,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
               id: d.id || Date.now() + Math.random(),
               day: d.dayLabel || "", date: d.date || "", movement: d.route || "",
               mealPlan: "B/L/D", mealCost: "",
-              hotel: d.hotelName || "", hotelAlt: "", hotelPlan: "CP",
+              hotel: Lib.getOvernightHotel(te, d) || "", hotelAlt: "", hotelPlan: "CP",
               hotelNetPP: "", singleSupp: "", notes: d.notes || "",
             })));
             return;

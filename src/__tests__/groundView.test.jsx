@@ -44,9 +44,16 @@ describe('getRunningToursForDate', () => {
 
   it('resolves tour facilitator names from vendorId, never showing a raw id', () => {
     const queries = [{ id: 'q1', tourFileId: 'TUR-1', groupName: 'X', status: 'operations', cancelled: false, travelDate: '2026-09-05', nights: 5 }];
-    const te = { q1: { days: [], facilitators: [{ id: 1, vendorId: 'v1' }, { id: 2, vendorId: 'v2' }] } };
+    const w = { startDate: '2026-09-05', endDate: '2026-09-10' };
+    const te = { q1: { days: [], facilitators: [{ id: 1, vendorId: 'v1', ...w }, { id: 2, vendorId: 'v2', ...w }] } };
     const result = getRunningToursForDate(queries, te, vendors, '2026-09-07');
     expect(result[0].facilitatorNames).toEqual(['Rajesh Kumar', 'Amit Singh']);
+  });
+
+  it('a facilitator with NO dates is not shown (direct decision: no dates means not on Ground View)', () => {
+    const queries = [{ id: 'q1', tourFileId: 'TUR-1', groupName: 'X', status: 'operations', cancelled: false, travelDate: '2026-09-05', nights: 5 }];
+    const te = { q1: { days: [], facilitators: [{ id: 1, vendorId: 'v1' }] } };
+    expect(getRunningToursForDate(queries, te, vendors, '2026-09-07')[0].facilitatorNames).toEqual([]);
   });
 
   it('prefers an explicit per-day date match over the positional index', () => {
@@ -57,7 +64,7 @@ describe('getRunningToursForDate', () => {
     ], facilitators: [] } };
     const result = getRunningToursForDate(queries, te, vendors, '2026-09-07');
     expect(result[0].dayInfo.route).toBe('Agra'); // matched by explicit date, not days[2] (which doesn't exist)
-    expect(result[0].dayInfo.mealPlan).toBe('MAP');
+    expect(result[0].dayInfo.route).toBe('Agra');
   });
 
   it('falls back to positional index when no day has an explicit date set', () => {
@@ -128,7 +135,7 @@ describe('GanttView UI: Ground View tab', () => {
     // A tour running exactly today, using real relative dates so this
     // test doesn't silently rot as "today" moves forward in real usage.
     const runningToday = [{ id: 'q1', tourFileId: 'TUR-TODAY', groupName: 'Live Group', status: 'operations', cancelled: false, travelDate: todayStr, nights: 3 }];
-    const tourExecutions = { q1: { days: [{ id: 1, dayLabel: 'Day 1', route: 'Delhi', hotelName: 'Hotel Test' }], facilitators: [{ id: 1, vendorId: 'v1' }] } };
+    const tourExecutions = { q1: { days: [{ id: 1, dayLabel: 'Day 1', route: 'Delhi', hotelName: 'Hotel Test' }], facilitators: [{ id: 1, vendorId: 'v1', startDate: todayStr, endDate: todayStr }] } };
     render(<GanttView queries={runningToday} onOpenQuery={()=>{}} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>);
     fireEvent.click(screen.getByText(/Ground View/));
     expect(screen.getByText('Live Group')).toBeTruthy();

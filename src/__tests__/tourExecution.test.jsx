@@ -69,6 +69,10 @@ describe('saveTourExecutionToDB', () => {
       transporters: data.transporters, flights: data.flights,
       arr_flight_details: 'AI-101 10:00', dep_flight_details: 'AI-102 18:00',
       synced_from_cost_sheet_version: null,
+      // Everything added by the 2026-10-06 restructure lives in one jsonb
+      // column. hotelRows is left OUT when the record never used the new
+      // tab (undefined), so old per-day hotels keep showing as legacy rows.
+      extras: { otherServices: [], arrFlight: null, depFlight: null, syncedFromQuotationVersion: null },
     });
     // Confirm the flight leg actually carries both timing fields through untouched
     const savedFlight = upsert.mock.calls[0][0].flights[0];
@@ -78,7 +82,52 @@ describe('saveTourExecutionToDB', () => {
 
   it('does not throw when the db call fails', async () => {
     const db = { from: () => ({ upsert: async () => { throw new Error('fail'); } }) };
-    await expect(saveTourExecutionToDB(db, blankTourExecution('X'))).resolves.toBeUndefined();
+    // Doesn't throw, but no longer hides the failure either: it reports it,
+    // so the app can tell the user (an unmigrated database looks exactly
+    // like this).
+    await expect(saveTourExecutionToDB(db, blankTourExecution('X'))).resolves.toEqual({ error: 'fail' });
+  });
+
+  it('returns the database error when the upsert is rejected rather than thrown', async () => {
+    const db = { from: () => ({ upsert: async () => ({ data: null, error: { message: 'column "extras" does not exist' } }) }) };
+    expect(await saveTourExecutionToDB(db, blankTourExecution('X'))).toEqual({ error: 'column "extras" does not exist' });
+  });
+
+  it('returns { error: null } on success', async () => {
+    const db = { from: () => ({ upsert: async () => ({ data: [], error: null }) }) };
+    expect(await saveTourExecutionToDB(db, blankTourExecution('X'))).toEqual({ error: null });
+  });
+
+  it('writes hotel rows, other services, arrival/departure legs and the quotation sync marker into extras', async () => {
+    const upsert = vi.fn(async () => ({ data: [], error: null }));
+    const db = { from: () => ({ upsert }) };
+    await saveTourExecutionToDB(db, {
+      ...blankTourExecution('Q'), hotelRows: [{ id: 'a', hotelName: 'H' }],
+      otherServices: [{ id: 1, startDate: '2026-10-01', endDate: '2026-10-02', detailsHtml: '<p>x</p>' }],
+      arrFlight: { number: 'AI 1' }, depFlight: { number: 'AI 2' }, syncedFromQuotationVersion: 3,
+    });
+    expect(upsert.mock.calls[0][0].extras).toEqual({
+      hotelRows: [{ id: 'a', hotelName: 'H' }],
+      otherServices: [{ id: 1, startDate: '2026-10-01', endDate: '2026-10-02', detailsHtml: '<p>x</p>' }],
+      arrFlight: { number: 'AI 1' }, depFlight: { number: 'AI 2' }, syncedFromQuotationVersion: 3,
+    });
+  });
+
+  it('an empty hotelRows array IS saved (the user deliberately removed every row)', async () => {
+    const upsert = vi.fn(async () => ({ data: [], error: null }));
+    await saveTourExecutionToDB({ from: () => ({ upsert }) }, { ...blankTourExecution('Q'), hotelRows: [] });
+    expect(upsert.mock.calls[0][0].extras.hotelRows).toEqual([]);
+  });
+
+  it('round-trips through the mapper', async () => {
+    const upsert = vi.fn(async () => ({ data: [], error: null }));
+    const original = { ...blankTourExecution('Q'), hotelRows: [{ id: 'a', hotelName: 'H' }], arrFlight: { number: 'AI 1' }, syncedFromQuotationVersion: 2 };
+    await saveTourExecutionToDB({ from: () => ({ upsert }) }, original);
+    const row = upsert.mock.calls[0][0];
+    const back = mapDbTourExecutionRow({ ...row });
+    expect(back.hotelRows).toEqual(original.hotelRows);
+    expect(back.arrFlight).toEqual(original.arrFlight);
+    expect(back.syncedFromQuotationVersion).toBe(2);
   });
 
   it('sends null for empty optional text fields rather than empty strings', async () => {

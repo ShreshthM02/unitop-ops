@@ -83,3 +83,23 @@ describe('Tour Info Day-wise Itinerary/Hotels: mutual staleness banner against t
     expect(db.from).not.toHaveBeenCalledWith('cost_sheets');
   });
 });
+
+describe('Sync from Cost Sheet must not wipe day notes typed in Tour Info', () => {
+  it('carries the existing note onto the matching day when the Cost Sheet day has none', async () => {
+    const finalCS = { version: 4, is_final: true, days: [{ day: 'Day 1', date: '2026-10-01', movement: 'DEL-AGR', hotel: 'H' }, { day: 'Day 2', date: '2026-10-02', movement: 'AGR', hotel: 'H', notes: 'From cost sheet' }] };
+    const db = mockDbWithFinalCostSheet(finalCS);
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    const { default: QueryDrawerWithQuote } = await import('../components/QueryDrawerWithQuote.jsx');
+    const onUpdate = vi.fn();
+    const te = { queryId: tourFileQuery.id, days: [
+      { id: 1, dayLabel: 'Day 1', date: '2026-10-01', route: 'old', notes: 'Pick-up at 6am' },
+      { id: 2, dayLabel: 'Day 2', date: '2026-10-02', route: 'old', notes: 'Typed by ops' },
+    ], facilitators: [], localHandlers: [], transporters: [], flights: [], syncedFromCostSheetVersion: 1 };
+    render(<QueryDrawerWithQuote {...baseProps} tourExecution={te} onUpdateTourExecution={onUpdate} />);
+    fireEvent.click(screen.getByText('Day-wise Itinerary'));
+    fireEvent.click(await screen.findByText('↻ Sync from Cost Sheet'));
+    const days = onUpdate.mock.calls[0][1].days;
+    expect(days[0].notes).toBe('Pick-up at 6am');   // Cost Sheet had none -> kept
+    expect(days[1].notes).toBe('From cost sheet');  // Cost Sheet has one -> it wins
+  });
+});

@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions, notifyMentionedStaff, nightsDaysLabel } = Lib;
+const { rowMatchesDay, getHotelRows, reorderItineraryDays, pickQuotationSourceVersion, quotationToHotelRows, mergeQuotationHotelRows, tourDateRange, blankFlightLeg, loadQuotationVersions } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
+import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder } from './TourInfoPanels.jsx';
 
 export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
@@ -41,7 +43,12 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const saveTE = (label) => onUpdateTourExecution && onUpdateTourExecution(query.id, te, label);
   const setTeField = (k, v) => setTe(p => ({ ...p, [k]: v }));
   const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
-  const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", hotelName: "", rooms: "", mealPlan: "", notes: "" }] }));
+  const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", notes: "" }] }));
+  // Itinerary rows are draggable (and have up/down buttons for touch
+  // screens). Dates stay in their slots and plain "Day N" labels renumber --
+  // see reorderItineraryDays.
+  const moveDay = (from, to) => setTe(p => ({ ...p, days: reorderItineraryDays(p.days, from, to) }));
+  const dayReorder = useReorder(moveDay);
   const rmDay = (i) => setTe(p => ({ ...p, days: p.days.filter((_, xi) => xi !== i) }));
 
   // Mutual staleness check against the star-marked Cost Sheet (Document
@@ -60,12 +67,41 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
     te.syncedFromCostSheetVersion !== finalCostSheetVersion.version;
   const syncFromCostSheet = () => {
     if (!finalCostSheetVersion) return;
-    const teDays = mapCostSheetDaysToTourExecutionDays(finalCostSheetVersion.days);
+    // Day notes are typed in Tour Info (Cost Sheet rarely has any), so a
+    // sync must not wipe them: carry the existing note over to the matching
+    // day whenever the Cost Sheet day has none of its own.
+    const teDays = mapCostSheetDaysToTourExecutionDays(finalCostSheetVersion.days).map(d => {
+      const old = (te.days || []).find(o => rowMatchesDay(o, d));
+      return d.notes || !old?.notes ? d : { ...d, notes: old.notes };
+    });
     setTe(p => ({ ...p, days: teDays, syncedFromCostSheetVersion: finalCostSheetVersion.version }));
     onUpdateTourExecution && onUpdateTourExecution(query.id,
       { ...te, days: teDays, syncedFromCostSheetVersion: finalCostSheetVersion.version },
       `Day-wise Itinerary/Hotels synced from Cost Sheet v${finalCostSheetVersion.version} (final)`);
   };
+  // Hotels + Meals comes from the quotation marked final (falling back to
+  // the latest saved one, with a visible note, when none is final yet).
+  const [quotationSource, setQuotationSource] = useState(null);
+  useEffect(() => {
+    if (!isCaseFile) return;
+    loadQuotationVersions(db, query.id).then(v => setQuotationSource(pickQuotationSourceVersion(v)));
+  }, [query.id, isCaseFile]);
+  const setHotelRows = (rows) => setTe(p => ({ ...p, hotelRows: rows }));
+  const syncFromQuotation = () => {
+    if (!quotationSource) return;
+    const q = quotationSource.version;
+    const hasPulled = getHotelRows(te).some(r => r.source !== "manual");
+    if (hasPulled && !window.confirm("This replaces the hotel and meal entries pulled from the quotation. Rooming you typed is kept, and rows you added yourself are kept. Continue?")) return;
+    const rows = mergeQuotationHotelRows(getHotelRows(te), quotationToHotelRows(q, query.travelDate));
+    const next = { ...te, hotelRows: rows, syncedFromQuotationVersion: q.version };
+    setTe(next);
+    onUpdateTourExecution && onUpdateTourExecution(query.id, next,
+      `Hotels + Meals synced from Quotation v${q.version} (${quotationSource.isFinal ? "final" : "latest"})`);
+  };
+  const tourRange = tourDateRange(query);
+  const serviceDefaults = { startDate: tourRange.start, endDate: tourRange.end };
+  const setLeg = (key, patch) => setTe(p => ({ ...p, [key]: { ...(p[key] || blankFlightLeg(key === "depFlight" ? tourRange.end : tourRange.start)), ...patch } }));
+  const updListMany = (listKey, i, patch) => setTe(p => ({ ...p, [listKey]: p[listKey].map((x, xi) => xi === i ? { ...x, ...patch } : x) }));
   const updList = (listKey, i, f, v) => setTe(p => ({ ...p, [listKey]: p[listKey].map((x, xi) => xi === i ? { ...x, [f]: v } : x) }));
   const addToList = (listKey, blank) => setTe(p => ({ ...p, [listKey]: [...p[listKey], { id: Date.now(), ...blank }] }));
   const rmFromList = (listKey, i) => setTe(p => ({ ...p, [listKey]: p[listKey].filter((_, xi) => xi !== i) }));
@@ -199,7 +235,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
             <div>
               {isCaseFile && (
                 <div style={{display:"flex",gap:2,marginBottom:14,background:G.gray50,borderRadius:8,padding:3}}>
-                  {[["details","Tour Details"],["itinerary","Day-wise Itinerary"],["hotels","Day-wise Hotels"],["others","Others"]].map(([id,label])=>(
+                  {[["details","Tour Details"],["itinerary","Day-wise Itinerary"],["hotels","Hotels + Meals"],["others","Others"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setInfoSubTab(id)}
                       style={{flex:1,padding:"6px 8px",borderRadius:6,border:"none",cursor:"pointer",
                         background:infoSubTab===id?G.white:"transparent",color:infoSubTab===id?G.navy:G.gray400,
@@ -455,12 +491,13 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                   )}
                   {te.days.map((d,i)=>(
-                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.6fr 0.8fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
+                    <div key={d.id} {...dayReorder.rowProps(i)} data-testid="itinerary-row" style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr 2fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
+                      <ReorderControls index={i} count={te.days.length} onMove={moveDay} handleProps={dayReorder.handleProps(i)}/>
                       <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
                       <input style={teInp} type="date" value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
                       <input style={teInp} value={d.route||""} placeholder="e.g. Delhi – Agra" onChange={e=>updDay(i,"route",e.target.value)}/>
-                      <input style={teInp} value={d.mealPlan||""} placeholder="Meals (e.g. MAP)" onChange={e=>updDay(i,"mealPlan",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>}
+                      <input style={{...teInp,gridColumn:"2 / -1"}} aria-label="Notes" value={d.notes||""} placeholder="Notes for this day (shown on Ground View)" onChange={e=>updDay(i,"notes",e.target.value)}/>
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={addDay}>+ Add Day</button>
@@ -470,43 +507,22 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
               {isCaseFile && infoSubTab==="hotels" && (
                 <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
-                  {sec("Day-wise Hotels")}
-                  {isStaleVsCostSheet ? (
-                    <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#7D6608",marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{flex:1}}>
-                        Cost Sheet v{finalCostSheetVersion.version} (final) has route/hotel data
-                        {te.syncedFromCostSheetVersion ? ` newer than what this was last synced from (v${te.syncedFromCostSheetVersion})` : " that hasn't been pulled in yet"}.
-                      </span>
-                      {!query.cancelled && <button className="btn btn-primary" style={{fontSize:10.5,padding:"3px 8px",flexShrink:0}} onClick={syncFromCostSheet}>↻ Sync from Cost Sheet</button>}
-                    </div>
-                  ) : finalCostSheetVersion ? (
-                    <div style={{background:"#EAFAF1",border:"1px solid #A9DFBF",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#196F3D",marginBottom:10}}>
-                      ✓ In sync with Cost Sheet v{finalCostSheetVersion.version} (final)
-                    </div>
-                  ) : (
-                    <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"8px 10px",fontSize:10.5,color:"#1A5276",marginBottom:10}}>
-                      Same operational record as the Itinerary tab. No Cost Sheet has been marked final yet to sync against.
-                    </div>
-                  )}
-                  {te.days.length===0 ? (
-                    <div style={{textAlign:"center",padding:"20px 0",color:G.gray400,fontSize:12}}>No days yet — add them from the Day-wise Itinerary tab first.</div>
-                  ) : te.days.map((d,i)=>(
-                    <div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 1fr",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
-                      <div style={{fontSize:11,color:G.gray600,alignSelf:"center"}}>{d.dayLabel}{d.date?` (${formatDateSlash(d.date)})`:""}</div>
-                      <input style={teInp} value={d.hotelName||""} placeholder="Hotel name" onChange={e=>updDay(i,"hotelName",e.target.value)}/>
-                      <input style={teInp} value={d.rooms||""} placeholder="e.g. 5 Twin, 1 Sgl" onChange={e=>updDay(i,"rooms",e.target.value)}/>
-                    </div>
-                  ))}
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={()=>saveTE("Updated day-wise hotels")}>💾 Save Hotels</button>}
+                  {sec("Hotels + Meals")}
+                  <HotelsMealsPanel te={te} onChange={setHotelRows} quotationSource={quotationSource} onSync={syncFromQuotation} readOnly={query.cancelled}/>
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={()=>saveTE("Updated hotels + meals")}>💾 Save Hotels + Meals</button>}
                 </fieldset>
               )}
 
               {isCaseFile && infoSubTab==="others" && (
                 <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
+                  <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:6,padding:"6px 10px",fontSize:10.5,color:"#1A5276",marginBottom:12}}>
+                    Everything here reaches the Ground View calendar by date, so each service needs a start and end date. Entries with no dates don't appear there.
+                  </div>
                   {sec("Transporter")}
                   {activeTransportVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Transport vendors yet — add one under Master Data → Vendors.</div>}
                   {te.transporters.map((t,i)=>(
-                    <div key={t.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6,marginBottom:6}}>
+                    <div key={t.id} style={{marginBottom:8}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6}}>
                       <select style={teInp} value={t.vendorId||""} onChange={e=>updList("transporters",i,"vendorId",e.target.value)}>
                         <option value="">Select...</option>
                         {activeTransportVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
@@ -515,13 +531,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <input style={teInp} value={t.notes||""} placeholder="Notes (vehicle count, type, etc.)" onChange={e=>updList("transporters",i,"notes",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("transporters",i)}>✕</span>}
                     </div>
+                    <DateRangeFields start={t.startDate} end={t.endDate} onChange={patch=>updListMany("transporters",i,patch)}/>
+                    </div>
                   ))}
-                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("transporters",{vendorId:"",sector:"",notes:""})}>+ Add Transporter</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("transporters",{vendorId:"",sector:"",notes:"",...serviceDefaults})}>+ Add Transporter</button>
 
                   {sec("Tour Facilitators")}
                   {activeFacilitatorVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Tour Facilitator vendors yet — add one under Master Data → Vendors.</div>}
                   {te.facilitators.map((f,i)=>(
-                    <div key={f.id} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6,marginBottom:6}}>
+                    <div key={f.id} style={{marginBottom:8}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6}}>
                       <select style={teInp} value={f.vendorId||""} onChange={e=>updList("facilitators",i,"vendorId",e.target.value)}>
                         <option value="">Select...</option>
                         {activeFacilitatorVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
@@ -529,13 +548,16 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <input style={teInp} value={f.sector||""} placeholder="Sector (optional)" onChange={e=>updList("facilitators",i,"sector",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("facilitators",i)}>✕</span>}
                     </div>
+                    <DateRangeFields start={f.startDate} end={f.endDate} onChange={patch=>updListMany("facilitators",i,patch)}/>
+                    </div>
                   ))}
-                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("facilitators",{vendorId:"",sector:""})}>+ Add Facilitator</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("facilitators",{vendorId:"",sector:"",...serviceDefaults})}>+ Add Facilitator</button>
 
                   {sec("Local Handlers")}
                   {activeLocalHandlerVendors.length===0 && <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>No Local Handler vendors yet — add one under Master Data → Vendors.</div>}
                   {te.localHandlers.map((h,i)=>(
-                    <div key={h.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6,marginBottom:6}}>
+                    <div key={h.id} style={{marginBottom:8}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6}}>
                       <select style={teInp} value={h.vendorId||""} onChange={e=>updList("localHandlers",i,"vendorId",e.target.value)}>
                         <option value="">Select...</option>
                         {activeLocalHandlerVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
@@ -544,8 +566,10 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       <input style={teInp} value={h.notes||""} placeholder="Notes" onChange={e=>updList("localHandlers",i,"notes",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("localHandlers",i)}>✕</span>}
                     </div>
+                    <DateRangeFields start={h.startDate} end={h.endDate} onChange={patch=>updListMany("localHandlers",i,patch)}/>
+                    </div>
                   ))}
-                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("localHandlers",{vendorId:"",sector:"",notes:""})}>+ Add Local Handler</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("localHandlers",{vendorId:"",sector:"",notes:"",...serviceDefaults})}>+ Add Local Handler</button>
 
                   {sec("Domestic Train / Flight Legs")}
                   {te.flights.map((f,i)=>(
@@ -566,15 +590,23 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                       </div>
                     </div>
                   ))}
-                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("flights",{date:"",type:"Flight",number:"",from:"",fromTime:"",to:"",toTime:""})}>+ Add Leg</button>
+                  <button className="btn btn-ghost" style={{fontSize:11,marginBottom:14}} onClick={()=>addToList("flights",{date:tourRange.start,type:"Flight",number:"",from:"",fromTime:"",to:"",toTime:""})}>+ Add Leg</button>
 
-                  {sec("Arrival / Departure Flight Details")}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-                    <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Arrival</div><input style={teInp} value={te.arrFlightDetails||""} placeholder="e.g. AI-101, 10:00 AM" onChange={e=>setTeField("arrFlightDetails",e.target.value)}/></div>
-                    <div><div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Departure</div><input style={teInp} value={te.depFlightDetails||""} placeholder="e.g. AI-102, 6:00 PM" onChange={e=>setTeField("depFlightDetails",e.target.value)}/></div>
+                  {sec("Arrival Flight / Train")}
+                  <div style={{marginBottom:10}}>
+                    {!te.arrFlight && te.arrFlightDetails && <div style={{fontSize:10.5,color:G.gray400,marginBottom:4}}>Earlier entry: {te.arrFlightDetails}</div>}
+                    <FlightLegFields leg={te.arrFlight} onChange={patch=>setLeg("arrFlight",patch)}/>
+                  </div>
+                  {sec("Departure Flight / Train")}
+                  <div style={{marginBottom:14}}>
+                    {!te.depFlight && te.depFlightDetails && <div style={{fontSize:10.5,color:G.gray400,marginBottom:4}}>Earlier entry: {te.depFlightDetails}</div>}
+                    <FlightLegFields leg={te.depFlight} onChange={patch=>setLeg("depFlight",patch)}/>
                   </div>
 
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated transporter/facilitators/handlers/flights")}>💾 Save Others</button>}
+                  {sec("Other Services")}
+                  <OtherServicesPanel services={te.otherServices} onChange={list=>setTeField("otherServices",list)} query={query} readOnly={query.cancelled}/>
+
+                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated transporter/facilitators/handlers/flights/other services")}>💾 Save Others</button>}
                 </fieldset>
               )}
             </div>
