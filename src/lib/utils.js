@@ -1,5 +1,5 @@
 import { extractMentions } from "./Mentions.jsx";
-import { getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
+import { entryServiceName, getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
 
 // Single source of truth for "is this tour physically on ground today" --
 // found duplicated in two places (Dashboard's stat card and UnitopApp's
@@ -692,7 +692,7 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
       const days = te?.days || [];
       const routeLines = buildRouteLines(days, (d) => getOvernightHotel(te, d));
       const rooming = roomingSummary(te);
-      const resolveVendorNames = (list) => [...new Set((list || []).map(x => (vendors || []).find(v => v.id === x.vendorId)?.name).filter(Boolean))].join(", ");
+      const resolveVendorNames = (list) => [...new Set((list || []).map(x => entryServiceName(x, vendors)).filter(Boolean))].join(", ");
       const transporter = resolveVendorNames(te?.transporters);
       const facilitator = resolveVendorNames(te?.facilitators);
       const localHandler = resolveVendorNames(te?.localHandlers);

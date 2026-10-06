@@ -535,14 +535,20 @@ export const _supa = (() => {
     },
     upload: (queryId, folderName, fileName, mimeType, fileBase64) =>
       drive.call({ action: "upload", queryId, folderName, fileName, mimeType, fileBase64 }),
-    delete: (documentId) => drive.call({ action: "delete", documentId }),
+    delete: (documentId, scope) => drive.call({ action: "delete", documentId, ...(scope ? { scope } : {}) }),
+    // Fleet (vehicle) documents: same Drive account and root folder, but the
+    // folder is named after the vehicle and the record lives in
+    // fleet_documents instead of query_documents.
+    uploadFleet: (vehicleId, folderName, fileName, mimeType, fileBase64) =>
+      drive.call({ action: "upload", scope: "fleet", vehicleId, folderName, fileName, mimeType, fileBase64 }),
+    renameFleetFolder: (vehicleId, newName) => drive.call({ action: "rename-folder", scope: "fleet", vehicleId, newName }),
     // One-time setup action, run once when switching to a new Drive
     // scope/parent folder -- see MaintenancePanel's Backup tab.
     createRootFolder: (name) => drive.call({ action: "create-root-folder", name }),
     renameFolder: (queryId, newName) => drive.call({ action: "rename-folder", queryId, newName }),
     // Direct request: a document's own name can be changed after
     // upload, not just fixed at upload time.
-    renameFile: (documentId, newName) => drive.call({ action: "rename-file", documentId, newName }),
+    renameFile: (documentId, newName, scope) => drive.call({ action: "rename-file", documentId, newName, ...(scope ? { scope } : {}) }),
   };
 
   // Atomic doc-number serial increment -- root-cause fix for a real,

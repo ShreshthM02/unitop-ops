@@ -79,11 +79,11 @@ describe('QueryDrawerWithQuote: Info sub-tabs', () => {
     expect(timeInputs.length).toBe(6); // the new leg adds fromTime and toTime, separately
   });
 
-  it('Save button only appears after a real change (dirty tracking), and calls onUpdateTourExecution with the query id, edited data, and an audit label', () => {
+  it('Save button is always shown but disabled until a real change (dirty tracking), and calls onUpdateTourExecution with the query id, edited data, and an audit label', () => {
     const onUpdateTourExecution = vi.fn();
     render(<QueryDrawerWithQuote {...baseProps} onUpdateTourExecution={onUpdateTourExecution}/>);
     fireEvent.click(screen.getByText('Others'));
-    expect(screen.queryByText('💾 Save Others')).toBeNull(); // nothing changed yet
+    expect(screen.getByText('💾 Save Others').disabled).toBe(true); // nothing changed yet
 
     fireEvent.click(screen.getByText('+ Add Transporter'));
     fireEvent.click(screen.getByText('💾 Save Others'));

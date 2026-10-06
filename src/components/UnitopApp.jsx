@@ -26,6 +26,7 @@ import TourBriefingSheet from './TourBriefingSheet.jsx';
 import DocumentEditor from './DocumentEditor.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
 import VendorMaster from './VendorMaster.jsx';
+import FleetMaster from './FleetMaster.jsx';
 import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
@@ -564,10 +565,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     // A failed save used to be silent. The 2026-10-06 Tour Info restructure
     // stores new fields in a new `extras` column, so if the migration hasn't
     // been run yet this is exactly where it would show up.
-    saveTourExecutionToDB(db, data).then(res => {
+    const result = saveTourExecutionToDB(db, data).then(res => {
       if (res && res.error) showToast("Tour Info could not be saved to the database. If this keeps happening, the latest database migration may not have been run yet.", "error");
+      else showToast("Tour Info saved");
+      return res;
     });
     if (auditAction) db.from("query_audit").insert({ query_id: queryId, by_name: currentUser.name, action: auditAction });
+    return result; // the drawer's Save bar shows saved / failed from this
   };
 
   // Was referenced by QueryDrawerWithQuote's "Save Changes" button but never
@@ -842,7 +846,6 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Work",items:[
       {id:"queries",      icon:"✉", label:"All Queries"},
       {id:"tourfiles",    icon:"📁",label:"Tour Files"},
-      {id:"series",       icon:"🔁",label:"Series"},
       {id:"cancelled",    icon:"✕", label:"Cancelled"},
       {id:"completed",    icon:"✅",label:"Completed"},
       {id:"team",         icon:"◎", label:"Team"},
@@ -851,6 +854,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     {section:"Master Data",items:[
       {id:"agents",       icon:"🌐",label:"Agents / Clients"},
       {id:"vendors",      icon:"🏢",label:"Vendors"},
+      {id:"fleet",        icon:"🚌",label:"Fleet"},
+      {id:"series",       icon:"🔁",label:"Series"},
     ]},
     {section:"Finance",items:[
       {id:"invoices",     icon:"🧾",label:"Invoices"},
@@ -865,7 +870,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     ]}]:[]),
   ];
 
-  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library",maintenance:"Maintenance"};
+  const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",fleet:"Fleet",series:"Series",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library",maintenance:"Maintenance"};
   const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showSeries||showVendors||showTourBrief||showEditor;
 
   const DocButtons = ({q,stopProp=false}) => (
@@ -992,6 +997,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
             {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}} initialSelectedId={focusAgentId}/>}
             {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}} initialSelectedId={focusVendorId}/>}
+            {view==="fleet" && <FleetMaster asTab currentUser={currentUser} onClose={()=>{}}/>}
 
             {view==="cancelled" && (
               <div>

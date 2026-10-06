@@ -206,3 +206,48 @@ export function OtherServicesPanel({ services, onChange, query, readOnly }) {
     </div>
   );
 }
+
+// ── Vendor picker with a "write your own" option ───────────────────────────
+// A row is either linked to a Master Data vendor (vendorId) or carries a
+// typed one-off name (customName) for someone not in the vendor list. An
+// empty-string customName with no vendorId means "custom, not typed yet".
+export const CUSTOM_VENDOR = "__custom__";
+export function VendorOrCustomSelect({ entry, vendorOptions, onChange, ariaLabel = "Vendor" }) {
+  const isCustom = !entry.vendorId && typeof entry.customName === "string";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <select aria-label={ariaLabel} style={inputStyle} value={isCustom ? CUSTOM_VENDOR : (entry.vendorId || "")}
+        onChange={e => {
+          const v = e.target.value;
+          if (v === CUSTOM_VENDOR) onChange({ vendorId: "", customName: entry.customName || "" });
+          else onChange({ vendorId: v, customName: undefined });
+        }}>
+        <option value="">Select...</option>
+        {vendorOptions.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+        <option value={CUSTOM_VENDOR}>✍ Other (write a name)…</option>
+      </select>
+      {isCustom && (
+        <input style={inputStyle} aria-label="Custom name" placeholder="Type the name" value={entry.customName || ""}
+          onChange={e => onChange({ customName: e.target.value })} />
+      )}
+    </div>
+  );
+}
+
+// ── Save bar for the Tour Info tabs ────────────────────────────────────────
+// Always visible (the old button only appeared once something changed, which
+// read as "there is no save"). Disabled until there is something to save, and
+// says plainly whether the last save went through.
+export function TourInfoSaveBar({ dirty, saving, status, onSave, label = "Save", readOnly }) {
+  if (readOnly) return null;
+  const note = saving ? "Saving…"
+    : dirty ? "Unsaved changes"
+    : status === "error" ? "Last save failed — try again"
+    : status === "saved" ? "✓ All changes saved" : "";
+  return (
+    <div style={{ position: "sticky", bottom: 0, background: G.white, borderTop: `1px solid ${G.gray100}`, padding: "8px 0", marginTop: 8, display: "flex", alignItems: "center", gap: 10, zIndex: 2 }}>
+      <button className="btn btn-primary" style={{ fontSize: 12, flex: 1 }} disabled={!dirty || saving} onClick={onSave}>💾 {label}</button>
+      <span role="status" style={{ fontSize: 10.5, whiteSpace: "nowrap", color: dirty ? "#B7791F" : status === "error" ? "#C0392B" : "#196F3D" }}>{note}</span>
+    </div>
+  );
+}

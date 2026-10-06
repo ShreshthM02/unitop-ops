@@ -22,7 +22,7 @@ export const USER_MANUAL_SECTIONS = [
         <li><strong>Kanban Board</strong> -- every active query as a card, grouped by stage.</li>
         <li><strong>All Queries / Tour Files / Cancelled / Completed</strong> -- full lists, filterable.</li>
         <li><strong>Team Chat</strong> -- direct messages, group chats, and your own notifications, in one place.</li>
-        <li><strong>Agents & Clients, Vendors, Series</strong> -- your master data.</li>
+        <li><strong>Agents & Clients, Vendors, Fleet, Series</strong> -- your master data.</li>
         <li><strong>Tour Calendar</strong> -- Gantt view, Ground View, and Movement Chart.</li>
         <li><strong>Invoices, Payments</strong> -- the money side.</li>
         <li><strong>Reports</strong> -- every report the business regularly needs, in one repository.</li>
@@ -65,7 +65,7 @@ export const USER_MANUAL_SECTIONS = [
       <h3>3.2 Quotation</h3>
       <p>Generated from the Cost Sheet's final version, priced with your own margin -- raw supplier numbers are never shown to the client. If the Cost Sheet changes afterward, you'll see a banner offering to "pull latest" -- nothing is ever silently overwritten.</p>
       <h3>3.3 Tour Info (Tour Execution)</h3>
-      <p>The real operational plan for a Tour File. Day-wise Itinerary holds each day's route and notes (rows can be dragged, or moved with the arrows, to reorder). Hotels + Meals holds one row per hotel stay -- day, date, hotel, rooming, breakfast, lunch and dinner -- and syncs hotels and meals from the Quotation marked final (add more rows when a group uses more than one hotel in a day). Others holds Transporters, Tour Facilitators, Local Handlers, train/flight legs, the arrival and departure legs, and any Other Services with a rich-text description. Every operational document (Tour Briefing Sheet, Movement Chart, Ground View) reads from this -- keep it accurate.</p>
+      <p>The real operational plan for a Tour File. Day-wise Itinerary holds each day's route and notes (rows can be dragged, or moved with the arrows, to reorder). Hotels + Meals holds one row per hotel stay -- day, date, hotel, rooming, breakfast, lunch and dinner -- and syncs hotels and meals from the Quotation marked final (add more rows when a group uses more than one hotel in a day). Others holds Transporters, Tour Facilitators, Local Handlers, train/flight legs, the arrival and departure legs, and any Other Services with a rich-text description. Each tab has its own Save button at the bottom (it lights up when something has changed); a transporter, facilitator or local handler can be picked from Vendors or written in as a custom name. Every operational document (Tour Briefing Sheet, Movement Chart, Ground View) reads from this -- keep it accurate.</p>
       <p>Each service needs a <strong>start and end date</strong>: that is what puts it on the Ground View calendar for the right days. A service with no dates does not appear there.</p>
     `
   },
@@ -102,6 +102,7 @@ export const USER_MANUAL_SECTIONS = [
     html: `
       <p><strong>Agents & Clients</strong> -- link a new query to a real agent record rather than retyping details, so Search can instantly show every tour that agent has sent you.</p>
       <p><strong>Vendors</strong> -- every hotel, transporter, and facilitator, including contracted rates. Each vendor's page shows their full ledger and every Exchange Order ever issued to them.</p>
+      <p><strong>Fleet</strong> -- our own vehicles. Each vehicle has a Profile (name, owner, registration number and date, model, colour, passenger capacity), a Service History you add by hand (tour file number, start and end date, sector, notes), an Expense Ledger (date, particulars, amount in INR, notes) with a total you can narrow by date range, and Documents, which are uploaded to Google Drive into a folder named after the vehicle.</p>
       <p><strong>Series</strong> -- groups repeated departures of the same fixed tour running on multiple dates through a season.</p>
     `
   },

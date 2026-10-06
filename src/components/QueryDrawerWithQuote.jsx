@@ -5,7 +5,7 @@ const { rowMatchesDay, getHotelRows, reorderItineraryDays, pickQuotationSourceVe
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
-import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder } from './TourInfoPanels.jsx';
+import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder, VendorOrCustomSelect, TourInfoSaveBar } from './TourInfoPanels.jsx';
 
 export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
@@ -40,7 +40,19 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const [te, setTe] = useState(tourExecution || blankTE);
   useEffect(() => { setTe(tourExecution || blankTE); }, [query.id]); // resync working copy if the drawer is opened for a different tour
   const teDirty = JSON.stringify(te) !== JSON.stringify(tourExecution || blankTE);
-  const saveTE = (label) => onUpdateTourExecution && onUpdateTourExecution(query.id, te, label);
+  // Always-visible Save on the Tour Info tabs. The parent's save returns a
+  // promise of {error}; the bar shows saved / failed rather than guessing.
+  const [teSaving, setTeSaving] = useState(false);
+  const [teSaveStatus, setTeSaveStatus] = useState(null);
+  const saveTE = async (label) => {
+    if (!onUpdateTourExecution) return;
+    setTeSaving(true);
+    try {
+      const res = await onUpdateTourExecution(query.id, te, label);
+      setTeSaveStatus(res && res.error ? "error" : "saved");
+    } catch (e) { setTeSaveStatus("error"); }
+    setTeSaving(false);
+  };
   const setTeField = (k, v) => setTe(p => ({ ...p, [k]: v }));
   const updDay = (i, f, v) => setTe(p => ({ ...p, days: p.days.map((d, xi) => xi === i ? { ...d, [f]: v } : d) }));
   const addDay = () => setTe(p => ({ ...p, days: [...p.days, { id: Date.now(), dayLabel: `Day ${p.days.length + 1}`, date: "", route: "", notes: "" }] }));
@@ -501,7 +513,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                   ))}
                   <button className="btn btn-ghost" style={{fontSize:11,marginBottom:10}} onClick={addDay}>+ Add Day</button>
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated day-wise itinerary")}>💾 Save Itinerary</button>}
+                  <TourInfoSaveBar dirty={teDirty} saving={teSaving} status={teSaveStatus} readOnly={query.cancelled} label="Save Itinerary" onSave={()=>saveTE("Updated day-wise itinerary")}/>
                 </fieldset>
               )}
 
@@ -509,7 +521,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                 <fieldset disabled={query.cancelled} style={{border:"none",margin:0,padding:0,minWidth:0}}>
                   {sec("Hotels + Meals")}
                   <HotelsMealsPanel te={te} onChange={setHotelRows} quotationSource={quotationSource} onSync={syncFromQuotation} readOnly={query.cancelled}/>
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%",marginTop:4}} onClick={()=>saveTE("Updated hotels + meals")}>💾 Save Hotels + Meals</button>}
+                  <TourInfoSaveBar dirty={teDirty} saving={teSaving} status={teSaveStatus} readOnly={query.cancelled} label="Save Hotels + Meals" onSave={()=>saveTE("Updated hotels + meals")}/>
                 </fieldset>
               )}
 
@@ -523,10 +535,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   {te.transporters.map((t,i)=>(
                     <div key={t.id} style={{marginBottom:8}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6}}>
-                      <select style={teInp} value={t.vendorId||""} onChange={e=>updList("transporters",i,"vendorId",e.target.value)}>
-                        <option value="">Select...</option>
-                        {activeTransportVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-                      </select>
+                      <VendorOrCustomSelect entry={t} vendorOptions={activeTransportVendors} onChange={patch=>updListMany("transporters",i,patch)}/>
                       <input style={teInp} value={t.sector||""} placeholder="Sector" onChange={e=>updList("transporters",i,"sector",e.target.value)}/>
                       <input style={teInp} value={t.notes||""} placeholder="Notes (vehicle count, type, etc.)" onChange={e=>updList("transporters",i,"notes",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("transporters",i)}>✕</span>}
@@ -541,10 +550,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   {te.facilitators.map((f,i)=>(
                     <div key={f.id} style={{marginBottom:8}}>
                     <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6}}>
-                      <select style={teInp} value={f.vendorId||""} onChange={e=>updList("facilitators",i,"vendorId",e.target.value)}>
-                        <option value="">Select...</option>
-                        {activeFacilitatorVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-                      </select>
+                      <VendorOrCustomSelect entry={f} vendorOptions={activeFacilitatorVendors} onChange={patch=>updListMany("facilitators",i,patch)}/>
                       <input style={teInp} value={f.sector||""} placeholder="Sector (optional)" onChange={e=>updList("facilitators",i,"sector",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("facilitators",i)}>✕</span>}
                     </div>
@@ -558,10 +564,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   {te.localHandlers.map((h,i)=>(
                     <div key={h.id} style={{marginBottom:8}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1.5fr auto",gap:6}}>
-                      <select style={teInp} value={h.vendorId||""} onChange={e=>updList("localHandlers",i,"vendorId",e.target.value)}>
-                        <option value="">Select...</option>
-                        {activeLocalHandlerVendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-                      </select>
+                      <VendorOrCustomSelect entry={h} vendorOptions={activeLocalHandlerVendors} onChange={patch=>updListMany("localHandlers",i,patch)}/>
                       <input style={teInp} value={h.sector||""} placeholder="Sector" onChange={e=>updList("localHandlers",i,"sector",e.target.value)}/>
                       <input style={teInp} value={h.notes||""} placeholder="Notes" onChange={e=>updList("localHandlers",i,"notes",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmFromList("localHandlers",i)}>✕</span>}
@@ -606,7 +609,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   {sec("Other Services")}
                   <OtherServicesPanel services={te.otherServices} onChange={list=>setTeField("otherServices",list)} query={query} readOnly={query.cancelled}/>
 
-                  {teDirty && <button className="btn btn-primary" style={{fontSize:12,width:"100%"}} onClick={()=>saveTE("Updated transporter/facilitators/handlers/flights/other services")}>💾 Save Others</button>}
+                  <TourInfoSaveBar dirty={teDirty} saving={teSaving} status={teSaveStatus} readOnly={query.cancelled} label="Save Others" onSave={()=>saveTE("Updated transporter/facilitators/handlers/flights/other services")}/>
                 </fieldset>
               )}
             </div>

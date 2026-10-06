@@ -163,8 +163,8 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
         queries.filter(q=>!q.cancelled).forEach(q => {
           const facilitators = tourExecutions?.[q.id]?.facilitators || [];
           facilitators.forEach(f => {
-            if (!f.vendorId) return; // skip rows where no facilitator was actually assigned yet
-            const vendor = (vendors||[]).find(v=>v.id===f.vendorId);
+            const facName = Lib.entryServiceName(f, vendors);
+            if (!facName) return; // skip rows where no facilitator was actually assigned yet (vendor or typed name)
             // {Arrival Date} - {Departure Date} in dd/mm/yyyy, and Days
             // computed from those same two dates -- not the separately
             // hand-entered `nights` field, which can drift out of sync
@@ -186,7 +186,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
               travelDateDisplay = q.travelMonth;
             }
             rows.push({
-              "Facilitator": vendor?.name || "Unknown",
+              "Facilitator": facName,
               "Tour File": q.tourFileId || q.id,
               "Group / Client": q.groupName || q.clientName || "—",
               "Sector": f.sector || q.destination || q.sector || "—",

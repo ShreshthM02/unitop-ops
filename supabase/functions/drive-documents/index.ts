@@ -88,6 +88,34 @@ async function ensureFolder(accessToken, supabase, queryId, folderName) {
   return { folderId: data.id };
 }
 
+// Fleet vehicles get their own Drive folder, named exactly after the vehicle,
+// under the same root folder. The folder id is kept on the vehicle row.
+async function ensureVehicleFolder(accessToken, supabase, vehicleId, folderName) {
+  const { data: rows } = await supabase.from("fleet_vehicles").select("drive_folder_id").eq("id", vehicleId);
+  if (!rows || rows.length === 0) return { error: "Vehicle not found" };
+  const existing = rows[0].drive_folder_id;
+  if (existing) return { folderId: existing };
+
+  const rootFolderId = Deno.env.get("GOOGLE_DRIVE_ROOT_FOLDER_ID")?.trim();
+  const { ok, data } = await driveFetch("files", accessToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: rootFolderId ? [rootFolderId] : undefined,
+    }),
+  });
+  if (!ok) return { error: `Could not create Drive folder: ${data.error?.message || "unknown error"}` };
+
+  await supabase.from("fleet_vehicles").update({ drive_folder_id: data.id }).eq("id", vehicleId);
+  return { folderId: data.id };
+}
+
+// "fleet" scope reads/writes fleet_documents; everything else keeps using
+// query_documents exactly as before.
+const docsTable = (scope) => (scope === "fleet" ? "fleet_documents" : "query_documents");
+
 Deno.serve(async (req) => {
   const cors = {
     "Access-Control-Allow-Origin": "*",
@@ -112,10 +140,13 @@ Deno.serve(async (req) => {
     if (authError) return json({ success: false, error: authError }, 500);
 
     if (action === "upload") {
-      const { queryId, folderName, fileName, mimeType, fileBase64 } = body;
-      if (!queryId || !fileName || !fileBase64) return json({ success: false, error: "Missing required fields" }, 400);
+      const { queryId, vehicleId, scope, folderName, fileName, mimeType, fileBase64 } = body;
+      const isFleet = scope === "fleet";
+      if ((isFleet ? !vehicleId : !queryId) || !fileName || !fileBase64) return json({ success: false, error: "Missing required fields" }, 400);
 
-      const { folderId, error: folderError } = await ensureFolder(accessToken, supabase, queryId, folderName || queryId);
+      const { folderId, error: folderError } = isFleet
+        ? await ensureVehicleFolder(accessToken, supabase, vehicleId, folderName || "Vehicle")
+        : await ensureFolder(accessToken, supabase, queryId, folderName || queryId);
       if (folderError) return json({ success: false, error: folderError }, 500);
 
       const fileBytes = Uint8Array.from(atob(fileBase64), c => c.charCodeAt(0));
@@ -143,10 +174,11 @@ Deno.serve(async (req) => {
       // Real, viewable link -- anyone with access to the folder (i.e.
       // whoever this Drive account shares it with) can open it;
       // webViewLink is the correct one to store, not a raw file id.
-      const { data: inserted, error: insertError } = await supabase.from("query_documents").insert({
-        query_id: queryId, drive_file_id: uploadData.id, file_name: fileName, file_type: mimeType,
+      const { data: inserted, error: insertError } = await supabase.from(docsTable(scope)).insert({
+        ...(isFleet ? { vehicle_id: vehicleId } : { query_id: queryId }),
+        drive_file_id: uploadData.id, file_name: fileName, file_type: mimeType,
         file_size: fileBytes.length, drive_view_link: uploadData.webViewLink,
-        uploaded_by: staffMember.id, uploaded_by_name: staffMember.name,
+        uploaded_by: String(staffMember.id), uploaded_by_name: staffMember.name,
       }).select();
       if (insertError) return json({ success: false, error: `Uploaded to Drive but failed to record it: ${insertError.message}` }, 500);
 
@@ -154,9 +186,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "delete") {
-      const { documentId } = body;
+      const { documentId, scope } = body;
       if (!documentId) return json({ success: false, error: "Missing documentId" }, 400);
-      const { data: docRows } = await supabase.from("query_documents").select("*").eq("id", documentId);
+      const { data: docRows } = await supabase.from(docsTable(scope)).select("*").eq("id", documentId);
       const doc = docRows && docRows[0];
       if (!doc) return json({ success: false, error: "Document not found" }, 404);
 
@@ -166,7 +198,7 @@ Deno.serve(async (req) => {
       // pointing at nothing.
       if (!ok && data.error?.code !== 404) return json({ success: false, error: `Could not delete from Drive: ${data.error?.message || "unknown error"}` }, 500);
 
-      await supabase.from("query_documents").delete().eq("id", documentId);
+      await supabase.from(docsTable(scope)).delete().eq("id", documentId);
       return json({ success: true });
     }
 
@@ -177,9 +209,9 @@ Deno.serve(async (req) => {
     // side succeeds but the DB update somehow fails, that's reported
     // back explicitly rather than silently leaving them out of sync.
     if (action === "rename-file") {
-      const { documentId, newName } = body;
+      const { documentId, newName, scope } = body;
       if (!documentId || !newName || !newName.trim()) return json({ success: false, error: "Missing documentId or newName" }, 400);
-      const { data: docRows } = await supabase.from("query_documents").select("*").eq("id", documentId);
+      const { data: docRows } = await supabase.from(docsTable(scope)).select("*").eq("id", documentId);
       const doc = docRows && docRows[0];
       if (!doc) return json({ success: false, error: "Document not found" }, 404);
 
@@ -190,11 +222,26 @@ Deno.serve(async (req) => {
       });
       if (!ok) return json({ success: false, error: `Could not rename file in Drive: ${data.error?.message || "unknown error"}` }, 500);
 
-      const { data: updated, error: updateError } = await supabase.from("query_documents")
+      const { data: updated, error: updateError } = await supabase.from(docsTable(scope))
         .update({ file_name: newName.trim() }).eq("id", documentId).select();
       if (updateError) return json({ success: false, error: `Renamed in Drive but failed to update our own record: ${updateError.message}` }, 500);
 
       return json({ success: true, document: updated[0] });
+    }
+
+    if (action === "rename-folder" && body.scope === "fleet") {
+      const { vehicleId, newName } = body;
+      if (!vehicleId || !newName) return json({ success: false, error: "Missing vehicleId or newName" }, 400);
+      const { data: rows } = await supabase.from("fleet_vehicles").select("drive_folder_id").eq("id", vehicleId);
+      const folderId = rows && rows[0] && rows[0].drive_folder_id;
+      if (!folderId) return json({ success: true, skipped: "No Drive folder exists yet for this vehicle" });
+      const { ok, data } = await driveFetch(`files/${folderId}`, accessToken, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!ok) return json({ success: false, error: `Could not rename Drive folder: ${data.error?.message || "unknown error"}` }, 500);
+      return json({ success: true });
     }
 
     if (action === "rename-folder") {

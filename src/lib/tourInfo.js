@@ -294,14 +294,25 @@ export function richHtmlHasContent(html) {
   return !!String(html || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
 }
 
+// ── Vendor or custom name ──────────────────────────────────────────────────
+// A transporter / facilitator / local handler row is either linked to a
+// vendor in Master Data (vendorId) or carries a one-off typed name
+// (customName) for someone who isn't in the vendor list. Every place that
+// shows a service name goes through this one function.
+export function entryServiceName(entry, vendors) {
+  if (!entry) return "";
+  const v = entry.vendorId ? (vendors || []).find(x => x.id === entry.vendorId) : null;
+  if (v?.name) return v.name;
+  return String(entry.customName || "").trim();
+}
+
 // ── Everything on the ground on one date ───────────────────────────────────
 // The "all Tour Info goes to Ground View according to dates" rule, in one
 // place. `te` is a tour_execution record, `vendors` the vendor list.
 export function getServicesForDate(te, vendors, dateStr) {
-  const vname = (id) => (vendors || []).find(v => v.id === id)?.name || "";
   const vendorEntries = (list) => (list || [])
-    .filter(e => e.vendorId && serviceActiveOnDate(e, dateStr))
-    .map(e => ({ name: vname(e.vendorId), sector: e.sector || "", notes: e.notes || "" }))
+    .filter(e => serviceActiveOnDate(e, dateStr))
+    .map(e => ({ name: entryServiceName(e, vendors), sector: e.sector || "", notes: e.notes || "" }))
     .filter(e => e.name);
   const legOn = (leg) => (isLegFilled(leg) && leg.date === dateStr ? leg : null);
   return {

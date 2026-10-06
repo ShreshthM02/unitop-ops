@@ -34,6 +34,10 @@ const EXPORT_TABLES = [
   { table: "agents", sheet: "Agents & Clients" },
   { table: "vendors", sheet: "Vendors" },
   { table: "series", sheet: "Series" },
+  { table: "fleet_vehicles", sheet: "Fleet Vehicles" },
+  { table: "fleet_service_history", sheet: "Fleet Service History" },
+  { table: "fleet_expenses", sheet: "Fleet Expenses" },
+  { table: "fleet_documents", sheet: "Fleet Documents" },
   { table: "query_audit", sheet: "Audit Trail" },
   { table: "query_remarks", sheet: "Discussion" },
 ];
