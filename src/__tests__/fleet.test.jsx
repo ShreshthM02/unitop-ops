@@ -214,6 +214,19 @@ describe('FleetMaster', () => {
     await waitFor(() => expect(screen.queryByText('Insurance.pdf')).toBeNull());
   });
 
+  it('documents: each file takes an optional rich-text remark that is saved and shown', async () => {
+    db.drive = { setRemarks: vi.fn(async () => ({ success: true })) };
+    await open(); await pick('Documents');
+    await screen.findByText('RC.pdf');
+    fireEvent.click(screen.getByLabelText('Add remark for RC.pdf'));
+    const editor = document.querySelector('[data-testid="file-remark-editor"] [contenteditable="true"]');
+    editor.innerHTML = 'Valid till <b>2027</b>';
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByText('Save remark'));
+    await waitFor(() => expect(db.drive.setRemarks).toHaveBeenCalledWith(expect.any(String), 'Valid till <b>2027</b>', 'fleet'));
+    await waitFor(() => expect(screen.getByTestId('file-remark').querySelector('b').textContent).toBe('2027'));
+  });
+
   it('shows the upload error instead of failing silently', async () => {
     db.drive = { uploadFleet: vi.fn(async () => ({ success: false, error: 'Google Drive is not configured yet' })) };
     await open(); await pick('Documents');

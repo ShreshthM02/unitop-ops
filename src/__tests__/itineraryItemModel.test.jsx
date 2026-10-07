@@ -412,3 +412,14 @@ describe('regression: remarks icon is now an info glyph, not a pencil -- a remar
     expect(ICON_PATHS.pencil).toContain('cx="12" cy="7.5"'); // the info dot
   });
 });
+
+describe('Brief transport line shows the flight/train number', () => {
+  it('puts the number before the dep/arr times', () => {
+    const html = itineraryItemHTML({ type: 'transport', mode: 'flight', text: 'Delhi – Varanasi', number: '6E 204', depTime: '06:40', arrTime: '08:30' }, 'brief');
+    expect(html).toContain('(6E 204 · Dep 06:40 · Arr 08:30)');
+  });
+  it('shows the number alone when there are no times, and nothing extra without one', () => {
+    expect(itineraryItemHTML({ type: 'transport', mode: 'train', text: 'Delhi – Gaya', number: '12398' }, 'brief')).toContain('(12398)');
+    expect(itineraryItemHTML({ type: 'transport', mode: 'train', text: 'Delhi – Gaya' }, 'brief')).not.toContain('()');
+  });
+});

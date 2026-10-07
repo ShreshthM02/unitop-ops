@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash,
+const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash, FileRemark,
   FLEET_PROFILE_FIELDS, blankVehicle, loadFleetVehicles, saveFleetVehicle, loadFleetRows, saveFleetRow, deleteFleetRow,
   mapDbFleetServiceRow, fleetServiceRowToDb, mapDbFleetExpenseRow, fleetExpenseRowToDb, newFleetId, vehicleFolderName,
   filterExpensesByRange, totalExpenses, formatINR, sortByDateDesc, validateServiceRow, validateExpenseRow } = Lib;
@@ -253,7 +253,8 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
       {loading ? <div style={{ fontSize: 12, color: G.gray400 }}>Loading…</div>
         : docs.length === 0 ? <div style={{ fontSize: 12, color: G.gray400 }}>No documents uploaded yet.</div>
         : docs.map(d => (
-          <div key={d.id} data-testid="fleet-doc" style={{ display: "flex", alignItems: "center", gap: 10, background: G.gray50, borderRadius: 6, padding: "8px 12px", marginBottom: 4 }}>
+          <div key={d.id} data-testid="fleet-doc" style={{ background: G.gray50, borderRadius: 6, padding: "8px 12px", marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{d.file_type?.startsWith("image/") ? "🖼" : d.file_type === "application/pdf" ? "📕" : "📄"}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               {renamingId === d.id ? (
@@ -273,6 +274,14 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
               <div style={{ fontSize: 10.5, color: G.gray400 }}>{[humanSize(d.file_size), d.uploaded_by_name && `by ${d.uploaded_by_name}`, d.created_at && new Date(d.created_at).toLocaleDateString("en-IN")].filter(Boolean).join(" · ")}</div>
             </div>
             {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} disabled={busyId === d.id} onClick={() => remove(d)}>{busyId === d.id ? "…" : "Delete"}</button>}
+          </div>
+          <div style={{ marginLeft: 26 }}>
+            <FileRemark doc={d} G={G} canEdit={canEdit} onSave={async (html) => {
+              const res = await db.drive.setRemarks(d.id, html, "fleet");
+              if (res && res.success) setDocs(p => p.map(x => x.id === d.id ? { ...x, remarks: html || null } : x));
+              return res;
+            }} />
+          </div>
           </div>
         ))}
     </div>

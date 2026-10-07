@@ -548,6 +548,8 @@ export const _supa = (() => {
     renameFolder: (queryId, newName) => drive.call({ action: "rename-folder", queryId, newName }),
     // Direct request: a document's own name can be changed after
     // upload, not just fixed at upload time.
+    // Optional rich-text remark on an uploaded file (HTML string; "" clears it).
+    setRemarks: (documentId, remarks, scope) => drive.call({ action: "set-remarks", documentId, remarks, ...(scope ? { scope } : {}) }),
     renameFile: (documentId, newName, scope) => drive.call({ action: "rename-file", documentId, newName, ...(scope ? { scope } : {}) }),
   };
 

@@ -15,6 +15,7 @@ export * from './placeResolver.js';
 export * from './gazetteerQuery.js';
 export * from './PlacePicker.jsx';
 export * from './PhotoPicker.jsx';
+export * from './FileRemark.jsx';
 export * from './Mentions.jsx';
 export * from './PnLExport.jsx';
 export * from './DayPlacesEditor.jsx';

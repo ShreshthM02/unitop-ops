@@ -3120,7 +3120,7 @@ export function itineraryItemHTML(item, flavor = "brief") {
       return text ? row("pin", null, text) + noteLine(item, flavor) : "";
     case "transport": {
       if (!text) return "";
-      const times = [item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ");
+      const times = [(item.number || "").trim(), item.depTime && `Dep ${item.depTime}`, item.arrTime && `Arr ${item.arrTime}`].filter(Boolean).join(" · ");
       const body = `${text}${times ? ` <span style="color:#888">(${times})</span>` : ""}`;
       return row(item.mode === "train" ? "train" : "plane", item.mode, body) + noteLine(item, flavor);
     }

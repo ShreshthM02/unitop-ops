@@ -117,3 +117,23 @@ describe('DocRegistryInline: renaming an uploaded document', () => {
     vi.doUnmock('../lib/supabase.js');
   });
 });
+
+describe('DocRegistryInline: per-file remark', () => {
+  it('adds a remark to an uploaded document through db.drive.setRemarks', async () => {
+    const setRemarks = vi.fn(async () => ({ success: true }));
+    const db = makeDb({ documents: [baseDoc] });
+    db.drive.setRemarks = setRemarks;
+    vi.doMock('../lib/supabase.js', () => ({ db, realtimeClient: null }));
+    vi.resetModules();
+    const { DocRegistryInline } = await import('../components/DocumentRegistry.jsx');
+    render(<DocRegistryInline queryId="q1" tourFileId={null} groupName="Test Group" currentUser={{name:'Priya'}}/>);
+    await waitFor(() => expect(screen.getByText('Passport Scan.pdf')).toBeTruthy());
+    fireEvent.click(screen.getByLabelText('Add remark for Passport Scan.pdf'));
+    const ed = document.querySelector('[data-testid="file-remark-editor"] [contenteditable="true"]');
+    ed.innerHTML = 'Original seen'; fireEvent.input(ed);
+    fireEvent.click(screen.getByText('Save remark'));
+    await waitFor(() => expect(setRemarks).toHaveBeenCalledWith('d1', 'Original seen'));
+    await waitFor(() => expect(screen.getByTestId('file-remark').textContent).toContain('Original seen'));
+    vi.doUnmock('../lib/supabase.js');
+  });
+});

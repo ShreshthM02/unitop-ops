@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, db, formatDateSlash, defaultResizeImage, logAudit } = Lib;
+const { G, db, formatDateSlash, defaultResizeImage, logAudit, FileRemark } = Lib;
 
 // Real Google Drive document upload -- replaces the old "log a paper
 // document + optionally paste a Drive link" placeholder that was
@@ -139,7 +139,8 @@ export function DocRegistryInline({ queryId, tourFileId, groupName, clientName, 
       ) : docs.length === 0 ? (
         <div style={{ textAlign: "center", padding: "20px 0", color: G.gray400, fontSize: 12 }}>No documents uploaded yet</div>
       ) : docs.map(d => (
-        <div key={d.id} style={{ background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 7, padding: "9px 12px", marginBottom: 7, display: "flex", alignItems: "center", gap: 10 }}>
+        <div key={d.id} style={{ background: G.white, border: `1px solid ${G.gray200}`, borderRadius: 7, padding: "9px 12px", marginBottom: 7 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 18, flexShrink: 0 }}>{fileIcon(d.file_type)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             {renamingId === d.id ? (
@@ -177,6 +178,14 @@ export function DocRegistryInline({ queryId, tourFileId, groupName, clientName, 
             style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: "1px solid #FECACA", background: "#FFF5F5", color: "#C0392B", cursor: "pointer", fontFamily: "'Inter',sans-serif", flexShrink: 0 }}>
             {deletingId === d.id ? "…" : "Delete"}
           </button>
+        </div>
+        <div style={{ marginLeft: 28 }}>
+          <FileRemark doc={d} G={G} canEdit={!readOnly} onSave={async (html) => {
+            const res = await db.drive.setRemarks(d.id, html);
+            if (res && res.success) setDocs(prev => prev.map(x => x.id === d.id ? { ...x, remarks: html || null } : x));
+            return res;
+          }} />
+        </div>
         </div>
       ))}
     </fieldset>

@@ -229,6 +229,19 @@ Deno.serve(async (req) => {
       return json({ success: true, document: updated[0] });
     }
 
+    // Optional rich-text remark on an uploaded file. Only our own record
+    // changes (nothing in Drive), so no Drive call is made.
+    if (action === "set-remarks") {
+      const { documentId, scope } = body;
+      const remarks = typeof body.remarks === "string" ? body.remarks : "";
+      if (!documentId) return json({ success: false, error: "Missing documentId" }, 400);
+      const { data: updated, error: updateError } = await supabase.from(docsTable(scope))
+        .update({ remarks: remarks.trim() ? remarks : null }).eq("id", documentId).select();
+      if (updateError) return json({ success: false, error: `Could not save remark: ${updateError.message}` }, 500);
+      if (!updated || !updated[0]) return json({ success: false, error: "Document not found" }, 404);
+      return json({ success: true, document: updated[0] });
+    }
+
     if (action === "rename-folder" && body.scope === "fleet") {
       const { vehicleId, newName } = body;
       if (!vehicleId || !newName) return json({ success: false, error: "Missing vehicleId or newName" }, 400);
