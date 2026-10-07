@@ -331,43 +331,26 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       </div>
       <div style="flex:0 0 1pt;align-self:stretch;background:#E5E7EB;min-height:20pt"></div>`;
 
-    // Routes are extracted from the flat item list and shown as their own
-    // headline-style line(s), matching the brochure's own established
-    // pattern exactly (routesOf/leadRouteOf in brochure.js) -- both
-    // flavours follow the same design now, per direct request. Same
-    // reasoning as there: a real day often has more than one leg, so only
-    // the FIRST route is ever promoted to stand in for a missing title;
-    // the rest stay at the smaller label style regardless.
-    const routes = (d.items || []).filter(it => it.type === "route" && ((it.text || "").trim() || it.distance || it.time));
+    // Routes are ordinary items now, in the order entered, with the same
+    // treatment as sightseeing and transport (matching the brochure). The
+    // day header carries only the optional date and the title.
+    const dateText = formatDayDate(d.date);
     const hasTitle = !!(d.title && d.title.trim());
-    const routeLineHTML = (r, isLead) => {
-      const meta = [r.distance, r.time].filter(Boolean).join(" · ");
-      const text = (r.text || "").trim();
-      const displayText = isLead ? text.replace(/\s+[-–—]\s+/g, " \u2192 ") : text;
-      const style = isLead
-        ? "font-size:11pt;font-weight:bold;color:#8B1A1A;"
-        : "font-size:9.5pt;font-weight:600;color:#8B1A1A;letter-spacing:0.5pt;";
-      return `<div style="${style}margin-bottom:2pt">${displayText}${meta ? `<span style="color:#999;font-weight:500"> — ${meta}</span>` : ""}</div>`;
-    };
-    const leadRoute = (!hasTitle && routes.length) ? routes[0] : null;
-    const otherRoutes = leadRoute ? routes.slice(1) : routes;
-    const leadRouteHTML = leadRoute ? routeLineHTML(leadRoute, true) : "";
-    const otherRoutesHTML = otherRoutes.map(r => routeLineHTML(r, false)).join("");
-
     // Day number and title live in the header block. Individual items are
     // indented to align under the header's content column (42.5pt = the
     // rail's 30pt + its 1pt divider + the 12pt gap between them and the
     // content column), so a day that continues onto a new page still reads
     // as belonging to that day even without repeating the rail on every
     // block.
-    const header = `<div data-page-heading="1" style="display:flex;align-items:flex-start;gap:12pt;margin-bottom:${(d.title||leadRoute)?4:0}pt">
+    const header = `<div data-page-heading="1" style="display:flex;align-items:flex-start;gap:12pt;margin-bottom:${(hasTitle||dateText)?4:0}pt">
         ${rail}
-        ${d.title ? `<div style="flex:1;min-width:0;font-size:11pt;font-weight:bold;color:#1A3A52">${d.title}</div>` : `<div style="flex:1;min-width:0">${leadRouteHTML}</div>`}
+        <div style="flex:1;min-width:0">
+          ${dateText ? `<div style="font-size:8.5pt;font-weight:600;color:#6B7280;letter-spacing:0.4pt;margin-bottom:${hasTitle?1:0}pt">${dateText}</div>` : ""}
+          ${hasTitle ? `<div style="font-size:11pt;font-weight:bold;color:#1A3A52">${d.title}</div>` : ""}
+        </div>
       </div>`;
 
-    const routeBlock = otherRoutesHTML.trim() ? [`<div style="margin-left:42.5pt">${otherRoutesHTML}</div>`] : [];
-
-    const items = (d.items || []).filter(it => it.type !== "route").map(item => itineraryItemHTML(item, flavor)).filter(Boolean)
+    const items = (d.items || []).map(item => itineraryItemHTML(item, flavor)).filter(Boolean)
       .map(html => `<div style="margin-left:42.5pt">${html}</div>`);
 
     const isLastDay = i === itinDays.length - 1;
@@ -375,7 +358,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         ${mealStr ? `<div style="margin-top:6pt;text-align:${flavor === "brief" ? "left" : "right"}">${mealStr}</div>` : ""}
       </div>`;
 
-    return [header, ...routeBlock, ...items, closing];
+    return [header, ...items, closing];
   });
 
   const buildClosingBlock = (tmpl, remarks, closing, stampHTML) => `

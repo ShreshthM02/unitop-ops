@@ -454,37 +454,54 @@ describe('regression: Brief\u2019s meal pills match the brochure\u2019s quiet cr
   });
 });
 
-describe('regression: an untitled day\u2019s first route stands in as its headline, matching the brochure\u2019s own established pattern -- both flavors follow the same design now', () => {
-  it('promotes the route to headline size/position when the day has no title, in the Brief preview', async () => {
-    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
-    // Day 2, not Day 1 -- Day 1 has a default "Arrival" title pre-filled,
-    // Day 2 starts genuinely empty.
-    fireEvent.click(screen.getAllByText('+ Add Item \u25be')[1]);
+describe('Brief: routes are ordinary items (no red headline), and days can carry an optional date', () => {
+  const addRoute = (dayIdx, text) => {
+    fireEvent.click(screen.getAllByText('+ Add Item \u25be')[dayIdx]);
     fireEvent.click(screen.getByText('Route / Movement'));
     const routeInputs = screen.getAllByPlaceholderText(/Leh.*Alchi.*Leh/);
-    fireEvent.change(routeInputs[routeInputs.length - 1], { target: { value: 'Bodhgaya - Rajgir' } });
+    fireEvent.change(routeInputs[routeInputs.length - 1], { target: { value: text } });
+  };
+  const srcdoc = (container) => container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+
+  it('an untitled day shows its route as a normal item with its own text, not a red headline', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    addRoute(1, 'Bodhgaya - Rajgir');
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
-      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('Bodhgaya \u2192 Rajgir'); // arrow, headline-promoted
-      expect(doc).toContain('#8B1A1A'); // the route red
+      const doc = srcdoc(container);
+      expect(doc).toContain('Bodhgaya - Rajgir');
+      expect(doc).not.toContain('Bodhgaya \u2192 Rajgir');
+      expect(doc).not.toContain('font-weight:bold;color:#8B1A1A');
     });
   });
 
-  it('does NOT promote the route when the day already has a title -- stays a small label with its own text as typed', async () => {
+  it('a titled day keeps its route as a normal item too', async () => {
     const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
-    const titleField = screen.getAllByPlaceholderText('Day title e.g. Arrival at Delhi')[0];
-    fireEvent.change(titleField, { target: { value: 'Arrival at Bodhgaya' } });
-    fireEvent.click(screen.getAllByText('+ Add Item \u25be')[0]);
-    fireEvent.click(screen.getByText('Route / Movement'));
-    const routeInputs = screen.getAllByPlaceholderText(/Leh.*Alchi.*Leh/);
-    fireEvent.change(routeInputs[routeInputs.length - 1], { target: { value: 'Bodhgaya - Rajgir' } });
+    addRoute(0, 'Bodhgaya - Rajgir');
     fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
     await waitFor(() => {
-      const doc = container.querySelector('iframe')?.getAttribute('srcdoc') || '';
-      expect(doc).toContain('Bodhgaya - Rajgir'); // untouched, plain hyphen
-      expect(doc).not.toContain('Bodhgaya \u2192 Rajgir');
+      const doc = srcdoc(container);
+      expect(doc).toContain('Bodhgaya - Rajgir');
+      expect(doc).not.toContain('letter-spacing:0.5pt;margin-bottom:2pt');
     });
+  });
+
+  it('a date picked for a day prints above its title as "Wed, 14/10/2026"', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.change(screen.getByLabelText('Date for day 1'), { target: { value: '2026-10-14' } });
+    expect(screen.getByText(/Shows as Wed, 14\/10\/2026/)).toBeTruthy();
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => {
+      const doc = srcdoc(container);
+      expect(doc).toContain('Wed, 14/10/2026');
+      expect(doc.indexOf('Wed, 14/10/2026')).toBeLessThan(doc.indexOf('Arrival'));
+    });
+  });
+
+  it('days without a date show none', async () => {
+    const { container } = render(<Itinerary query={fakeQuery} onClose={()=>{}}/>);
+    fireEvent.click(screen.getByText('\ud83d\udc41 Preview'));
+    await waitFor(() => { expect(srcdoc(container)).not.toMatch(/\d{2}\/\d{2}\/\d{4}/); });
   });
 });
 
