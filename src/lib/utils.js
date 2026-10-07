@@ -1815,7 +1815,30 @@ export async function markMealPlanVersionFinal(db, queryId, version) {
 // the merged Itinerary.jsx document (formerly two separate components,
 // previously one shared ItineraryBuilder.jsx with a style toggle) that
 // each save into this same table, distinguished by active_tab. ────────
+// The cover photo choice has no column of its own, so it rides inside the
+// day_image_overrides jsonb under a reserved key (no schema change needed).
+// Day ids are numbers/ids, never this string, so the two can't collide, and
+// resolveDayPhotos only looks days up by id so the extra key is inert there.
+// Values: absent = auto (first photo of day one), null = deliberately none,
+// string = the chosen URL. Before this, the choice was never written to the
+// database at all, so reopening a saved itinerary always fell back to auto.
+export const COVER_OVERRIDE_KEY = "__cover";
+export function packImageOverrides(dayImageOverrides, coverImageOverride) {
+  const base = { ...(dayImageOverrides || {}) };
+  delete base[COVER_OVERRIDE_KEY];
+  if (coverImageOverride !== undefined) base[COVER_OVERRIDE_KEY] = coverImageOverride;
+  return base;
+}
+export function unpackImageOverrides(stored) {
+  const all = { ...(stored || {}) };
+  const hasCover = Object.prototype.hasOwnProperty.call(all, COVER_OVERRIDE_KEY);
+  const coverImageOverride = hasCover ? all[COVER_OVERRIDE_KEY] : undefined;
+  delete all[COVER_OVERRIDE_KEY];
+  return { dayImageOverrides: all, coverImageOverride, hasCover };
+}
+
 export function mapDbItineraryRow(row) {
+  const { dayImageOverrides, coverImageOverride, hasCover } = unpackImageOverrides(row.day_image_overrides);
   return {
     id: row.id, version: row.version, isFinal: row.is_final || false,
     date: row.updated_at ? new Date(row.updated_at).toLocaleString("en-IN") : "",
@@ -1829,7 +1852,8 @@ export function mapDbItineraryRow(row) {
     pulledFromCostSheetVersion: row.pulled_from_cost_sheet_version ?? null,
     pulledFromBriefVersion: row.pulled_from_brief_version ?? null,
     routeMapImage: row.route_map_image ?? null,
-    dayImageOverrides: row.day_image_overrides || {},
+    dayImageOverrides,
+    ...(hasCover ? { coverImageOverride } : {}),
   };
 }
 
@@ -1857,7 +1881,7 @@ export async function saveItineraryVersion(db, queryId, snap, createdBy) {
       // Brochure settings for the client-facing export. NEW COLUMNS --
       // require a migration (see schemaCompleteness.test).
       route_map_image: snap.routeMapImage ?? null,
-      day_image_overrides: snap.dayImageOverrides ?? null,
+      day_image_overrides: packImageOverrides(snap.dayImageOverrides, snap.coverImageOverride),
       created_by: isUuid(createdBy) ? createdBy : null,
     });
     if (error) return { id: null, error: error.message || String(error) };

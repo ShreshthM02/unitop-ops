@@ -174,3 +174,30 @@ describe('Itinerary: real versioned persistence (Phase 0 of the Document Chain p
     expect(screen.getByText('★')).toBeTruthy();
   });
 });
+
+describe('cover photo choice survives save and reload', () => {
+  it('is packed into day_image_overrides on save and restored on load', async () => {
+    const { saveItineraryVersion, mapDbItineraryRow } = await import('../lib/utils.js');
+    let inserted = null;
+    const db = { from: () => ({ insert: async (row) => { inserted = row; return { data: [{ id: 'x' }], error: null }; } }) };
+    await saveItineraryVersion(db, 'q1', { version: 1, days: [], dayImageOverrides: { 5: ['a.jpg'] }, coverImageOverride: 'cover.jpg' }, null);
+    expect(inserted.day_image_overrides).toEqual({ 5: ['a.jpg'], __cover: 'cover.jpg' });
+    const back = mapDbItineraryRow({ id: 'r', version: 1, days: [], day_image_overrides: inserted.day_image_overrides });
+    expect(back.coverImageOverride).toBe('cover.jpg');
+    expect(back.dayImageOverrides).toEqual({ 5: ['a.jpg'] });
+  });
+  it('keeps "no cover" (null) distinct from auto (absent)', async () => {
+    const { packImageOverrides, mapDbItineraryRow } = await import('../lib/utils.js');
+    const none = mapDbItineraryRow({ version: 1, days: [], day_image_overrides: packImageOverrides({}, null) });
+    expect(Object.prototype.hasOwnProperty.call(none, 'coverImageOverride')).toBe(true);
+    expect(none.coverImageOverride).toBeNull();
+    const auto = mapDbItineraryRow({ version: 1, days: [], day_image_overrides: packImageOverrides({}, undefined) });
+    expect(Object.prototype.hasOwnProperty.call(auto, 'coverImageOverride')).toBe(false);
+  });
+  it('older rows without the key still load as auto', async () => {
+    const { mapDbItineraryRow } = await import('../lib/utils.js');
+    const r = mapDbItineraryRow({ version: 1, days: [], day_image_overrides: { 5: ['a.jpg'] } });
+    expect(r.coverImageOverride).toBeUndefined();
+    expect(r.dayImageOverrides).toEqual({ 5: ['a.jpg'] });
+  });
+});
