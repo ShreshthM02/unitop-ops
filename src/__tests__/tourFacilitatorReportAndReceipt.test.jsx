@@ -99,7 +99,7 @@ describe('Payment Receipt: printing now logs to the audit trail (the one real ga
     render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
 
     // window.open is used by the existing receipt printer; stub it so the click doesn't actually open a window in the test environment
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() } });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() });
     mockDb.from.mockClear();
     fireEvent.click(screen.getByText(/🖨 Receipt/));
     expect(mockDb.from).not.toHaveBeenCalledWith('query_audit'); // opening the review modal alone must not print/log yet
@@ -119,7 +119,7 @@ describe('Payment Receipt: A4 portrait, no separate company-name heading, restru
 
   async function openModalAndPrint({ toggleSignatureOff, toggleStampOn, editField } = {}) {
     let captured = {};
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: (html) => { captured.html = html; }, close: () => {} } });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: (html) => { captured.html = html; }, close: () => {} }, print: () => {} });
     const { unmount } = render(<EnhancedPaymentTracker query={query} payments={payments} onUpdatePayments={()=>{}} onClose={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     fireEvent.click(screen.getByText(/🖨 Receipt/));
     if (toggleSignatureOff) fireEvent.click(screen.getByText('Include client signature line'));
