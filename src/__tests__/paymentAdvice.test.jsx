@@ -57,7 +57,7 @@ describe('Payment Advice document', () => {
 
   it('printing logs to the audit trail with the real vendor and amount, and never mentions a receipt number', async () => {
     await renderOnOutgoingTab(makePayments());
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() } });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() });
     fireEvent.click(screen.getByText(/🖨 Advice/));
     fireEvent.click(screen.getByText('🖨 Print'));
     await waitFor(() => expect(mockDb.from).toHaveBeenCalledWith('query_audit'));
@@ -69,7 +69,7 @@ describe('Payment Advice document', () => {
     await renderOnOutgoingTab(makePayments());
     let capturedHTML = '';
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({
-      document: { write: (html) => { capturedHTML = html; }, close: vi.fn() },
+      document: { write: (html) => { capturedHTML = html; }, close: vi.fn() }, print: vi.fn(),
     });
     fireEvent.click(screen.getByText(/🖨 Advice/));
     fireEvent.click(screen.getByText('🖨 Print'));
