@@ -93,3 +93,36 @@ describe('applyQueryRealtimeEvent (pure reducer, no live connection needed)', ()
     expect(twice.length).toBe(once.length);
   });
 });
+
+describe('applyQueryRealtimeEvent: incomplete payloads can never produce or create a blank entry', () => {
+  const local = [{
+    id: 'QRY-1', groupName: 'NCH Group', clientName: 'NCH Group', agentCompany: 'NC Holiday', paxDisplay: '12 pax',
+    sector: 'Buddhist', destination: 'Buddhist', status: 'new_query', audit: [{ by: 'A' }], remarks: [],
+  }];
+  it('an INSERT with no identifying fields is ignored', () => {
+    const out = applyQueryRealtimeEvent(local, 'INSERT', { id: 'QRY-2', status: 'new_query' }, null);
+    expect(out).toBe(local);
+  });
+  it('an INSERT with an empty group but an agent company is still a real query', () => {
+    const out = applyQueryRealtimeEvent(local, 'INSERT', { id: 'QRY-2', group_name: '', client_name: 'JH Tours', agent_company: 'JH Tours', status: 'new_query' }, null);
+    expect(out.length).toBe(2);
+    expect(out[0].clientName).toBe('JH Tours');
+  });
+  it('an UPDATE missing most columns changes only what it carries', () => {
+    const out = applyQueryRealtimeEvent(local, 'UPDATE', { id: 'QRY-1', status: 'costing' }, { id: 'QRY-1' });
+    expect(out[0].status).toBe('costing');
+    expect(out[0].groupName).toBe('NCH Group');
+    expect(out[0].clientName).toBe('NCH Group');
+    expect(out[0].paxDisplay).toBe('12 pax');
+    expect(out[0].audit).toEqual([{ by: 'A' }]);
+  });
+  it('an UPDATE that sends blank names does not erase the names already shown', () => {
+    const out = applyQueryRealtimeEvent(local, 'UPDATE', { id: 'QRY-1', group_name: null, client_name: null, agent_company: null, status: 'costing' }, { id: 'QRY-1' });
+    expect(out[0].groupName).toBe('NCH Group');
+    expect(out[0].clientName).toBe('NCH Group');
+    expect(out[0].agentCompany).toBe('NC Holiday');
+  });
+  it('an UPDATE for an unknown id is still ignored', () => {
+    expect(applyQueryRealtimeEvent(local, 'UPDATE', { id: 'QRY-9', group_name: 'X' }, null)).toBe(local);
+  });
+});

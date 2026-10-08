@@ -313,45 +313,52 @@ export function mapDbQueryRow(q) {
 // live WebSocket connection.
 //   eventType: 'INSERT' | 'UPDATE' | 'DELETE'
 //   newRow / oldRow: raw DB rows as delivered by Supabase Realtime
+// A realtime row is only trusted to ADD a query if it carries what makes a
+// query recognisable: an id plus at least one of group / client / agent name.
+// The live database was checked and holds no blank query rows, so a blank
+// entry in Recent Queries can only be built on screen from an incomplete
+// event payload -- this refuses to build one.
+const QUERY_IDENTITY_COLUMNS = ["group_name", "client_name", "agent_company"];
+export function hasQueryIdentity(row) {
+  return !!(row && row.id && QUERY_IDENTITY_COLUMNS.some(c => typeof row[c] === "string" && row[c].trim()));
+}
+
 export function applyQueryRealtimeEvent(queries, eventType, newRow, oldRow) {
   if (eventType === "DELETE") {
     const deadId = oldRow?.id;
     return queries.filter(q => q.id !== deadId);
   }
+  if (!newRow || !newRow.id) return queries;
   const mapped = mapDbQueryRow(newRow);
   const idx = queries.findIndex(q => q.id === mapped.id);
   if (idx === -1) {
-    // Real, confirmed bug (reported as "a blank new query appears in the
-    // Dashboard's Recent Queries widget when editing any other query",
-    // observed specifically during multi-user activity and always cleared
-    // by a refresh -- meaning it was never a real saved row, purely a
-    // client-side illusion): this branch used to fire identically for
-    // BOTH "INSERT" and "UPDATE" events, treating any unrecognized id as
-    // "a brand-new query from another user" and prepending it. That
-    // assumption only holds for a genuine INSERT. An UPDATE event for an
-    // id this client has never seen locally does not mean the query is
-    // new -- it means THIS CLIENT missed that query's original INSERT
-    // event entirely, most commonly because its Realtime websocket
-    // briefly disconnected and reconnected (a backgrounded/idle browser
-    // tab, a network blip) -- Supabase Realtime never backfills events
-    // missed during a disconnect gap, so the client's local `queries`
-    // never got that row in the first place. Synthesizing a "new" local
-    // entry purely from that UPDATE's payload built a record with no
-    // local audit/remarks history and whatever fields that one UPDATE
-    // happened to touch -- which is exactly what showed up looking like
-    // a "blank" phantom entry. An UPDATE in this situation is now simply
-    // ignored: the out-of-sync client has no reliable full picture of
-    // that row to show, and it will appear correctly, in the right order,
-    // the next time `queries` is actually reloaded (a refresh, or the
-    // next full navigation) -- consistent with what was actually
-    // observed. Only a genuine INSERT ever adds a new entry here.
+    // Only a genuine INSERT may add an entry (an UPDATE for an unknown id
+    // means this client missed the INSERT -- it shows up on next load), and
+    // only if the row is complete enough to be a real query (see
+    // hasQueryIdentity).
     if (eventType !== "INSERT") return queries;
+    if (!hasQueryIdentity(newRow)) {
+      console.warn("Ignored realtime INSERT with no identifying fields:", newRow.id);
+      return queries;
+    }
     return [{ ...mapped, audit: [], remarks: [] }, ...queries];
   }
-  // Existing query updated -- keep local audit/remarks (a plain `queries`
-  // UPDATE never touches those separate tables), replace everything else.
+  // Existing query updated. Keep local audit/remarks (a plain `queries`
+  // UPDATE never touches those separate tables). Only columns actually
+  // PRESENT in the payload overwrite local values: mapDbQueryRow turns every
+  // absent column into undefined, and spreading that over the local record
+  // used to wipe names, pax and dates whenever a payload came through
+  // incomplete.
   const existing = queries[idx];
-  const updated = { ...existing, ...mapped, audit: existing.audit, remarks: existing.remarks };
+  const present = {};
+  Object.keys(mapped).forEach(k => { if (mapped[k] !== undefined) present[k] = mapped[k]; });
+  const updated = { ...existing, ...present, audit: existing.audit, remarks: existing.remarks };
+  // Never let an update leave the record with no name at all. (Clearing just
+  // one of the three on purpose, e.g. emptying Group Name, is still honoured.)
+  const NAMES = ["groupName", "clientName", "agentCompany"];
+  if (!NAMES.some(k => updated[k]) && NAMES.some(k => existing[k])) {
+    NAMES.forEach(k => { updated[k] = existing[k]; });
+  }
   const next = [...queries];
   next[idx] = updated;
   return next;
