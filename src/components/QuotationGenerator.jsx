@@ -589,7 +589,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     if (!win) { alert('Please allow pop-ups for this site to print/export PDF.'); return; }
     win.document.write(await buildPrintHTML());
     win.document.close();
-    setTimeout(()=>win.print(), 500);
+    Lib.printWindowWhenReady(win);
   };
 
   // 1.1: real .docx export. Was previously its own bespoke builder

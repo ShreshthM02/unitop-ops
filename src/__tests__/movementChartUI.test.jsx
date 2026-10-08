@@ -32,7 +32,7 @@ describe('GanttView: Movement Chart tab', () => {
     expect(screen.getByText(/No active tours in/)).toBeTruthy();
   });
 
-  it('"Download PDF" generates a landscape document containing the same data as the on-screen table', () => {
+  it('"Download PDF" generates a landscape document containing the same data as the on-screen table', async () => {
     const writeSpy = vi.fn();
     const mockWin = { document: { write: writeSpy, close: vi.fn(), readyState: 'complete' }, print: vi.fn() };
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
@@ -47,7 +47,7 @@ describe('GanttView: Movement Chart tab', () => {
     expect(html).toContain('size: A4 landscape');
     expect(html).toContain('TF-2026-100');
     expect(html).toContain('Uni Travel');
-    expect(mockWin.print).toHaveBeenCalled();
+    await vi.waitFor(() => expect(mockWin.print).toHaveBeenCalled());
 
     openSpy.mockRestore();
   });
@@ -70,17 +70,18 @@ describe('printHTML: waits for the window to load before printing', () => {
     printHTML('<html></html>');
     // Not called synchronously -- waiting on load or the fallback timeout
     expect(printSpy).not.toHaveBeenCalled();
-    expect(mockWin.addEventListener).toHaveBeenCalledWith('load', expect.any(Function));
+    expect(mockWin.addEventListener).toHaveBeenCalledWith('load', expect.any(Function), expect.anything());
     openSpy.mockRestore();
   });
 
-  it('calls print() immediately if the document is already readyState complete', async () => {
+  it('calls print() promptly if the document is already readyState complete', async () => {
     const { printHTML } = await import('../lib/LetterheadControls.jsx');
     const printSpy = vi.fn();
     const mockWin = { document: { write: vi.fn(), close: vi.fn(), readyState: 'complete' }, print: printSpy };
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
     printHTML('<html></html>');
-    expect(printSpy).toHaveBeenCalled();
+    // Prints once the (empty) page is confirmed drawn -- a moment later, not synchronously.
+    await vi.waitFor(() => expect(printSpy).toHaveBeenCalled());
     openSpy.mockRestore();
   });
 });

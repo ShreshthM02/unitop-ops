@@ -160,27 +160,71 @@ export function DocPreviewFrame({ html, title = "doc-preview" }) {
   );
 }
 
+// The print dialog must not open until everything on the page has actually
+// loaded. It used to open after a fixed delay (or on the window's load
+// event), which is not enough: the logo, footer photos and stamp are images
+// that decode a moment after the document itself is "complete", and web
+// fonts finish later still -- so the dialog's preview (and a quick Save)
+// captured a half-drawn page. This waits for, in order:
+//   1. the document to finish loading
+//   2. every <img> to load AND decode (a broken image counts as settled)
+//   3. every CSS background-image to load (watermarks and the like)
+//   4. web fonts to be ready
+//   5. a short pause for the final layout to settle
+// A ceiling (default 10s) means a dead image can never block printing for
+// good: after it, printing goes ahead with whatever has loaded.
+export function waitForPrintReady(win, { timeoutMs = 10000, settleMs = 150 } = {}) {
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; clearTimeout(ceiling); resolve(); } };
+    const ceiling = setTimeout(finish, timeoutMs);
+    const settled = (el, ev) => new Promise(r => { el.addEventListener(ev, r, { once: true }); });
+    const run = async () => {
+      try {
+        const doc = win.document;
+        if (doc.readyState !== 'complete') {
+          await new Promise(r => { win.addEventListener('load', r, { once: true }); });
+        }
+        const imgs = Array.from(doc.images || []);
+        await Promise.all(imgs.map(img => {
+          if (img.complete) return img.naturalWidth > 0 && img.decode ? img.decode().catch(() => {}) : null;
+          return Promise.race([settled(img, 'load'), settled(img, 'error')]).then(() => (img.decode ? img.decode().catch(() => {}) : null));
+        }));
+        const urls = new Set();
+        if (typeof win.getComputedStyle === 'function') {
+          Array.from(doc.querySelectorAll('*')).forEach(el => {
+            const bg = win.getComputedStyle(el).backgroundImage || '';
+            const re = /url\(["']?([^"')]+)["']?\)/g; let m;
+            while ((m = re.exec(bg))) urls.add(m[1]);
+          });
+        }
+        await Promise.all(Array.from(urls).map(u => new Promise(r => {
+          const im = new win.Image();
+          im.onload = im.onerror = () => r();
+          im.src = u;
+        })));
+        if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+        await new Promise(r => setTimeout(r, settleMs));
+      } catch (e) { /* fall through: print with what we have */ }
+      finish();
+    };
+    run();
+  });
+}
+
+// Waits until the page is fully drawn, then opens the print dialog.
+export async function printWindowWhenReady(win, opts) {
+  await waitForPrintReady(win, opts);
+  try { win.focus(); } catch (e) { /* not fatal */ }
+  win.print();
+}
+
 // Standard handlePrint wrapper: opens a popup, writes the pre-built HTML
-// string, and triggers the browser print dialog.
+// string, and opens the print dialog once the page is fully loaded.
 export function printHTML(html) {
   const win = window.open('', '_blank');
+  if (!win) { alert('Please allow pop-ups for this site to print/export PDF.'); return; }
   win.document.write(html);
   win.document.close();
-  // Wait for the window to fully load (including the async Google Fonts
-  // @import) before printing, rather than calling print() immediately.
-  // Printing before fonts/layout settle can leave the print dialog
-  // working from an incomplete render, which is a plausible cause of a
-  // save that silently fails or produces unexpected output.
-  let printed = false;
-  const doPrint = () => { if (!printed) { printed = true; win.print(); } };
-  if (win.document.readyState === 'complete') {
-    doPrint();
-  } else {
-    if (typeof win.addEventListener === 'function') {
-      win.addEventListener('load', doPrint);
-    }
-    // Fallback in case 'load' never fires (or addEventListener isn't
-    // available on this window implementation)
-    setTimeout(() => { try { doPrint(); } catch(e) {} }, 800);
-  }
+  return printWindowWhenReady(win);
 }

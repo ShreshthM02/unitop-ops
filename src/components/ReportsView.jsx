@@ -410,7 +410,7 @@ export default function ReportsView({ queries, payments, currentUser, vendors, t
     <table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
     <tbody>${data.map(row=>`<tr>${cols.map(c=>`<td>${row[c]??""}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></body></html>`);
-    win.document.close(); setTimeout(()=>win.print(),400);
+    win.document.close(); Lib.printWindowWhenReady(win);
   };
 
 const CHART_COLORS = ["#1A5276","#C0392B","#0E6655","#7D6608","#4A235A","#1B4F72","#78281F","#145A32","#784212","#117A65"];

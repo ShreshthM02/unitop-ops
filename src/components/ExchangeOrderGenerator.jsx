@@ -482,7 +482,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
     const win = window.open("", "_blank");
     win.document.write(flavor === "printable" ? buildPrintableHTML(order, orderNo) : buildShareableHTML(order, orderNo));
     win.document.close();
-    win.print();
+    Lib.printWindowWhenReady(win);
   };
 
   const printActions = (order, orderNo) => [

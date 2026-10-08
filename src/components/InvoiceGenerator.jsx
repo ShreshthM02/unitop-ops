@@ -504,7 +504,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     if (!win) { alert('Please allow pop-ups for this site to print/export PDF.'); return; }
     win.document.write(await buildPrintHTML());
     win.document.close();
-    setTimeout(() => win.print(), 500);
+    Lib.printWindowWhenReady(win);
   };
 
   const [previewHTML, setPreviewHTML] = useState("");
