@@ -73,7 +73,11 @@ export default function LoginScreen({ onSuccess }) {
                 style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
                   background:"none", border:"none", cursor:"pointer", padding:6,
                   fontSize:15, color:"#9CA3AF", lineHeight:1 }}>
-                {showPassword?"🙈":"👁"}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-testid={showPassword?"icon-eye-off":"icon-eye"}>
+                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                  {showPassword&&<path d="M4 4l16 16"/>}
+                </svg>
               </button>
             </div>
           </div>

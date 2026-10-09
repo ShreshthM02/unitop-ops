@@ -282,7 +282,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
     if(!printEnabled[id]) return [];
     const heading=(text)=>text?`<div style="font-weight:bold;text-decoration:underline;margin:12pt 0 6pt">${text}:</div>`:"";
     switch(id){
-      case "meta": return [`<div style="display:flex;justify-content:space-between;margin-bottom:10pt"><div>${buildAddresseeBlock({ name:recipient, company:agentCo, city:agentCity, fontSizePt:10 })}</div><div><b>Date:</b> ${docDate}</div></div><div style="font-weight:bold;text-decoration:underline;margin-bottom:8pt">${subject}</div>${intro?`<div style="text-decoration:underline;margin-bottom:10pt">${intro}</div>`:""}${metaNotes?`<div style="font-style:italic;color:#555">${metaNotes}</div>`:""}`];
+      case "meta": return [`<div style="display:flex;justify-content:space-between;margin-bottom:10pt"><div>${buildAddresseeBlock({ name:recipient, company:agentCo, city:agentCity, fontSizePt:10 })}</div><div><b>Date:</b> ${docDate}</div></div><div style="font-weight:bold;text-decoration:underline;margin-bottom:8pt">${subject}</div>${intro?`<div style="margin-bottom:10pt">${intro}</div>`:""}${metaNotes?`<div style="font-style:italic;color:#555">${metaNotes}</div>`:""}`];
       case "hotels": return hotels.some(h=>h.hotelName) ? [
         heading(sectionLabels.hotels),
         { type:"table", headerHTML:`<tr><th>Check In</th><th>Check Out</th><th>City</th><th>Hotel Name</th><th>Rooms</th><th>Status</th></tr>`,

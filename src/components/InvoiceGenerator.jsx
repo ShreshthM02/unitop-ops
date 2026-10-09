@@ -309,8 +309,8 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
             <div style="font-size:10.5pt">DATE: <strong>${pInv.date}</strong></div>
           </div>
         </div>
-        ${pInv.subject ? `<div style="font-size:10.5pt;font-weight:bold;text-decoration:underline;margin-bottom:6pt">RE: ${pInv.subject}</div>` : ''}
-        <div style="font-size:10.5pt;font-weight:bold;margin-bottom:12pt">${pInv.openingLine}</div>
+        ${pInv.subject ? `<div style="font-size:10.5pt;margin-bottom:6pt">RE: ${pInv.subject}</div>` : ''}
+        <div style="font-size:10.5pt;margin-bottom:12pt">${pInv.openingLine}</div>
         <div style="display:flex;justify-content:space-between;margin-bottom:7pt;font-size:9pt">
           <div>
             <div><strong>Invoice No:</strong> <span style="color:#8B1A1A;font-weight:700">${pInv.invoiceNo}</span></div>
@@ -382,7 +382,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
           ${stampHTML}
           ${showStamp ? '' : '<div style="height:44pt;"></div>'}
           <div style="width:130pt;border-top:1pt solid #1A3A52;margin-bottom:3pt;"></div>
-          <div style="font-size:10pt;font-weight:700;color:#1A3A52;">${pInv.signOff.replace(/\n/g, '<br/>')}</div>
+          <div style="font-size:10pt;color:#1A3A52;">${pInv.signOff.replace(/\n/g, '<br/>')}</div>
           <div style="font-size:9pt;color:#888;">(Authorised Signatory)</div>
         </div>`;
 
