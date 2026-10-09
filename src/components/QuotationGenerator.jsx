@@ -649,7 +649,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
   // the document. Flights and trains are identical in shape, so this
   // one render function covers both rather than risking the two
   // diverging from each other over time.
-  const TravelTable = ({ listKey, dayPlaceholder, detailPlaceholder }) => (
+  const renderTravelTable = ({ listKey, dayPlaceholder, detailPlaceholder }) => (
     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
       <thead>
         <tr style={{ background:G.gray100 }}>
@@ -888,7 +888,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
           {q.showFlights && (
             <>
-              <TravelTable listKey="flights" dayPlaceholder="Day 02 / 12 Oct" detailPlaceholder="e.g. Delhi / Varanasi — 6E 2134"/>
+              {renderTravelTable({ listKey:"flights", dayPlaceholder:"Day 02 / 12 Oct", detailPlaceholder:"e.g. Delhi / Varanasi — 6E 2134" })}
               <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("flights")}>+ Add Flight</button>
             </>
           )}
@@ -903,7 +903,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </div>
           {q.showTrains && (
             <>
-              <TravelTable listKey="trains" dayPlaceholder="Day 03 / 13 Oct" detailPlaceholder="e.g. Delhi / Agra — Shatabdi Express"/>
+              {renderTravelTable({ listKey:"trains", dayPlaceholder:"Day 03 / 13 Oct", detailPlaceholder:"e.g. Delhi / Agra — Shatabdi Express" })}
               <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={()=>addListItem("trains")}>+ Add Train</button>
             </>
           )}

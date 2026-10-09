@@ -488,7 +488,7 @@ function ReportChart({ reportId, data }) {
   );
 }
 
-  const ReportPreview = ({report}) => {
+  const renderReportPreview = (report) => {
     const data=applyRowLevelFilters(report.id, getReportData(report.id));
     const activeFilters = report.filters || [];
     const cols=data.length?Object.keys(data[0]).filter(c=>!c.startsWith("__")):[];
@@ -640,7 +640,7 @@ function ReportChart({ reportId, data }) {
       </div>}
       {(!isNarrow || showDetailMobile) && <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         {isNarrow && <div onClick={()=>setShowDetailMobile(false)} style={{padding:"10px 14px",borderBottom:`1px solid ${G.gray200}`,cursor:"pointer",color:G.accent,fontSize:12,fontWeight:600,flexShrink:0}}>← Back to list</div>}
-        {selectedReport ? <ReportPreview report={selectedReport}/> : (
+        {selectedReport ? renderReportPreview(selectedReport) : (
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,color:G.gray400,padding:32}}>
             <div style={{fontSize:48,marginBottom:12}}>📈</div>
             <div style={{fontSize:15,fontWeight:600,marginBottom:6,color:G.gray600}}>Reports Repository</div>
