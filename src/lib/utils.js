@@ -1,3 +1,4 @@
+import { ceilFX } from "./costSheetCalc.js";
 import { extractMentions } from "./Mentions.jsx";
 import { entryServiceName, getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
 
@@ -1647,7 +1648,7 @@ export function calcCostSheetSingleSupplementFX(snap) {
   const daySS = days.reduce((s,d)=>s+n(d.singleSupp),0);
   const handlerSS = localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
   const totSS = daySS + handlerSS;
-  return Math.ceil(((totSS + totSS*(snap.gst||0)/100) * (1 + (snap.markup||0)/100)) / (snap.roe||1));
+  return ceilFX(((totSS + totSS*(snap.gst||0)/100) * (1 + (snap.markup||0)/100)) / (snap.roe||1));
 }
 
 export function calcCostSheetSlabFinalPrice(snap, slab) {
@@ -1671,7 +1672,7 @@ export function calcCostSheetSlabFinalPrice(snap, slab) {
   const afterTax = sub + tax;
   const markupAmt = Math.round(afterTax * (snap.markup||0)/100);
   const sellingINR = afterTax + markupAmt;
-  const finalFX = Math.ceil(sellingINR / (snap.roe||1));
+  const finalFX = ceilFX(sellingINR / (snap.roe||1));
   return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt };
 }
 
@@ -1693,7 +1694,7 @@ export function calcCostSheetTlSlabFinalPrice(snap, tlSlab) {
   const afterTax = sub + tax;
   const markupAmt = Math.round(afterTax * (snap.markup||0)/100);
   const sellingINR = afterTax + markupAmt;
-  const finalFX = Math.ceil(sellingINR / (snap.roe||1));
+  const finalFX = ceilFX(sellingINR / (snap.roe||1));
   return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt, surchargePP: Math.round(surchargePP) };
 }
 

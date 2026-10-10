@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
-import { computeTotals, makeCalculators } from '../lib/costSheetCalc.js';
+import { computeTotals, makeCalculators, ceilFX } from '../lib/costSheetCalc.js';
 import { excelDate } from '../lib/costSheetXlsx.js';
 
 const fakeQuery = { id: 'UTQ-2026-201', tourFileId: 'TF-201', groupName: 'Live Test Group', nights: 3 };
@@ -62,4 +62,23 @@ describe('Cost Sheet workbook is live, guarded and print-ready', () => {
     sheet.eachRow(row => row.eachCell(cell => { if (cell.dataValidation && cell.dataValidation.type) validated++; }));
     expect(validated).toBeGreaterThan(0);
   }, 20000);
+});
+
+describe('ceilFX', () => {
+  it('ignores floating-point dust but still rounds real fractions up', () => {
+    expect(ceilFX(495.00000000000006)).toBe(495);
+    expect(ceilFX(495.2)).toBe(496);
+    expect(ceilFX(0)).toBe(0);
+  });
+});
+
+describe('Tour Leader slab builds on the unrounded subtotal', () => {
+  it('matches the same slab priced as one calculation', () => {
+    const base = { transports: [], tlMode: 'lumpsum', tlCost: 1000, miscMode: 'pp', miscCost: 0, monMode: 'pp', localHandlers: [], extras: [], gst: 5, markup: 10, roe: 1, totals: { totMeal: 0, totHotel: 100.4, totSS: 0, monTotal: 0 } };
+    const { calcTlSlab } = makeCalculators(base);
+    const r = calcTlSlab({ id: 't', pax: 3, costs: { a: 100 }, includes: { a: true } });
+    const sub = 100.4 + 1000 / 3 + 100 / 3;
+    const after = sub + Math.round(sub * 5 / 100);
+    expect(r.sellingINR).toBe(Math.round(after + Math.round(after * 10 / 100)));
+  });
 });

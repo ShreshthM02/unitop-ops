@@ -11,6 +11,11 @@
 
 const n = (v) => parseFloat(v) || 0;
 
+// Round UP to a whole unit, ignoring floating-point dust. Plain Math.ceil
+// turns an exact 495 that arrives as 495.00000000000006 into 496; Excel's
+// CEILING ignores such dust, so the app must as well to agree with the sheet.
+export const ceilFX = (x) => Math.ceil(Math.round(x * 1e6) / 1e6);
+
 export function computeTotals({ days = [], localHandlers = [], monuments = [], monExtra = "" }) {
   const totMeal = days.reduce((s, d) => s + n(d.mealCost), 0);
   const totHotel = days.reduce((s, d) => s + n(d.hotelNetPP), 0);
@@ -44,12 +49,13 @@ export function makeCalculators(s) {
     const afterTax = sub + tax;
     const markupAmt = Math.round(afterTax * markup / 100);
     const sellingINR = afterTax + markupAmt;
-    const finalFX = Math.ceil(sellingINR / roe);
-    const ssFX = Math.ceil(((totSS + totSS * gst / 100) * (1 + markup / 100)) / roe);
+    const finalFX = ceilFX(sellingINR / roe);
+    const ssFX = ceilFX(((totSS + totSS * gst / 100) * (1 + markup / 100)) / roe);
     return {
       tptTotal, tptPP: Math.round(tptPP), tlPP: Math.round(tlPP), miscPP: Math.round(miscPP), monPP: Math.round(monPP),
       localPP: Math.round(localPP), extrasPP: Math.round(extrasPP), sub: Math.round(sub), tax, afterTax: Math.round(afterTax),
       markupAmt, sellingINR: Math.round(sellingINR), finalFX, ssFX,
+      subRaw: sub, // unrounded; T/L slabs build on this, never on the rounded display figure
     };
   };
 
@@ -60,12 +66,12 @@ export function makeCalculators(s) {
     const base = calcSlab({ id: tl.id, foc: n(tl.pax) });
     const surchargeTotal = Object.entries(tl.costs || {}).reduce((a, [k, v]) => a + ((tl.includes || {})[k] ? n(v) : 0), 0);
     const surchargePP = n(tl.pax) > 0 ? surchargeTotal / n(tl.pax) : 0;
-    const sub = base.sub + surchargePP;
+    const sub = base.subRaw + surchargePP;
     const tax = Math.round(sub * gst / 100);
     const afterTax = sub + tax;
     const markupAmt = Math.round(afterTax * markup / 100);
     const sellingINR = afterTax + markupAmt;
-    const finalFX = Math.ceil(sellingINR / roe);
+    const finalFX = ceilFX(sellingINR / roe);
     return { ...base, surchargeTotal: Math.round(surchargeTotal), surchargePP: Math.round(surchargePP), sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt, sellingINR: Math.round(sellingINR), finalFX };
   };
 

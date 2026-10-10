@@ -125,11 +125,11 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sheet.getCell(row, 1).value = "COST SHEET";
   sheet.getCell(row, 1).font = { bold: true, size: 18, color: { argb: WHITE } };
   sheet.getCell(row, 1).alignment = { vertical: "middle" };
-  sheet.mergeCells(row, 10, row, 14);
+  sheet.mergeCells(row, 10, row, 18);
   sheet.getCell(row, 10).value = `Version ${currentVersionLabel}  •  Saved ${savedTimestamp}`;
   sheet.getCell(row, 10).font = { italic: true, size: 10, color: { argb: WHITE } };
   sheet.getCell(row, 10).alignment = { vertical: "middle", horizontal: "right" };
-  for (let c = 1; c <= 14; c++) sheet.getCell(row, c).fill = solid(NAVY);
+  for (let c = 1; c <= 18; c++) sheet.getCell(row, c).fill = solid(NAVY);
   sheet.getRow(row).height = 30; row++;
 
   sheet.mergeCells(row, 1, row, 14);
@@ -355,7 +355,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     formulaCell(row, 15, ssOf, c0.ssFX, MONEY);
     const appFinal = sheet.getCell(row, 16); appFinal.value = c0.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
     const chk = sheet.getCell(row, 17);
-    chk.value = { formula: `IF(ABS(${addr(row, 14)}-${addr(row, 16)})<=1,"✔ yes","edited")`, result: "✔ yes" };
+    chk.value = { formula: `IF(ABS(${addr(row, 14)}-${addr(row, 16)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
     chk.font = { size: 9, color: { argb: GOOD } };
     if (si % 2 === 1) for (let c = 4; c <= 15; c++) sheet.getCell(row, c).fill = solid(ZEBRA);
     row++;
@@ -401,7 +401,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
       formulaCell(row, 16, ssOf, c.ssFX, MONEY);
       const appFinal = sheet.getCell(row, 17); appFinal.value = c.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
       const chk = sheet.getCell(row, 18);
-      chk.value = { formula: `IF(ABS(${addr(row, 15)}-${addr(row, 17)})<=1,"✔ yes","edited")`, result: "✔ yes" };
+      chk.value = { formula: `IF(ABS(${addr(row, 15)}-${addr(row, 17)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
       chk.font = { size: 9, color: { argb: GOOD } };
       for (let cc = 1; cc <= 16; cc++) sheet.getCell(row, cc).fill = solid(ti % 2 === 0 ? "FFFFFBEB" : "FFFEF3C7");
       row++;
