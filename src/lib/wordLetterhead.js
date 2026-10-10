@@ -25,13 +25,13 @@ import { LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, BADGE_AWARD_B
 // -- kept as a separate constant here since docx measures in twips (1mm =
 // 56.6929 twips), not the mm strings letterhead.js's CSS uses.
 const mmToTwip = (mm) => Math.round(mm * 56.6929);
-export const DOCX_MARGIN = { top: mmToTwip(8), bottom: mmToTwip(8), left: mmToTwip(14), right: mmToTwip(14) };
+export const DOCX_MARGIN = { top: mmToTwip(8), bottom: mmToTwip(8), left: mmToTwip(14), right: mmToTwip(14), header: mmToTwip(8), footer: mmToTwip(8) };
 // 6cm top / 4cm bottom from the physical page edge, same total reservation
 // as letterhead.js's .lh-header--blank / .lh-footer--blank (which measure
 // from PRINT_MARGIN's own 8mm, not from the physical edge -- here the twip
 // margin itself IS measured from the physical edge, so no further
 // subtraction is needed).
-export const DOCX_MARGIN_LETTERHEAD = { top: mmToTwip(60), bottom: mmToTwip(40), left: mmToTwip(14), right: mmToTwip(14) };
+export const DOCX_MARGIN_LETTERHEAD = { top: mmToTwip(60), bottom: mmToTwip(40), left: mmToTwip(14), right: mmToTwip(14), header: mmToTwip(8), footer: mmToTwip(8) };
 
 const stripB64 = (dataUrl) => dataUrl.replace(/^data:image\/\w+;base64,/, "");
 
@@ -88,10 +88,10 @@ function pageNumParagraph() {
     alignment: AlignmentType.RIGHT,
     spacing: { before: 40 },
     children: [
-      new TextRun({ text: "Page " }),
-      new TextRun({ children: [PageNumber.CURRENT] }),
-      new TextRun({ text: " of " }),
-      new TextRun({ children: [PageNumber.TOTAL_PAGES] }),
+      new TextRun({ text: "Page ", font: "Arial", size: 15, color: "999999" }),
+      new TextRun({ children: [PageNumber.CURRENT], font: "Arial", size: 15, color: "999999" }),
+      new TextRun({ text: " of ", font: "Arial", size: 15, color: "999999" }),
+      new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "Arial", size: 15, color: "999999" }),
     ],
   });
 }
@@ -101,7 +101,16 @@ function pageNumParagraph() {
 // `properties` fields straight into a docx Document section:
 //   const lh = buildDocxLetterheadSection(toggles);
 //   sections: [{ properties: { page: { margin: lh.margin }, titlePage: lh.differentFirstPage }, headers: lh.headers, footers: lh.footers, children: [...] }]
-export function buildDocxLetterheadSection({ headerFooterAllPages = false, printOnLetterhead = false, showPageNum = false } = {}) {
+export function buildDocxLetterheadSection({ headerFooterAllPages = false, printOnLetterhead = false, showPageNum = false, styled = null } = {}) {
+  // `styled` ({ header: [...], footer: [...] }) carries the header/footer
+  // converted from the SAME HTML the PDF uses (see wordStyled.js). When
+  // absent (no layout engine available) the hand-built approximation below
+  // is used instead.
+  const realHeader = () => (styled && styled.header && styled.header.length ? styled.header : realHeaderChildren());
+  const realFooter = (n) => {
+    if (styled && styled.footer && styled.footer.length) return n ? [...styled.footer, pageNumParagraph()] : styled.footer;
+    return realFooterChildren(n);
+  };
   if (printOnLetterhead) {
     // Blank header/footer on every page (the physical pre-printed paper
     // already has the artwork) -- page number, if on, still needs to be
@@ -120,8 +129,8 @@ export function buildDocxLetterheadSection({ headerFooterAllPages = false, print
     return {
       margin: DOCX_MARGIN,
       differentFirstPage: false,
-      headers: { default: new Header({ children: realHeaderChildren() }) },
-      footers: { default: new Footer({ children: realFooterChildren(showPageNum) }) },
+      headers: { default: new Header({ children: realHeader() }) },
+      footers: { default: new Footer({ children: realFooter(showPageNum) }) },
     };
   }
   // Neither toggle on: closest native Word equivalent to the PDF path's
@@ -134,11 +143,11 @@ export function buildDocxLetterheadSection({ headerFooterAllPages = false, print
     differentFirstPage: true,
     headers: {
       default: new Header({ children: [emptyParagraph()] }),
-      first: new Header({ children: realHeaderChildren() }),
+      first: new Header({ children: realHeader() }),
     },
     footers: {
       default: new Footer({ children: blankFooterChildren }),
-      first: new Footer({ children: realFooterChildren(showPageNum) }),
+      first: new Footer({ children: realFooter(showPageNum) }),
     },
   };
 }

@@ -427,6 +427,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
+      extraHeadCSS: args.extraHeadCSS,
     });
     // 8: same fix as Quotation -- lead with the stable Tour File/Query
     // identifier, keep the group name for readability.
@@ -472,6 +473,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
+      extraHeadCSS: args.extraHeadCSS,
     });
     await downloadDocx(blob, args.title);
   };

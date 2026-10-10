@@ -392,6 +392,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
+      extraHeadCSS: args.extraHeadCSS,
     });
     // 8: same fix as Quotation/Itinerary.
     await downloadDocx(blob, args.title);

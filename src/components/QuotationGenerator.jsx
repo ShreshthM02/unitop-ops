@@ -602,6 +602,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     const blob = await buildDocxBlobFromBodyBlocks({
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
+      extraHeadCSS: args.extraHeadCSS,
     });
     // item 1: reuses the exact same title buildPrintHTML already
     // computed above (asBlocks mode returns docArgs directly), instead

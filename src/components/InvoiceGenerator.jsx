@@ -490,6 +490,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
       bodyBlocks: args.bodyBlocks,
       toggles: { headerFooterAllPages: args.headerFooterAllPages, printOnLetterhead: args.printOnLetterhead, showPageNum: args.showPageNum },
       orientation: args.orientation,
+      extraHeadCSS: args.extraHeadCSS,
     });
     const inv = docFlavor === "proforma" ? pInv : tInv;
     // item 1: reuses the exact same title buildPrintHTML already

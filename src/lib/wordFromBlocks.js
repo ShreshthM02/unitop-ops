@@ -24,6 +24,8 @@
 
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, HeadingLevel, AlignmentType } from "docx";
 import { buildDocxLetterheadSection } from "./wordLetterhead.js";
+import { blocksToStyledDocx, htmlToStyledDocx, STYLED_NUMBERING } from "./wordStyled.js";
+import { invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML } from "./letterhead.js";
 
 const NAVY = "1A3A52";
 
@@ -169,18 +171,46 @@ export function bodyBlocksToDocxChildren(bodyBlocks) {
 
 // Builds a .docx Blob for any letterhead document from the bodyBlocks it
 // already produces for its PDF, applying the same 4 letterhead toggles.
-export async function buildDocxBlobFromBodyBlocks({ bodyBlocks, toggles = {}, orientation = "portrait" }) {
+//
+// Two paths:
+//   - styled (default): the blocks are laid out in a real browser with the
+//     same CSS the PDF uses and converted from the resolved layout, so the
+//     Word file matches the PDF (see wordStyled.js).
+//   - legacy tag-based conversion, kept as a fallback for environments with
+//     no layout engine (and for callers that pass nothing styled), so an
+//     export never fails outright.
+// extraHeadCSS is the document's own stylesheet (the same string it hands the
+// PDF path); passing it is what lets document-specific classes carry over.
+export async function buildDocxBlobFromBodyBlocks({ bodyBlocks, toggles = {}, orientation = "portrait", extraHeadCSS = "" }) {
   const { headerFooterAllPages, showPageNum, printOnLetterhead } = toggles;
-  const lh = buildDocxLetterheadSection({ headerFooterAllPages, printOnLetterhead, showPageNum });
-  const size = orientation === "landscape"
+  const landscape = orientation === "landscape";
+  const size = landscape
     ? { width: 16838, height: 11906, orientation: "landscape" }
     : { width: 11906, height: 16838 };
+  const widthPx = ((landscape ? 297 : 210) - 28) * 96 / 25.4;
+  const css = `${invoiceLetterheadCSS}\n${extraHeadCSS || ""}`;
+
+  let children = null;
+  let styledParts = null;
+  try {
+    children = await blocksToStyledDocx({ blocks: bodyBlocks, css, widthPx });
+    if (children && !printOnLetterhead) {
+      const header = await htmlToStyledDocx({ html: invoiceLetterheadHTML(false), css, widthPx, trailing: true });
+      const footer = await htmlToStyledDocx({ html: invoiceFooterHTML(false), css, widthPx });
+      styledParts = { header, footer };
+    }
+  } catch (e) {
+    console.warn("Styled Word export failed, using the basic converter:", e);
+    children = null; styledParts = null;
+  }
+  const lh = buildDocxLetterheadSection({ headerFooterAllPages, printOnLetterhead, showPageNum, styled: styledParts });
   const doc = new Document({
+    numbering: STYLED_NUMBERING,
     sections: [{
       properties: { page: { margin: lh.margin, size }, titlePage: lh.differentFirstPage },
       headers: lh.headers,
       footers: lh.footers,
-      children: bodyBlocksToDocxChildren(bodyBlocks),
+      children: children || bodyBlocksToDocxChildren(bodyBlocks),
     }],
   });
   return Packer.toBlob(doc);

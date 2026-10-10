@@ -113,7 +113,7 @@ async function exportPnLPDF(query, pl) {
 
 async function exportPnLDocx(query, pl, docSettings) {
   const args = await buildPrintHTML(query, pl, true);
-  const blob = await buildDocxBlobFromBodyBlocks({ bodyBlocks: args.bodyBlocks });
+  const blob = await buildDocxBlobFromBodyBlocks({ bodyBlocks: args.bodyBlocks, extraHeadCSS: args.extraHeadCSS, toggles: { headerFooterAllPages: args.headerFooterAllPages } });
   await downloadDocx(blob, args.title);
 }
 
