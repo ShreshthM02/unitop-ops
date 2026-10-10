@@ -110,6 +110,8 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const MODE_EXTRA = listValidation(["PP", "Lumpsum", "Per Vehicle", "Per Group"]);
   const YES_NO = listValidation(["Y", "N"]);
   const MONEY = "#,##0";
+  // Blank yellow rows left under every table, so adding a day / slab / item is just typing into the next row.
+  const SPARE = { days: 4, slabs: 4, tl: 3, items: 5 };
   const names = []; // [name, address] pairs, added at the end
 
   // Text-safe, case/space-insensitive comparisons used inside formulas.
@@ -140,7 +142,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   // Legend
   sheet.mergeCells(row, 1, row, 14);
   const legend = sheet.getCell(row, 1);
-  legend.value = "Yellow cells are inputs — change them and every price recalculates. Everything else is a formula (the sheet is protected without a password: Review ▸ Unprotect Sheet if you need to restructure it).";
+  legend.value = "Yellow cells are inputs — change them and every price recalculates. To add a day, slab or item, type into the next blank yellow row (spare rows are under every table; blank slab rows stay invisible until you enter a pax number). Need more rows? Insert a row inside a table. Formulas are locked without a password: Review ▸ Unprotect Sheet to restructure.";
   legend.font = { italic: true, size: 9, color: { argb: GREY } };
   legend.alignment = { wrapText: true, vertical: "top" };
   sheet.getRow(row).height = 26;
@@ -180,6 +182,12 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     if (i % 2 === 1) for (const c of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) sheet.getCell(row, c).border = { bottom: { style: "hair", color: { argb: BORDER } }, top: { style: "hair", color: { argb: BORDER } } };
     row++;
   });
+  for (let i = 0; i < SPARE.days; i++) {
+    inputCell(row, 1, ""); inputCell(row, 2, "", "dd/mm/yyyy"); inputCell(row, 3, ""); inputCell(row, 4, "");
+    inputCell(row, 5, null, MONEY, numValidation(0)); inputCell(row, 6, ""); inputCell(row, 7, ""); inputCell(row, 8, "");
+    inputCell(row, 9, null, MONEY, numValidation(0)); inputCell(row, 10, null, MONEY, numValidation(0)); inputCell(row, 11, "");
+    row++;
+  }
   const dayLastRow = Math.max(dayFirstRow, row - 1);
   sheet.mergeCells(row, 1, row, 3); sheet.getCell(row, 1).value = "TOTALS"; sheet.getCell(row, 1).font = { bold: true };
   formulaCell(row, 5, `SUM(E${dayFirstRow}:E${dayLastRow})`, Math.round(totMeal), MONEY, { bold: true });
@@ -209,10 +217,10 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sectionHeaders(row, ["Monument", "Fee", "Include (Y/N)"]);
   row++;
   const monFirstRow = row;
-  const monRowCount = Math.max(monuments.length + 3, 4);
+  const monRowCount = monuments.length + SPARE.items;
   for (let i = 0; i < monRowCount; i++) {
     const m = monuments[i];
-    inputCell(row, 1, m?.name || ""); inputCell(row, 2, m ? (m.fee ? n(m.fee) : 0) : 0, MONEY, numValidation(0)); inputCell(row, 3, m ? (m.include ? "Y" : "N") : "N", undefined, YES_NO);
+    inputCell(row, 1, m?.name || ""); inputCell(row, 2, m ? (m.fee ? n(m.fee) : 0) : null, MONEY, numValidation(0)); inputCell(row, 3, m ? (m.include ? "Y" : "N") : "N", undefined, YES_NO);
     row++;
   }
   const monLastRow = row - 1;
@@ -234,11 +242,11 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sectionHeaders(row, ["Sector", "Cost", "Mode (pp / lumpsum)", "Single Supp"]);
   row++;
   const lhFirstRow = row;
-  const lhRowCount = Math.max(localHandlers.length + 3, 4);
+  const lhRowCount = localHandlers.length + SPARE.items;
   for (let i = 0; i < lhRowCount; i++) {
     const h = localHandlers[i];
-    inputCell(row, 1, h?.sector || ""); inputCell(row, 2, h ? n(h.cost) || 0 : 0, MONEY, numValidation(0));
-    inputCell(row, 3, h?.mode || "pp", undefined, MODE_PP); inputCell(row, 4, h ? n(h.singleSupp) || 0 : 0, MONEY, numValidation(0));
+    inputCell(row, 1, h?.sector || ""); inputCell(row, 2, h ? n(h.cost) || 0 : null, MONEY, numValidation(0));
+    inputCell(row, 3, h?.mode || "pp", undefined, MODE_PP); inputCell(row, 4, h ? n(h.singleSupp) || 0 : null, MONEY, numValidation(0));
     row++;
   }
   const lhLastRow = row - 1;
@@ -252,10 +260,10 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sectionHeaders(row, ["Description", "Cost", "Mode (PP / Lumpsum / Per Vehicle / Per Group)"]);
   row++;
   const exFirstRow = row;
-  const exRowCount = Math.max(extras.length + 3, 4);
+  const exRowCount = extras.length + SPARE.items;
   for (let i = 0; i < exRowCount; i++) {
     const e = extras[i];
-    inputCell(row, 1, e?.description || ""); inputCell(row, 2, e ? n(e.cost) || 0 : 0, MONEY, numValidation(0)); inputCell(row, 3, e?.mode || "PP", undefined, MODE_EXTRA);
+    inputCell(row, 1, e?.description || ""); inputCell(row, 2, e ? n(e.cost) || 0 : null, MONEY, numValidation(0)); inputCell(row, 3, e?.mode || "PP", undefined, MODE_EXTRA);
     row++;
   }
   const exLastRow = row - 1;
@@ -263,36 +271,41 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
 
   // Transportation matrix: one column per group slab, then one per T/L slab
   label(row, 1, "Transportation — mark Y under each slab this line applies to"); row++;
-  const matrixSlabs = [...slabs.map((s) => ({ s })), ...tlSlabs.map((s) => ({ s, tl: true }))];
-  sectionHeaders(row, ["Sector / Description", "Cost", ...matrixSlabs.map((m) => m.s.label)]);
+  const spareN = (k, extra) => Array.from({ length: k }, () => ({ spare: true, ...extra }));
+  const matrixSlabs = [...slabs.map((s) => ({ s })), ...spareN(SPARE.slabs), ...tlSlabs.map((s) => ({ s, tl: true })), ...spareN(SPARE.tl, { tl: true })];
+  const GROUP_COLS = slabs.length + SPARE.slabs;
+  const matrixHeaderRow = row;
+  sectionHeaders(row, ["Sector / Description", "Cost", ...matrixSlabs.map((m) => (m.s ? m.s.label : ""))]);
   matrixSlabs.forEach((m, i) => { if (m.tl) { const c = sheet.getCell(row, 3 + i); c.font = { bold: true, size: 9, color: { argb: TL_BROWN } }; } });
   row++;
   const tptFirstRow = row;
-  const tptRowCount = Math.max(transports.length + 3, 4);
+  const tptRowCount = transports.length + SPARE.items;
   for (let i = 0; i < tptRowCount; i++) {
     const t = transports[i];
-    inputCell(row, 1, t?.sector || t?.vehicleType || ""); inputCell(row, 2, t ? n(t.cost) || 0 : 0, MONEY, numValidation(0));
-    matrixSlabs.forEach((m, si) => { inputCell(row, 3 + si, t && (t.slabs || []).includes(m.s.id) ? "Y" : "", undefined, YES_NO); });
+    inputCell(row, 1, t?.sector || t?.vehicleType || ""); inputCell(row, 2, t ? n(t.cost) || 0 : null, MONEY, numValidation(0));
+    matrixSlabs.forEach((m, si) => { inputCell(row, 3 + si, t && m.s && (t.slabs || []).includes(m.s.id) ? "Y" : "", undefined, YES_NO); });
     row++;
   }
   const tptLastRow = row - 1;
-  const matrixCol = (s) => 3 + matrixSlabs.findIndex((m) => m.s === s);
+  const groupCol = (i) => 3 + i;
+  const tlCol = (j) => 3 + GROUP_COLS + j;
   row += 2;
 
   // Tour Leader slab inputs (live)
   const tlInputRows = [];
-  if (tlSlabs.length) {
+  {
     label(row, 1, "Tour Leader slabs — the T/L doesn't pay: their costs are spread across this slab's paying guests. Per-pax costs; Y = include in the T/L surcharge."); row++;
     const hdr = ["T/L Slab Name", "Vehicle", "Paying Pax", ...TL_COST_KEYS.map(([, l]) => l), ...TL_COST_KEYS.map(([, l]) => `Incl. ${l.replace(" (PP)", "")}`)];
     sectionHeaders(row, hdr);
     for (let c = 1; c <= hdr.length; c++) sheet.getCell(row, c).fill = solid("FFFEF3C7");
     row++;
-    tlSlabs.forEach((tl) => {
+    [...tlSlabs, ...Array(SPARE.tl).fill(null)].forEach((tlr) => {
+      const tl = tlr || { label: "", pax: null, costs: {}, includes: {} };
       inputCell(row, 1, tl.label).font = { bold: true, color: { argb: TL_BROWN } };
       inputCell(row, 2, tl.vehicle === "Others" ? tl.vehicleOther : tl.vehicle || "");
-      inputCell(row, 3, n(tl.pax) || 0, "0", numValidation(0));
+      inputCell(row, 3, tlr ? n(tl.pax) || 0 : null, "0", numValidation(0));
       TL_COST_KEYS.forEach(([k], i) => {
-        inputCell(row, 4 + i, n((tl.costs || {})[k]) || 0, MONEY, numValidation(0));
+        inputCell(row, 4 + i, tlr ? n((tl.costs || {})[k]) || 0 : null, MONEY, numValidation(0));
         inputCell(row, 10 + i, (tl.includes || {})[k] ? "Y" : "N", undefined, YES_NO);
       });
       tlInputRows.push(row);
@@ -334,12 +347,13 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const ssOf = `IF(${roeOk},CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstAddr}/100)*(1+${markupAddr}/100)/${roeAddr},1),0)`;
 
   const slabFirstRow = row;
-  slabs.forEach((s, si) => {
-    const c0 = calcSlab(s);
+  [...slabs, ...Array(SPARE.slabs).fill(null)].forEach((sr, si) => {
+    const s = sr || { label: "", vehicle: "", foc: null };
+    const c0 = sr ? calcSlab(sr) : { tptPP: 0, tlPP: 0, miscPP: 0, monPP: 0, localPP: 0, extrasPP: 0, sub: 0, tax: 0, afterTax: 0, markupAmt: 0, finalFX: 0, ssFX: 0 };
     inputCell(row, 1, s.label); inputCell(row, 2, s.vehicle === "Others" ? s.vehicleOther : s.vehicle || "");
-    const focCell = inputCell(row, 3, Number(s.foc) || 0, "0", numValidation(0)); focCell.font = { bold: true };
+    const focCell = inputCell(row, 3, sr ? Number(s.foc) || 0 : null, "0", numValidation(0)); focCell.font = { bold: true };
     const foc = addr(row, 3);
-    const f = costFormulas(foc, matrixCol(s));
+    const f = costFormulas(foc, groupCol(si));
     formulaCell(row, 4, f.tptF, c0.tptPP, MONEY);
     formulaCell(row, 5, f.tlF, c0.tlPP, MONEY);
     formulaCell(row, 6, f.miscF, c0.miscPP, MONEY);
@@ -353,18 +367,23 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     formulaCell(row, 13, `ROUND(${addr(row, 12)}*${markupAddr}/100,0)`, c0.markupAmt, MONEY);
     formulaCell(row, 14, finalOf(addr(row, 12), addr(row, 13)), c0.finalFX, MONEY, { bold: true, color: { argb: ACCENT }, size: 11 });
     formulaCell(row, 15, ssOf, c0.ssFX, MONEY);
-    const appFinal = sheet.getCell(row, 16); appFinal.value = c0.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
-    const chk = sheet.getCell(row, 17);
-    chk.value = { formula: `IF(ABS(${addr(row, 14)}-${addr(row, 16)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
-    chk.font = { size: 9, color: { argb: GOOD } };
+    if (sr) {
+      const appFinal = sheet.getCell(row, 16); appFinal.value = c0.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
+      const chk = sheet.getCell(row, 17);
+      chk.value = { formula: `IF(ABS(${addr(row, 14)}-${addr(row, 16)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
+      chk.font = { size: 9, color: { argb: GOOD } };
+    }
     if (si % 2 === 1) for (let c = 4; c <= 15; c++) sheet.getCell(row, c).fill = solid(ZEBRA);
     row++;
   });
   const slabLastRow = row - 1;
+  // Matrix column headers follow the slab names, so renaming a slab renames its column.
+  for (let i = 0; i < GROUP_COLS; i++) { const a = `A${slabFirstRow + i}`; sheet.getCell(matrixHeaderRow, groupCol(i)).value = { formula: `IF(${a}="","",${a})`, result: slabs[i] ? slabs[i].label : "" }; }
+  for (let j = 0; j < tlInputRows.length; j++) { const a = `A${tlInputRows[j]}`; sheet.getCell(matrixHeaderRow, tlCol(j)).value = { formula: `IF(${a}="","",${a})`, result: tlSlabs[j] ? tlSlabs[j].label : "" }; }
 
   // Tour Leader slabs: a live summary row per T/L slab
   let tlFirstSummaryRow = null, tlLastSummaryRow = null;
-  if (tlSlabs.length) {
+  {
     row += 1;
     navyBand(row, "TOUR LEADER SLABS", 16); row++;
     const tlHeaders = ["T/L Slab", "Vehicle", "Paying Pax", "Transport", "Tour Facil", "T/L Surcharge", "Misc", "Mon.", "Local Hdlr", "Extras", "Sub-total", "GST", "After Tax", "Markup", `Final Price (${currency || "—"})`, `SS (${currency || "—"})`, "Final @ app export", "Matches app?"];
@@ -375,15 +394,17 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     sheet.getRow(row).height = 30;
     row++;
     tlFirstSummaryRow = row;
-    tlSlabs.forEach((tl, ti) => {
-      const c = calcTlSlab(tl);
+    tlInputRows.forEach((inRow0, ti) => {
+      const tlr = tlSlabs[ti] || null;
+      const tl = tlr || { label: "", vehicle: "", pax: null, costs: {}, includes: {} };
+      const c = tlr ? calcTlSlab(tlr) : { tptPP: 0, tlPP: 0, surchargePP: 0, miscPP: 0, monPP: 0, localPP: 0, extrasPP: 0, sub: 0, tax: 0, afterTax: 0, markupAmt: 0, finalFX: 0, ssFX: 0 };
       const inRow = tlInputRows[ti];
       const pax = abs(inRow, 3);
       // label / vehicle / pax mirror the input block so they're edited in one place
-      const lab = sheet.getCell(row, 1); lab.value = { formula: `A${inRow}`, result: tl.label }; lab.font = { bold: true, color: { argb: TL_BROWN }, size: 9 };
+      const lab = sheet.getCell(row, 1); lab.value = { formula: `IF(A${inRow}="","",A${inRow})`, result: tl.label }; lab.font = { bold: true, color: { argb: TL_BROWN }, size: 9 };
       const veh = sheet.getCell(row, 2); veh.value = { formula: `IF(B${inRow}="","",B${inRow})`, result: (tl.vehicle === "Others" ? tl.vehicleOther : tl.vehicle) || "" }; veh.font = { size: 9 };
       const px = sheet.getCell(row, 3); px.value = { formula: `C${inRow}`, result: n(tl.pax) }; px.font = { size: 9 };
-      const f = costFormulas(pax, matrixCol(tl));
+      const f = costFormulas(pax, tlCol(ti));
       formulaCell(row, 4, f.tptF, c.tptPP, MONEY);
       formulaCell(row, 5, f.tlF, c.tlPP, MONEY);
       const incl = TL_COST_KEYS.map(([, ], i) => `IF(UPPER(TRIM(${abs(inRow, 10 + i)}))="Y",${abs(inRow, 4 + i)},0)`).join("+");
@@ -399,10 +420,12 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
       formulaCell(row, 14, `ROUND(${addr(row, 13)}*${markupAddr}/100,0)`, c.markupAmt, MONEY);
       formulaCell(row, 15, finalOf(addr(row, 13), addr(row, 14)), c.finalFX, MONEY, { bold: true, color: { argb: TL_BROWN }, size: 11 });
       formulaCell(row, 16, ssOf, c.ssFX, MONEY);
-      const appFinal = sheet.getCell(row, 17); appFinal.value = c.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
-      const chk = sheet.getCell(row, 18);
-      chk.value = { formula: `IF(ABS(${addr(row, 15)}-${addr(row, 17)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
-      chk.font = { size: 9, color: { argb: GOOD } };
+      if (tlr) {
+        const appFinal = sheet.getCell(row, 17); appFinal.value = c.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
+        const chk = sheet.getCell(row, 18);
+        chk.value = { formula: `IF(ABS(${addr(row, 15)}-${addr(row, 17)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
+        chk.font = { size: 9, color: { argb: GOOD } };
+      }
       for (let cc = 1; cc <= 16; cc++) sheet.getCell(row, cc).fill = solid(ti % 2 === 0 ? "FFFFFBEB" : "FFFEF3C7");
       row++;
     });
@@ -411,15 +434,14 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
 
   // ── Conditional formatting ──
   const redFill = { type: "pattern", pattern: "solid", bgColor: { argb: BAD_BG } };
-  sheet.addConditionalFormatting({
-    ref: `C${slabFirstRow}:C${slabLastRow}`,
-    rules: [{ type: "cellIs", operator: "lessThanOrEqual", formulae: [0], style: { fill: redFill, font: { color: { argb: "FFB91C1C" }, bold: true } } }],
-  });
+  const redRule = (cellRef) => ({ type: "expression", formulae: [`AND(ISNUMBER(${cellRef}),${cellRef}<=0)`], style: { fill: redFill, font: { color: { argb: "FFB91C1C" }, bold: true } } });
+  const hideRule = (cellRef) => ({ type: "expression", formulae: [`${cellRef}=""`], style: { font: { color: { argb: "FFFFFFFF" } } } });
+  sheet.addConditionalFormatting({ ref: `C${slabFirstRow}:C${slabLastRow}`, rules: [redRule(`C${slabFirstRow}`)] });
+  // Spare (still empty) slab rows keep their formulas but stay invisible until a pax number is typed.
+  sheet.addConditionalFormatting({ ref: `D${slabFirstRow}:O${slabLastRow}`, rules: [hideRule(`$C${slabFirstRow}`)] });
   if (tlInputRows.length) {
-    sheet.addConditionalFormatting({
-      ref: `C${tlInputRows[0]}:C${tlInputRows[tlInputRows.length - 1]}`,
-      rules: [{ type: "cellIs", operator: "lessThanOrEqual", formulae: [0], style: { fill: redFill, font: { color: { argb: "FFB91C1C" }, bold: true } } }],
-    });
+    sheet.addConditionalFormatting({ ref: `C${tlInputRows[0]}:C${tlInputRows[tlInputRows.length - 1]}`, rules: [redRule(`C${tlInputRows[0]}`)] });
+    sheet.addConditionalFormatting({ ref: `C${tlFirstSummaryRow}:P${tlLastSummaryRow}`, rules: [hideRule(`$C${tlInputRows[0]}`)] });
   }
   const warn = { type: "pattern", pattern: "solid", bgColor: { argb: WARN_BG } };
   sheet.addConditionalFormatting({ ref: `Q${slabFirstRow}:Q${slabLastRow}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: warn, font: { color: { argb: "FF92400E" } } } }] });
@@ -444,8 +466,10 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
 
   // Lock the formulas (inputs were unlocked above). No password.
   await sheet.protect("", {
-    selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true,
-    insertRows: true, insertColumns: false, deleteRows: false, deleteColumns: false, sort: false, autoFilter: false,
+    // ExcelJS semantics: true = the action is ALLOWED on the protected sheet. Rows can be inserted, deleted and
+    // resized; changing cell styles and inserting/deleting columns stay locked (columns hold the formulas).
+    selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: true, formatRows: true,
+    insertRows: true, deleteRows: true, insertColumns: false, deleteColumns: false, sort: false, autoFilter: false,
   });
 
   return wb;

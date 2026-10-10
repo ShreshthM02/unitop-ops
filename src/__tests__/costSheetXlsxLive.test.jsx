@@ -55,6 +55,7 @@ describe('Cost Sheet workbook is live, guarded and print-ready', () => {
     expect(formulas.length).toBeGreaterThan(20);
     expect(formulas.some(f => /^IF\(\$?[A-Z]+\$?\d+>0,/.test(f))).toBe(true);
     expect(sheet.sheetProtection).toBeTruthy();
+    // Rows may be inserted/deleted on the protected sheet (ExcelJS: true = allowed).
     expect(sheet.pageSetup.orientation).toBe('landscape');
     expect(sheet.pageSetup.fitToWidth).toBe(1);
     expect(sheet.views[0].state).toBe('frozen');
@@ -81,4 +82,20 @@ describe('Tour Leader slab builds on the unrounded subtotal', () => {
     const after = sub + Math.round(sub * 5 / 100);
     expect(r.sellingINR).toBe(Math.round(after + Math.round(after * 10 / 100)));
   });
+});
+
+describe('Workbook leaves room to add rows', () => {
+  it('has blank unlocked spare rows for slabs, T/L slabs and items, with pre-wired formulas', async () => {
+    const sheet = await exportSheet();
+    let slabHeader = 0, tlInput = 0;
+    sheet.eachRow((row, i) => { if (row.getCell(1).value === 'Slab') slabHeader = i; if (row.getCell(1).value === 'T/L Slab Name') tlInput = i; });
+    expect(slabHeader).toBeGreaterThan(0);
+    expect(tlInput).toBeGreaterThan(0); // T/L block exists even with no T/L slabs yet
+    let spareIdx = slabHeader + 1;
+    while (sheet.getCell(spareIdx, 3).value != null && sheet.getCell(spareIdx, 3).value !== '') spareIdx++;
+    const spare = sheet.getRow(spareIdx); // first slab row with no pax = a spare row
+    expect(spare.getCell(1).value === '' || spare.getCell(1).value == null).toBe(true);
+    expect(spare.getCell(1).protection && spare.getCell(1).protection.locked).toBe(false);
+    expect(spare.getCell(14).formula).toBeTruthy(); // Final price formula already in place
+  }, 20000);
 });
