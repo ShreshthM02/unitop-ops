@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
+import { makeCalculators } from '../lib/costSheetCalc.js';
+import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
@@ -338,56 +340,12 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const totSS      = daySS + handlerSS;
   const monTotal   = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(monExtra);
 
-  const calcSlab = (slab) => {
-    // Transport for this slab
-    const tptTotal = transports.filter(t=>t.slabs.includes(slab.id)).reduce((s,t)=>s+n(t.cost),0);
-    const tptPP = slab.foc > 0 ? tptTotal / slab.foc : 0;
-    // TL/Facilitator
-    const tlPP = tlMode==="pp" ? n(tlCost) : (slab.foc>0 ? n(tlCost)/slab.foc : 0);
-    // Misc
-    const miscPP = miscMode==="pp" ? n(miscCost) : (slab.foc>0 ? n(miscCost)/slab.foc : 0);
-    // Monument
-    const monPP = monMode==="pp" ? monTotal : (slab.foc>0 ? monTotal/slab.foc : 0);
-    // Local handler(s) — each entry can independently be per-pax or lumpsum
-    const localPP = localHandlers.reduce((s,h) => s + (h.mode==="pp" ? n(h.cost) : (slab.foc>0 ? n(h.cost)/slab.foc : 0)), 0);
-    // Extra services — "PP" is already per-pax; Lumpsum/Per Vehicle/Per
-    // Group are all a single total cost for the group, divided across
-    // paying pax the same way local handler lumpsum costs are.
-    const extrasPP = extras.reduce((s,e) => s + (e.mode==="PP" ? n(e.cost) : (slab.foc>0 ? n(e.cost)/slab.foc : 0)), 0);
-
-    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
-    const tax = Math.round(sub * gst/100);
-    const afterTax = sub + tax;
-    const markupAmt = Math.round(afterTax * markup/100);
-    const sellingINR = afterTax + markupAmt;
-    const finalFX = Math.ceil(sellingINR / roe);
-    // Single supplement
-    const ssFX = Math.ceil(((totSS + totSS*gst/100) * (1 + markup/100)) / roe);
-    return { tptTotal, tptPP:Math.round(tptPP), tlPP:Math.round(tlPP), miscPP:Math.round(miscPP), monPP:Math.round(monPP), localPP:Math.round(localPP), extrasPP:Math.round(extrasPP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX, ssFX };
-  };
-
-  // A Tour Leader Slab is computed EXACTLY like a normal group slab --
-  // same Transport (via the matrix), same Tour Facilitator cost (the
-  // escort WE provide, from the global tlMode/tlCost setting -- this is
-  // NOT the T/L), same Misc/Monument/Local Handler/Extras, same
-  // Accommodation/Meals, same Single Supplement -- just using this T/L
-  // slab's own "Paying Pax" as the FOC-equivalent divisor. The ONE thing
-  // genuinely different is the T/L surcharge itself: the foreign agent's
-  // own escort has no FOC coverage in a small group, so their own costs
-  // (checked below) get spread across paying guests and added on top,
-  // in its own separate column -- never confused with Tour Facilitator.
-  const calcTlSlab = (tl) => {
-    const base = calcSlab({ id: tl.id, foc: n(tl.pax) });
-    const surchargeTotal = Object.entries(tl.costs).reduce((s,[k,v])=>s+(tl.includes[k]?n(v):0),0);
-    const surchargePP = n(tl.pax)>0 ? surchargeTotal/n(tl.pax) : 0;
-    const sub = base.sub + surchargePP;
-    const tax = Math.round(sub*gst/100);
-    const afterTax = sub+tax;
-    const markupAmt = Math.round(afterTax*markup/100);
-    const sellingINR = afterTax+markupAmt;
-    const finalFX = Math.ceil(sellingINR/roe);
-    return { ...base, surchargeTotal:Math.round(surchargeTotal), surchargePP:Math.round(surchargePP), sub:Math.round(sub), tax, afterTax:Math.round(afterTax), markupAmt, sellingINR:Math.round(sellingINR), finalFX };
-  };
+  // Pricing maths lives in lib/costSheetCalc.js so the screen, the PDF and the
+  // Excel export all price from the same code.
+  const { calcSlab, calcTlSlab } = makeCalculators({
+    transports, tlMode, tlCost, miscMode, miscCost, monMode, localHandlers, extras, gst, markup, roe,
+    totals: { totMeal, totHotel, totSS, monTotal },
+  });
 
   const saveVersion = () => {
     const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName, docNotes };
@@ -583,283 +541,40 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   const buildCostSheetWorkbook = async () => {
     const ExcelJS = (await import("exceljs")).default;
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Unitop Ops"; wb.created = new Date();
-    const sheet = wb.addWorksheet("Cost Sheet");
-
-    const NAVY="FF0D1B2A", ACCENT="FFC0392B", LIGHT="FFF3F4F6", WHITE="FFFFFFFF", GREY="FF6B7280", ZEBRA="FFFAFAFA", BORDER="FFD1D5DB", INPUT_BG="FFFFFDE7";
-    const colLetter = (c) => { let s=""; while(c>0){ const m=(c-1)%26; s=String.fromCharCode(65+m)+s; c=Math.floor((c-1)/26); } return s; };
-    const addr = (r,c) => `${colLetter(c)}${r}`;
-    const navyBand = (r, text, span=14) => {
-      sheet.mergeCells(r,1,r,span);
-      const c = sheet.getCell(r,1);
-      c.value = text; c.font = {bold:true,size:11,color:{argb:WHITE}}; c.fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
-      c.alignment = {vertical:"middle"};
-      sheet.getRow(r).height = 20;
-    };
-    const label = (r,c,text) => { const cell=sheet.getCell(r,c); cell.value=text; cell.font={bold:true,size:9,color:{argb:GREY}}; };
-    const bigVal = (r,c,val,fmt) => { const cell=sheet.getCell(r,c); cell.value=val; cell.font={bold:true,size:13}; if(fmt) cell.numFmt=fmt; };
-    // Editable input cells get a pale-yellow fill so it's visually obvious
-    // which cells are meant to be typed into offline, vs. formula-driven
-    // cells that recalculate automatically -- the whole point of this
-    // being a *working* spreadsheet, not just a printout.
-    const inputCell = (r,c,val,fmt) => { const cell=sheet.getCell(r,c); cell.value=val; cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:INPUT_BG}}; if(fmt) cell.numFmt=fmt; return cell; };
-    const formulaCell = (r,c,formula,result,fmt,extraFont={}) => { const cell=sheet.getCell(r,c); cell.value={formula,result:result??0}; if(fmt) cell.numFmt=fmt; cell.font={size:9,...extraFont}; return cell; };
-    const sectionHeaders = (r, headers, startCol=1) => { headers.forEach((h,i)=>{ const c=sheet.getCell(r,startCol+i); c.value=h; c.font={bold:true,size:9,color:{argb:"FF374151"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:LIGHT}}; c.border={bottom:{style:"thin",color:{argb:BORDER}}}; }); };
-
-    let row = 1;
-    // ── Title band ──
-    sheet.mergeCells(row,1,row,9);
-    sheet.getCell(row,1).value = "COST SHEET"; sheet.getCell(row,1).font = {bold:true,size:18,color:{argb:WHITE}};
-    sheet.getCell(row,1).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; sheet.getCell(row,1).alignment = {vertical:"middle"};
-    sheet.mergeCells(row,10,row,14);
-    sheet.getCell(row,10).value = `Version ${currentVersionLabel}  •  Saved ${savedTimestamp}`;
-    sheet.getCell(row,10).font = {italic:true,size:10,color:{argb:WHITE}}; sheet.getCell(row,10).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
-    sheet.getCell(row,10).alignment = {vertical:"middle",horizontal:"right"};
-    for(let c=1;c<=14;c++) sheet.getCell(row,c).fill = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
-    sheet.getRow(row).height = 30; row++;
-
-    sheet.mergeCells(row,1,row,14);
-    sheet.getCell(row,1).value = `${query.groupName||query.clientName||""}   •   ${query.destination||query.sector||""}   •   Tour File: ${query.tourFileId||query.id}`;
-    sheet.getCell(row,1).font = {bold:true,size:12}; row += 2;
-
-    label(row,1,"Client / Foreign Agent"); label(row,5,"Assigned Staff");
-    row++;
-    inputCell(row,1,clientAgentName||""); sheet.mergeCells(row,1,row,4);
-    inputCell(row,5,assignedStaffName||""); sheet.mergeCells(row,5,row,8);
-    row += 2;
-
-    // ── Settings (real input cells, everything downstream references these) ──
-    navyBand(row, "⚙️  SETTINGS — edit these, every price below recalculates", 14); row++;
-    label(row,1,"GST %"); label(row,3,"Markup %"); label(row,5,"ROE"); label(row,7,"Currency");
-    row++;
-    const gstCell = inputCell(row,1,Number(gst)||0,"0.0"); gstCell.font={bold:true,size:13};
-    const markupCell = inputCell(row,3,Number(markup)||0,"0.0"); markupCell.font={bold:true,size:13};
-    const roeCell = inputCell(row,5,Number(roe)||0,"0.0"); roeCell.font={bold:true,size:13};
-    const currencyCell = inputCell(row,7,currency||"US $"); currencyCell.font={bold:true,size:13};
-    const gstAddr = addr(row,1), markupAddr = addr(row,3), roeAddr = addr(row,5), currencyAddr = addr(row,7);
-    const gstFrac = `(${gstAddr}/100)`, markupFrac = `(${markupAddr}/100)`;
-    row += 2;
-
-    // ── Day-wise Itinerary & Accommodation ──
-    navyBand(row, "📅  DAY-WISE ITINERARY & ACCOMMODATION", 11); row++;
-    sectionHeaders(row, ["Day","Date","Movement","Meal Plan","Meal Cost","Hotel","Alt Hotel","Plan","Net PP","Sngl Supp","Notes"]);
-    row++;
-    const dayFirstRow = row;
-    days.forEach((d,i)=>{
-      inputCell(row,1,d.day); inputCell(row,2,formatDateSlash(d.date)||""); inputCell(row,3,d.movement||""); inputCell(row,4,d.mealPlan||"");
-      inputCell(row,5,n(d.mealCost)||0,"#,##0"); inputCell(row,6,d.hotel||""); inputCell(row,7,d.hotelAlt||""); inputCell(row,8,d.hotelPlan||"");
-      inputCell(row,9,n(d.hotelNetPP)||0,"#,##0"); inputCell(row,10,n(d.singleSupp)||0,"#,##0"); inputCell(row,11,d.notes||"");
-      if(i%2===1) for(let c=1;c<=11;c++) sheet.getCell(row,c).fill = sheet.getCell(row,c).fill.fgColor?.argb===INPUT_BG ? sheet.getCell(row,c).fill : {type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
-      row++;
+    return buildCostSheetWorkbookFile(ExcelJS, {
+      query, currentVersionLabel, savedTimestamp, clientAgentName, assignedStaffName,
+      gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra,
+      monuments, days, transports, localHandlers, extras, slabs, tlSlabs,
+      totals: { totMeal, totHotel, daySS, handlerSS, totSS, monTotal },
+      calcSlab, calcTlSlab, formatDateSlash,
     });
-    const dayLastRow = row-1;
-    sheet.mergeCells(row,1,row,3); sheet.getCell(row,1).value="TOTALS"; sheet.getCell(row,1).font={bold:true};
-    const mealTotalCell = formulaCell(row,5,`SUM(E${dayFirstRow}:E${dayLastRow})`,Math.round(totMeal),"#,##0",{bold:true});
-    const hotelTotalCell = formulaCell(row,9,`SUM(I${dayFirstRow}:I${dayLastRow})`,Math.round(totHotel),"#,##0",{bold:true});
-    const daySSTotalCell = formulaCell(row,10,`SUM(J${dayFirstRow}:J${dayLastRow})`,Math.round(daySS),"#,##0",{bold:true});
-    const mealTotalAddr = addr(row,5), hotelTotalAddr = addr(row,9), daySSTotalAddr = addr(row,10);
-    row += 3;
-
-    // ── Cost Line Items ──
-    navyBand(row, "💵  COST LINE ITEMS", 14); row++;
-
-    // Tour Leader / Facilitator Cost
-    label(row,1,"Tour Leader / Facilitator Cost — Mode (pp / lumpsum)"); label(row,4,"Amount");
-    row++;
-    const tlModeCell = inputCell(row,1,tlMode||"lumpsum"); const tlCostCell = inputCell(row,4,n(tlCost)||0,"#,##0");
-    const tlModeAddr = addr(row,1), tlCostAddr = addr(row,4);
-    row += 2;
-
-    // Misc Cost
-    label(row,1,"Misc Cost — Mode (pp / lumpsum)"); label(row,4,"Amount");
-    row++;
-    const miscModeCell = inputCell(row,1,miscMode||"pp"); const miscCostCell = inputCell(row,4,n(miscCost)||0,"#,##0");
-    const miscModeAddr = addr(row,1), miscCostAddr = addr(row,4);
-    row += 2;
-
-    // Monuments
-    label(row,1,"Monuments"); row++;
-    sectionHeaders(row, ["Monument","Fee","Include (Y/N)"]);
-    row++;
-    const monFirstRow = row;
-    const monRowCount = Math.max(monuments.length + 3, 4);
-    for (let i=0;i<monRowCount;i++) {
-      const m = monuments[i];
-      inputCell(row,1,m?.name||""); inputCell(row,2,m?m.fee?n(m.fee):0:0,"#,##0"); inputCell(row,3,m?(m.include?"Y":"N"):"N");
-      row++;
-    }
-    const monLastRow = row-1;
-    label(row,1,"Extra Monument Cost (not tied to a specific monument)");
-    const monExtraCell = inputCell(row,4,n(monExtra)||0,"#,##0");
-    const monExtraAddr = addr(row,4);
-    row++;
-    label(row,1,"Monument Total");
-    const monTotalCell = formulaCell(row,4,`SUMIF(C${monFirstRow}:C${monLastRow},"Y",B${monFirstRow}:B${monLastRow})+${monExtraAddr}`,Math.round(monTotal),"#,##0",{bold:true});
-    const monTotalAddr = addr(row,4);
-    row += 2;
-
-    // Local Handler(s)
-    label(row,1,"Local Handler(s)"); row++;
-    sectionHeaders(row, ["Sector","Cost","Mode (pp / lumpsum)","Single Supp"]);
-    row++;
-    const lhFirstRow = row;
-    const lhRowCount = Math.max(localHandlers.length + 3, 4);
-    for (let i=0;i<lhRowCount;i++) {
-      const h = localHandlers[i];
-      inputCell(row,1,h?.sector||""); inputCell(row,2,h?n(h.cost)||0:0,"#,##0"); inputCell(row,3,h?.mode||"pp"); inputCell(row,4,h?n(h.singleSupp)||0:0,"#,##0");
-      row++;
-    }
-    const lhLastRow = row-1;
-    label(row,1,"Local Handler Single Supp Total");
-    const handlerSSCell = formulaCell(row,4,`SUM(D${lhFirstRow}:D${lhLastRow})`,Math.round(handlerSS),"#,##0",{bold:true});
-    const handlerSSAddr = addr(row,4);
-    row += 2;
-
-    // Extra Services
-    label(row,1,"Extra Services"); row++;
-    sectionHeaders(row, ["Description","Cost","Mode (PP / Lumpsum / Per Vehicle / Per Group)"]);
-    row++;
-    const exFirstRow = row;
-    const exRowCount = Math.max(extras.length + 3, 4);
-    for (let i=0;i<exRowCount;i++) {
-      const e = extras[i];
-      inputCell(row,1,e?.description||""); inputCell(row,2,e?n(e.cost)||0:0,"#,##0"); inputCell(row,3,e?.mode||"PP");
-      row++;
-    }
-    const exLastRow = row-1;
-    row++;
-
-    // Transportation — matrix: one column per slab, marked "Y" if that
-    // transport line applies to that slab. Requested specifically: a
-    // clearer way to show which transport costs feed which slabs than a
-    // hidden checkbox list.
-    label(row,1,"Transportation — mark Y under each slab this line applies to"); row++;
-    const tptHeaders = ["Sector / Description","Cost", ...slabs.map(s=>s.label)];
-    sectionHeaders(row, tptHeaders);
-    row++;
-    const tptFirstRow = row;
-    const tptRowCount = Math.max(transports.length + 3, 4);
-    for (let i=0;i<tptRowCount;i++) {
-      const t = transports[i];
-      inputCell(row,1,t?.sector||t?.vehicleType||""); inputCell(row,2,t?n(t.cost)||0:0,"#,##0");
-      slabs.forEach((s,si)=>{ inputCell(row,3+si,t&&t.slabs?.includes(s.id)?"Y":""); });
-      row++;
-    }
-    const tptLastRow = row-1;
-    row += 2;
-
-    // ── Final Price Summary ──
-    navyBand(row, "💰  FINAL PRICE SUMMARY", 14); row++;
-    label(row,1,"Accommodation (PP)"); formulaCell(row+1,1,`${hotelTotalAddr}`,Math.round(totHotel),"#,##0",{bold:true,size:13});
-    label(row,4,"Extra Meals (PP)"); formulaCell(row+1,4,`${mealTotalAddr}`,Math.round(totMeal),"#,##0",{bold:true,size:13});
-    label(row,7,"Single Supplement (total)"); formulaCell(row+1,7,`${daySSTotalAddr}+${handlerSSAddr}`,Math.round(totSS),"#,##0",{bold:true,size:13,color:{argb:ACCENT}});
-    const ssTotalAddr = addr(row+1,7);
-    row += 3;
-
-    const slabHeaders = ["Slab","Vehicle","FOC (paying pax)","Transport","Tour Facil","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
-    slabHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; });
-    row++;
-    slabs.forEach((s,si)=>{
-      const c0 = calcSlab(s);
-      const slabCol = 3 + si; // this slab's column in the transport matrix
-      const slabColLetter = colLetter(slabCol);
-      inputCell(row,1,s.label); inputCell(row,2,s.vehicle==="Others"?s.vehicleOther:s.vehicle||"");
-      const focCell = inputCell(row,3,Number(s.foc)||0); focCell.font={bold:true};
-      const focAddr = addr(row,3);
-
-      const tptFormula = `SUMPRODUCT((${slabColLetter}${tptFirstRow}:${slabColLetter}${tptLastRow}="Y")*B${tptFirstRow}:B${tptLastRow})/${focAddr}`;
-      formulaCell(row,4,tptFormula,c0.tptPP,"#,##0");
-
-      const tlFormula = `IF(${tlModeAddr}="pp",${tlCostAddr},${tlCostAddr}/${focAddr})`;
-      formulaCell(row,5,tlFormula,c0.tlPP,"#,##0");
-
-      const miscFormula = `IF(${miscModeAddr}="pp",${miscCostAddr},${miscCostAddr}/${focAddr})`;
-      formulaCell(row,6,miscFormula,c0.miscPP,"#,##0");
-
-      // Monument mode isn't per-slab in the app either -- it's one global
-      // mode (monMode state), so reference the tl/misc pattern but against
-      // the app's own monMode value baked in at export time (it isn't a
-      // separate labeled input cell above, since there's no dedicated
-      // "Monument Mode" input row -- match the app's actual current model).
-      const monFormula = monMode==="pp" ? `${monTotalAddr}` : `${monTotalAddr}/${focAddr}`;
-      formulaCell(row,7,monFormula,c0.monPP,"#,##0");
-
-      const lhFormula = `SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}="pp")*B${lhFirstRow}:B${lhLastRow})+SUMPRODUCT((C${lhFirstRow}:C${lhLastRow}<>"pp")*B${lhFirstRow}:B${lhLastRow})/${focAddr}`;
-      formulaCell(row,8,lhFormula,c0.localPP,"#,##0");
-
-      const exFormula = `SUMPRODUCT((C${exFirstRow}:C${exLastRow}="PP")*B${exFirstRow}:B${exLastRow})+SUMPRODUCT((C${exFirstRow}:C${exLastRow}<>"PP")*B${exFirstRow}:B${exLastRow})/${focAddr}`;
-      formulaCell(row,9,exFormula,c0.extrasPP,"#,##0");
-
-      const d4=addr(row,4),d5=addr(row,5),d6=addr(row,6),d7=addr(row,7),d8=addr(row,8),d9=addr(row,9);
-      const subFormula = `${hotelTotalAddr}+${mealTotalAddr}+${d4}+${d5}+${d6}+${d7}+${d8}+${d9}`;
-      formulaCell(row,10,subFormula,c0.sub,"#,##0");
-      const subAddr = addr(row,10);
-
-      const taxFormula = `ROUND(${subAddr}*${gstFrac},0)`;
-      formulaCell(row,11,taxFormula,c0.tax,"#,##0");
-      const taxAddr = addr(row,11);
-
-      const afterTaxFormula = `${subAddr}+${taxAddr}`;
-      formulaCell(row,12,afterTaxFormula,c0.afterTax,"#,##0");
-      const afterTaxAddr = addr(row,12);
-
-      const markupFormula = `ROUND(${afterTaxAddr}*${markupFrac},0)`;
-      formulaCell(row,13,markupFormula,c0.markupAmt,"#,##0");
-      const markupCellAddr = addr(row,13);
-
-      const finalFormula = `CEILING((${afterTaxAddr}+${markupCellAddr})/${roeAddr},1)`;
-      const finalC = formulaCell(row,14,finalFormula,c0.finalFX,"#,##0",{bold:true,color:{argb:ACCENT},size:11});
-
-      const ssFormula = `CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstFrac})*(1+${markupFrac})/${roeAddr},1)`;
-      formulaCell(row,15,ssFormula,c0.ssFX,"#,##0");
-
-      if (si%2===1) for(let c=1;c<=15;c++) { const cell=sheet.getCell(row,c); if(!cell.fill||cell.fill.fgColor?.argb!==INPUT_BG) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; }
-      row++;
-    });
-
-    // Tour Leader Slabs get their own separate section entirely -- never
-    // a column (not even blank) inside the group slabs table above, since
-    // T/L Surcharge simply doesn't apply to a group slab. Shown as
-    // reference values matching the app's own calcTlSlab computation
-    // exactly, not live formulas. A full formula-driven version would
-    // need its own dedicated input section (label/vehicle/pax/6 cost
-    // fields/6 include checkboxes) the way group slabs and the other cost
-    // sections have -- reasonable next step if wanted.
-    if (tlSlabs.length) {
-      row += 1;
-      navyBand(row, "TOUR LEADER SLABS", 16); row++;
-      const tlHeaders = ["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup",`Final Price (${currency||"—"})`,`SS (${currency||"—"})`];
-      tlHeaders.forEach((h,i)=>{ const c=sheet.getCell(row,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF7D6608"}}; });
-      row++;
-      tlSlabs.forEach((tl,ti)=>{
-        const c = calcTlSlab(tl);
-        inputCell(row,1,tl.label).font={bold:true,color:{argb:"FF7D6608"}};
-        inputCell(row,2,tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||""); inputCell(row,3,Number(tl.pax)||0);
-        [c.tptPP,c.tlPP,c.surchargePP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt].forEach((v,i)=>{
-          const cell=sheet.getCell(row,4+i); cell.value=v; cell.numFmt="#,##0"; cell.font=i===2?{bold:true,color:{argb:"FF7D6608"},size:9}:{size:9};
-        });
-        const finalCell = sheet.getCell(row,15); finalCell.value=c.finalFX; finalCell.numFmt="#,##0"; finalCell.font={bold:true,color:{argb:"FF7D6608"},size:11};
-        const ssCell = sheet.getCell(row,16); ssCell.value=c.ssFX; ssCell.numFmt="#,##0"; ssCell.font={size:9};
-        for(let cc=1;cc<=16;cc++) sheet.getCell(row,cc).fill={type:"pattern",pattern:"solid",fgColor:{argb:ti%2===0?"FFFFFBEB":"FFFEF3C7"}};
-        row++;
-      });
-    }
-
-    sheet.columns.forEach((col,i)=>{ col.width = i===0?24:i===1?14:12; });
-    sheet.views = [{ state:"frozen", ySplit:0 }];
-    return wb;
   };
 
+  const [xlsxBusy, setXlsxBusy] = useState(false);
   const exportXLSX = async () => {
-    const wb = await buildCostSheetWorkbook();
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `${buildDownloadFilename("Cost Sheet", "costsheet", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector })}.xlsx`; a.click();
-    URL.revokeObjectURL(url);
-    logAudit(db, query.id, currentUser?.name, `Cost Sheet v${currentVersionLabel} exported to XLSX`);
+    if (xlsxBusy) return;
+    setXlsxBusy(true);
+    try {
+      const wb = await buildCostSheetWorkbook();
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${buildDownloadFilename("Cost Sheet", "costsheet", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector })}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke on the next tick, not immediately: some browsers start the
+      // download asynchronously and would find the URL already gone.
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      logAudit(db, query.id, currentUser?.name, `Cost Sheet v${currentVersionLabel} exported to XLSX`);
+    } catch (err) {
+      console.error("Cost Sheet Excel export failed", err);
+      alert("The Excel file could not be created. Please try again; if it keeps happening, tell the admin (details are in the browser console).");
+    } finally {
+      setXlsxBusy(false);
+    }
   };
 
   const secH = (t,icon) => <div style={{background:G.navy,color:"#fff",padding:"5px 10px",borderRadius:5,fontSize:11,fontWeight:700,letterSpacing:"0.5px",margin:"14px 0 8px",display:"flex",alignItems:"center",gap:6}}><span>{icon}</span>{t}</div>;
@@ -1402,7 +1117,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           )}
           <ExportMenu G={G} actions={[
             { id:"pdf",   label:"PDF",   icon:"📕", onSelect: exportPDF,  hint:"Landscape A4" },
-            { id:"excel", label:"Excel", icon:"📊", onSelect: exportXLSX, hint:"Styled single-sheet workbook" },
+            { id:"excel", label:"Excel", icon:"📊", onSelect: exportXLSX, hint:"Live formulas — edit offline" },
             { id:"print", label:"Print", icon:"🖨", onSelect: exportPDF, separatorBefore:true },
           ]}/>
           {!readOnly && hasAnyPricedSlab && !lastSavedCostSheetId && (

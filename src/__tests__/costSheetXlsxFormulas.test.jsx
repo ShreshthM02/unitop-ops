@@ -64,7 +64,9 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)',
     expect(finalPriceCell.formula).toBeTruthy();
     expect(finalPriceCell.formula).toContain('CEILING(');
     // Should reference the ROE settings cell, not a hardcoded number
-    expect(finalPriceCell.formula).toMatch(/\/[A-Z]+\d+,1\)$/);
+    // The ROE reference is guarded (IF(ROE>0, CEILING(.../ROE,1), 0)) so a blank ROE can never show #DIV/0!
+    expect(finalPriceCell.formula).toMatch(/\/\$?[A-Z]+\$?\d+,1\),0\)$/);
+    expect(finalPriceCell.formula).toMatch(/^IF\(\$?[A-Z]+\$?\d+>0,/);
   }, 15000);
 
   it('changing the GST% input cell would actually change the tax calculation -- verified by checking the formula references the GST cell, not a literal percentage', async () => {
