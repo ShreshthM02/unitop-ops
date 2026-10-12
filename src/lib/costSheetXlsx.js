@@ -1,34 +1,30 @@
 // Cost Sheet -> Excel workbook.
 //
-// A WORKING spreadsheet, not a printout: every price is a live formula that
-// reads the yellow input cells, so a colleague can change a rate, a slab size
-// or the ROE offline and watch the selling price recalculate.
+// A WORKING spreadsheet, not a printout. Design rules (each one answers a
+// real complaint about the first versions):
 //
-// What this module guarantees (each point was a real weakness of the first
-// version):
-//   - Never shows #DIV/0!: every "divide by paying pax" is guarded, matching
-//     the app (a slab with 0 pax prices at 0, it does not error).
-//   - Formulas are the app's own arithmetic in the same order, so Excel and
-//     the app agree to the rupee (see costSheetCalc.js). The "App @ export /
-//     Check" columns prove it on opening and flag when the sheet has since
-//     been edited.
-//   - Tour Leader slabs are live too (inputs + formulas), including their
-//     column in the transport matrix, instead of pasted numbers.
-//   - Monument mode is a real input, not a value baked into formulas.
-//   - Input cells have dropdowns / number validation, so a typo like "lumsum"
-//     can't silently change the maths. Mode text is compared case- and
-//     space-insensitively.
-//   - Dates are real Excel dates; text and numbers are never mixed in a
-//     calculation column.
-//   - Formula cells are locked (sheet protected WITHOUT a password -- Review >
-//     Unprotect Sheet turns it off), inputs are unlocked.
-//   - Print-ready: landscape, fit to one page wide, repeated title rows,
-//     footer with page numbers. Frozen title rows, sensible column widths,
-//     named ranges for the settings, recalculates on open.
+//   1. One tab per list. Itinerary, Transport, Monuments, Local Handlers and
+//      Extra Services each get their own tab with 60 ready rows, so a list
+//      never runs into the table below it and there is no "slot limit" to
+//      think about. The main "Cost Sheet" tab holds only settings and the
+//      price table.
+//   2. Slabs are ONE table (Step 3). A group slab and a Tour Leader slab are
+//      the same kind of row: name, vehicle, paying pax -- and, for a Tour
+//      Leader slab, the escort's own cost. To add a slab, type in the next
+//      empty row. 30 rows are ready; empty rows stay invisible.
+//   3. Transport lines say which slabs they apply to in plain words:
+//      "All", or slab names separated by commas. No matrix of Y/N columns
+//      to keep in sync, and a new slab picks up "All" lines automatically.
+//   4. Everything you may type in is yellow and unlocked; everything else is
+//      a locked formula (the sheet is protected WITHOUT a password -- Review
+//      > Unprotect Sheet turns it off), so a stray click can't break a price.
+//   5. The maths is the app's own, in the same order (see costSheetCalc.js),
+//      never shows #DIV/0!, and the grey "App check" columns show on opening
+//      that the sheet agrees with the app to the rupee.
 
 const NAVY = "FF0D1B2A", ACCENT = "FFC0392B", LIGHT = "FFF3F4F6", WHITE = "FFFFFFFF", GREY = "FF6B7280";
-const ZEBRA = "FFFAFAFA", BORDER = "FFD1D5DB", INPUT_BG = "FFFFFDE7", TL_BROWN = "FF7D6608";
-const GOOD = "FF047857", WARN_BG = "FFFEF3C7", BAD_BG = "FFFEE2E2";
+const BORDER = "FFD1D5DB", INPUT_BG = "FFFFFDE7", TL_BROWN = "FF7D6608", TL_TINT = "FFFDE68A";
+const GOOD = "FF047857", WARN_BG = "FFFEF3C7", BAD_BG = "FFFEE2E2", STEP_BLUE = "FF1D4ED8";
 
 const solid = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
 const colLetter = (c) => { let s = ""; while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; };
@@ -43,10 +39,8 @@ export function excelDate(iso) {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
-export const TL_COST_KEYS = [
-  ["hotel", "Hotel (PP)"], ["meals", "Extra Meals (PP)"], ["transport", "Transport (PP)"],
-  ["monument", "Monument (PP)"], ["localHandler", "Local Handler (PP)"], ["extras", "Extras (PP)"],
-];
+export const SLAB_ROWS = 30; // ready-to-use slab rows on the main tab
+const LIST_ROWS = 60; // ready-to-use rows on every list tab
 
 export async function buildCostSheetWorkbook(ExcelJS, d) {
   const {
@@ -63,21 +57,43 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   wb.title = `Cost Sheet ${query.tourFileId || query.id || ""}`.trim();
   wb.subject = query.groupName || query.clientName || "";
   wb.calcProperties = { fullCalcOnLoad: true }; // always recalculate when opened
-  const sheet = wb.addWorksheet("Cost Sheet", { properties: { tabColor: { argb: NAVY } } });
 
-  // ── helpers ─────────────────────────────────────────────────────────
-  const navyBand = (r, text, span = 14) => {
-    sheet.mergeCells(r, 1, r, span);
-    const c = sheet.getCell(r, 1);
+  const main = wb.addWorksheet("Cost Sheet", { properties: { tabColor: { argb: NAVY } } });
+  const itin = wb.addWorksheet("Itinerary", { properties: { tabColor: { argb: STEP_BLUE } } });
+  const tpt = wb.addWorksheet("Transport", { properties: { tabColor: { argb: STEP_BLUE } } });
+  const mon = wb.addWorksheet("Monuments", { properties: { tabColor: { argb: STEP_BLUE } } });
+  const lh = wb.addWorksheet("Local Handlers", { properties: { tabColor: { argb: STEP_BLUE } } });
+  const exs = wb.addWorksheet("Extra Services", { properties: { tabColor: { argb: STEP_BLUE } } });
+  const allSheets = [main, itin, tpt, mon, lh, exs];
+
+  // ── helpers (all take the sheet explicitly) ─────────────────────────
+  const band = (sh, r, text, span) => {
+    sh.mergeCells(r, 1, r, span);
+    const c = sh.getCell(r, 1);
     c.value = text; c.font = { bold: true, size: 11, color: { argb: WHITE } }; c.fill = solid(NAVY);
     c.alignment = { vertical: "middle" };
-    sheet.getRow(r).height = 20;
+    sh.getRow(r).height = 20;
   };
-  const label = (r, c, text) => { const cell = sheet.getCell(r, c); cell.value = text; cell.font = { bold: true, size: 9, color: { argb: GREY } }; };
-  // Input cells: pale-yellow, unlocked; everything else is a locked formula.
-  const inputCell = (r, c, val, fmt, validation) => {
-    const cell = sheet.getCell(r, c);
-    cell.value = val;
+  const title = (sh, text, sub, span, rightText) => {
+    const split = rightText ? Math.max(2, span - 5) : span;
+    sh.mergeCells(1, 1, 1, split);
+    const c = sh.getCell(1, 1); c.value = text; c.font = { bold: true, size: 16, color: { argb: WHITE } }; c.alignment = { vertical: "middle" };
+    if (rightText) {
+      sh.mergeCells(1, split + 1, 1, span);
+      const r = sh.getCell(1, split + 1); r.value = rightText;
+      r.font = { italic: true, size: 10, color: { argb: WHITE } }; r.alignment = { vertical: "middle", horizontal: "right" };
+    }
+    for (let i = 1; i <= span; i++) sh.getCell(1, i).fill = solid(NAVY);
+    sh.getRow(1).height = 28;
+    sh.mergeCells(2, 1, 2, span);
+    const s = sh.getCell(2, 1); s.value = sub; s.font = { italic: true, size: 9, color: { argb: GREY } };
+    s.alignment = { wrapText: true, vertical: "top" };
+    sh.getRow(2).height = 30;
+  };
+  const label = (sh, r, c, text) => { const cell = sh.getCell(r, c); cell.value = text; cell.font = { bold: true, size: 9, color: { argb: GREY } }; cell.alignment = { wrapText: true, vertical: "bottom" }; };
+  const inputCell = (sh, r, c, val, fmt, validation) => {
+    const cell = sh.getCell(r, c);
+    cell.value = val === undefined ? null : val;
     cell.fill = solid(INPUT_BG);
     cell.protection = { locked: false };
     cell.border = { bottom: { style: "hair", color: { argb: BORDER } } };
@@ -85,22 +101,23 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     if (validation) cell.dataValidation = validation;
     return cell;
   };
-  const formulaCell = (r, c, formula, result, fmt, extraFont = {}) => {
-    const cell = sheet.getCell(r, c);
-    cell.value = { formula, result: Number.isFinite(result) ? result : 0 };
+  const formulaCell = (sh, r, c, formula, result, fmt, extraFont = {}) => {
+    const cell = sh.getCell(r, c);
+    cell.value = { formula, result: typeof result === "string" ? result : (Number.isFinite(result) ? result : 0) };
     if (fmt) cell.numFmt = fmt;
-    cell.font = { size: 9, ...extraFont };
+    cell.font = { size: 10, ...extraFont };
     return cell;
   };
-  const sectionHeaders = (r, headers, startCol = 1) => headers.forEach((h, i) => {
-    const c = sheet.getCell(r, startCol + i);
-    c.value = h; c.font = { bold: true, size: 9, color: { argb: "FF374151" } }; c.fill = solid(LIGHT);
+  const headerRow = (sh, r, headers, fill = LIGHT, fontColor = "FF374151") => headers.forEach((h, i) => {
+    const c = sh.getCell(r, 1 + i);
+    c.value = h; c.font = { bold: true, size: 9, color: { argb: fontColor } }; c.fill = solid(fill);
     c.border = { bottom: { style: "thin", color: { argb: BORDER } } };
     c.alignment = { vertical: "middle", wrapText: true };
   });
-  const listValidation = (items) => ({
+  const listValidation = (items, prompt) => ({
     type: "list", allowBlank: true, formulae: [`"${items.join(",")}"`],
     showErrorMessage: true, errorStyle: "stop", errorTitle: "Pick from the list", error: `Choose one of: ${items.join(", ")}`,
+    ...(prompt ? { showInputMessage: true, promptTitle: prompt[0], prompt: prompt[1] } : {}),
   });
   const numValidation = (min = 0) => ({
     type: "decimal", operator: "greaterThanOrEqual", formulae: [min], allowBlank: true,
@@ -110,367 +127,289 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const MODE_EXTRA = listValidation(["PP", "Lumpsum", "Per Vehicle", "Per Group"]);
   const YES_NO = listValidation(["Y", "N"]);
   const MONEY = "#,##0";
-  // Blank yellow rows left under every table, so adding a day / slab / item is just typing into the next row.
-  const SPARE = { days: 4, slabs: 4, tl: 3, items: 5 };
-  const names = []; // [name, address] pairs, added at the end
-
-  // Text-safe, case/space-insensitive comparisons used inside formulas.
+  const names = [];
   const isPP = (ref) => `LOWER(TRIM(${ref}))="pp"`;
-  const isPPrange = (rng) => `--(LOWER(TRIM(${rng}))="pp")`;
-  const notPPrange = (rng) => `--(LOWER(TRIM(${rng}))<>"pp")`;
-  const isYrange = (rng) => `--(UPPER(TRIM(${rng}))="Y")`;
 
-  let row = 1;
-
-  // ── Title band ──
-  sheet.mergeCells(row, 1, row, 9);
-  sheet.getCell(row, 1).value = "COST SHEET";
-  sheet.getCell(row, 1).font = { bold: true, size: 18, color: { argb: WHITE } };
-  sheet.getCell(row, 1).alignment = { vertical: "middle" };
-  sheet.mergeCells(row, 10, row, 18);
-  sheet.getCell(row, 10).value = `Version ${currentVersionLabel}  •  Saved ${savedTimestamp}`;
-  sheet.getCell(row, 10).font = { italic: true, size: 10, color: { argb: WHITE } };
-  sheet.getCell(row, 10).alignment = { vertical: "middle", horizontal: "right" };
-  for (let c = 1; c <= 18; c++) sheet.getCell(row, c).fill = solid(NAVY);
-  sheet.getRow(row).height = 30; row++;
-
-  sheet.mergeCells(row, 1, row, 14);
-  sheet.getCell(row, 1).value = `${query.groupName || query.clientName || ""}   •   ${query.destination || query.sector || ""}   •   Tour File: ${query.tourFileId || query.id}`;
-  sheet.getCell(row, 1).font = { bold: true, size: 12 };
-  const titleRows = row; row += 1;
-
-  // Legend
-  sheet.mergeCells(row, 1, row, 14);
-  const legend = sheet.getCell(row, 1);
-  legend.value = "Yellow cells are inputs — change them and every price recalculates. To add a day, slab or item, type into the next blank yellow row (spare rows are under every table; blank slab rows stay invisible until you enter a pax number). Need more rows? Insert a row inside a table. Formulas are locked without a password: Review ▸ Unprotect Sheet to restructure.";
-  legend.font = { italic: true, size: 9, color: { argb: GREY } };
-  legend.alignment = { wrapText: true, vertical: "top" };
-  sheet.getRow(row).height = 26;
-  row += 2;
-
-  label(row, 1, "Client / Foreign Agent"); label(row, 5, "Assigned Staff");
-  row++;
-  inputCell(row, 1, clientAgentName || ""); sheet.mergeCells(row, 1, row, 4);
-  inputCell(row, 5, assignedStaffName || ""); sheet.mergeCells(row, 5, row, 8);
-  row += 2;
-
-  // ── Settings ──
-  navyBand(row, "SETTINGS — edit these, every price below recalculates", 14); row++;
-  label(row, 1, "GST %"); label(row, 3, "Markup %"); label(row, 5, "ROE"); label(row, 7, "Currency");
-  row++;
-  const gstCell = inputCell(row, 1, Number(gst) || 0, "0.0", numValidation(0)); gstCell.font = { bold: true, size: 13 };
-  const markupCell = inputCell(row, 3, Number(markup) || 0, "0.0", numValidation(0)); markupCell.font = { bold: true, size: 13 };
-  const roeCell = inputCell(row, 5, Number(roe) || 0, "0.0", numValidation(0)); roeCell.font = { bold: true, size: 13 };
-  const currencyCell = inputCell(row, 7, currency || "US $"); currencyCell.font = { bold: true, size: 13 };
-  const gstAddr = abs(row, 1), markupAddr = abs(row, 3), roeAddr = abs(row, 5);
-  names.push(["GST_pct", gstAddr], ["Markup_pct", markupAddr], ["ROE", roeAddr], ["Currency", abs(row, 7)]);
-  row += 2;
-
-  // ── Day-wise Itinerary & Accommodation ──
-  navyBand(row, "DAY-WISE ITINERARY & ACCOMMODATION", 11); row++;
-  sectionHeaders(row, ["Day", "Date", "Movement", "Meal Plan", "Meal Cost", "Hotel", "Alt Hotel", "Plan", "Net PP", "Sngl Supp", "Notes"]);
-  row++;
-  const dayFirstRow = row;
-  days.forEach((dd, i) => {
-    inputCell(row, 1, dd.day);
-    const dt = excelDate(dd.date);
-    inputCell(row, 2, dt || formatDateSlash(dd.date) || "", dt ? "dd/mm/yyyy" : undefined);
-    inputCell(row, 3, dd.movement || ""); inputCell(row, 4, dd.mealPlan || "");
-    inputCell(row, 5, n(dd.mealCost) || 0, MONEY, numValidation(0)); inputCell(row, 6, dd.hotel || ""); inputCell(row, 7, dd.hotelAlt || ""); inputCell(row, 8, dd.hotelPlan || "");
-    inputCell(row, 9, n(dd.hotelNetPP) || 0, MONEY, numValidation(0)); inputCell(row, 10, n(dd.singleSupp) || 0, MONEY, numValidation(0)); inputCell(row, 11, dd.notes || "");
-    for (const c of [3, 6, 7, 11]) sheet.getCell(row, c).alignment = { wrapText: true, vertical: "top" };
-    if (i % 2 === 1) for (const c of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) sheet.getCell(row, c).border = { bottom: { style: "hair", color: { argb: BORDER } }, top: { style: "hair", color: { argb: BORDER } } };
-    row++;
-  });
-  for (let i = 0; i < SPARE.days; i++) {
-    inputCell(row, 1, ""); inputCell(row, 2, "", "dd/mm/yyyy"); inputCell(row, 3, ""); inputCell(row, 4, "");
-    inputCell(row, 5, null, MONEY, numValidation(0)); inputCell(row, 6, ""); inputCell(row, 7, ""); inputCell(row, 8, "");
-    inputCell(row, 9, null, MONEY, numValidation(0)); inputCell(row, 10, null, MONEY, numValidation(0)); inputCell(row, 11, "");
-    row++;
-  }
-  const dayLastRow = Math.max(dayFirstRow, row - 1);
-  sheet.mergeCells(row, 1, row, 3); sheet.getCell(row, 1).value = "TOTALS"; sheet.getCell(row, 1).font = { bold: true };
-  formulaCell(row, 5, `SUM(E${dayFirstRow}:E${dayLastRow})`, Math.round(totMeal), MONEY, { bold: true });
-  formulaCell(row, 9, `SUM(I${dayFirstRow}:I${dayLastRow})`, Math.round(totHotel), MONEY, { bold: true });
-  formulaCell(row, 10, `SUM(J${dayFirstRow}:J${dayLastRow})`, Math.round(daySS), MONEY, { bold: true });
-  const mealTotalAddr = abs(row, 5), hotelTotalAddr = abs(row, 9), daySSTotalAddr = abs(row, 10);
-  for (let c = 1; c <= 11; c++) sheet.getCell(row, c).border = { top: { style: "thin", color: { argb: BORDER } } };
-  row += 3;
-
-  // ── Cost Line Items ──
-  navyBand(row, "COST LINE ITEMS", 14); row++;
-
-  label(row, 1, "Tour Leader / Facilitator Cost — Mode (pp / lumpsum)"); label(row, 4, "Amount");
-  row++;
-  inputCell(row, 1, tlMode || "lumpsum", undefined, MODE_PP); inputCell(row, 4, n(tlCost) || 0, MONEY, numValidation(0));
-  const tlModeAddr = abs(row, 1), tlCostAddr = abs(row, 4);
-  row += 2;
-
-  label(row, 1, "Misc Cost — Mode (pp / lumpsum)"); label(row, 4, "Amount");
-  row++;
-  inputCell(row, 1, miscMode || "pp", undefined, MODE_PP); inputCell(row, 4, n(miscCost) || 0, MONEY, numValidation(0));
-  const miscModeAddr = abs(row, 1), miscCostAddr = abs(row, 4);
-  row += 2;
-
-  // Monuments
-  label(row, 1, "Monuments"); row++;
-  sectionHeaders(row, ["Monument", "Fee", "Include (Y/N)"]);
-  row++;
-  const monFirstRow = row;
-  const monRowCount = monuments.length + SPARE.items;
-  for (let i = 0; i < monRowCount; i++) {
-    const m = monuments[i];
-    inputCell(row, 1, m?.name || ""); inputCell(row, 2, m ? (m.fee ? n(m.fee) : 0) : null, MONEY, numValidation(0)); inputCell(row, 3, m ? (m.include ? "Y" : "N") : "N", undefined, YES_NO);
-    row++;
-  }
-  const monLastRow = row - 1;
-  label(row, 1, "Extra Monument Cost (not tied to a specific monument)");
-  inputCell(row, 4, n(monExtra) || 0, MONEY, numValidation(0));
-  const monExtraAddr = abs(row, 4);
-  row++;
-  label(row, 1, "Monument Mode — pp / lumpsum");
-  inputCell(row, 4, monMode || "pp", undefined, MODE_PP);
-  const monModeAddr = abs(row, 4);
-  row++;
-  label(row, 1, "Monument Total");
-  formulaCell(row, 4, `SUMPRODUCT(${isYrange(`C${monFirstRow}:C${monLastRow}`)},B${monFirstRow}:B${monLastRow})+${monExtraAddr}`, Math.round(monTotal), MONEY, { bold: true });
-  const monTotalAddr = abs(row, 4);
-  row += 2;
-
-  // Local Handler(s)
-  label(row, 1, "Local Handler(s)"); row++;
-  sectionHeaders(row, ["Sector", "Cost", "Mode (pp / lumpsum)", "Single Supp"]);
-  row++;
-  const lhFirstRow = row;
-  const lhRowCount = localHandlers.length + SPARE.items;
-  for (let i = 0; i < lhRowCount; i++) {
-    const h = localHandlers[i];
-    inputCell(row, 1, h?.sector || ""); inputCell(row, 2, h ? n(h.cost) || 0 : null, MONEY, numValidation(0));
-    inputCell(row, 3, h?.mode || "pp", undefined, MODE_PP); inputCell(row, 4, h ? n(h.singleSupp) || 0 : null, MONEY, numValidation(0));
-    row++;
-  }
-  const lhLastRow = row - 1;
-  label(row, 1, "Local Handler Single Supp Total");
-  formulaCell(row, 4, `SUM(D${lhFirstRow}:D${lhLastRow})`, Math.round(handlerSS), MONEY, { bold: true });
-  const handlerSSAddr = abs(row, 4);
-  row += 2;
-
-  // Extra Services
-  label(row, 1, "Extra Services"); row++;
-  sectionHeaders(row, ["Description", "Cost", "Mode (PP / Lumpsum / Per Vehicle / Per Group)"]);
-  row++;
-  const exFirstRow = row;
-  const exRowCount = extras.length + SPARE.items;
-  for (let i = 0; i < exRowCount; i++) {
-    const e = extras[i];
-    inputCell(row, 1, e?.description || ""); inputCell(row, 2, e ? n(e.cost) || 0 : null, MONEY, numValidation(0)); inputCell(row, 3, e?.mode || "PP", undefined, MODE_EXTRA);
-    row++;
-  }
-  const exLastRow = row - 1;
-  row++;
-
-  // Transportation matrix: one column per group slab, then one per T/L slab
-  label(row, 1, "Transportation — mark Y under each slab this line applies to"); row++;
-  const spareN = (k, extra) => Array.from({ length: k }, () => ({ spare: true, ...extra }));
-  const matrixSlabs = [...slabs.map((s) => ({ s })), ...spareN(SPARE.slabs), ...tlSlabs.map((s) => ({ s, tl: true })), ...spareN(SPARE.tl, { tl: true })];
-  const GROUP_COLS = slabs.length + SPARE.slabs;
-  const matrixHeaderRow = row;
-  sectionHeaders(row, ["Sector / Description", "Cost", ...matrixSlabs.map((m) => (m.s ? m.s.label : ""))]);
-  matrixSlabs.forEach((m, i) => { if (m.tl) { const c = sheet.getCell(row, 3 + i); c.font = { bold: true, size: 9, color: { argb: TL_BROWN } }; } });
-  row++;
-  const tptFirstRow = row;
-  const tptRowCount = transports.length + SPARE.items;
-  for (let i = 0; i < tptRowCount; i++) {
-    const t = transports[i];
-    inputCell(row, 1, t?.sector || t?.vehicleType || ""); inputCell(row, 2, t ? n(t.cost) || 0 : null, MONEY, numValidation(0));
-    matrixSlabs.forEach((m, si) => { inputCell(row, 3 + si, t && m.s && (t.slabs || []).includes(m.s.id) ? "Y" : "", undefined, YES_NO); });
-    row++;
-  }
-  const tptLastRow = row - 1;
-  const groupCol = (i) => 3 + i;
-  const tlCol = (j) => 3 + GROUP_COLS + j;
-  row += 2;
-
-  // Tour Leader slab inputs (live)
-  const tlInputRows = [];
-  {
-    label(row, 1, "Tour Leader slabs — the T/L doesn't pay: their costs are spread across this slab's paying guests. Per-pax costs; Y = include in the T/L surcharge."); row++;
-    const hdr = ["T/L Slab Name", "Vehicle", "Paying Pax", ...TL_COST_KEYS.map(([, l]) => l), ...TL_COST_KEYS.map(([, l]) => `Incl. ${l.replace(" (PP)", "")}`)];
-    sectionHeaders(row, hdr);
-    for (let c = 1; c <= hdr.length; c++) sheet.getCell(row, c).fill = solid("FFFEF3C7");
-    row++;
-    [...tlSlabs, ...Array(SPARE.tl).fill(null)].forEach((tlr) => {
-      const tl = tlr || { label: "", pax: null, costs: {}, includes: {} };
-      inputCell(row, 1, tl.label).font = { bold: true, color: { argb: TL_BROWN } };
-      inputCell(row, 2, tl.vehicle === "Others" ? tl.vehicleOther : tl.vehicle || "");
-      inputCell(row, 3, tlr ? n(tl.pax) || 0 : null, "0", numValidation(0));
-      TL_COST_KEYS.forEach(([k], i) => {
-        inputCell(row, 4 + i, tlr ? n((tl.costs || {})[k]) || 0 : null, MONEY, numValidation(0));
-        inputCell(row, 10 + i, (tl.includes || {})[k] ? "Y" : "N", undefined, YES_NO);
-      });
-      tlInputRows.push(row);
-      row++;
-    });
-    row += 2;
-  }
-
-  // ── Final Price Summary ──
-  navyBand(row, "FINAL PRICE SUMMARY", 14); row++;
-  label(row, 1, "Accommodation (PP)"); formulaCell(row + 1, 1, hotelTotalAddr, Math.round(totHotel), MONEY, { bold: true, size: 13 });
-  label(row, 4, "Extra Meals (PP)"); formulaCell(row + 1, 4, mealTotalAddr, Math.round(totMeal), MONEY, { bold: true, size: 13 });
-  label(row, 7, "Single Supplement (total)"); formulaCell(row + 1, 7, `${daySSTotalAddr}+${handlerSSAddr}`, Math.round(totSS), MONEY, { bold: true, size: 13, color: { argb: ACCENT } });
-  const ssTotalAddr = abs(row + 1, 7);
-  row += 3;
-
-  const slabHeaders = ["Slab", "Vehicle", "FOC (paying pax)", "Transport", "Tour Facil", "Misc", "Mon.", "Local Hdlr", "Extras", "Sub-total", "GST", "After Tax", "Markup", `Final Price (${currency || "—"})`, `SS (${currency || "—"})`, "Final @ app export", "Matches app?"];
-  slabHeaders.forEach((h, i) => {
-    const c = sheet.getCell(row, i + 1); c.value = h; c.font = { bold: true, size: 10, color: { argb: WHITE } };
-    c.fill = solid(i >= 15 ? "FF6B7280" : NAVY); c.alignment = { vertical: "middle", wrapText: true };
-  });
-  sheet.getRow(row).height = 30;
-  row++;
-
-  // Shared per-row cost formulas. `div` is the cell holding paying pax / FOC.
-  const costFormulas = (div, tptCol) => {
-    const tptF = `IF(${div}>0,SUMPRODUCT(${isYrange(`${colLetter(tptCol)}${tptFirstRow}:${colLetter(tptCol)}${tptLastRow}`)},$B$${tptFirstRow}:$B$${tptLastRow})/${div},0)`;
-    const tlF = `IF(${isPP(tlModeAddr)},${tlCostAddr},IF(${div}>0,${tlCostAddr}/${div},0))`;
-    const miscF = `IF(${isPP(miscModeAddr)},${miscCostAddr},IF(${div}>0,${miscCostAddr}/${div},0))`;
-    const monF = `IF(${isPP(monModeAddr)},${monTotalAddr},IF(${div}>0,${monTotalAddr}/${div},0))`;
-    const lhRange = `$C$${lhFirstRow}:$C$${lhLastRow}`, lhCost = `$B$${lhFirstRow}:$B$${lhLastRow}`;
-    const lhF = `SUMPRODUCT(${isPPrange(lhRange)},${lhCost})+IF(${div}>0,SUMPRODUCT(${notPPrange(lhRange)},${lhCost})/${div},0)`;
-    const exRange = `$C$${exFirstRow}:$C$${exLastRow}`, exCost = `$B$${exFirstRow}:$B$${exLastRow}`;
-    const exF = `SUMPRODUCT(--(UPPER(TRIM(${exRange}))="PP"),${exCost})+IF(${div}>0,SUMPRODUCT(--(UPPER(TRIM(${exRange}))<>"PP"),${exCost})/${div},0)`;
-    return { tptF, tlF, miscF, monF, lhF, exF };
+  // ═══ Unique, comma-free slab names (the Transport tab matches on them) ═══
+  const usedNames = new Set();
+  const uniqueName = (raw, fallback) => {
+    let base = String(raw || "").replace(/,/g, " ").trim() || fallback;
+    let nm = base, i = 2;
+    while (usedNames.has(nm.toLowerCase())) nm = `${base} (${i++})`;
+    usedNames.add(nm.toLowerCase());
+    return nm;
   };
-  const roeOk = `${roeAddr}>0`;
-  const finalOf = (afterTax, markupAmt) => `IF(${roeOk},CEILING((${afterTax}+${markupAmt})/${roeAddr},1),0)`;
-  const ssOf = `IF(${roeOk},CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstAddr}/100)*(1+${markupAddr}/100)/${roeAddr},1),0)`;
+  const slabEntries = [
+    ...slabs.map((s, i) => ({ src: s, tl: false, name: uniqueName(s.label, `Slab ${i + 1}`) })),
+    ...tlSlabs.map((s, i) => ({ src: s, tl: true, name: uniqueName(s.label, `T/L ${i + 1}`) })),
+  ].slice(0, SLAB_ROWS);
+  const nameById = new Map(slabEntries.map((e) => [e.src.id, e.name]));
 
-  const slabFirstRow = row;
-  [...slabs, ...Array(SPARE.slabs).fill(null)].forEach((sr, si) => {
-    const s = sr || { label: "", vehicle: "", foc: null };
-    const c0 = sr ? calcSlab(sr) : { tptPP: 0, tlPP: 0, miscPP: 0, monPP: 0, localPP: 0, extrasPP: 0, sub: 0, tax: 0, afterTax: 0, markupAmt: 0, finalFX: 0, ssFX: 0 };
-    inputCell(row, 1, s.label); inputCell(row, 2, s.vehicle === "Others" ? s.vehicleOther : s.vehicle || "");
-    const focCell = inputCell(row, 3, sr ? Number(s.foc) || 0 : null, "0", numValidation(0)); focCell.font = { bold: true };
-    const foc = addr(row, 3);
-    const f = costFormulas(foc, groupCol(si));
-    formulaCell(row, 4, f.tptF, c0.tptPP, MONEY);
-    formulaCell(row, 5, f.tlF, c0.tlPP, MONEY);
-    formulaCell(row, 6, f.miscF, c0.miscPP, MONEY);
-    formulaCell(row, 7, f.monF, c0.monPP, MONEY);
-    formulaCell(row, 8, f.lhF, c0.localPP, MONEY);
-    formulaCell(row, 9, f.exF, c0.extrasPP, MONEY);
-    const sub = addr(row, 10);
-    formulaCell(row, 10, `${hotelTotalAddr}+${mealTotalAddr}+${addr(row, 4)}+${addr(row, 5)}+${addr(row, 6)}+${addr(row, 7)}+${addr(row, 8)}+${addr(row, 9)}`, c0.sub, MONEY);
-    formulaCell(row, 11, `ROUND(${sub}*${gstAddr}/100,0)`, c0.tax, MONEY);
-    formulaCell(row, 12, `${sub}+${addr(row, 11)}`, c0.afterTax, MONEY);
-    formulaCell(row, 13, `ROUND(${addr(row, 12)}*${markupAddr}/100,0)`, c0.markupAmt, MONEY);
-    formulaCell(row, 14, finalOf(addr(row, 12), addr(row, 13)), c0.finalFX, MONEY, { bold: true, color: { argb: ACCENT }, size: 11 });
-    formulaCell(row, 15, ssOf, c0.ssFX, MONEY);
-    if (sr) {
-      const appFinal = sheet.getCell(row, 16); appFinal.value = c0.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
-      const chk = sheet.getCell(row, 17);
-      chk.value = { formula: `IF(ABS(${addr(row, 14)}-${addr(row, 16)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
+  // ═══ Row geometry of the list tabs ═══
+  const ITIN_HDR = 6, ITIN_FIRST = 7, ITIN_ROWS = Math.max(LIST_ROWS, days.length + 20), ITIN_LAST = ITIN_FIRST + ITIN_ROWS - 1;
+  const LIST_HDR = 4, LIST_FIRST = 5;
+  const rowsFor = (len) => Math.max(LIST_ROWS, len + 20);
+  const TPT_LAST = LIST_FIRST + rowsFor(transports.length) - 1;
+  const MON_LAST = LIST_FIRST + rowsFor(monuments.length) - 1;
+  const LH_LAST = LIST_FIRST + rowsFor(localHandlers.length) - 1;
+  const EX_LAST = LIST_FIRST + rowsFor(extras.length) - 1;
+  const rng = (sheetName, col, a, b) => `'${sheetName}'!$${col}$${a}:$${col}$${b}`;
+
+  // ═══════════════════════ MAIN TAB: "Cost Sheet" ═══════════════════════
+  title(main, "COST SHEET",
+    "How to use: yellow cells are the only ones you type in. Step 1–2: settings. Step 3: the price table — add a slab by typing in the next empty row. " +
+    "The lists behind the prices (Itinerary, Transport, Monuments, Local Handlers, Extra Services) are on the tabs at the bottom. Every price recalculates as you type.", 19,
+    `Version ${currentVersionLabel}  •  Saved ${savedTimestamp}`);
+
+  main.mergeCells(3, 1, 3, 12);
+  main.getCell(3, 1).value = `${query.groupName || query.clientName || ""}   •   ${query.destination || query.sector || ""}   •   Tour File: ${query.tourFileId || query.id}`;
+  main.getCell(3, 1).font = { bold: true, size: 12 };
+
+  band(main, 5, "STEP 1 — SETTINGS", 19);
+  label(main, 6, 1, "GST %"); label(main, 6, 2, "Markup %"); label(main, 6, 3, "ROE"); label(main, 6, 4, "Currency");
+  label(main, 6, 6, "Client / Foreign Agent"); label(main, 6, 11, "Assigned Staff");
+  const gstCell = inputCell(main, 7, 1, Number(gst) || 0, "0.0", numValidation(0));
+  const markupCell = inputCell(main, 7, 2, Number(markup) || 0, "0.0", numValidation(0));
+  const roeCell = inputCell(main, 7, 3, Number(roe) || 0, "0.0", numValidation(0));
+  const currencyCell = inputCell(main, 7, 4, currency || "US $");
+  for (const c of [gstCell, markupCell, roeCell, currencyCell]) c.font = { bold: true, size: 13 };
+  inputCell(main, 7, 6, clientAgentName || ""); main.mergeCells(7, 6, 7, 9);
+  inputCell(main, 7, 11, assignedStaffName || ""); main.mergeCells(7, 11, 7, 14);
+  const gstAddr = abs(7, 1), markupAddr = abs(7, 2), roeAddr = abs(7, 3);
+  names.push(["GST_pct", gstAddr], ["Markup_pct", markupAddr], ["ROE", roeAddr], ["Currency", abs(7, 4)]);
+  main.getRow(7).height = 22;
+
+  band(main, 9, "STEP 2 — COSTS THAT APPLY TO EVERY SLAB   (pp = per person, lumpsum = one total shared by the paying pax)", 19);
+  label(main, 10, 1, "Tour Facilitator — pp or lumpsum"); label(main, 10, 2, "Amount");
+  label(main, 10, 4, "Misc — pp or lumpsum"); label(main, 10, 5, "Amount");
+  label(main, 10, 7, "Monuments — pp or lumpsum"); label(main, 10, 8, "Extra monument cost");
+  main.getRow(10).height = 28;
+  inputCell(main, 11, 1, tlMode || "lumpsum", undefined, MODE_PP); inputCell(main, 11, 2, n(tlCost) || null, MONEY, numValidation(0));
+  inputCell(main, 11, 4, miscMode || "pp", undefined, MODE_PP); inputCell(main, 11, 5, n(miscCost) || null, MONEY, numValidation(0));
+  inputCell(main, 11, 7, monMode || "pp", undefined, MODE_PP); inputCell(main, 11, 8, n(monExtra) || null, MONEY, numValidation(0));
+  const tlModeAddr = abs(11, 1), tlCostAddr = abs(11, 2), miscModeAddr = abs(11, 4), miscCostAddr = abs(11, 5), monModeAddr = abs(11, 7), monExtraAddr = abs(11, 8);
+
+  label(main, 13, 1, "Pulled from the other tabs — don't type here");
+  label(main, 14, 1, "Accommodation (PP)"); label(main, 14, 4, "Extra Meals (PP)"); label(main, 14, 7, "Monuments (total)"); label(main, 14, 10, "Single Supplement (total)");
+  main.getRow(14).height = 28;
+  // Totals live at the TOP of their tabs, so lists can grow downward freely.
+  const hotelTotalRef = `'Itinerary'!$I$4`, mealTotalRef = `'Itinerary'!$E$4`, daySSRef = `'Itinerary'!$J$4`;
+  const handlerSSRef = `'Local Handlers'!$D$3`;
+  formulaCell(main, 15, 1, hotelTotalRef, Math.round(totHotel), MONEY, { bold: true, size: 13 });
+  formulaCell(main, 15, 4, mealTotalRef, Math.round(totMeal), MONEY, { bold: true, size: 13 });
+  const monTotalFormula = `SUMPRODUCT(--(UPPER(TRIM(${rng("Monuments", "C", LIST_FIRST, MON_LAST)}))="Y"),${rng("Monuments", "B", LIST_FIRST, MON_LAST)})+N(${monExtraAddr})`;
+  formulaCell(main, 15, 7, monTotalFormula, Math.round(monTotal), MONEY, { bold: true, size: 13 });
+  formulaCell(main, 15, 10, `${daySSRef}+${handlerSSRef}`, Math.round(totSS), MONEY, { bold: true, size: 13, color: { argb: ACCENT } });
+  const hotelAddr = abs(15, 1), mealAddr = abs(15, 4), monTotalAddr = abs(15, 7), ssTotalAddr = abs(15, 10);
+  names.push(["Hotel_total_PP", hotelAddr], ["Meal_total_PP", mealAddr], ["Monument_total", monTotalAddr], ["Single_supp_total", ssTotalAddr]);
+  main.getRow(15).height = 22;
+
+  band(main, 17, "STEP 3 — SLABS & PRICES      ◄ to add a slab, type in the next empty row (30 rows ready)", 19);
+  main.mergeCells(18, 1, 18, 19);
+  main.getCell(18, 1).value = "Fill Name, Vehicle and Paying pax. For a TOUR LEADER slab also type the Tour Leader's own cost (the total for the escort) in the last yellow column — it is spread across the paying pax and the row turns amber. " +
+    "Which transport lines count for a slab is set on the Transport tab, by slab name.";
+  main.getCell(18, 1).font = { italic: true, size: 9, color: { argb: GREY } };
+  main.getCell(18, 1).alignment = { wrapText: true, vertical: "top" };
+  main.getRow(18).height = 28;
+
+  const SLAB_HDR = 19, SLAB_FIRST = 20, SLAB_LAST = SLAB_FIRST + SLAB_ROWS - 1;
+  const slabHeaders = ["Slab name", "Vehicle", "Paying pax", "Tour Leader's own cost (total) — T/L slabs only",
+    "Transport", "Tour Facil", "Misc", "Monuments", "Local Hdlr", "Extras", "T/L surcharge", "Sub-total", "GST", "After Tax", "Markup",
+    `Final Price (${currency || "—"})`, `Single Supp (${currency || "—"})`, "App price at export", "Matches app?"];
+  headerRow(main, SLAB_HDR, slabHeaders, NAVY, WHITE);
+  for (const c of [1, 2, 3, 4]) main.getCell(SLAB_HDR, c).fill = solid(STEP_BLUE);
+  for (const c of [18, 19]) main.getCell(SLAB_HDR, c).fill = solid(GREY);
+  main.getRow(SLAB_HDR).height = 44;
+
+  const T = { b: rng("Transport", "B", LIST_FIRST, TPT_LAST), c: rng("Transport", "C", LIST_FIRST, TPT_LAST) };
+  const L = { b: rng("Local Handlers", "B", LIST_FIRST, LH_LAST), c: rng("Local Handlers", "C", LIST_FIRST, LH_LAST) };
+  const X = { b: rng("Extra Services", "B", LIST_FIRST, EX_LAST), c: rng("Extra Services", "C", LIST_FIRST, EX_LAST) };
+  const roeOk = `${roeAddr}>0`;
+
+  for (let i = 0; i < SLAB_ROWS; i++) {
+    const row = SLAB_FIRST + i;
+    const e = slabEntries[i] || null;
+    const tlEntry = e && e.tl;
+    const c0 = e ? (e.tl ? calcTlSlab(e.src) : calcSlab(e.src)) : { tptPP: 0, tlPP: 0, miscPP: 0, monPP: 0, localPP: 0, extrasPP: 0, surchargePP: 0, sub: 0, tax: 0, afterTax: 0, markupAmt: 0, finalFX: 0, ssFX: 0 };
+    const pax = e ? (e.tl ? n(e.src.pax) : Number(e.src.foc) || 0) : null;
+    const vehicle = e ? (e.src.vehicle === "Others" ? e.src.vehicleOther : e.src.vehicle) || "" : "";
+    const tlOwn = tlEntry ? Object.entries(e.src.costs || {}).reduce((a, [k, v]) => a + ((e.src.includes || {})[k] ? n(v) : 0), 0) : null;
+
+    const nm = inputCell(main, row, 1, e ? e.name : "", undefined, {
+      type: "custom", allowBlank: true,
+      formulae: [`AND(ISERROR(FIND(",",$A${row})),COUNTIF($A$${SLAB_FIRST}:$A$${SLAB_LAST},$A${row})=1)`],
+      showErrorMessage: true, errorStyle: "stop", errorTitle: "Slab name",
+      error: "Each slab needs its own name, and it can't contain a comma (the Transport tab matches on names).",
+    });
+    nm.font = { bold: true, color: { argb: tlEntry ? TL_BROWN : "FF111827" } };
+    inputCell(main, row, 2, vehicle);
+    inputCell(main, row, 3, pax, "0", numValidation(0)).font = { bold: true };
+    inputCell(main, row, 4, tlOwn, MONEY, numValidation(0));
+
+    const P = `$C${row}`;
+    const tptF = `IF(${P}>0,SUMPRODUCT(--(((TRIM(${T.c})="All")+ISNUMBER(SEARCH(","&TRIM($A${row})&",",","&SUBSTITUTE(${T.c},", ",",")&",")))>0),${T.b})/${P},0)`;
+    const tlF = `IF(${isPP(tlModeAddr)},N(${tlCostAddr}),IF(${P}>0,N(${tlCostAddr})/${P},0))`;
+    const miscF = `IF(${isPP(miscModeAddr)},N(${miscCostAddr}),IF(${P}>0,N(${miscCostAddr})/${P},0))`;
+    const monF = `IF(${isPP(monModeAddr)},${monTotalAddr},IF(${P}>0,${monTotalAddr}/${P},0))`;
+    const lhF = `SUMPRODUCT(--(LOWER(TRIM(${L.c}))="pp"),${L.b})+IF(${P}>0,SUMPRODUCT(--(LOWER(TRIM(${L.c}))<>"pp"),${L.b})/${P},0)`;
+    const exF = `SUMPRODUCT(--(UPPER(TRIM(${X.c}))="PP"),${X.b})+IF(${P}>0,SUMPRODUCT(--(UPPER(TRIM(${X.c}))<>"PP"),${X.b})/${P},0)`;
+    formulaCell(main, row, 5, tptF, c0.tptPP, MONEY);
+    formulaCell(main, row, 6, tlF, c0.tlPP, MONEY);
+    formulaCell(main, row, 7, miscF, c0.miscPP, MONEY);
+    formulaCell(main, row, 8, monF, c0.monPP, MONEY);
+    formulaCell(main, row, 9, lhF, c0.localPP, MONEY);
+    formulaCell(main, row, 10, exF, c0.extrasPP, MONEY);
+    formulaCell(main, row, 11, `IF(${P}>0,N($D${row})/${P},0)`, tlEntry ? c0.surchargePP : 0, MONEY, { bold: true, color: { argb: TL_BROWN } });
+    const sub = addr(row, 12);
+    formulaCell(main, row, 12, `${hotelAddr}+${mealAddr}+SUM(${addr(row, 5)}:${addr(row, 11)})`, c0.sub, MONEY);
+    formulaCell(main, row, 13, `ROUND(${sub}*${gstAddr}/100,0)`, c0.tax, MONEY);
+    formulaCell(main, row, 14, `${sub}+${addr(row, 13)}`, c0.afterTax, MONEY);
+    formulaCell(main, row, 15, `ROUND(${addr(row, 14)}*${markupAddr}/100,0)`, c0.markupAmt, MONEY);
+    formulaCell(main, row, 16, `IF(${roeOk},CEILING((${addr(row, 14)}+${addr(row, 15)})/${roeAddr},1),0)`, c0.finalFX, MONEY, { bold: true, size: 11, color: { argb: ACCENT } });
+    formulaCell(main, row, 17, `IF(${roeOk},CEILING((${ssTotalAddr}+${ssTotalAddr}*${gstAddr}/100)*(1+${markupAddr}/100)/${roeAddr},1),0)`, c0.ssFX, MONEY);
+    if (e) {
+      const app = main.getCell(row, 18); app.value = c0.finalFX; app.numFmt = MONEY; app.font = { size: 9, color: { argb: GREY } };
+      const chk = main.getCell(row, 19);
+      chk.value = { formula: `IF(ABS(${addr(row, 16)}-${addr(row, 18)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
       chk.font = { size: 9, color: { argb: GOOD } };
     }
-    if (si % 2 === 1) for (let c = 4; c <= 15; c++) sheet.getCell(row, c).fill = solid(ZEBRA);
-    row++;
-  });
-  const slabLastRow = row - 1;
-  // Matrix column headers follow the slab names, so renaming a slab renames its column.
-  for (let i = 0; i < GROUP_COLS; i++) { const a = `A${slabFirstRow + i}`; sheet.getCell(matrixHeaderRow, groupCol(i)).value = { formula: `IF(${a}="","",${a})`, result: slabs[i] ? slabs[i].label : "" }; }
-  for (let j = 0; j < tlInputRows.length; j++) { const a = `A${tlInputRows[j]}`; sheet.getCell(matrixHeaderRow, tlCol(j)).value = { formula: `IF(${a}="","",${a})`, result: tlSlabs[j] ? tlSlabs[j].label : "" }; }
-
-  // Tour Leader slabs: a live summary row per T/L slab
-  let tlFirstSummaryRow = null, tlLastSummaryRow = null;
-  {
-    row += 1;
-    navyBand(row, "TOUR LEADER SLABS", 16); row++;
-    const tlHeaders = ["T/L Slab", "Vehicle", "Paying Pax", "Transport", "Tour Facil", "T/L Surcharge", "Misc", "Mon.", "Local Hdlr", "Extras", "Sub-total", "GST", "After Tax", "Markup", `Final Price (${currency || "—"})`, `SS (${currency || "—"})`, "Final @ app export", "Matches app?"];
-    tlHeaders.forEach((h, i) => {
-      const c = sheet.getCell(row, i + 1); c.value = h; c.font = { bold: true, size: 10, color: { argb: WHITE } };
-      c.fill = solid(i >= 16 ? "FF6B7280" : TL_BROWN); c.alignment = { vertical: "middle", wrapText: true };
-    });
-    sheet.getRow(row).height = 30;
-    row++;
-    tlFirstSummaryRow = row;
-    tlInputRows.forEach((inRow0, ti) => {
-      const tlr = tlSlabs[ti] || null;
-      const tl = tlr || { label: "", vehicle: "", pax: null, costs: {}, includes: {} };
-      const c = tlr ? calcTlSlab(tlr) : { tptPP: 0, tlPP: 0, surchargePP: 0, miscPP: 0, monPP: 0, localPP: 0, extrasPP: 0, sub: 0, tax: 0, afterTax: 0, markupAmt: 0, finalFX: 0, ssFX: 0 };
-      const inRow = tlInputRows[ti];
-      const pax = abs(inRow, 3);
-      // label / vehicle / pax mirror the input block so they're edited in one place
-      const lab = sheet.getCell(row, 1); lab.value = { formula: `IF(A${inRow}="","",A${inRow})`, result: tl.label }; lab.font = { bold: true, color: { argb: TL_BROWN }, size: 9 };
-      const veh = sheet.getCell(row, 2); veh.value = { formula: `IF(B${inRow}="","",B${inRow})`, result: (tl.vehicle === "Others" ? tl.vehicleOther : tl.vehicle) || "" }; veh.font = { size: 9 };
-      const px = sheet.getCell(row, 3); px.value = { formula: `C${inRow}`, result: n(tl.pax) }; px.font = { size: 9 };
-      const f = costFormulas(pax, tlCol(ti));
-      formulaCell(row, 4, f.tptF, c.tptPP, MONEY);
-      formulaCell(row, 5, f.tlF, c.tlPP, MONEY);
-      const incl = TL_COST_KEYS.map(([, ], i) => `IF(UPPER(TRIM(${abs(inRow, 10 + i)}))="Y",${abs(inRow, 4 + i)},0)`).join("+");
-      formulaCell(row, 6, `IF(${pax}>0,(${incl})/${pax},0)`, c.surchargePP, MONEY, { bold: true, color: { argb: TL_BROWN } });
-      formulaCell(row, 7, f.miscF, c.miscPP, MONEY);
-      formulaCell(row, 8, f.monF, c.monPP, MONEY);
-      formulaCell(row, 9, f.lhF, c.localPP, MONEY);
-      formulaCell(row, 10, f.exF, c.extrasPP, MONEY);
-      const sub = addr(row, 11);
-      formulaCell(row, 11, `${hotelTotalAddr}+${mealTotalAddr}+${addr(row, 4)}+${addr(row, 5)}+${addr(row, 6)}+${addr(row, 7)}+${addr(row, 8)}+${addr(row, 9)}+${addr(row, 10)}`, c.sub, MONEY);
-      formulaCell(row, 12, `ROUND(${sub}*${gstAddr}/100,0)`, c.tax, MONEY);
-      formulaCell(row, 13, `${sub}+${addr(row, 12)}`, c.afterTax, MONEY);
-      formulaCell(row, 14, `ROUND(${addr(row, 13)}*${markupAddr}/100,0)`, c.markupAmt, MONEY);
-      formulaCell(row, 15, finalOf(addr(row, 13), addr(row, 14)), c.finalFX, MONEY, { bold: true, color: { argb: TL_BROWN }, size: 11 });
-      formulaCell(row, 16, ssOf, c.ssFX, MONEY);
-      if (tlr) {
-        const appFinal = sheet.getCell(row, 17); appFinal.value = c.finalFX; appFinal.numFmt = MONEY; appFinal.font = { size: 9, color: { argb: GREY } };
-        const chk = sheet.getCell(row, 18);
-        chk.value = { formula: `IF(ABS(${addr(row, 15)}-${addr(row, 17)})<0.5,"✔ yes","edited")`, result: "✔ yes" };
-        chk.font = { size: 9, color: { argb: GOOD } };
-      }
-      for (let cc = 1; cc <= 16; cc++) sheet.getCell(row, cc).fill = solid(ti % 2 === 0 ? "FFFFFBEB" : "FFFEF3C7");
-      row++;
-    });
-    tlLastSummaryRow = row - 1;
   }
 
-  // ── Conditional formatting ──
+  // Conditional formatting: invisible empty rows, red zero-pax, amber T/L rows, "edited" flag.
   const redFill = { type: "pattern", pattern: "solid", bgColor: { argb: BAD_BG } };
-  const redRule = (cellRef) => ({ type: "expression", formulae: [`AND(ISNUMBER(${cellRef}),${cellRef}<=0)`], style: { fill: redFill, font: { color: { argb: "FFB91C1C" }, bold: true } } });
-  const hideRule = (cellRef) => ({ type: "expression", formulae: [`${cellRef}=""`], style: { font: { color: { argb: "FFFFFFFF" } } } });
-  sheet.addConditionalFormatting({ ref: `C${slabFirstRow}:C${slabLastRow}`, rules: [redRule(`C${slabFirstRow}`)] });
-  // Spare (still empty) slab rows keep their formulas but stay invisible until a pax number is typed.
-  sheet.addConditionalFormatting({ ref: `D${slabFirstRow}:O${slabLastRow}`, rules: [hideRule(`$C${slabFirstRow}`)] });
-  if (tlInputRows.length) {
-    sheet.addConditionalFormatting({ ref: `C${tlInputRows[0]}:C${tlInputRows[tlInputRows.length - 1]}`, rules: [redRule(`C${tlInputRows[0]}`)] });
-    sheet.addConditionalFormatting({ ref: `C${tlFirstSummaryRow}:P${tlLastSummaryRow}`, rules: [hideRule(`$C${tlInputRows[0]}`)] });
-  }
-  const warn = { type: "pattern", pattern: "solid", bgColor: { argb: WARN_BG } };
-  sheet.addConditionalFormatting({ ref: `Q${slabFirstRow}:Q${slabLastRow}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: warn, font: { color: { argb: "FF92400E" } } } }] });
-  if (tlFirstSummaryRow) sheet.addConditionalFormatting({ ref: `R${tlFirstSummaryRow}:R${tlLastSummaryRow}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: warn, font: { color: { argb: "FF92400E" } } } }] });
+  main.addConditionalFormatting({ ref: `C${SLAB_FIRST}:C${SLAB_LAST}`, rules: [{ type: "expression", formulae: [`AND(ISNUMBER(C${SLAB_FIRST}),C${SLAB_FIRST}<=0)`], style: { fill: redFill, font: { color: { argb: "FFB91C1C" }, bold: true } } }] });
+  main.addConditionalFormatting({ ref: `E${SLAB_FIRST}:S${SLAB_LAST}`, rules: [{ type: "expression", formulae: [`$C${SLAB_FIRST}=""`], style: { font: { color: { argb: "FFFFFFFF" } } } }] });
+  main.addConditionalFormatting({ ref: `A${SLAB_FIRST}:D${SLAB_LAST}`, rules: [{ type: "expression", formulae: [`N($D${SLAB_FIRST})>0`], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: TL_TINT } } } }] });
+  main.addConditionalFormatting({ ref: `S${SLAB_FIRST}:S${SLAB_LAST}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: WARN_BG } }, font: { color: { argb: "FF92400E" } } } }] });
 
-  // ── Named ranges for the settings & key totals ──
-  names.push(["Hotel_total_PP", hotelTotalAddr], ["Meal_total_PP", mealTotalAddr], ["Single_supp_total", ssTotalAddr], ["Monument_total", monTotalAddr]);
+  // ═══════════════════════ TAB: Itinerary ═══════════════════════
+  title(itin, "ITINERARY & ACCOMMODATION",
+    "One row per day. Net PP is the hotel cost per person for that night; Sngl Supp is the single-room supplement. Type in the next empty row to add a day — totals above update everywhere.", 11);
+  label(itin, 3, 5, "Meal cost total"); label(itin, 3, 9, "Hotel Net PP total"); label(itin, 3, 10, "Single Supp total");
+  itin.getCell(4, 1).value = "TOTALS"; itin.getCell(4, 1).font = { bold: true };
+  formulaCell(itin, 4, 5, `SUM(E${ITIN_FIRST}:E${ITIN_LAST})`, Math.round(totMeal), MONEY, { bold: true, size: 12 });
+  formulaCell(itin, 4, 9, `SUM(I${ITIN_FIRST}:I${ITIN_LAST})`, Math.round(totHotel), MONEY, { bold: true, size: 12 });
+  formulaCell(itin, 4, 10, `SUM(J${ITIN_FIRST}:J${ITIN_LAST})`, Math.round(daySS), MONEY, { bold: true, size: 12 });
+  headerRow(itin, ITIN_HDR, ["Day", "Date", "Movement", "Meal Plan", "Meal Cost", "Hotel", "Alt Hotel", "Plan", "Net PP", "Sngl Supp", "Notes"]);
+  for (let i = 0; i < ITIN_ROWS; i++) {
+    const row = ITIN_FIRST + i, dd = days[i];
+    inputCell(itin, row, 1, dd ? dd.day : null);
+    const dt = dd ? excelDate(dd.date) : null;
+    inputCell(itin, row, 2, dd ? (dt || formatDateSlash(dd.date) || "") : null, "dd/mm/yyyy");
+    inputCell(itin, row, 3, dd ? dd.movement || "" : null); inputCell(itin, row, 4, dd ? dd.mealPlan || "" : null);
+    inputCell(itin, row, 5, dd ? n(dd.mealCost) || null : null, MONEY, numValidation(0));
+    inputCell(itin, row, 6, dd ? dd.hotel || "" : null); inputCell(itin, row, 7, dd ? dd.hotelAlt || "" : null); inputCell(itin, row, 8, dd ? dd.hotelPlan || "" : null);
+    inputCell(itin, row, 9, dd ? n(dd.hotelNetPP) || null : null, MONEY, numValidation(0));
+    inputCell(itin, row, 10, dd ? n(dd.singleSupp) || null : null, MONEY, numValidation(0));
+    inputCell(itin, row, 11, dd ? dd.notes || "" : null);
+    if (dd) for (const c of [3, 6, 7, 11]) itin.getCell(row, c).alignment = { wrapText: true, vertical: "top" };
+  }
+
+  // ═══════════════════════ TAB: Transport ═══════════════════════
+  title(tpt, "TRANSPORT",
+    "One row per transport cost. 'Applies to' says which slabs share this cost: type All, or slab names separated by commas (exactly as written in Step 3 — the list on the right shows them). " +
+    "The cost is divided by each slab's paying pax. Leave 'Applies to' empty and the line is not used.", 6);
+  headerRow(tpt, LIST_HDR, ["Sector / Description", "Cost (total)", "Applies to — All, or slab names separated by commas", "Notes", "", "Slab names (copy from here)"]);
+  tpt.getCell(LIST_HDR, 5).fill = { type: "pattern", pattern: "none" }; tpt.getCell(LIST_HDR, 5).border = {};
+  const allIds = slabEntries.map((en) => en.src.id);
+  const tptCount = rowsFor(transports.length);
+  for (let i = 0; i < tptCount; i++) {
+    const row = LIST_FIRST + i, t = transports[i];
+    let applies = "";
+    if (t) {
+      const ids = (t.slabs || []).filter((id) => nameById.has(id));
+      applies = ids.length && ids.length === allIds.length ? "All" : ids.map((id) => nameById.get(id)).join(", ");
+    }
+    inputCell(tpt, row, 1, t ? t.sector || t.vehicleType || "" : null);
+    inputCell(tpt, row, 2, t ? n(t.cost) || null : null, MONEY, numValidation(0));
+    inputCell(tpt, row, 3, t ? applies : null, undefined, {
+      type: "list", allowBlank: true, formulae: [`$F$${LIST_FIRST}:$F$${LIST_FIRST + SLAB_ROWS}`], showErrorMessage: false,
+      showInputMessage: true, promptTitle: "Applies to", prompt: "Pick one slab, or type All, or several slab names separated by commas.",
+    });
+    inputCell(tpt, row, 4, t ? t.notes || "" : null);
+  }
+  const listRef = tpt.getCell(LIST_FIRST, 6); // "All" first, then every slab name
+  listRef.value = "All"; listRef.font = { bold: true, size: 10, color: { argb: GREY } };
+  for (let i = 0; i < SLAB_ROWS; i++) {
+    const src = `'Cost Sheet'!$A$${SLAB_FIRST + i}`;
+    formulaCell(tpt, LIST_FIRST + 1 + i, 6, `IF(${src}="","",${src})`, slabEntries[i] ? slabEntries[i].name : "", undefined, { color: { argb: GREY } });
+  }
+
+  // ═══════════════════════ TAB: Monuments ═══════════════════════
+  title(mon, "MONUMENTS",
+    "One row per monument. Put Y in 'Include' to count its fee in the price. The total (included fees + the extra monument cost from Step 2) is on the Cost Sheet tab.", 4);
+  headerRow(mon, LIST_HDR, ["Monument", "Fee", "Include (Y/N)", "Notes"]);
+  mon.getCell(3, 1).value = "Total used in prices:"; mon.getCell(3, 1).font = { bold: true, size: 9, color: { argb: GREY } };
+  formulaCell(mon, 3, 2, `'Cost Sheet'!${monTotalAddr}`, Math.round(monTotal), MONEY, { bold: true });
+  for (let i = 0; i < rowsFor(monuments.length); i++) {
+    const row = LIST_FIRST + i, m = monuments[i];
+    inputCell(mon, row, 1, m ? m.name || "" : null); inputCell(mon, row, 2, m ? (m.fee ? n(m.fee) : null) : null, MONEY, numValidation(0));
+    inputCell(mon, row, 3, m ? (m.include ? "Y" : "N") : null, undefined, YES_NO); inputCell(mon, row, 4, null);
+  }
+
+  // ═══════════════════════ TAB: Local Handlers ═══════════════════════
+  title(lh, "LOCAL HANDLERS",
+    "One row per sector / handler. pp = cost per person; lumpsum = one total divided by each slab's paying pax. Single Supp is added to the Single Supplement total.", 4);
+  label(lh, 3, 3, "Single Supp total");
+  headerRow(lh, LIST_HDR, ["Sector", "Cost", "Mode (pp / lumpsum)", "Single Supp"]);
+  formulaCell(lh, 3, 4, `SUM(D${LIST_FIRST}:D${LH_LAST})`, Math.round(handlerSS), MONEY, { bold: true });
+  for (let i = 0; i < rowsFor(localHandlers.length); i++) {
+    const row = LIST_FIRST + i, h = localHandlers[i];
+    inputCell(lh, row, 1, h ? h.sector || "" : null); inputCell(lh, row, 2, h ? n(h.cost) || null : null, MONEY, numValidation(0));
+    inputCell(lh, row, 3, h ? h.mode || "pp" : null, undefined, MODE_PP); inputCell(lh, row, 4, h ? n(h.singleSupp) || null : null, MONEY, numValidation(0));
+  }
+
+  // ═══════════════════════ TAB: Extra Services ═══════════════════════
+  title(exs, "EXTRA SERVICES",
+    "One row per extra service. PP = per person. Lumpsum / Per Vehicle / Per Group = one total, divided by each slab's paying pax.", 3);
+  headerRow(exs, LIST_HDR, ["Description", "Cost", "Mode (PP / Lumpsum / Per Vehicle / Per Group)"]);
+  for (let i = 0; i < rowsFor(extras.length); i++) {
+    const row = LIST_FIRST + i, e = extras[i];
+    inputCell(exs, row, 1, e ? e.description || "" : null); inputCell(exs, row, 2, e ? n(e.cost) || null : null, MONEY, numValidation(0));
+    inputCell(exs, row, 3, e ? e.mode || "PP" : null, undefined, MODE_EXTRA);
+  }
+
+  // ── names, widths, freeze, print, protection ──
   names.forEach(([nm, a]) => { try { wb.definedNames.add(`'Cost Sheet'!${a}`, nm); } catch (e) { /* a name clash must never block the export */ } });
 
-  // ── Layout: widths, freeze, view, print ──
-  const widths = [26, 15, 26, 14, 14, 20, 15, 11, 13, 13, 22, 11, 12, 16, 13, 14, 12, 12];
-  sheet.columns.forEach((col, i) => { col.width = widths[i] || 12; });
-  sheet.views = [{ state: "frozen", ySplit: titleRows, showGridLines: false, zoomScale: 90 }];
-  sheet.pageSetup = {
-    paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.25, footer: 0.3 },
-    printTitlesRow: `1:${titleRows}`, horizontalCentered: true,
-  };
-  sheet.headerFooter = {
-    oddFooter: `&L&8Unitop Ops — Cost Sheet ${query.tourFileId || query.id || ""} v${currentVersionLabel}&R&8Page &P of &N`,
-  };
+  const setWidths = (sh, w) => sh.columns.forEach((col, i) => { col.width = w[i] || 12; });
+  setWidths(main, [26, 16, 11, 20, 12, 12, 12, 12, 12, 12, 12, 13, 11, 12, 12, 14, 13, 12, 11]);
+  setWidths(itin, [8, 12, 28, 12, 12, 24, 22, 10, 12, 12, 30]);
+  setWidths(tpt, [34, 14, 42, 26, 3, 24]);
+  setWidths(mon, [34, 14, 14, 30]);
+  setWidths(lh, [30, 14, 20, 14]);
+  setWidths(exs, [40, 14, 40]);
+
+  main.views = [{ state: "frozen", ySplit: 3, showGridLines: false, zoomScale: 90 }];
+  itin.views = [{ state: "frozen", ySplit: ITIN_HDR, showGridLines: false, zoomScale: 90 }];
+  for (const sh of [tpt, mon, lh, exs]) sh.views = [{ state: "frozen", ySplit: LIST_HDR, showGridLines: false, zoomScale: 90 }];
+
+  const footer = `&L&8Unitop Ops — Cost Sheet ${query.tourFileId || query.id || ""} v${currentVersionLabel}  •  &A&R&8Page &P of &N`;
+  allSheets.forEach((sh, i) => {
+    sh.pageSetup = {
+      paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.25, footer: 0.3 },
+      printTitlesRow: i === 0 ? "1:3" : (sh === itin ? `1:${ITIN_HDR}` : `1:${LIST_HDR}`), horizontalCentered: true,
+    };
+    sh.headerFooter = { oddFooter: footer };
+  });
+  // Print only what has content (the ready-to-use blank rows stay off paper).
+  const printTo = (sh, lastCol, firstRow, count, minRows = 3) => { sh.pageSetup.printArea = `$A$1:$${lastCol}$${firstRow + Math.max(count, minRows) + 1}`; };
+  printTo(main, "S", SLAB_FIRST, slabEntries.length);
+  printTo(itin, "K", ITIN_FIRST, days.length);
+  printTo(tpt, "F", LIST_FIRST, Math.max(transports.length, SLAB_ROWS + 1)); // include the slab-name list
+  printTo(mon, "D", LIST_FIRST, monuments.length);
+  printTo(lh, "D", LIST_FIRST, localHandlers.length);
+  printTo(exs, "C", LIST_FIRST, extras.length);
 
   // Lock the formulas (inputs were unlocked above). No password.
-  await sheet.protect("", {
-    // ExcelJS semantics: true = the action is ALLOWED on the protected sheet. Rows can be inserted, deleted and
-    // resized; changing cell styles and inserting/deleting columns stay locked (columns hold the formulas).
-    selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: true, formatRows: true,
-    insertRows: true, deleteRows: true, insertColumns: false, deleteColumns: false, sort: false, autoFilter: false,
-  });
+  for (const sh of allSheets) {
+    await sh.protect("", {
+      // ExcelJS semantics: true = allowed on the protected sheet.
+      selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: true, formatRows: true,
+      insertRows: false, deleteRows: false, insertColumns: false, deleteColumns: false, sort: false, autoFilter: false,
+    });
+  }
 
   return wb;
 }

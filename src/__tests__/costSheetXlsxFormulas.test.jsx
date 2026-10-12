@@ -2,220 +2,140 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
-// The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
-// consolidated into the shared ExportMenu dropdown (one Export button, the
-// formats inside it). These tests still verify exactly what they did before
-// -- the generated PDF HTML and XLSX workbook -- they just have to open the
-// menu to reach the format, the same way a user now does.
+// The workbook is a working spreadsheet: a "Cost Sheet" tab (settings + one
+// price table where slabs are added) and one tab per list. These tests
+// generate the real file and read it back with exceljs, exactly the way
+// someone opening it in Excel would.
 const clickExport = (label) => {
-  fireEvent.click(screen.getByText('\u2b07 Export \u25be'));
+  fireEvent.click(screen.getByText('⬇ Export ▾'));
   fireEvent.click(screen.getByText(label));
 };
 
-
 const fakeQuery = { id: 'UTQ-2026-200', tourFileId: 'TF-200', groupName: 'Formula Test Group', nights: 3 };
 
-// Generates the real workbook and reads it back with exceljs, exactly the
-// way someone opening it in Excel would -- this is the only way to
-// actually prove formulas exist and reference the right cells, rather
-// than trusting that the code "looks right."
-async function exportAndReload() {
+async function exportWorkbook(beforeExport) {
   let capturedBlob = null;
-  const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
-  const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  const a = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
+  const b = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   const realCreateElement = document.createElement.bind(document);
-  const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+  const c = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
     const el = realCreateElement(tag);
     if (tag === 'a') el.click = vi.fn();
     return el;
   });
-
   render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+  if (beforeExport) beforeExport();
   clickExport('📊 Excel');
   for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
-
-  const buffer = await capturedBlob.arrayBuffer();
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
-
-  createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
-  return wb.worksheets[0];
+  await wb.xlsx.load(await capturedBlob.arrayBuffer());
+  a.mockRestore(); b.mockRestore(); c.mockRestore();
+  return wb;
 }
 
-describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers (item #1)', () => {
-  it('the day-wise Meal Cost TOTALS cell is an actual SUM formula, not a static number', async () => {
-    const sheet = await exportAndReload();
-    // Find the TOTALS row by scanning column A
-    let totalsRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'TOTALS') { totalsRow = r; break; } }
-    expect(totalsRow).toBeTruthy();
-    const mealCell = sheet.getCell(totalsRow, 5);
-    expect(mealCell.formula).toBeTruthy();
-    expect(mealCell.formula).toMatch(/^SUM\(E\d+:E\d+\)$/);
-  }, 15000);
+const findRow = (sheet, col, text) => {
+  for (let r = 1; r <= sheet.rowCount; r++) if (sheet.getCell(r, col).value === text) return r;
+  return null;
+};
 
-  it('the Final Price cell in the slab table is a real formula chain, not a precomputed value', async () => {
-    const sheet = await exportAndReload();
-    let slabHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    expect(slabHeaderRow).toBeTruthy();
-    const finalPriceCell = sheet.getCell(slabHeaderRow+1, 14); // first slab row, Final Price column
-    expect(finalPriceCell.formula).toBeTruthy();
-    expect(finalPriceCell.formula).toContain('CEILING(');
-    // Should reference the ROE settings cell, not a hardcoded number
-    // The ROE reference is guarded (IF(ROE>0, CEILING(.../ROE,1), 0)) so a blank ROE can never show #DIV/0!
-    expect(finalPriceCell.formula).toMatch(/\/\$?[A-Z]+\$?\d+,1\),0\)$/);
-    expect(finalPriceCell.formula).toMatch(/^IF\(\$?[A-Z]+\$?\d+>0,/);
-  }, 15000);
+describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
+  it('the Itinerary totals are SUM formulas that sit ABOVE the list, so the list can grow', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Itinerary');
+    const totalsRow = findRow(sheet, 1, 'TOTALS');
+    const firstDataRow = findRow(sheet, 1, 'Day') + 1;
+    expect(totalsRow).toBeLessThan(firstDataRow);
+    expect(sheet.getCell(totalsRow, 5).formula).toMatch(/^SUM\(E\d+:E\d+\)$/);
+  }, 20000);
 
-  it('changing the GST% input cell would actually change the tax calculation -- verified by checking the formula references the GST cell, not a literal percentage', async () => {
-    const sheet = await exportAndReload();
-    let slabHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    const taxCell = sheet.getCell(slabHeaderRow+1, 11); // GST column
-    expect(taxCell.formula).toContain('ROUND(');
-    expect(taxCell.formula).not.toMatch(/\*\(?5\/100\)?/); // not a hardcoded 5% literal
-  }, 15000);
+  it('the Final Price cell is a guarded formula chain reading the ROE cell, never a literal', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    const f = sheet.getCell(hdr + 1, 16).formula;
+    expect(f).toContain('CEILING(');
+    expect(f).toMatch(/\/\$?[A-Z]+\$?\d+,1\),0\)$/);
+    expect(f).toMatch(/^IF\(\$?[A-Z]+\$?\d+>0,/);
+  }, 20000);
 
-  it('every dynamic section (Local Handlers, Extra Services, Transportation) has at least 3 blank rows beyond current data, ready to fill in offline', async () => {
-    const sheet = await exportAndReload();
-    let localHandlerHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Local Handler(s)') { localHandlerHeaderRow = r; break; } }
-    expect(localHandlerHeaderRow).toBeTruthy();
-    // Header row for the columns is 2 rows below the section label; check
-    // several rows below that are genuinely blank and ready to type into.
-    const firstDataRow = localHandlerHeaderRow + 2;
-    let blankCount = 0;
-    for (let r = firstDataRow; r < firstDataRow + 6; r++) {
-      if (!sheet.getCell(r,1).value) blankCount++;
-    }
-    expect(blankCount).toBeGreaterThanOrEqual(3);
-  }, 15000);
+  it('GST is read from the settings cell, not hardcoded', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    const f = sheet.getCell(hdr + 1, 13).formula;
+    expect(f).toContain('ROUND(');
+    expect(f).not.toMatch(/\*\(?5\/100\)?/);
+  }, 20000);
 
-  it('the Transportation section shows one column per slab (the "better way to display transportation slabs" ask), not a hidden checkbox list', async () => {
-    const sheet = await exportAndReload();
-    let tptLabelRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (String(sheet.getCell(r,1).value||'').includes('Transportation')) { tptLabelRow = r; break; } }
-    expect(tptLabelRow).toBeTruthy();
-    const headerRow = tptLabelRow + 1;
-    // Default CostSheet has 2 slabs -- expect their labels as column headers
-    expect(sheet.getCell(headerRow, 3).value).toBeTruthy();
-    expect(sheet.getCell(headerRow, 4).value).toBeTruthy();
-  }, 15000);
-
-  it('input cells (GST, Markup, ROE, day costs) are visually marked as editable via a distinct fill color', async () => {
-    const sheet = await exportAndReload();
-    let gstLabelRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'GST %') { gstLabelRow = r; break; } }
-    const gstValueCell = sheet.getCell(gstLabelRow+1, 1);
-    expect(gstValueCell.fill.fgColor.argb).toBe('FFFFFDE7');
-  }, 15000);
-
-  it('no number format code embeds the currency symbol -- the real cause of the "we found a problem with some content" Excel repair prompt, since $ has special meaning in format-code syntax even inside quotes', async () => {
-    const sheet = await exportAndReload();
-    let badFormats = [];
-    sheet.eachRow((row) => {
-      row.eachCell((cell) => {
-        if (cell.numFmt && cell.numFmt.includes('$')) badFormats.push({ address: cell.address, numFmt: cell.numFmt });
-      });
-    });
-    expect(badFormats).toEqual([]);
-  }, 15000);
-
-  it('the currency label appears in the column header instead, where it is safe as plain text', async () => {
-    const sheet = await exportAndReload();
-    let slabHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Slab') { slabHeaderRow = r; break; } }
-    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('Final Price');
-    expect(sheet.getCell(slabHeaderRow, 14).value).toContain('(');
-  }, 15000);
+  it('slab rows divide by paying pax only behind an IF guard (no #DIV/0!)', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    for (const col of [5, 8, 9, 10, 11]) expect(sheet.getCell(hdr + 1, col).formula).toMatch(/IF\(\$C\d+>0,/);
+  }, 20000);
 });
 
-describe('CostSheet XLSX: Client/Agent, Assigned Staff, and Tour Leader Slab rows', () => {
-  it('includes editable Client/Foreign Agent and Assigned Staff cells', async () => {
-    const sheet = await exportAndReload();
-    let agentLabelRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) { if (sheet.getCell(r,1).value === 'Client / Foreign Agent') { agentLabelRow = r; break; } }
-    expect(agentLabelRow).toBeTruthy();
-    const agentValueCell = sheet.getCell(agentLabelRow+1, 1);
-    expect(agentValueCell.fill.fgColor.argb).toBe('FFFFFDE7'); // marked editable
-  }, 15000);
+describe('CostSheet XLSX: easy to add to', () => {
+  it('the price table has 30 ready slab rows, unlocked, with formulas already in place', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    const last = hdr + 30;
+    expect(sheet.getCell(last, 3).protection.locked).toBe(false);
+    expect(sheet.getCell(last, 16).formula).toBeTruthy();
+  }, 20000);
 
-  it('a T/L slab appears as its own labeled row in the slab table', async () => {
-    let capturedBlob = null;
-    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
-    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const realCreateElement = document.createElement.bind(document);
-    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
-      const el = realCreateElement(tag);
-      if (tag === 'a') el.click = vi.fn();
-      return el;
+  it('every list has its own tab with 60+ ready input rows and no data below to collide with', async () => {
+    const wb = await exportWorkbook();
+    for (const [name, firstRow] of [['Transport', 5], ['Monuments', 5], ['Local Handlers', 5], ['Extra Services', 5], ['Itinerary', 7]]) {
+      const sh = wb.getWorksheet(name);
+      expect(sh.getCell(firstRow + 59, 1).protection.locked).toBe(false);
+      expect(sh.getCell(firstRow + 59, 1).fill.fgColor.argb).toBe('FFFFFDE7');
+    }
+  }, 20000);
+
+  it('Transport lines say which slabs they apply to in words, and a slab-name list is provided to copy from', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Transport');
+    const hdr = findRow(sheet, 1, 'Sector / Description');
+    expect(String(sheet.getCell(hdr, 3).value)).toContain('Applies to');
+    expect(sheet.getCell(hdr + 1, 6).value).toBe('All');
+    expect(sheet.getCell(hdr + 2, 6).formula).toContain("'Cost Sheet'!");
+  }, 20000);
+
+  it('a T/L slab is an ordinary row in the same table, with its own cost in a distinct column and a surcharge column', async () => {
+    const wb = await exportWorkbook(() => {
+      fireEvent.click(screen.getByText('+ Add T/L Slab'));
+      fireEvent.change(screen.getByDisplayValue('10 pax + 1 T/L'), { target: { value: 'XLSX T/L Row Test' } });
     });
-
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
-    fireEvent.change(labelInput, { target: { value: 'XLSX T/L Row Test' } });
-    clickExport('📊 Excel');
-    for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
-
-    const buffer = await capturedBlob.arrayBuffer();
-    const ExcelJS = (await import('exceljs')).default;
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
-    const sheet = wb.worksheets[0];
-
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    expect(String(sheet.getCell(hdr, 4).value)).toContain("Tour Leader's own cost");
+    expect(sheet.getCell(hdr, 11).value).toBe('T/L surcharge');
     let found = false;
-    for (let r = 1; r <= sheet.rowCount; r++) {
-      if (String(sheet.getCell(r,1).value||'').includes('XLSX T/L Row Test')) { found = true; break; }
-    }
+    for (let r = hdr + 1; r <= hdr + 30; r++) if (sheet.getCell(r, 1).value === 'XLSX T/L Row Test') found = true;
     expect(found).toBe(true);
-
-    createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
-  }, 15000);
+  }, 20000);
 });
 
-describe('CostSheet XLSX: T/L Surcharge is a genuinely separate column from Tour Facilitator', () => {
-  it('group slab table has Tour Facil but never T/L Surcharge (not even blank), and T/L slabs get their own separate section with both', async () => {
-    let capturedBlob = null;
-    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { capturedBlob = blob; return 'blob:mock'; });
-    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const realCreateElement = document.createElement.bind(document);
-    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
-      const el = realCreateElement(tag);
-      if (tag === 'a') el.click = vi.fn();
-      return el;
-    });
+describe('CostSheet XLSX: presentation', () => {
+  it('input cells (GST, Markup, ROE, client/agent) share the yellow input fill', async () => {
+    const wb = await exportWorkbook();
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const gstRow = findRow(sheet, 1, 'GST %');
+    expect(sheet.getCell(gstRow + 1, 1).fill.fgColor.argb).toBe('FFFFFDE7');
+    const agentRow = findRow(sheet, 6, 'Client / Foreign Agent');
+    expect(sheet.getCell(agentRow + 1, 6).fill.fgColor.argb).toBe('FFFFFDE7');
+  }, 20000);
 
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    clickExport('📊 Excel');
-    for (let i = 0; i < 40 && !capturedBlob; i++) await new Promise(r => setTimeout(r, 250));
-
-    const buffer = await capturedBlob.arrayBuffer();
-    const ExcelJS = (await import('exceljs')).default;
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
-    const sheet = wb.worksheets[0];
-
-    let slabHeaderRow = null, tlHeaderRow = null;
-    for (let r = 1; r <= sheet.rowCount; r++) {
-      if (sheet.getCell(r,1).value === 'Slab') slabHeaderRow = r;
-      if (sheet.getCell(r,1).value === 'T/L Slab') tlHeaderRow = r;
-    }
-    expect(slabHeaderRow).toBeTruthy();
-    expect(tlHeaderRow).toBeTruthy();
-    expect(tlHeaderRow).not.toBe(slabHeaderRow); // genuinely separate rows/sections
-
-    const groupHeaders = []; for (let c=1;c<=15;c++) groupHeaders.push(sheet.getCell(slabHeaderRow,c).value);
-    expect(groupHeaders).toContain('Tour Facil');
-    expect(groupHeaders).not.toContain('T/L Surcharge');
-
-    const tlHeaders = []; for (let c=1;c<=16;c++) tlHeaders.push(sheet.getCell(tlHeaderRow,c).value);
-    expect(tlHeaders).toContain('Tour Facil');
-    expect(tlHeaders).toContain('T/L Surcharge');
-
-    createObjectURLSpy.mockRestore(); revokeObjectURLSpy.mockRestore(); createElementSpy.mockRestore();
-  }, 15000);
+  it('no number format embeds a currency symbol (the cause of the Excel repair prompt); the currency is in the header instead', async () => {
+    const wb = await exportWorkbook();
+    const bad = [];
+    wb.worksheets.forEach((sh) => sh.eachRow((row) => row.eachCell((cell) => { if (cell.numFmt && cell.numFmt.includes('$')) bad.push(sh.name + cell.address); })));
+    expect(bad).toEqual([]);
+    const sheet = wb.getWorksheet('Cost Sheet');
+    const hdr = findRow(sheet, 1, 'Slab name');
+    expect(sheet.getCell(hdr, 16).value).toContain('Final Price');
+  }, 20000);
 });
