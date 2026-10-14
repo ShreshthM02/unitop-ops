@@ -76,23 +76,39 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
 });
 
 describe('CostSheet XLSX: easy to add to', () => {
-  it('the price table has 30 ready slab rows, unlocked, with formulas already in place', async () => {
+  it('the price table keeps a few unlocked spare slab rows (no more than 10) with formulas already in place', async () => {
     const sheet = main(await exportWorkbook());
     const hdr = findRow(sheet, 1, 'Slab name');
-    const last = hdr + 30;
-    expect(sheet.getCell(last, 3).protection.locked).toBe(false);
-    expect(sheet.getCell(last, 16).formula).toBeTruthy();
+    let spare = 0;
+    for (let r = hdr + 1; sheet.getCell(r, 16).formula; r++) {
+      const pax = sheet.getCell(r, 3).value;
+      if (pax == null || pax === '') { spare++; expect(sheet.getCell(r, 3).protection.locked).toBe(false); }
+    }
+    expect(spare).toBeGreaterThanOrEqual(3);
+    expect(spare).toBeLessThanOrEqual(10);
   }, 20000);
 
-  it('every list is its own block with 60+ ready input rows, and the blocks are in a fixed order that cannot collide', async () => {
+  it('every list is its own block with 3-10 spare input rows, and the blocks are stacked so inserting a row never collides', async () => {
     const sheet = main(await exportWorkbook());
     const bands = ['ITINERARY & ACCOMMODATION', 'TRANSPORT', 'MONUMENTS', 'LOCAL HANDLERS', 'EXTRA SERVICES'].map((t) => findRow(sheet, 1, t));
     bands.forEach((r) => expect(r).toBeTruthy());
-    for (let i = 1; i < bands.length; i++) expect(bands[i] - bands[i - 1]).toBeGreaterThanOrEqual(64); // room for 60 rows each
     for (const r of bands) {
-      expect(sheet.getCell(r + 4 + 59, 1).protection.locked).toBe(false);
-      expect(sheet.getCell(r + 4 + 59, 1).fill.fgColor.argb).toBe('FFFFFDE7');
+      let rows = 0, spare = 0;
+      for (let k = r + 4; sheet.getCell(k, 1).fill && sheet.getCell(k, 1).fill.fgColor && sheet.getCell(k, 1).fill.fgColor.argb === 'FFFFFDE7'; k++) {
+        rows++;
+        const v = sheet.getCell(k, 1).value;
+        if (v == null || v === '') { spare++; expect(sheet.getCell(k, 1).protection.locked).toBe(false); }
+      }
+      expect(rows).toBeGreaterThan(0);
+      expect(spare).toBeGreaterThanOrEqual(3);
+      expect(spare).toBeLessThanOrEqual(10);
     }
+  }, 20000);
+
+  it('rows can be inserted and deleted on the protected sheet', async () => {
+    const sheet = main(await exportWorkbook());
+    expect(sheet.sheetProtection.insertRows).toBe(true);
+    expect(sheet.sheetProtection.deleteRows).toBe(true);
   }, 20000);
 
   it('has a frozen Jump-to row with working internal links to every block', async () => {
@@ -122,7 +138,7 @@ describe('CostSheet XLSX: easy to add to', () => {
     expect(String(sheet.getCell(hdr, 4).value)).toContain("Tour Leader's own cost");
     expect(sheet.getCell(hdr, 11).value).toBe('T/L surcharge');
     let found = false;
-    for (let r = hdr + 1; r <= hdr + 30; r++) if (sheet.getCell(r, 1).value === 'XLSX T/L Row Test') found = true;
+    for (let r = hdr + 1; r <= hdr + 20; r++) if (sheet.getCell(r, 1).value === 'XLSX T/L Row Test') found = true;
     expect(found).toBe(true);
   }, 20000);
 });

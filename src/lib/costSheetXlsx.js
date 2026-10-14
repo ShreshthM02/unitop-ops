@@ -6,13 +6,14 @@
 //   1. ONE tab, laid out top to bottom in numbered steps: settings, shared
 //      costs, the price table, then the lists behind the prices (Itinerary,
 //      Transport, Monuments, Local Handlers, Extra Services). Every list has
-//      its own block of 60-80 ready rows, so lists never run into each other
-//      and there is no "slot limit" to think about. A "Jump to" row stays
+//      its own block with a few spare rows. When one fills up, right-click a row
+//      number > Insert (the sheet allows it): every total grows with the list,
+//      because the stacked layout leaves nothing beside or below to collide with. A "Jump to" row stays
 //      frozen at the top, so any block is one click away.
 //   2. Slabs are ONE table (Step 3). A group slab and a Tour Leader slab are
 //      the same kind of row: name, vehicle, paying pax -- and, for a Tour
 //      Leader slab, the escort's own cost. To add a slab, type in the next
-//      empty row. 30 rows are ready; empty rows stay invisible.
+//      empty row (a few spare rows are ready; empty rows stay invisible).
 //   3. Transport lines say which slabs they apply to in plain words:
 //      "All", or slab names separated by commas. No matrix of Y/N columns
 //      to keep in sync, and a new slab picks up "All" lines automatically.
@@ -40,8 +41,9 @@ export function excelDate(iso) {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
-export const SLAB_ROWS = 30; // ready-to-use slab rows
-const LIST_ROWS = 60; // ready-to-use rows in every list block (at least)
+const MAX_SLABS = 200; // safety cap on exported slabs
+const SPARE = 8; // spare input rows left under every list (insert more whenever needed)
+const SPARE_SLABS = 6; // spare slab rows
 
 export async function buildCostSheetWorkbook(ExcelJS, d) {
   const {
@@ -123,7 +125,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const names = [];
   const isPP = (ref) => `LOWER(TRIM(${ref}))="pp"`;
   const colRange = (col, a, b) => `$${col}$${a}:$${col}$${b}`;
-  const rowsFor = (len) => Math.max(LIST_ROWS, len + 20);
+  const rowsFor = (len) => len + SPARE;
 
   // ═══ Unique, comma-free slab names (Transport lines match on them) ═══
   const usedNames = new Set();
@@ -137,7 +139,8 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const slabEntries = [
     ...slabs.map((s, i) => ({ src: s, tl: false, name: uniqueName(s.label, `Slab ${i + 1}`) })),
     ...tlSlabs.map((s, i) => ({ src: s, tl: true, name: uniqueName(s.label, `T/L ${i + 1}`) })),
-  ].slice(0, SLAB_ROWS);
+  ].slice(0, MAX_SLABS);
+  const SLAB_ROWS = Math.max(8, slabEntries.length + SPARE_SLABS);
   const nameById = new Map(slabEntries.map((e) => [e.src.id, e.name]));
 
   // ═══ Row geometry: every block's position is fixed before any formula is written ═══
@@ -147,8 +150,8 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   // Each block: band, note, totals/label row, header, rows, then 3 spare lines.
   let cursor = DETAILS + 2;
   const block = (rows) => { const b = { band: cursor, note: cursor + 1, tot: cursor + 2, hdr: cursor + 3, first: cursor + 4, rows, last: cursor + 3 + rows }; cursor = b.last + 4; return b; };
-  const ITIN = block(Math.max(80, days.length + 20));
-  const TPT = block(Math.max(80, transports.length + 20));
+  const ITIN = block(rowsFor(days.length));
+  const TPT = block(rowsFor(transports.length));
   const MON = block(rowsFor(monuments.length));
   const LH = block(rowsFor(localHandlers.length));
   const EXS = block(rowsFor(extras.length));
@@ -225,9 +228,10 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sh.getRow(TV).height = 22;
 
   // ═══════════════ STEP 3: the price table ═══════════════
-  band(STEP3, "STEP 3 — SLABS & PRICES      ◄ to add a slab, type in the next empty row (30 rows ready)");
+  band(STEP3, "STEP 3 — SLABS & PRICES      ◄ to add a slab, type in the next empty row");
   note(STEP3 + 1, "Fill Name, Vehicle and Paying pax. For a TOUR LEADER slab also type the Tour Leader's own cost (the total for the escort) in the last yellow column — it is spread across the paying pax and the row turns amber. " +
-    "Which transport lines count for a slab is set under 'Transport' further down, by slab name.");
+    "Which transport lines count for a slab is set under 'Transport' further down, by slab name. " +
+    "Out of empty rows? Copy a filled slab row, then right-click a row number ▸ Insert Copied Cells (insert above the last empty row so everything below shifts down and stays linked).", 36);
   const slabHeaders = ["Slab name", "Vehicle", "Paying pax", "Tour Leader's own cost (total) — T/L slabs only",
     "Transport", "Tour Facil", "Misc", "Monuments", "Local Hdlr", "Extras", "T/L surcharge", "Sub-total", "GST", "After Tax", "Markup",
     `Final Price (${currency || "—"})`, `Single Supp (${currency || "—"})`, "App price at export", "Matches app?"];
@@ -298,7 +302,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sh.addConditionalFormatting({ ref: `S${SLAB_FIRST}:S${SLAB_LAST}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: WARN_BG } }, font: { color: { argb: "FF92400E" } } } }] });
 
   // ═══════════════ STEP 4: the lists behind the prices ═══════════════
-  band(DETAILS, "STEP 4 — THE LISTS BEHIND THE PRICES   (each block below has its own ready rows; totals above each list feed the prices)");
+  band(DETAILS, "STEP 4 — THE LISTS BEHIND THE PRICES   (to add more rows: right-click a row number inside a list ▸ Insert — totals grow with it)");
   const listBand = (b, text, noteText) => { band(b.band, text, STEP_BLUE); note(b.note, noteText, 28); };
 
   // Itinerary
@@ -396,7 +400,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   await sh.protect("", {
     // ExcelJS semantics: true = allowed on the protected sheet.
     selectLockedCells: true, selectUnlockedCells: true, formatCells: false, formatColumns: true, formatRows: true,
-    insertRows: false, deleteRows: false, insertColumns: false, deleteColumns: false, sort: false, autoFilter: false,
+    insertRows: true, deleteRows: true, insertColumns: false, deleteColumns: false, sort: false, autoFilter: false,
   });
 
   return wb;
