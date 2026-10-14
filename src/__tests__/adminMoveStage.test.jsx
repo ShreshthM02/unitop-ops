@@ -26,10 +26,10 @@ describe('Admin-only "Move to Any Stage" — visibility gated by real permission
     expect(screen.queryByText(/Admin: Move to Any Stage/)).toBeNull();
   });
 
-  it('does not show for a plain query (not yet a tour file)', () => {
+  it('shows for an admin on a plain query too (e.g. stuck in Operations without a tour file)', () => {
     const plainQuery = { ...tourFileQuery, tourFileId: undefined };
     render(<QueryDrawerWithQuote {...baseProps} query={plainQuery} currentUser={adminUser} onForceMoveStage={()=>{}}/>);
-    expect(screen.queryByText(/Admin: Move to Any Stage/)).toBeNull();
+    expect(screen.getByText(/Admin: Move to Any Stage/)).toBeTruthy();
   });
 
   it('does not show for a cancelled tour file (that has its own Recover flow instead)', () => {

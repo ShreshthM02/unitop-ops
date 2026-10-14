@@ -446,7 +446,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                         </div>
                       </div>
                     )}
-                    {isCaseFile&&!query.cancelled&&getPermissions(currentUser).force_move_stage&&!showMoveBackForm&&(
+                    {!query.cancelled&&getPermissions(currentUser).force_move_stage&&!showMoveBackForm&&(
                       <button onClick={()=>{setMoveBackTarget(query.status);setShowMoveBackForm(true);}}
                         style={{width:"100%",padding:"8px",background:"#EBF5FB",color:"#1A5276",
                           border:"1px solid #A9CCE3",borderRadius:6,fontSize:12,fontWeight:600,
@@ -454,7 +454,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                         🔓 Admin: Move to Any Stage
                       </button>
                     )}
-                    {isCaseFile&&!query.cancelled&&getPermissions(currentUser).force_move_stage&&showMoveBackForm&&(
+                    {!query.cancelled&&getPermissions(currentUser).force_move_stage&&showMoveBackForm&&(
                       <div style={{background:"#EBF5FB",border:"1px solid #A9CCE3",borderRadius:8,padding:12,marginTop:8}}>
                         <div style={{fontSize:11,fontWeight:700,color:"#1A5276",marginBottom:8}}>Move to Any Stage (Admin Override)</div>
                         <div style={{fontSize:10,color:"#1A5276",marginBottom:8}}>For correcting a tour file moved to the wrong stage by mistake — e.g. accidentally advanced straight to Finance or Completed. This is separate from normal stage progress and always requires a reason.</div>
