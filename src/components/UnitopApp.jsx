@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -39,6 +39,11 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // ("Sharma Family", "Chen Group") that's genuinely confusing for a real
   // user. Showing a brief loading state instead avoids that entirely.
   const [dataLoading, setDataLoading] = useState(true);
+  // Set when the core data could not be fetched (after timeouts/retries). Shows a
+  // Retry screen instead of silently continuing on hardcoded demo data.
+  const [loadError, setLoadError] = useState(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadSlow, setLoadSlow] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Real-time sidebar clock (direct request, 2026-09-29): day, dd/mm/yyyy
   // date, 24H time, ticking every second. Lives entirely in this one
@@ -76,9 +81,27 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     saveAppSetting(db, "doc_templates", t);
     showToast("Templates saved");
   };
-  const saveDocSettings = (s) => {
+  const saveDocSettings = async (s) => {
     setDocSettings(s);
-    saveAppSetting(db, "doc_numbering", s);
+    // The numbering serials are advanced atomically in the database
+    // (bump_doc_serial) every time a query/tour file/invoice is created, so this
+    // browser's copy is usually stale. Writing the whole blob back used to risk
+    // rewinding a counter and re-issuing numbers already used. Any serial the
+    // user did NOT deliberately change in this save is taken fresh from the DB.
+    let out = s;
+    try {
+      const latest = await loadAppSetting(db, "doc_numbering", null);
+      if (latest && typeof latest === "object") {
+        out = { ...s };
+        for (const k of Object.keys(out)) {
+          const cur = out[k], prev = docSettings && docSettings[k], live = latest[k];
+          if (cur && typeof cur === "object" && live && typeof live.serial === "number" && (!prev || cur.serial === prev.serial)) {
+            out[k] = { ...cur, serial: live.serial };
+          }
+        }
+      }
+    } catch (e) { /* fall back to writing what we have */ }
+    saveAppSetting(db, "doc_numbering", out);
   };
   const [activeQuery, setActiveQuery]   = useState(null);
   const isFirstActiveQueryEffect = useRef(true);
@@ -306,7 +329,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         // meant the total wait was the SUM of every round-trip; in
         // parallel it's roughly the time of the single slowest one.
         const [
-          { data: qData }, { data: auditData }, { data: remarkData },
+          { data: qData, error: qErr }, { data: auditData }, { data: remarkData },
           { data: agData }, { data: vData }, { data: staffData },
           docSettingsValue, docTemplatesValue,
           { data: payData }, { data: inData }, { data: outData },
@@ -342,6 +365,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           loadSeries(db),
           loadSignatures(db),
         ]);
+        if (!qData) { setLoadError((qErr && qErr.message) || "Could not load queries"); return; }
+        setLoadError(null);
         setCostSheetExists(new Set((csIdData||[]).map(r=>r.query_id)));
         setQuotationExists(new Set((quoteIdData||[]).map(r=>r.query_id)));
         setSeries(seriesData);
@@ -425,13 +450,22 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         const teMap = mergeTourExecutionRows(teData);
         setTourExecutions(teMap);
       } catch(e) {
-        console.warn("Could not load from Supabase, using demo data:", e);
+        console.warn("Could not load from Supabase:", e);
       } finally {
         setDataLoading(false);
       }
     };
+    setDataLoading(true);
     loadData();
-  }, [authUser]);
+  }, [authUser, loadAttempt]);
+
+  // After 12s of loading, say so (and offer a manual retry) instead of an
+  // indefinite bare "Loading...".
+  useEffect(() => {
+    if (!dataLoading) { setLoadSlow(false); return; }
+    const t = setTimeout(() => setLoadSlow(true), 12000);
+    return () => clearTimeout(t);
+  }, [dataLoading, loadAttempt]);
 
   // ── Realtime: reflect other users' query changes live, no refresh needed ──
   // Requires Realtime to be enabled for the `queries` table in Supabase
@@ -596,7 +630,10 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // refresh reloaded whatever was actually still intact. Fix: always
   // save the full current-record-plus-updates object, never the bare
   // diff, so buildQuerySavePayload only ever sees real, complete data.
-  const handleUpdateQuery = (queryId, updates) => {
+  const handleUpdateQuery = (queryId, rawUpdates) => {
+    // Never let a details/reviewer/series/pax edit touch workflow-owned fields
+    // (status, tour file number, ...) -- see stripWorkflowFields in utils.js.
+    const updates = stripWorkflowFields(rawUpdates);
     setQueries(qs => qs.map(q => q.id === queryId ? { ...q, ...updates } : q));
     setActiveQuery(q => q && q.id === queryId ? { ...q, ...updates } : q);
     const existing = queries.find(q => q.id === queryId);
@@ -882,6 +919,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     </div>
   );
 
+  if (!dataLoading && loadError) {
+    return (
+      <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0D1B2A,#1A3A52)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ textAlign:"center", color:"#fff", maxWidth:360, padding:20 }}>
+          <img src={LOGO_B64} alt="Unitop" style={{ height:56, marginBottom:14, borderRadius:6 }}/>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>Couldn't load your data</div>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginBottom:14 }}>The connection is slow or interrupted. Nothing has been changed. {loadError}</div>
+          <button className="btn btn-primary" onClick={()=>{ setLoadError(null); setLoadAttempt(n=>n+1); }}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
   if (dataLoading) {
     return (
       <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0D1B2A,#1A3A52)",
@@ -890,6 +940,12 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <img src={LOGO_B64} alt="Unitop" style={{ height:64, marginBottom:16, borderRadius:6 }}/>
           <div style={{fontSize:16,fontWeight:700,fontFamily:"'Playfair Display',serif",color:"#fff",marginBottom:6}}>Unitop Ops</div>
           <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>Loading…</div>
+          {loadSlow && (
+            <div style={{ marginTop:14, color:"rgba(255,255,255,0.65)", fontSize:12 }}>
+              Taking longer than usual…
+              <div><button className="btn btn-ghost" style={{marginTop:8,color:"#fff"}} onClick={()=>setLoadAttempt(n=>n+1)}>Retry now</button></div>
+            </div>
+          )}
         </div>
       </div>
     );

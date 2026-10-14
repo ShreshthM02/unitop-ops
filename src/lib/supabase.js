@@ -80,6 +80,37 @@ function makeGazetteerClient(url, key) {
 // are set) -- gazetteerQuery.js's own try/catch already degrades every
 // call gracefully when a db object's methods fail or are missing, same
 // as any other network hiccup it already tolerates.
+
+// Reads (GET) get a hard timeout and automatic retries. Without this a
+// single stalled request -- slow network, a congested connection pool, a
+// hiccup on the database -- left the whole app on the "Loading..." screen
+// for minutes, because the login load waits on ~16 requests at once and a
+// plain fetch() never gives up. Writes are deliberately NOT retried here
+// (a retried write could double-apply); only idempotent reads are.
+export async function fetchReadWithRetry(input, init, { timeoutMs = 15000, retries = 2, backoffMs = 600 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    try {
+      const r = await fetch(input, ctrl ? { ...init, signal: ctrl.signal } : init);
+      if (timer) clearTimeout(timer);
+      // 5xx and 429 are transient -- retry. Anything else (incl. 401/403/404) is final.
+      if ((r.status >= 500 || r.status === 429) && attempt < retries) {
+        lastErr = new Error("HTTP " + r.status);
+      } else {
+        return r;
+      }
+    } catch (e) {
+      if (timer) clearTimeout(timer);
+      lastErr = e;
+      if (attempt >= retries) throw (e && e.name === "AbortError" ? new Error("Request timed out") : e);
+    }
+    await new Promise(res => setTimeout(res, backoffMs * (attempt + 1)));
+  }
+  throw lastErr;
+}
+
 export const gazetteerDb = (GAZETTEER_SUPABASE_URL && GAZETTEER_SUPABASE_KEY)
   ? makeGazetteerClient(GAZETTEER_SUPABASE_URL, GAZETTEER_SUPABASE_KEY)
   : null;
@@ -238,7 +269,7 @@ export const _supa = (() => {
         try {
           const filterStr = _filters.length ? "&" + _filters.join("&") : "";
           const qs = (_query||"?select=*") + filterStr + _order + _limit;
-          const r = await fetch(`${url}/rest/v1/${table}${qs}`, { headers: authHeaders() });
+          const r = await fetchReadWithRetry(`${url}/rest/v1/${table}${qs}`, { headers: authHeaders() });
           noteIfExpired(r.status);
           const data = r.ok ? await r.json() : null;
           const error = r.ok ? null : { message: await r.text() };

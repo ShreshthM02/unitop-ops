@@ -1371,6 +1371,32 @@ export function mergeQueryForSave(existing, updates) {
   return existing ? { ...existing, ...updates } : { ...updates };
 }
 
+// Fields the Query Details form must never be able to write. They are owned
+// by the workflow (moving stages, converting to a tour file, cancelling) and
+// change through their own actions. The edit form keeps a COPY of the query
+// from when the drawer was opened; saving that whole copy after the query had
+// since moved to Operations and received its tour file number silently put
+// the old status and a blank tour file number back (real incident: UT-3500
+// vanished, the file fell back to Costing, and the next conversion issued
+// UT-3501). Dropping these keys makes that impossible by construction.
+export const WORKFLOW_OWNED_QUERY_FIELDS = ["status", "tourFileId", "cancelled", "cancellationReason", "audit", "manualWF", "id", "type"];
+export function stripWorkflowFields(updates) {
+  const out = { ...(updates || {}) };
+  for (const k of WORKFLOW_OWNED_QUERY_FIELDS) delete out[k];
+  return out;
+}
+
+// Only the fields the user actually changed in the edit form (compared with
+// the copy taken when editing began) -- so saving never re-sends values that
+// were merely carried along and may have changed elsewhere in the meantime.
+export function changedFields(base, edited) {
+  const out = {};
+  for (const k of Object.keys(edited || {})) {
+    if (JSON.stringify(edited[k]) !== JSON.stringify((base || {})[k])) out[k] = edited[k];
+  }
+  return out;
+}
+
 export function buildQuerySavePayload(q) {
   return {
     id:                  q.id,
