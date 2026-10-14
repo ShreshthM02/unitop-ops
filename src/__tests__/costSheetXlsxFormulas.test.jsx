@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CostSheet } from '../components/CostSheet.jsx';
 
-// The workbook is a working spreadsheet: a "Cost Sheet" tab (settings + one
-// price table where slabs are added) and one tab per list. These tests
+// The workbook is ONE tab, top to bottom: settings, one price table where
+// slabs are added, then a block per list (Itinerary, Transport, ...). These tests
 // generate the real file and read it back with exceljs, exactly the way
 // someone opening it in Excel would.
 const clickExport = (label) => {
@@ -34,24 +34,25 @@ async function exportWorkbook(beforeExport) {
   return wb;
 }
 
-const findRow = (sheet, col, text) => {
-  for (let r = 1; r <= sheet.rowCount; r++) if (sheet.getCell(r, col).value === text) return r;
+const findRow = (sheet, col, text, from = 1) => {
+  for (let r = from; r <= sheet.rowCount; r++) if (sheet.getCell(r, col).value === text) return r;
   return null;
 };
 
+const main = (wb) => wb.getWorksheet('Cost Sheet');
+
 describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
   it('the Itinerary totals are SUM formulas that sit ABOVE the list, so the list can grow', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Itinerary');
-    const totalsRow = findRow(sheet, 1, 'TOTALS');
-    const firstDataRow = findRow(sheet, 1, 'Day') + 1;
-    expect(totalsRow).toBeLessThan(firstDataRow);
-    expect(sheet.getCell(totalsRow, 5).formula).toMatch(/^SUM\(E\d+:E\d+\)$/);
+    const sheet = main(await exportWorkbook());
+    const band = findRow(sheet, 1, 'ITINERARY & ACCOMMODATION');
+    const totalsRow = findRow(sheet, 1, 'TOTALS', band);
+    const hdr = findRow(sheet, 1, 'Day', band);
+    expect(totalsRow).toBeLessThan(hdr);
+    expect(sheet.getCell(totalsRow, 7).formula).toMatch(/^SUM\(G\d+:G\d+\)$/);
   }, 20000);
 
   it('the Final Price cell is a guarded formula chain reading the ROE cell, never a literal', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(await exportWorkbook());
     const hdr = findRow(sheet, 1, 'Slab name');
     const f = sheet.getCell(hdr + 1, 16).formula;
     expect(f).toContain('CEILING(');
@@ -60,8 +61,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
   }, 20000);
 
   it('GST is read from the settings cell, not hardcoded', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(await exportWorkbook());
     const hdr = findRow(sheet, 1, 'Slab name');
     const f = sheet.getCell(hdr + 1, 13).formula;
     expect(f).toContain('ROUND(');
@@ -69,8 +69,7 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
   }, 20000);
 
   it('slab rows divide by paying pax only behind an IF guard (no #DIV/0!)', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(await exportWorkbook());
     const hdr = findRow(sheet, 1, 'Slab name');
     for (const col of [5, 8, 9, 10, 11]) expect(sheet.getCell(hdr + 1, col).formula).toMatch(/IF\(\$C\d+>0,/);
   }, 20000);
@@ -78,38 +77,47 @@ describe('CostSheet XLSX: real Excel formulas, not pasted-in numbers', () => {
 
 describe('CostSheet XLSX: easy to add to', () => {
   it('the price table has 30 ready slab rows, unlocked, with formulas already in place', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(await exportWorkbook());
     const hdr = findRow(sheet, 1, 'Slab name');
     const last = hdr + 30;
     expect(sheet.getCell(last, 3).protection.locked).toBe(false);
     expect(sheet.getCell(last, 16).formula).toBeTruthy();
   }, 20000);
 
-  it('every list has its own tab with 60+ ready input rows and no data below to collide with', async () => {
-    const wb = await exportWorkbook();
-    for (const [name, firstRow] of [['Transport', 5], ['Monuments', 5], ['Local Handlers', 5], ['Extra Services', 5], ['Itinerary', 7]]) {
-      const sh = wb.getWorksheet(name);
-      expect(sh.getCell(firstRow + 59, 1).protection.locked).toBe(false);
-      expect(sh.getCell(firstRow + 59, 1).fill.fgColor.argb).toBe('FFFFFDE7');
+  it('every list is its own block with 60+ ready input rows, and the blocks are in a fixed order that cannot collide', async () => {
+    const sheet = main(await exportWorkbook());
+    const bands = ['ITINERARY & ACCOMMODATION', 'TRANSPORT', 'MONUMENTS', 'LOCAL HANDLERS', 'EXTRA SERVICES'].map((t) => findRow(sheet, 1, t));
+    bands.forEach((r) => expect(r).toBeTruthy());
+    for (let i = 1; i < bands.length; i++) expect(bands[i] - bands[i - 1]).toBeGreaterThanOrEqual(64); // room for 60 rows each
+    for (const r of bands) {
+      expect(sheet.getCell(r + 4 + 59, 1).protection.locked).toBe(false);
+      expect(sheet.getCell(r + 4 + 59, 1).fill.fgColor.argb).toBe('FFFFFDE7');
     }
   }, 20000);
 
-  it('Transport lines say which slabs they apply to in words, and a slab-name list is provided to copy from', async () => {
-    const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Transport');
-    const hdr = findRow(sheet, 1, 'Sector / Description');
+  it('has a frozen Jump-to row with working internal links to every block', async () => {
+    const sheet = main(await exportWorkbook());
+    expect(sheet.views[0].ySplit).toBe(4);
+    const texts = [];
+    for (let c = 1; c <= 12; c++) { const v = sheet.getCell(4, c).value; if (v && v.hyperlink) texts.push(v.text); }
+    expect(texts).toEqual(expect.arrayContaining(['Itinerary', 'Transport', 'Monuments', 'Local Handlers', 'Extra Services', 'Slabs & prices']));
+  }, 20000);
+
+  it('Transport lines say which slabs they apply to in words, with a dropdown of the slab names', async () => {
+    const sheet = main(await exportWorkbook());
+    const band = findRow(sheet, 1, 'TRANSPORT');
+    const hdr = findRow(sheet, 1, 'Sector / Description', band);
     expect(String(sheet.getCell(hdr, 3).value)).toContain('Applies to');
-    expect(sheet.getCell(hdr + 1, 6).value).toBe('All');
-    expect(sheet.getCell(hdr + 2, 6).formula).toContain("'Cost Sheet'!");
+    const dv = sheet.getCell(hdr + 1, 3).dataValidation;
+    expect(dv.type).toBe('list');
+    expect(dv.formulae[0]).toMatch(/^\$A\$\d+:\$A\$\d+$/);
   }, 20000);
 
   it('a T/L slab is an ordinary row in the same table, with its own cost in a distinct column and a surcharge column', async () => {
-    const wb = await exportWorkbook(() => {
+    const sheet = main(await exportWorkbook(() => {
       fireEvent.click(screen.getByText('+ Add T/L Slab'));
       fireEvent.change(screen.getByDisplayValue('10 pax + 1 T/L'), { target: { value: 'XLSX T/L Row Test' } });
-    });
-    const sheet = wb.getWorksheet('Cost Sheet');
+    }));
     const hdr = findRow(sheet, 1, 'Slab name');
     expect(String(sheet.getCell(hdr, 4).value)).toContain("Tour Leader's own cost");
     expect(sheet.getCell(hdr, 11).value).toBe('T/L surcharge');
@@ -122,7 +130,7 @@ describe('CostSheet XLSX: easy to add to', () => {
 describe('CostSheet XLSX: presentation', () => {
   it('input cells (GST, Markup, ROE, client/agent) share the yellow input fill', async () => {
     const wb = await exportWorkbook();
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(wb);
     const gstRow = findRow(sheet, 1, 'GST %');
     expect(sheet.getCell(gstRow + 1, 1).fill.fgColor.argb).toBe('FFFFFDE7');
     const agentRow = findRow(sheet, 6, 'Client / Foreign Agent');
@@ -134,7 +142,7 @@ describe('CostSheet XLSX: presentation', () => {
     const bad = [];
     wb.worksheets.forEach((sh) => sh.eachRow((row) => row.eachCell((cell) => { if (cell.numFmt && cell.numFmt.includes('$')) bad.push(sh.name + cell.address); })));
     expect(bad).toEqual([]);
-    const sheet = wb.getWorksheet('Cost Sheet');
+    const sheet = main(wb);
     const hdr = findRow(sheet, 1, 'Slab name');
     expect(sheet.getCell(hdr, 16).value).toContain('Final Price');
   }, 20000);

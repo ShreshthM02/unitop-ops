@@ -67,7 +67,7 @@ describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
 
-    expect(wb.worksheets.map(w => w.name)).toEqual(['Cost Sheet', 'Itinerary', 'Transport', 'Monuments', 'Local Handlers', 'Extra Services']); // one tab per list, price table on the first
+    expect(wb.worksheets.length).toBe(1); // everything lives in one tab: settings, price table and the lists behind it
     const sheet = wb.worksheets[0];
     expect(sheet.name).toBe('Cost Sheet');
 
