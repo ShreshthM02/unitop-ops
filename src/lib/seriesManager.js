@@ -176,6 +176,37 @@ export function bookingAttention(bookings, categories, today = new Date().toISOS
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === "high" ? -1 : 1));
 }
 
+// Columns for the timeline view: one per day when the span is short, else one
+// per week. Returns { step, cols: [{ start, end, label }] } covering every dated
+// booking, or null when nothing has dates.
+export function timelineBuckets(bookings) {
+  const dates = [];
+  (bookings || []).forEach(b => { [b.dateFrom, b.dateTo, b.deadlineDate].forEach(d => d && dates.push(d)); });
+  if (!dates.length) return null;
+  dates.sort();
+  const first = dates[0], last = dates[dates.length - 1];
+  const span = daysBetween(first, last) + 1;
+  const step = span <= 62 ? 1 : 7;
+  const cols = [];
+  const add = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  for (let s = first; s <= last && cols.length < 200; s = add(s, step)) {
+    const end = add(s, step - 1);
+    cols.push({ start: s, end, label: s.slice(8, 10) + (step === 1 && s.slice(8, 10) !== "01" ? "" : "/" + s.slice(5, 7)) });
+  }
+  return { step, cols };
+}
+// Does a booking cover this column?
+export function coversColumn(b, col) {
+  const from = b.dateFrom || b.dateTo, to = b.dateTo || b.dateFrom;
+  return !!from && from <= col.end && to >= col.start;
+}
+
+// Bookings (with allocations) that apply to one departure: those allocated to it,
+// plus ones allocated to the whole series (no specific departure).
+export function bookingsForDeparture(bookings, queryId) {
+  return (bookings || []).filter(b => (b.allocations || []).some(a => a.queryId === queryId || !a.queryId));
+}
+
 // One-line health summary: "Hotel 3/4 · Flight 1/1 · 2 need attention"
 export function seriesHealth(bookings, categories, attentionCount = 0) {
   const catById = Object.fromEntries((categories || []).map(c => [c.id, c]));

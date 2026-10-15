@@ -4,6 +4,7 @@ const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIE
 const { changedFields, rowMatchesDay, getHotelRows, reorderItineraryDays, pickQuotationSourceVersion, quotationToHotelRows, mergeQuotationHotelRows, tourDateRange, blankFlightLeg, loadQuotationVersions } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
 import SeriesMasterPanel from './SeriesMasterPanel.jsx';
+import SeriesBookingsForFile from './SeriesBookingsForFile.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder, VendorOrCustomSelect, TourInfoSaveBar } from './TourInfoPanels.jsx';
@@ -667,7 +668,10 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
 
           {/* ── SERVICES (tour file only) ── */}
           {tab==="services"&&isCaseFile&&(
-            <ServicesList query={query} sec={sec} currentUser={currentUser} readOnly={query.cancelled}/>
+            <>
+              <ServicesList query={query} sec={sec} currentUser={currentUser} readOnly={query.cancelled}/>
+              {query.seriesId && <SeriesBookingsForFile query={query} seriesName={(series||[]).find(x=>x.id===query.seriesId)?.name}/>}
+            </>
           )}
 
           {/* ── FINANCE (tour file only) ── */}

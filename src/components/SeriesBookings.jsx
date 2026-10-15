@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as Lib from '../lib/index.js';
 const { G, db, loadBookingCategories, loadSeriesBookings, saveSeriesBooking, deleteSeriesBooking, replaceBookingAllocations,
-  saveBookingCategory, bookingAttention, seriesHealth, lineUsage, statusKind } = Lib;
+  saveBookingCategory, bookingAttention, seriesHealth, lineUsage, statusKind, timelineBuckets, coversColumn } = Lib;
 
 // Series → Bookings. One booking = one reference (PNR / confirmation / contract)
 // with a vendor, dates, a status from an editable per-category list, an optional
@@ -94,7 +94,7 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
         <div style={{ flex: 1, fontSize: 12, color: G.gray600, minWidth: 160 }}>{seriesHealth(bookings, categories, attention.length) || "No bookings yet"}</div>
         <div style={{ display: "inline-flex", border: `1px solid ${G.gray200}`, borderRadius: 6, overflow: "hidden" }}>
-          {[["list", "By booking"], ["departures", "By departure"]].map(([k, t]) => (
+          {[["list", "By booking"], ["departures", "By departure"], ["timeline", "Timeline"]].map(([k, t]) => (
             <button key={k} onClick={() => setView(k)} style={{ padding: "5px 10px", fontSize: 11, border: "none", cursor: "pointer", background: view === k ? G.navy : G.white, color: view === k ? "#fff" : G.gray800 }}>{t}</button>
           ))}
         </div>
@@ -233,6 +233,32 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
           );
         })}
       </>)}
+
+      {view === "timeline" && (() => {
+        const tl = timelineBuckets(bookings);
+        if (!tl) return <div style={{ fontSize: 12, color: G.gray400 }}>Add dates to your bookings to see them on a timeline.</div>;
+        const dated = bookings.filter(b => b.dateFrom || b.dateTo || b.deadlineDate);
+        return (
+          <div style={{ overflowX: "auto" }} data-testid="series-timeline">
+            <div style={{ fontSize: 10.5, color: G.gray400, marginBottom: 6 }}>{tl.step === 1 ? "One column per day." : "One column per week."} ⏰ marks a deadline.</div>
+            <div style={{ display: "grid", gridTemplateColumns: `200px repeat(${tl.cols.length}, minmax(${tl.step === 1 ? 22 : 34}px, 1fr))`, fontSize: 10.5, minWidth: 200 + tl.cols.length * (tl.step === 1 ? 22 : 34) }}>
+              <div />
+              {tl.cols.map(c => <div key={c.start} style={{ textAlign: "center", color: G.gray400, padding: "2px 0" }}>{c.label}</div>)}
+              {dated.map(b => { const cat = catById[b.categoryId]; const ks = KIND_STYLE[statusKind(cat, b.status)]; return (
+                <div key={b.id} style={{ display: "contents" }}>
+                  <div style={{ padding: "4px 6px 4px 0", fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={`${b.title} — ${b.status || ""}`}>
+                    <b>{b.title}</b> <span style={{ color: G.gray400 }}>{cat && cat.name}</span>
+                  </div>
+                  {tl.cols.map(c => {
+                    const on = coversColumn(b, c);
+                    const dl = b.deadlineDate && b.deadlineDate >= c.start && b.deadlineDate <= c.end;
+                    return <div key={c.start} title={on ? `${b.title}: ${b.status || ""}` : ""} style={{ background: on ? ks.bg : "transparent", borderTop: `3px solid ${on ? ks.fg : "transparent"}`, borderBottom: `1px solid ${G.gray100}`, textAlign: "center", minHeight: 22 }}>{dl ? "⏰" : ""}</div>;
+                  })}
+                </div>); })}
+            </div>
+          </div>
+        );
+      })()}
 
       {view === "departures" && (
         files.length === 0 ? <div style={{ fontSize: 12, color: G.gray400 }}>No files in this series yet.</div> :

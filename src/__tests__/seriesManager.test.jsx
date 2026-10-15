@@ -1,6 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { bookingAttention, lineUsage, seriesHealth, statusKind, daysBetween, mapBookingCategory, bookingToDb, saveSeriesBooking } from '../lib/seriesManager.js';
+import { bookingAttention, lineUsage, seriesHealth, statusKind, daysBetween, mapBookingCategory, bookingToDb, saveSeriesBooking, timelineBuckets, coversColumn, bookingsForDeparture } from '../lib/seriesManager.js';
+
+describe('timeline and per-departure helpers', () => {
+  it('uses day columns for a short span and week columns for a long one', () => {
+    const short = timelineBuckets([{ dateFrom: '2026-11-01', dateTo: '2026-11-05' }]);
+    expect(short.step).toBe(1); expect(short.cols).toHaveLength(5);
+    const long = timelineBuckets([{ dateFrom: '2026-11-01', dateTo: '2027-02-01' }]);
+    expect(long.step).toBe(7);
+  });
+  it('returns null when nothing has a date', () => { expect(timelineBuckets([{ title: 'x' }])).toBeNull(); });
+  it('a booking covers a column when its dates overlap it', () => {
+    const col = { start: '2026-11-03', end: '2026-11-03' };
+    expect(coversColumn({ dateFrom: '2026-11-01', dateTo: '2026-11-05' }, col)).toBe(true);
+    expect(coversColumn({ dateFrom: '2026-11-04', dateTo: '2026-11-05' }, col)).toBe(false);
+    expect(coversColumn({ dateFrom: '2026-11-03' }, col)).toBe(true);
+  });
+  it('bookingsForDeparture includes ones allocated to that file or to the whole series', () => {
+    const bs = [{ id: 'a', allocations: [{ queryId: 'Q1' }] }, { id: 'b', allocations: [{ queryId: 'Q2' }] }, { id: 'c', allocations: [{ queryId: '' }] }, { id: 'd', allocations: [] }];
+    expect(bookingsForDeparture(bs, 'Q1').map(b => b.id)).toEqual(['a', 'c']);
+  });
+});
 
 const hotel = mapBookingCategory({ id: 'c-hotel', name: 'Hotel', statuses: [
   { name: 'Enquiry sent', kind: 'open' }, { name: 'Held (option)', kind: 'open' }, { name: 'Confirmed', kind: 'done' }, { name: 'Cancelled', kind: 'cancelled' }] });
