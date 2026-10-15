@@ -105,7 +105,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseEnter={e => e.currentTarget.style.background = G.gray50}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/></div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div>
                 <div style={{ fontSize: 11, color: G.gray400 }}>{q.tourFileId||q.id} · {q.destination||q.sector}</div>
               </div>
               <StatusBadge status={q.status} />
@@ -127,7 +127,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 500 }}>{t.name}<FileTypeBadge fileType={t.query.fileType}/></div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}>{t.name}<FileTypeBadge fileType={t.query.fileType} seriesId={t.query.seriesId}/></div>
                 <div style={{ fontSize: 11, color: G.gray400 }}>{t.dates} · {t.pax}</div>
               </div>
               <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,

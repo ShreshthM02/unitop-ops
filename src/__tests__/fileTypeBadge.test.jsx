@@ -66,3 +66,17 @@ describe('Edit Tour Details: File Type field', () => {
     expect(screen.getByText('FIT')).toBeTruthy();
   });
 });
+
+describe('series mark', () => {
+  it('shows a small symbol only when the query belongs to a series, with or without a FIT/GIT badge', () => {
+    const { rerender } = render(<FileTypeBadge fileType="FIT" seriesId="S-1"/>);
+    expect(screen.getByTitle('Part of a series')).toBeTruthy();
+    expect(screen.getByText('FIT')).toBeTruthy();
+    rerender(<FileTypeBadge seriesId="S-1"/>);
+    expect(screen.getByTitle('Part of a series')).toBeTruthy();
+    rerender(<FileTypeBadge fileType="FIT"/>);
+    expect(screen.queryByTitle('Part of a series')).toBeNull();
+    rerender(<FileTypeBadge/>);
+    expect(screen.queryByTitle('Part of a series')).toBeNull();
+  });
+});

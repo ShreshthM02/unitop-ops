@@ -94,7 +94,7 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     {/* Client/Group name */}
                     <div style={{fontSize:12,fontWeight:600,color:"#1a1a1a",marginBottom:2,
                       whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType}/>
+                      {q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/>
                     </div>
                     {/* Destination */}
                     <div style={{fontSize:11,color:"#555",marginBottom:6,
