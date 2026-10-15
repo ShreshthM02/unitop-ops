@@ -615,6 +615,21 @@ export const _supa = (() => {
     return await r.json(); // the serial to use for THIS document (already bumped in the DB)
   };
 
+  // Authenticated RPC (real per-user JWT) -- for functions that write shared
+  // data, as opposed to rpc() above which only sends the anon key.
+  const authRpc = async (fnName, params = {}) => {
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/${fnName}`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify(params),
+      });
+      const text = await r.text().catch(() => "");
+      let data = null; try { data = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
+      return { data: r.ok ? data : null, error: r.ok ? null : { message: text || `${fnName} failed` } };
+    } catch (e) {
+      return { data: null, error: { message: e.message } };
+    }
+  };
+
   // Real bug found live: getDatabaseSize was only ever defined on `auth`
   // (db.auth.getDatabaseSize), but every caller -- maintenance.js's
   // runHealthCheck AND MaintenancePanel's own no-click storage strip --
@@ -624,7 +639,7 @@ export const _supa = (() => {
   // stuck on "Checking database storage…" forever with no visible
   // error. Exposed here at the top level too, matching every call site,
   // rather than chasing down and rewriting each one to the nested path.
-  return { from, auth, rpc, drive, bumpDocSerial, getDatabaseSize: auth.getDatabaseSize };
+  return { from, auth, rpc, authRpc, drive, bumpDocSerial, getDatabaseSize: auth.getDatabaseSize };
 })();
 
 const db = _supa;

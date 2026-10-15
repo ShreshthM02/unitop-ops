@@ -3,11 +3,12 @@ import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateDMY, getAutoDetectedSteps, getWFStepStatus, loadFinalCostSheetVersion, mapCostSheetDaysToTourExecutionDays, logAudit, db, entryINR, currencyLabel, entryMatchesTourCurrency, blankPaymentRecord, formatDateSlash, MessageWithMentions, MentionInput, extractMentions, notifyMentionedStaff, nightsDaysLabel } = Lib;
 const { changedFields, rowMatchesDay, getHotelRows, reorderItineraryDays, pickQuotationSourceVersion, quotationToHotelRows, mergeQuotationHotelRows, tourDateRange, blankFlightLeg, loadQuotationVersions } = Lib;
 import { DocRegistryInline } from './DocumentRegistry.jsx';
+import SeriesMasterPanel from './SeriesMasterPanel.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder, VendorOrCustomSelect, TourInfoSaveBar } from './TourInfoPanels.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
+export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, onPromoteSeriesMaster, onApplySeriesMaster, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const can = useCan(currentUser);
@@ -644,6 +645,9 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   </button>
                 ))}
               </div>
+              {query.seriesId&&onPromoteSeriesMaster&&onApplySeriesMaster&&(
+                <SeriesMasterPanel query={query} seriesName={(series||[]).find(x=>x.id===query.seriesId)?.name} onPromote={onPromoteSeriesMaster} onApply={onApplySeriesMaster} readOnly={query.cancelled}/>
+              )}
               {!isCaseFile&&(
                 <div style={{padding:"10px 12px",background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:8,fontSize:11,color:"#784212"}}>
                   ℹ Invoices and Exchange Orders become available after this query is converted to a Tour File.

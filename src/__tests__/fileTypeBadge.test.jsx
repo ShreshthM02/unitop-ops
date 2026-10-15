@@ -80,3 +80,17 @@ describe('series mark', () => {
     expect(screen.queryByTitle('Part of a series')).toBeNull();
   });
 });
+
+describe('series mark hover and click', () => {
+  it('names the series on hover and opens it on click', async () => {
+    const { SeriesLookupContext } = await import('../lib/helpers.jsx');
+    const seen = [];
+    const h = e => seen.push(e.detail.id);
+    document.addEventListener('unitop-activate-series', h);
+    render(<SeriesLookupContext.Provider value={{ 'S-1': 'Kailash 2026' }}><FileTypeBadge seriesId="S-1"/></SeriesLookupContext.Provider>);
+    const el = screen.getByTitle('Part of a series: Kailash 2026');
+    fireEvent.click(el);
+    expect(seen).toEqual(['S-1']);
+    document.removeEventListener('unitop-activate-series', h);
+  });
+});

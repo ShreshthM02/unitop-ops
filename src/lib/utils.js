@@ -940,6 +940,41 @@ export async function loadSeries(db) {
   }
 }
 
+// ── Series master documents ────────────────────────────────────────────
+// A series can hold one master Cost Sheet / Quotation / Itinerary, snapshotted
+// from an existing query or tour file. New queries start from that snapshot as
+// ordinary editable copies. The work is done by two Postgres functions
+// (supabase/migrations/20261015100000_series_master.sql).
+const SERIES_MASTER_SETUP_MSG = "Series master isn't set up in the database yet -- run the 20261015100000_series_master.sql migration.";
+function seriesMasterErr(error) {
+  const m = (error && error.message) || "";
+  return /promote_series_master|apply_series_master|series_masters|PGRST202|42883|42P01/.test(m) ? SERIES_MASTER_SETUP_MSG : (m || "Something went wrong");
+}
+export async function loadSeriesMaster(db, seriesId) {
+  if (!seriesId) return null;
+  try {
+    const { data } = await db.from("series_masters").select("series_id,source_query_id,source_label,promoted_by,promoted_at,cost_sheet,quotation,itinerary").eq("series_id", seriesId);
+    const r = data && data[0];
+    if (!r) return null;
+    return { seriesId: r.series_id, sourceQueryId: r.source_query_id, sourceLabel: r.source_label, promotedBy: r.promoted_by, promotedAt: r.promoted_at,
+      has: { costSheet: !!r.cost_sheet, quotation: !!r.quotation, itinerary: !!r.itinerary } };
+  } catch (e) { return null; }
+}
+export async function promoteSeriesMaster(db, seriesId, queryId, byName) {
+  const { data, error } = await db.authRpc("promote_series_master", { p_series: seriesId, p_query: queryId, p_by: byName || "" });
+  if (error) return { success: false, error: seriesMasterErr(error) };
+  return data && data.success ? data : { success: false, error: (data && data.error) || "Could not set the series master" };
+}
+export async function applySeriesMaster(db, seriesId, queryId) {
+  const { data, error } = await db.authRpc("apply_series_master", { p_series: seriesId, p_query: queryId });
+  if (error) return { success: false, error: seriesMasterErr(error) };
+  return data && data.success ? data : { success: false, error: (data && data.error) || "Could not copy the series master" };
+}
+export function describeCopied(copied) {
+  const names = { cost_sheet: "Cost Sheet", quotation: "Quotation", itinerary: "Itinerary" };
+  return (copied || []).map(c => names[c] || c).join(", ");
+}
+
 // Item 11: signatures library. Same simple shape as Series -- a flat,
 // named list anyone with template access can create/edit/delete, no
 // per-user ownership (deliberately started simple; see conversation --

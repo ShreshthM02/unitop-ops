@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
+const { SeriesLookupContext, promoteSeriesMaster, applySeriesMaster, describeCopied, DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -67,6 +67,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [queries, setQueries]     = useState([]);
   const [agents, setAgents]       = useState([]);
   const [series, setSeries]       = useState([]);
+  const seriesNameById = useMemo(() => Object.fromEntries((series||[]).map(s => [s.id, s.name])), [series]);
   const [signatures, setSignatures] = useState([]);
   const [vendors, setVendors]     = useState([]);
   const [staff, setStaff]         = useState([]);
@@ -682,9 +683,36 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     // the correct one.
     const saved = await saveQueryToDB(newQ, newQ.audit[0].action);
     if (saved !== false) showToast(`Query ${id} created and acknowledged`);
+    if (saved !== false && newQ.seriesId) handleApplySeriesMaster(newQ, { silent: true });
     } finally {
       newQueryInFlightRef.current = false;
     }
+  };
+
+  // ── Series master documents ──
+  // Copies the series master (Cost Sheet / Quotation / Itinerary) into a file as
+  // ordinary editable v1 documents. Never overwrites a document the file already
+  // has. `silent` is used right after creating a query in a series, where "no
+  // master yet" is simply the normal case and not worth a message.
+  const handleApplySeriesMaster = async (query, { silent = false } = {}) => {
+    if (!query.seriesId) return;
+    const res = await applySeriesMaster(db, query.seriesId, query.id);
+    if (!res.success) { if (!silent) showToast(res.error, "error"); return; }
+    const copied = res.copied || [];
+    if (!copied.length) { if (!silent) showToast("Nothing copied — this file already has its own documents"); return; }
+    if (copied.includes("cost_sheet")) setCostSheetExists(prev => new Set(prev).add(query.id));
+    if (copied.includes("quotation")) setQuotationExists(prev => new Set(prev).add(query.id));
+    const msg = `Copied from series master (${res.source || "master"}): ${describeCopied(copied)}`;
+    logAudit(db, query.id, currentUser.name, msg);
+    showToast(msg);
+  };
+  const handlePromoteSeriesMaster = async (query) => {
+    if (!query.seriesId) return;
+    const res = await promoteSeriesMaster(db, query.seriesId, query.id, currentUser.name);
+    if (!res.success) { showToast(res.error, "error"); return; }
+    const msg = `Made the series master (${query.tourFileId || query.id})`;
+    logAudit(db, query.id, currentUser.name, msg);
+    showToast("Series master updated");
   };
 
   const handleConvertToCaseFile = async (query) => {
@@ -952,7 +980,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   }
 
   return (
-    <>
+    <SeriesLookupContext.Provider value={seriesNameById}>
       <style>{css}</style>
       <div className="app">
         {sidebarOpen && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:49}} onClick={()=>setSidebarOpen(false)}/>}
@@ -1185,6 +1213,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             onUpdateQuery={handleUpdateQuery}
             onRecoverQuery={handleRecoverQuery}
             onForceMoveStage={handleForceMoveStage}
+            onPromoteSeriesMaster={handlePromoteSeriesMaster}
+            onApplySeriesMaster={handleApplySeriesMaster}
             tourExecution={tourExecutions[activeQuery.id] || blankTourExecution(activeQuery.id)}
             onUpdateTourExecution={updateTourExecution}
             vendors={vendors}
@@ -1268,7 +1298,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {showNewQuery && <NewQueryModal onClose={()=>setShowNewQuery(false)} onSave={handleNewQuery} nextId={nextQueryId()} agents={agents} staff={staff} series={series} queries={queries}/>}
         {toast && <Toast msg={toast} type={toastType} onDone={()=>setToast(null)}/>}
       </div>
-    </>
+    </SeriesLookupContext.Provider>
   );
 }
 

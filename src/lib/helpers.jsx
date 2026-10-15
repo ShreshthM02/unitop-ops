@@ -1,7 +1,7 @@
 // Small shared helpers/components used across many components:
 // permission checks, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, RichTextEditor.
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS, RICH_TEXT_HIGHLIGHT_COLORS } from "./constants.js";
 import { getWFStepStatus } from "./utils.js";
 
@@ -72,13 +72,21 @@ export function StatusBadge({ status }) {
 // deliberately subtle label meant to sit inline next to a tour/query name
 // without competing with it. Manually set and edited by staff, not derived
 // from any pax field, so it never silently misclassifies a group.
+// id -> series name, provided once by UnitopApp so the small series mark can
+// say WHICH series on hover without every call site having to pass the list.
+export const SeriesLookupContext = createContext({});
+
 export function FileTypeBadge({ fileType, seriesId }) {
+  const names = useContext(SeriesLookupContext);
   // A tiny symbol (not text) marking a query/tour file that belongs to a
-  // series. Rendered on its own when there is no FIT/GIT badge.
+  // series. Rendered on its own when there is no FIT/GIT badge. Click opens
+  // the series (same event the @mentions and search already use).
+  const label = names && names[seriesId] ? `Part of a series: ${names[seriesId]}` : "Part of a series";
   const mark = seriesId ? (
-    <span title="Part of a series" aria-label="Part of a series" style={{
-      fontSize: 11, marginLeft: 5, color: "#6C3483", display: "inline-block", lineHeight: 1,
-    }}>⛓</span>
+    <span role="button" tabIndex={0} title={label} aria-label={label}
+      onClick={e => { e.stopPropagation(); document.dispatchEvent(new CustomEvent("unitop-activate-series", { detail: { id: seriesId } })); }}
+      onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); document.dispatchEvent(new CustomEvent("unitop-activate-series", { detail: { id: seriesId } })); } }}
+      style={{ fontSize: 11, marginLeft: 5, color: "#6C3483", display: "inline-block", lineHeight: 1, cursor: "pointer" }}>⛓</span>
   ) : null;
   if (!fileType) return mark;
   const isFit = fileType === "FIT";
