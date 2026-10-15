@@ -112,9 +112,33 @@ async function ensureVehicleFolder(accessToken, supabase, vehicleId, folderName)
   return { folderId: data.id };
 }
 
+// Series get their own Drive folder too, named after the series. The folder id
+// is kept on the series row.
+async function ensureSeriesFolder(accessToken, supabase, seriesId, folderName) {
+  const { data: rows } = await supabase.from("series").select("drive_folder_id").eq("id", seriesId);
+  if (!rows || rows.length === 0) return { error: "Series not found" };
+  const existing = rows[0].drive_folder_id;
+  if (existing) return { folderId: existing };
+
+  const rootFolderId = Deno.env.get("GOOGLE_DRIVE_ROOT_FOLDER_ID")?.trim();
+  const { ok, data } = await driveFetch("files", accessToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: rootFolderId ? [rootFolderId] : undefined,
+    }),
+  });
+  if (!ok) return { error: `Could not create Drive folder: ${data.error?.message || "unknown error"}` };
+
+  await supabase.from("series").update({ drive_folder_id: data.id }).eq("id", seriesId);
+  return { folderId: data.id };
+}
+
 // "fleet" scope reads/writes fleet_documents; everything else keeps using
 // query_documents exactly as before.
-const docsTable = (scope) => (scope === "fleet" ? "fleet_documents" : "query_documents");
+const docsTable = (scope) => (scope === "fleet" ? "fleet_documents" : scope === "series" ? "series_documents" : "query_documents");
 
 Deno.serve(async (req) => {
   const cors = {
@@ -140,13 +164,16 @@ Deno.serve(async (req) => {
     if (authError) return json({ success: false, error: authError }, 500);
 
     if (action === "upload") {
-      const { queryId, vehicleId, scope, folderName, fileName, mimeType, fileBase64 } = body;
+      const { queryId, vehicleId, seriesId, scope, folderName, fileName, mimeType, fileBase64 } = body;
       const isFleet = scope === "fleet";
-      if ((isFleet ? !vehicleId : !queryId) || !fileName || !fileBase64) return json({ success: false, error: "Missing required fields" }, 400);
+      const isSeries = scope === "series";
+      if ((isFleet ? !vehicleId : isSeries ? !seriesId : !queryId) || !fileName || !fileBase64) return json({ success: false, error: "Missing required fields" }, 400);
 
       const { folderId, error: folderError } = isFleet
         ? await ensureVehicleFolder(accessToken, supabase, vehicleId, folderName || "Vehicle")
-        : await ensureFolder(accessToken, supabase, queryId, folderName || queryId);
+        : isSeries
+          ? await ensureSeriesFolder(accessToken, supabase, seriesId, folderName || "Series")
+          : await ensureFolder(accessToken, supabase, queryId, folderName || queryId);
       if (folderError) return json({ success: false, error: folderError }, 500);
 
       const fileBytes = Uint8Array.from(atob(fileBase64), c => c.charCodeAt(0));
@@ -175,7 +202,7 @@ Deno.serve(async (req) => {
       // whoever this Drive account shares it with) can open it;
       // webViewLink is the correct one to store, not a raw file id.
       const { data: inserted, error: insertError } = await supabase.from(docsTable(scope)).insert({
-        ...(isFleet ? { vehicle_id: vehicleId } : { query_id: queryId }),
+        ...(isFleet ? { vehicle_id: vehicleId } : isSeries ? { series_id: seriesId } : { query_id: queryId }),
         drive_file_id: uploadData.id, file_name: fileName, file_type: mimeType,
         file_size: fileBytes.length, drive_view_link: uploadData.webViewLink,
         uploaded_by: String(staffMember.id), uploaded_by_name: staffMember.name,

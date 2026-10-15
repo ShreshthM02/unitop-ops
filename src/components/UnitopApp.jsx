@@ -254,6 +254,8 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   useEffect(()=>{
     const handler = (e) => {
       const {panel, query} = e.detail;
+      // If Series was open as an overlay, step out of its way so the panel is visible.
+      setShowSeries(false);
       if(panel==="costsheet") setShowCostSheet(query);
       else if(panel==="itinerary" || panel==="detailedItinerary") setShowItinerary(query);
       else if(panel==="quotation") setShowQuotation(query);
@@ -1078,7 +1080,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 away from what the user was doing. */}
             {view==="chat" && <InAppChat asTab currentUser={currentUser} queries={queries} staff={staff} agents={agents} vendors={vendors} series={series} onClose={()=>{}}/>}
             {view==="usermgmt" && <UserManagementPanel asTab currentUser={currentUser} onClose={()=>{}}/>}
-            {view==="series" && <SeriesManagement asTab series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
+            {view==="series" && <SeriesManagement asTab vendors={vendors} series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
             {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}} initialSelectedId={focusAgentId}/>}
             {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}} initialSelectedId={focusVendorId}/>}
             {view==="fleet" && <FleetMaster asTab currentUser={currentUser} onClose={()=>{}}/>}
@@ -1243,7 +1245,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
           <UserManagementPanel currentUser={currentUser} onClose={()=>setShowUserMgmt(false)}/>
         )}
         {showAgents     && <AgentMaster agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{setShowAgents(false);setFocusAgentId(null);}} initialSelectedId={focusAgentId}/>}
-        {showSeries     && <SeriesManagement series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{setShowSeries(false);setFocusSeriesId(null);}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
+        {showSeries     && <SeriesManagement vendors={vendors} series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{setShowSeries(false);setFocusSeriesId(null);}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
         {showVendors    && <VendorMaster vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{setShowVendors(false);setFocusVendorId(null);}} initialSelectedId={focusVendorId}/>}
 
         {/* Cancel modal */}

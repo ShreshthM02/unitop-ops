@@ -30,3 +30,4 @@ export * from './supabase.js';
 export * from './maintenance.js';
 export * from './userManualContent.js';
 export * from './fleet.js';
+export * from './seriesManager.js';

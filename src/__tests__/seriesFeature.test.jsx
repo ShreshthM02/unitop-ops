@@ -11,13 +11,14 @@ describe('mapDbSeriesRow / loadSeries', () => {
     expect(mapDbSeriesRow(row)).toEqual({
       id: 's1', name: 'Golden Triangle Winter', active: true, notes: 'n',
       createdBy: 'staff-1', createdAt: '2026-01-01', updatedAt: '2026-01-02',
+      masterQueryId: '', driveFolderId: '',
     });
   });
 
   it('loads and maps every series row, ordered by name', async () => {
     const db = { from: () => ({ select: () => ({ is: () => ({ order: async () => ({ data: [{ id: 's1', name: 'A', active: true }], error: null }) }) }) }) };
     const result = await loadSeries(db);
-    expect(result).toEqual([{ id: 's1', name: 'A', active: true, notes: '', createdBy: undefined, createdAt: undefined, updatedAt: undefined }]);
+    expect(result).toEqual([{ id: 's1', name: 'A', active: true, notes: '', createdBy: undefined, createdAt: undefined, updatedAt: undefined, masterQueryId: '', driveFolderId: '' }]);
   });
 
   it('returns an empty array, not a throw, when the load fails', async () => {

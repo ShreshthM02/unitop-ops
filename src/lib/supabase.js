@@ -572,6 +572,8 @@ export const _supa = (() => {
     // fleet_documents instead of query_documents.
     uploadFleet: (vehicleId, folderName, fileName, mimeType, fileBase64) =>
       drive.call({ action: "upload", scope: "fleet", vehicleId, folderName, fileName, mimeType, fileBase64 }),
+    uploadSeries: (seriesId, folderName, fileName, mimeType, fileBase64) =>
+      drive.call({ action: "upload", scope: "series", seriesId, folderName, fileName, mimeType, fileBase64 }),
     renameFleetFolder: (vehicleId, newName) => drive.call({ action: "rename-folder", scope: "fleet", vehicleId, newName }),
     // One-time setup action, run once when switching to a new Drive
     // scope/parent folder -- see MaintenancePanel's Backup tab.

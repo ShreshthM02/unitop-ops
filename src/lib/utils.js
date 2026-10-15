@@ -926,6 +926,7 @@ export async function saveAgentToDB(db, agent) {
 export function mapDbSeriesRow(row) {
   return {
     id: row.id, name: row.name, active: row.active, notes: row.notes || "",
+    masterQueryId: row.master_query_id || "", driveFolderId: row.drive_folder_id || "",
     createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
