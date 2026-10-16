@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as Lib from '../lib/index.js';
+import SeriesBookingDetail from './SeriesBookingDetail.jsx';
 const { G, db, loadBookingCategories, loadSeriesBookings, saveSeriesBooking, deleteSeriesBooking, replaceBookingAllocations,
-  saveBookingCategory, bookingAttention, seriesHealth, lineUsage, statusKind, timelineBuckets, coversColumn } = Lib;
+  saveBookingCategory, bookingAttention, seriesHealth, lineUsage, statusKind, timelineBuckets, coversColumn, bookingKind, rowsSummary, rateStatus, rowCovering, rowsForDeparture } = Lib;
 
 // Series → Bookings. One booking = one reference (PNR / confirmation / contract)
 // with a vendor, dates, a status from an editable per-category list, an optional
@@ -17,7 +18,7 @@ const KIND_STYLE = {
 };
 const fmt = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
 const range = (a, b) => a && b && a !== b ? `${fmt(a)} – ${fmt(b)}` : fmt(a || b);
-const blankDraft = (seriesId, cat) => ({ seriesId, categoryId: cat ? cat.id : "", title: "", vendorId: "", vendorName: "", reference: "", city: "", dateFrom: "", dateTo: "", status: cat && cat.statuses[0] ? cat.statuses[0].name : "", deadlineDate: "", deadlineLabel: "", lines: [], notes: "", allocations: [] });
+const blankDraft = (seriesId, cat) => ({ seriesId, categoryId: cat ? cat.id : "", title: "", vendorId: "", vendorName: "", reference: "", city: "", dateFrom: "", dateTo: "", status: cat && cat.statuses[0] ? cat.statuses[0].name : "", deadlineDate: "", deadlineLabel: "", waitlistDays: "", rates: [], lines: [], notes: "", allocations: [] });
 
 function Field({ label, children, grow }) { return <div style={{ flex: grow || "1 1 150px", minWidth: 0 }}><div style={lbl}>{label}</div>{children}</div>; }
 
@@ -50,7 +51,7 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
 
   const shown = bookings.filter(b => {
     if (filter.cat && b.categoryId !== filter.cat) return false;
-    if (filter.kind && statusKind(catById[b.categoryId], b.status) !== filter.kind) return false;
+    if (filter.kind && bookingKind(b, catById[b.categoryId]) !== filter.kind) return false;
     if (filter.text) { const t = filter.text.toLowerCase(); if (![b.title, b.vendorName, b.reference, b.city].some(x => (x || "").toLowerCase().includes(t))) return false; }
     return true;
   });
@@ -146,6 +147,20 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
             <Field label="Deadline is for"><input style={inp} aria-label="Deadline label" value={draft.deadlineLabel} onChange={e => setD("deadlineLabel", e.target.value)} placeholder="e.g. Option release" /></Field>
           </div>
 
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <Field label="Vendor clears waitlist … days before arrival"><input type="number" min="0" style={inp} aria-label="Waitlist days" value={draft.waitlistDays} onChange={e => setD("waitlistDays", e.target.value)} placeholder="e.g. 60" /></Field>
+          </div>
+          <div style={lbl}>Rates — our budget vs what the vendor quoted (₹)</div>
+          {(draft.rates || []).map((r, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+              <input style={inp} aria-label={`Rate label ${i + 1}`} value={r.label} placeholder="e.g. APAI single/twin" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
+              <input type="number" min="0" style={{ ...inp, width: 110 }} aria-label={`Rate budget ${i + 1}`} value={r.budget} placeholder="Budget" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, budget: e.target.value } : x))} />
+              <input type="number" min="0" style={{ ...inp, width: 110 }} aria-label={`Rate quoted ${i + 1}`} value={r.quoted} placeholder="Quoted" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, quoted: e.target.value } : x))} />
+              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setD("rates", draft.rates.filter((_, xi) => xi !== i))}>✕</button>
+            </div>
+          ))}
+          <button className="btn btn-ghost" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setD("rates", [...(draft.rates || []), { label: "", budget: "", quoted: "" }])}>+ Add rate</button>
+
           <div style={lbl}>What is blocked / bought</div>
           {(draft.lines || []).map((l, i) => (
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
@@ -193,8 +208,8 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
         </div>
         {shown.length === 0 && <div style={{ fontSize: 12, color: G.gray400 }}>{bookings.length ? "No bookings match." : "No bookings yet — add the first one."}</div>}
         {shown.map(b => {
-          const cat = catById[b.categoryId]; const kind = statusKind(cat, b.status); const ks = KIND_STYLE[kind];
-          const usage = lineUsage(b); const open = !!expanded[b.id];
+          const cat = catById[b.categoryId]; const kind = bookingKind(b, cat); const ks = KIND_STYLE[kind];
+          const usage = lineUsage(b); const open = !!expanded[b.id]; const hasRows = (b.rows || []).length > 0; const rates = rateStatus(b);
           return (
             <div key={b.id} data-testid="series-booking" style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8, background: G.white, opacity: kind === "cancelled" ? 0.65 : 1 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -204,24 +219,28 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
                     {[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`, b.city, range(b.dateFrom, b.dateTo)].filter(Boolean).join(" · ")}
                   </div>
                   {b.deadlineDate && <div style={{ fontSize: 11, color: "#B9770E" }}>⏰ {b.deadlineLabel || "Deadline"}: {fmt(b.deadlineDate)}</div>}
+                  {hasRows && <div style={{ fontSize: 11.5, color: G.gray800, marginTop: 2 }} data-testid="rows-summary">{rowsSummary(b, cat)}</div>}
+                  {rates.length > 0 && <div style={{ fontSize: 11, marginTop: 2 }}>{rates.map((r, i) => <span key={i} style={{ marginRight: 10, color: r.gap > 0 ? "#C0392B" : G.gray600 }}>{r.label}: {r.quoted !== null ? `₹${r.quoted.toLocaleString("en-IN")}` : "no quote"}{r.budget !== null ? ` (budget ₹${r.budget.toLocaleString("en-IN")}${r.gap > 0 ? `, +₹${r.gap.toLocaleString("en-IN")}` : ""})` : ""}</span>)}</div>}
+                  {b.awaiting && <div style={{ fontSize: 11, color: b.awaiting === "us" ? "#922B21" : "#1A5276" }}>⏳ {b.awaiting === "us" ? "Waiting on us" : "Waiting on vendor"}{b.followUpDate ? ` · follow up ${fmt(b.followUpDate)}` : ""}</div>}
                   {usage.length > 0 && <div style={{ fontSize: 11, color: G.gray600, marginTop: 3 }}>{usage.map(u => <span key={u.item} style={{ marginRight: 10, color: u.over ? "#C0392B" : G.gray600 }}>{u.item}: {u.used}/{u.blocked}</span>)}</div>}
                 </div>
-                <select aria-label={`Status of ${b.title}`} disabled={!canEdit} value={b.status} onChange={e => quickStatus(b, e.target.value)}
+                {!hasRows && <select aria-label={`Status of ${b.title}`} disabled={!canEdit} value={b.status} onChange={e => quickStatus(b, e.target.value)}
                   style={{ padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 14, border: `1px solid ${ks.bd}`, background: ks.bg, color: ks.fg }}>
                   {(cat ? cat.statuses : []).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                   {b.status && !(cat && cat.statuses.some(s => s.name === b.status)) && <option value={b.status}>{b.status}</option>}
-                </select>
+                </select>}
               </div>
               {open && (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${G.gray100}` }}>
                   {b.notes && <div style={{ fontSize: 12, color: G.gray800, marginBottom: 8, whiteSpace: "pre-wrap" }}>{b.notes}</div>}
-                  <div style={lbl}>Departures</div>
+                  <SeriesBookingDetail booking={b} category={cat} files={files} fileLabel={fileLabel} canEdit={canEdit} currentUser={currentUser} onChanged={reload} onError={setError} />
+                  <div style={{ ...lbl, marginTop: 12 }}>Quantities by departure</div>
                   {b.allocations.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400, marginBottom: 8 }}>Not allocated to any departure yet.</div>
                     : b.allocations.map((a, i) => <div key={i} style={{ fontSize: 12, marginBottom: 2 }}>{a.queryId ? fileLabel(a.queryId) : "Whole series"} — {a.qty} × {a.item || "—"}{a.notes ? ` (${a.notes})` : ""}</div>)}
                   <div style={{ ...lbl, marginTop: 8 }}>History</div>
                   {b.history.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400 }}>No history.</div>
                     : b.history.map(h => <div key={h.id} style={{ fontSize: 11.5, color: G.gray600, marginBottom: 1 }}>
-                        {new Date(h.at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · {h.by || "—"} · {h.kind === "status" ? `${h.from || "—"} → ${h.to || "—"}` : (h.note || h.kind)}
+                        {new Date(h.at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · {h.by || "—"} · {h.kind === "status" ? `${h.from || "—"} → ${h.to || "—"}` : h.kind === "row_status" ? `${h.note || "row"}: ${h.from || "—"} → ${h.to || "—"}` : (h.note || h.kind)}
                       </div>)}
                   {canEdit && <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startEdit(b)}>✏ Edit</button>
@@ -237,7 +256,7 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
       {view === "timeline" && (() => {
         const tl = timelineBuckets(bookings);
         if (!tl) return <div style={{ fontSize: 12, color: G.gray400 }}>Add dates to your bookings to see them on a timeline.</div>;
-        const dated = bookings.filter(b => b.dateFrom || b.dateTo || b.deadlineDate);
+        const dated = bookings.filter(b => b.dateFrom || b.dateTo || b.deadlineDate || (b.rows || []).some(r => r.dateFrom));
         return (
           <div style={{ overflowX: "auto" }} data-testid="series-timeline">
             <div style={{ fontSize: 10.5, color: G.gray400, marginBottom: 6 }}>{tl.step === 1 ? "One column per day." : "One column per week."} ⏰ marks a deadline.</div>
@@ -250,9 +269,11 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
                     <b>{b.title}</b> <span style={{ color: G.gray400 }}>{cat && cat.name}</span>
                   </div>
                   {tl.cols.map(c => {
-                    const on = coversColumn(b, c);
+                    const rc = (b.rows || []).length ? rowCovering(b, c) : null;
+                    const on = (b.rows || []).length ? !!rc : coversColumn(b, c);
+                    const ks2 = rc ? KIND_STYLE[statusKind(cat, rc.status)] : ks;
                     const dl = b.deadlineDate && b.deadlineDate >= c.start && b.deadlineDate <= c.end;
-                    return <div key={c.start} title={on ? `${b.title}: ${b.status || ""}` : ""} style={{ background: on ? ks.bg : "transparent", borderTop: `3px solid ${on ? ks.fg : "transparent"}`, borderBottom: `1px solid ${G.gray100}`, textAlign: "center", minHeight: 22 }}>{dl ? "⏰" : ""}</div>;
+                    return <div key={c.start} title={on ? `${b.title}: ${rc ? `${rc.label || ""} ${rc.status || ""}` : b.status || ""}` : ""} style={{ background: on ? ks2.bg : "transparent", borderTop: `3px solid ${on ? ks2.fg : "transparent"}`, borderBottom: `1px solid ${G.gray100}`, textAlign: "center", minHeight: 22 }}>{dl ? "⏰" : ""}</div>;
                   })}
                 </div>); })}
             </div>
@@ -263,16 +284,17 @@ export default function SeriesBookings({ series, queries, vendors, currentUser, 
       {view === "departures" && (
         files.length === 0 ? <div style={{ fontSize: 12, color: G.gray400 }}>No files in this series yet.</div> :
         files.map(q => {
-          const rows = bookings.map(b => ({ b, allocs: b.allocations.filter(a => a.queryId === q.id) })).filter(r => r.allocs.length);
+          const rows = bookings.map(b => ({ b, allocs: b.allocations.filter(a => a.queryId === q.id), mine: rowsForDeparture(b, q.id) })).filter(r => r.allocs.length || r.mine.length);
           return (
             <div key={q.id} style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#1A5276" }}
                 onClick={() => document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } }))}>{fileLabel(q.id)}</div>
               <div style={{ fontSize: 11, color: G.gray400, marginBottom: 6 }}>{q.dateDisplay || q.travelDate || ""}</div>
               {rows.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400 }}>No bookings allocated to this departure yet.</div> :
-                rows.map(({ b, allocs }) => { const cat = catById[b.categoryId]; const ks = KIND_STYLE[statusKind(cat, b.status)]; return (
+                rows.map(({ b, allocs, mine }) => { const cat = catById[b.categoryId]; const st = mine.length ? mine[0].status : b.status; const ks = KIND_STYLE[statusKind(cat, st)]; return (
                   <div key={b.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, marginBottom: 3, flexWrap: "wrap" }}>
-                    <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10.5, fontWeight: 600, background: ks.bg, color: ks.fg, border: `1px solid ${ks.bd}` }}>{b.status || "—"}</span>
+                    <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10.5, fontWeight: 600, background: ks.bg, color: ks.fg, border: `1px solid ${ks.bd}` }}>{st || "—"}</span>
+                    {mine.length > 0 && mine[0].confirmationNo && <span style={{ fontFamily: "monospace", fontSize: 11 }}>{mine[0].confirmationNo}</span>}
                     <span><b>{b.title}</b> <span style={{ color: G.gray400 }}>{[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`].filter(Boolean).join(" · ")}</span></span>
                     <span style={{ color: G.gray600 }}>{allocs.map(a => `${a.qty} × ${a.item || "—"}`).join(", ")}</span>
                   </div>); })}

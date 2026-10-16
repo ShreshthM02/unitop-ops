@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { G, db, loadBookingCategories, loadSeriesBookings, bookingsForDeparture, statusKind } = Lib;
+const { G, db, loadBookingCategories, loadSeriesBookings, bookingsForDeparture, statusKind, rowsForDeparture } = Lib;
 
 // Read-only view, inside a tour file's Services tab, of the series bookings that
 // cover this file. Edited only from Series → Bookings, so there is one source of
@@ -28,12 +28,13 @@ export default function SeriesBookingsForFile({ query, seriesName }) {
       {state.rows.length === 0 ? (
         <div style={{ fontSize: 11.5, color: G.gray600 }}>Nothing in the series is allocated to this file yet. Add allocations from Series → Bookings.</div>
       ) : state.rows.map(b => {
-        const cat = state.cats[b.categoryId]; const [bg, fg, bd] = KIND[statusKind(cat, b.status)];
+        const cat = state.cats[b.categoryId]; const mineRows = rowsForDeparture(b, query.id); const st = mineRows.length ? mineRows[0].status : b.status;
+        const [bg, fg, bd] = KIND[statusKind(cat, st)];
         const mine = b.allocations.filter(a => a.queryId === query.id || !a.queryId);
         return (
           <div key={b.id} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", fontSize: 12, marginBottom: 4 }}>
-            <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10.5, fontWeight: 600, background: bg, color: fg, border: `1px solid ${bd}` }}>{b.status || "—"}</span>
-            <span><b>{b.title}</b> <span style={{ color: G.gray400 }}>{[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`, b.dateFrom && fmt(b.dateFrom)].filter(Boolean).join(" · ")}</span></span>
+            <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10.5, fontWeight: 600, background: bg, color: fg, border: `1px solid ${bd}` }}>{st || "—"}</span>
+            <span><b>{b.title}</b> <span style={{ color: G.gray400 }}>{[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`, mineRows.length ? (mineRows[0].confirmationNo && `Conf ${mineRows[0].confirmationNo}`) : (b.dateFrom && fmt(b.dateFrom)), mineRows[0] && mineRows[0].dateFrom && `${fmt(mineRows[0].dateFrom)}${mineRows[0].dateTo ? "–" + fmt(mineRows[0].dateTo) : ""}`].filter(Boolean).join(" · ")}</span></span>
             <span style={{ color: G.gray600 }}>{mine.map(a => `${a.qty} × ${a.item || "—"}`).join(", ")}</span>
           </div>
         );
