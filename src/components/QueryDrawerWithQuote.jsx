@@ -8,7 +8,7 @@ import PricingTimeline from './PricingTimeline.jsx';
 import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder, VendorOrCustomSelect, TourInfoSaveBar } from './TourInfoPanels.jsx';
 import DateInput from '../lib/DateInput.jsx';
 
-export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, onPromoteSeriesMaster, onApplySeriesMaster, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
+export default function QueryDrawerWithQuote({ openTab, onDiscussionSeen, query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, onPromoteSeriesMaster, onApplySeriesMaster, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
   const assignedUser = (staff || USERS).find(u=>u.id===query.assignedTo);
   const can = useCan(currentUser);
@@ -21,7 +21,11 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
   const allDone      = WF_STEPS.filter(s=>getWFStepStatus(s.id, autoDetected, query.manualWF).done);
   const canAdvance   = query.status!=="completed"&&!query.cancelled;
   const nextStatusMap= {new_query:"costing",costing:"operations",operations:"finance",finance:"completed"};
-  const [tab, setTab]       = useState("info");
+  const [tab, setTab]       = useState(openTab || "info");
+  useEffect(() => { if (openTab) setTab(openTab); }, [openTab, query.id]);
+  // Viewing the Discussion tab marks this thread as read for the signed-in person.
+  const remarkCount = (query.remarks || []).length;
+  useEffect(() => { if (tab === "remarks" && onDiscussionSeen) onDiscussionSeen(query.id); }, [tab, query.id, remarkCount]); // eslint-disable-line react-hooks/exhaustive-deps
   const [financeViewCurrency, setFinanceViewCurrency] = useState("FC");
   const [remark, setRemark] = useState("");
   const [editingQuery, setEditingQuery] = useState(false);

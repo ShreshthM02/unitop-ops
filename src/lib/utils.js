@@ -1058,7 +1058,7 @@ export async function loadConversationsForStaff(db, staffId) {
     return (convRows || []).map(c => ({
       id: c.id, type: c.type, name: c.name, createdBy: c.created_by, createdAt: c.created_at,
       members: (membersByConv[c.id] || []).map(m => ({ staffId: m.staff_id, joinedAt: m.joined_at, isAdmin: !!m.is_admin, lastReadAt: m.last_read_at })),
-      lastMessage: lastMsgByConv[c.id] ? { text: lastMsgByConv[c.id].text, senderName: lastMsgByConv[c.id].sender_name, createdAt: lastMsgByConv[c.id].created_at } : null,
+      lastMessage: lastMsgByConv[c.id] ? { text: lastMsgByConv[c.id].text, senderId: lastMsgByConv[c.id].sender_id, mentions: lastMsgByConv[c.id].mentions || [], senderName: lastMsgByConv[c.id].sender_name, createdAt: lastMsgByConv[c.id].created_at } : null,
       lastReadAt: myMembershipByConv[c.id]?.last_read_at || null,
     })).sort((a, b) => new Date(b.lastMessage?.createdAt || b.createdAt) - new Date(a.lastMessage?.createdAt || a.createdAt));
   } catch (e) {
@@ -1309,7 +1309,9 @@ export async function notifyMentionedStaff(db, mentions, { senderName, contextLa
 // to work even when the chat panel is closed) and inside InAppChat's
 // own conversation list, so the two can never disagree with each
 // other about which conversations are actually unread.
-export function isConversationUnread(conv) {
+export function isConversationUnread(conv, meId) {
+  // Your own last message is never "unread" to you.
+  if (typeof meId === "string" && conv.lastMessage && conv.lastMessage.senderId === meId) return false;
   return !!(conv.lastMessage && (!conv.lastReadAt || new Date(conv.lastMessage.createdAt) > new Date(conv.lastReadAt)));
 }
 

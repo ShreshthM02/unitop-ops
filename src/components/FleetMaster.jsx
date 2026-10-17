@@ -4,7 +4,7 @@ import DateInput from '../lib/DateInput.jsx';
 const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash, FileRemark,
   FLEET_PROFILE_FIELDS, blankVehicle, loadFleetVehicles, saveFleetVehicle, loadFleetRows, saveFleetRow, deleteFleetRow,
   mapDbFleetServiceRow, fleetServiceRowToDb, mapDbFleetExpenseRow, fleetExpenseRowToDb, newFleetId, vehicleFolderName,
-  filterExpensesByRange, totalExpenses, formatINR, sortByDateDesc, validateServiceRow, validateExpenseRow } = Lib;
+  filterExpensesByRange, totalExpenses, formatINR, todayISO, sortByDateDesc, validateServiceRow, validateExpenseRow } = Lib;
 
 // Master Data → Fleet: our own vehicles. A vehicle has a profile plus three
 // tabs, all manual (nothing here syncs from tour files or the cost sheet):
@@ -237,6 +237,15 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
     setDocs(p => p.map(x => x.id === d.id ? { ...x, file_name: name } : x));
     cancelRename();
   };
+  // Optional reminder date per document. The alert (bell + dot on Fleet) is on from
+  // that date until somebody turns it off here.
+  const setReminder = async (d, patch) => {
+    setErr("");
+    const { error } = await db.from("fleet_documents").eq("id", d.id).update(patch);
+    if (error) { setErr(error.message || "Could not save the reminder (has the alerts migration been run?)"); return; }
+    setDocs(p => p.map(x => x.id === d.id ? { ...x, ...patch } : x));
+    document.dispatchEvent(new CustomEvent("unitop-fleet-alerts-changed"));
+  };
   const remove = async (d) => {
     if (!window.confirm(`Delete "${d.file_name}"? It is also removed from Drive.`)) return;
     setBusyId(d.id);
@@ -275,6 +284,16 @@ function DocumentsTab({ vehicle, canEdit, onFolderCreated }) {
               <div style={{ fontSize: 10.5, color: G.gray400 }}>{[humanSize(d.file_size), d.uploaded_by_name && `by ${d.uploaded_by_name}`, d.created_at && new Date(d.created_at).toLocaleDateString("en-IN")].filter(Boolean).join(" · ")}</div>
             </div>
             {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} disabled={busyId === d.id} onClick={() => remove(d)}>{busyId === d.id ? "…" : "Delete"}</button>}
+          </div>
+          <div data-testid="fleet-doc-reminder" style={{ marginLeft: 26, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: G.gray600, marginTop: 4 }}>
+            <span>⏰ Remind on</span>
+            <DateInput aria-label={`Reminder date for ${d.file_name}`} disabled={!canEdit} value={d.reminder_date ? String(d.reminder_date).slice(0, 10) : ""}
+              onChange={e => setReminder(d, e.target.value ? { reminder_date: e.target.value, reminder_off: false } : { reminder_date: null, reminder_off: false })} style={{ width: 120 }} />
+            {d.reminder_date && !d.reminder_off && String(d.reminder_date).slice(0, 10) <= todayISO() && <b style={{ color: "#DC2626" }}>● Due</b>}
+            {d.reminder_date && canEdit && (d.reminder_off
+              ? <button className="btn btn-ghost" style={{ fontSize: 10.5, padding: "2px 8px" }} onClick={() => setReminder(d, { reminder_off: false })}>Turn alert back on</button>
+              : <button className="btn btn-ghost" style={{ fontSize: 10.5, padding: "2px 8px" }} onClick={() => setReminder(d, { reminder_off: true })}>Turn alert off</button>)}
+            {d.reminder_off && <span style={{ color: G.gray400 }}>alert off</span>}
           </div>
           <div style={{ marginLeft: 26 }}>
             <FileRemark doc={d} G={G} canEdit={canEdit} onSave={async (html) => {
@@ -315,7 +334,7 @@ function ProfileView({ v }) {
 
 const TABS = [{ id: "profile", label: "Profile" }, { id: "service", label: "Service History" }, { id: "expenses", label: "Expense Ledger" }, { id: "documents", label: "Documents" }];
 
-export default function FleetMaster({ currentUser, asTab = false, onClose }) {
+export default function FleetMaster({ currentUser, asTab = false, onClose, focusVehicleId = null }) {
   const can = useCan(currentUser);
   const canEdit = can("vendors_edit"); // same gate as Vendors: master-data editors
   const isNarrow = useIsNarrowViewport();
@@ -336,6 +355,10 @@ export default function FleetMaster({ currentUser, asTab = false, onClose }) {
     setVehicles(r.vehicles); setLoadErr(r.error || ""); setLoading(false);
   };
   useEffect(() => { reload(); }, []);
+  // Opened from the bell: jump straight to that vehicle's Documents.
+  useEffect(() => {
+    if (focusVehicleId && vehicles.some(v => v.id === focusVehicleId)) { setSelectedId(focusVehicleId); setEditing(false); setTab("documents"); setShowDetailMobile(true); }
+  }, [focusVehicleId, vehicles]);
 
   const selected = vehicles.find(v => v.id === selectedId) || null;
   const list = vehicles.filter(v => {

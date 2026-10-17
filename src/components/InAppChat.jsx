@@ -110,7 +110,7 @@ export default function InAppChat({ currentUser, queries, staff, agents, vendors
   const iAmAdmin = activeConv?.type === "group" ? !!myMembership?.isAdmin : true; // DMs have no admin concept -- never gate anything on it
   const otherMember = (conv) => (staff || []).find(s => conv?.members?.some(m => m.staffId === s.id) && s.id !== currentUser?.id);
   const convDisplayName = (conv) => conv.type === "group" ? conv.name : conv.type === "notifications" ? "Notifications" : (otherMember(conv)?.name || "Unknown");
-  const isUnread = isConversationUnread;
+  const isUnread = (c) => isConversationUnread(c, currentUser && currentUser.id);
 
   const sendMessage = async () => {
     const text = composerText.trim();

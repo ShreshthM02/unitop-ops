@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { SeriesLookupContext, cancelLinkedServices, promoteSeriesMaster, applySeriesMaster, describeCopied, DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
+const { loadDiscussionReads, markDiscussionRead, discussionUnread, fleetDue, todayISO, tabTitle, SeriesLookupContext, cancelLinkedServices, promoteSeriesMaster, applySeriesMaster, describeCopied, DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -27,6 +27,7 @@ import DocumentEditor from './DocumentEditor.jsx';
 import UserProfilePanel from './UserProfilePanel.jsx';
 import VendorMaster from './VendorMaster.jsx';
 import FleetMaster from './FleetMaster.jsx';
+import NotificationBell from './NotificationBell.jsx';
 import { CostSheet } from './CostSheet.jsx';
 import { UserManagementPanel } from './UserManagementPanel.jsx';
 
@@ -219,6 +220,13 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // closed -- InAppChat.jsx keeps its own separate copy for the open
   // panel's own UI, this one exists purely for the badge/notification.
   const [chatConversations, setChatConversations] = useState([]);
+  // Alerts (all computed from THIS signed-in person's own read state):
+  // discussion read marks, and fleet documents with a live reminder.
+  const [discussionReads, setDiscussionReads] = useState({});
+  const [fleetAlertDocs, setFleetAlertDocs] = useState([]);
+  const [fleetVehicleNames, setFleetVehicleNames] = useState({});
+  const [focusFleetVehicle, setFocusFleetVehicle] = useState(null);
+  const [drawerOpenTab, setDrawerOpenTab] = useState(null);
   const [showProfile,    setShowProfile]    = useState(false);
   const [statFilter,     setStatFilter]     = useState(null); // {key, label, items}
   const [toast, setToast] = useState(null);
@@ -535,6 +543,50 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
     }
     reloadChatConversations();
   });
+  useEffect(() => {
+    if (!authUser || !currentUser?.id) return;
+    let live = true;
+    loadDiscussionReads(db, currentUser.id).then(r => { if (live) setDiscussionReads(r); });
+    return () => { live = false; };
+  }, [authUser, currentUser?.id]);
+  const markDiscussionSeen = useCallback((queryId) => {
+    if (!authUser || !currentUser?.id) return;
+    setDiscussionReads(r => ({ ...r, [queryId]: new Date().toISOString() }));
+    markDiscussionRead(db, currentUser.id, queryId);
+  }, [authUser, currentUser?.id]);
+  const loadFleetAlerts = useCallback(async () => {
+    if (!authUser) return;
+    try {
+      const d = await db.from("fleet_documents").select("id,vehicle_id,file_name,reminder_date,reminder_note,reminder_off").eq("reminder_off", false);
+      if (d.error) { setFleetAlertDocs([]); return; }
+      const docs = (d.data || []).filter(x => x.reminder_date);
+      setFleetAlertDocs(docs);
+      if (docs.length) {
+        const v = await db.from("fleet_vehicles").select("id,name");
+        const m = {}; (v.data || []).forEach(x => { m[x.id] = x.name; });
+        setFleetVehicleNames(m);
+      }
+    } catch (e) { /* alerts are best-effort */ }
+  }, [authUser]);
+  useEffect(() => {
+    loadFleetAlerts();
+    const t = setInterval(loadFleetAlerts, 5 * 60 * 1000);
+    document.addEventListener("unitop-fleet-alerts-changed", loadFleetAlerts);
+    return () => { clearInterval(t); document.removeEventListener("unitop-fleet-alerts-changed", loadFleetAlerts); };
+  }, [loadFleetAlerts]);
+  const myId = currentUser?.id;
+  const unreadChats = chatConversations.filter(c => isConversationUnread(c, myId));
+  const unreadDiscussions = discussionUnread(queries, discussionReads, myId);
+  const dueFleetDocs = fleetDue(fleetAlertDocs, todayISO());
+  const alertTotal = unreadChats.length + unreadDiscussions.length + dueFleetDocs.length;
+  // Browser tab title: "(3) Unitop Tours & Travel — Operations". Each browser
+  // runs its own signed-in session, so every person only ever sees their own count.
+  useEffect(() => {
+    const base = "Unitop Tours & Travel — Operations";
+    document.title = tabTitle(base, alertTotal);
+    return () => { document.title = base; };
+  }, [alertTotal]);
+
   useRealtimeTable("chat_conversation_members", (eventType, newRow, oldRow) => {
     if (!authUser) return;
     const relevant = (newRow && newRow.staff_id === currentUser?.id) || (oldRow && oldRow.staff_id === currentUser?.id);
@@ -1005,11 +1057,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     onClick={()=>{
                       setView(item.id);setSidebarOpen(false);
                     }}>
-                    <span className="nav-icon">{item.icon}</span>{item.label}
-                    {item.id==="chat" && chatConversations.filter(isConversationUnread).length>0 && (
-                      <span style={{marginLeft:"auto",background:G.accent,color:"#fff",fontSize:10,fontWeight:700,borderRadius:10,padding:"1px 7px",minWidth:16,textAlign:"center"}}>
-                        {chatConversations.filter(isConversationUnread).length}
+                    <span className="nav-icon">{item.icon}</span><span style={{fontWeight:((item.id==="chat"&&unreadChats.length)||(item.id==="queries"&&unreadDiscussions.length)||(item.id==="fleet"&&dueFleetDocs.length))?800:undefined}}>{item.label}</span>
+                    {item.id==="chat" && unreadChats.length>0 && (
+                      <span data-testid="nav-chat-count" style={{marginLeft:"auto",background:G.accent,color:"#fff",fontSize:10,fontWeight:700,borderRadius:10,padding:"1px 7px",minWidth:16,textAlign:"center"}}>
+                        {unreadChats.length}
                       </span>
+                    )}
+                    {item.id==="queries" && unreadDiscussions.length>0 && (
+                      <span data-testid="nav-queries-count" title="Discussions with new messages" style={{marginLeft:"auto",background:unreadDiscussions.some(d=>d.mentioned)?"#DC2626":G.accent,color:"#fff",fontSize:10,fontWeight:700,borderRadius:10,padding:"1px 7px",minWidth:16,textAlign:"center"}}>
+                        {unreadDiscussions.length}
+                      </span>
+                    )}
+                    {item.id==="fleet" && dueFleetDocs.length>0 && (
+                      <span data-testid="nav-fleet-dot" title="A vehicle document reminder is due" style={{marginLeft:"auto",width:9,height:9,borderRadius:"50%",background:"#DC2626",boxShadow:"0 0 0 2px rgba(220,38,38,0.25)"}}/>
                     )}
                   </div>
                 ))}
@@ -1056,6 +1116,12 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             <button className="btn btn-ghost" style={{fontSize:11,gap:6}} onClick={()=>setShowSearch(true)}>
               🔍 Search
             </button>
+            <NotificationBell
+              chats={unreadChats.map(c=>({...c,label:c.type==="group"?"# "+(c.name||"Group"):(staff.find(x=>c.members.some(m=>m.staffId===x.id)&&x.id!==myId)?.name||c.lastMessage?.senderName||"Chat")}))}
+              discussions={unreadDiscussions} fleet={dueFleetDocs} vehicleNames={fleetVehicleNames}
+              onOpenChat={(id)=>{setFocusConvId(id);setShowChat(true);}}
+              onOpenQuery={(q)=>{setDrawerOpenTab("remarks");setActiveQuery(q);}}
+              onOpenFleet={(vid)=>{setFocusFleetVehicle(vid);setView("fleet");}}/>
             <button className="btn btn-ghost" onClick={()=>setView("gantt")}>📅 Calendar</button>
             {can("queries_create") && <button className="btn btn-primary" onClick={()=>setShowNewQuery(true)}>+ New Query</button>}
           </div>
@@ -1085,7 +1151,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             {view==="series" && <SeriesManagement asTab vendors={vendors} series={series} setSeries={setSeries} queries={queries} currentUser={currentUser} onClose={()=>{}} initialSelectedId={focusSeriesId} onUpdateQuery={handleUpdateQuery}/>}
             {view==="agents" && <AgentMaster asTab agents={agents} setAgents={setAgents} queries={queries} payments={payments} currentUser={currentUser} onSaveAgent={(a)=>saveAgentToDB(db,a)} onClose={()=>{}} initialSelectedId={focusAgentId}/>}
             {view==="vendors" && <VendorMaster asTab vendors={vendors} setVendors={setVendors} queries={queries} payments={payments} tourExecutions={tourExecutions} docTemplates={docTemplates} currentUser={currentUser} onSaveVendor={(v)=>saveVendorToDB(db,v)} onClose={()=>{}} initialSelectedId={focusVendorId}/>}
-            {view==="fleet" && <FleetMaster asTab currentUser={currentUser} onClose={()=>{}}/>}
+            {view==="fleet" && <FleetMaster asTab currentUser={currentUser} onClose={()=>{}} focusVehicleId={focusFleetVehicle}/>}
 
             {view==="cancelled" && (
               <div>
@@ -1207,7 +1273,9 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
         {activeQuery&&!anyPanel&&!cancelTarget&&(
           <QueryDrawerWithQuote
             query={activeQuery}
-            onClose={()=>setActiveQuery(null)}
+            openTab={drawerOpenTab}
+            onDiscussionSeen={markDiscussionSeen}
+            onClose={()=>{setActiveQuery(null);setDrawerOpenTab(null);}}
             onConvert={handleConvertToCaseFile}
             onAdvance={handleAdvance}
             onGenerateQuote={()=>setShowQuotation(activeQuery)}
