@@ -1,348 +1,228 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as Lib from '../lib/index.js';
-import SeriesBookingDetail from './SeriesBookingDetail.jsx';
-const { G, db, loadBookingCategories, loadSeriesBookings, saveSeriesBooking, deleteSeriesBooking, replaceBookingAllocations,
-  saveBookingCategory, bookingAttention, seriesHealth, lineUsage, statusKind, timelineBuckets, coversColumn, bookingKind, rowsSummary, rateStatus, rowCovering, rowsForDeparture } = Lib;
+import DateField from './DateField.jsx';
+import StatusSelect from './StatusSelect.jsx';
+const { G, db, VENDOR_TYPES, RichTextEditor, loadSeriesBookings, addVendorBooking, deleteVendorBooking, saveServiceEntry, deleteServiceEntry,
+  setServiceStatus, filterEntries, stateCounts, seriesSummary, formatDMY, serviceState } = Lib;
 
-// Series → Bookings. One booking = one reference (PNR / confirmation / contract)
-// with a vendor, dates, a status from an editable per-category list, an optional
-// deadline, what was blocked (e.g. 20 × Deluxe Double), and which departures use
-// how much of it. Every status change is kept in a history.
+// Series → Bookings. Pick a vendor to open a vendor booking, then add the
+// individual bookings inside it: tour file, title, dates, reservation / PNR no.,
+// status, rates and remarks. Saving one registers it as a service in that tour
+// file ("Vendor / Title / Reservation") -- it is the same record, so a status
+// changed here shows there and the other way round.
 
 const lbl = { fontSize: 10, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 };
 const inp = { padding: "7px 9px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12, fontFamily: "'Inter',sans-serif", width: "100%", background: G.white, color: G.gray800 };
-const KIND_STYLE = {
-  open: { bg: "#FEF9E7", fg: "#7D6608", bd: "#F7DC6F" },
-  done: { bg: "#EAFAF1", fg: "#0E6655", bd: "#A9DFBF" },
-  cancelled: { bg: "#F4F6F7", fg: "#7B7D7D", bd: "#D5D8DC" },
-};
-const fmt = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
-const range = (a, b) => a && b && a !== b ? `${fmt(a)} – ${fmt(b)}` : fmt(a || b);
-const blankDraft = (seriesId, cat) => ({ seriesId, categoryId: cat ? cat.id : "", title: "", vendorId: "", vendorName: "", reference: "", city: "", dateFrom: "", dateTo: "", status: cat && cat.statuses[0] ? cat.statuses[0].name : "", deadlineDate: "", deadlineLabel: "", waitlistDays: "", rates: [], lines: [], notes: "", allocations: [] });
+const STATE_LABEL = { "": "All", open: "Open", confirmed: "Confirmed", soldout: "Sold out", cancelled: "Cancelled" };
+const STATE_STYLE = { open: ["#FEF3C7", "#92400E"], confirmed: ["#DCFCE7", "#166534"], soldout: ["#FEE2E2", "#991B1B"], cancelled: ["#F3F4F6", "#6B7280"] };
+const blankFilter = { text: "", vendor: "", type: "", queryId: "", state: "", from: "", to: "", noReservation: false };
+const blankEntry = (queryId = "") => ({ queryId, title: "", dateFrom: "", dateTo: "", reservationNo: "", status: "requested", rates: "", remarksHtml: "" });
 
 function Field({ label, children, grow }) { return <div style={{ flex: grow || "1 1 150px", minWidth: 0 }}><div style={lbl}>{label}</div>{children}</div>; }
 
-export default function SeriesBookings({ series, queries, vendors, currentUser, canEdit = true, onAttentionCount }) {
-  const [categories, setCategories] = useState([]);
-  const [bookings, setBookings] = useState([]);
+export default function SeriesBookings({ series, queries, vendors, currentUser, canEdit = true, onSummary }) {
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState("list");
-  const [filter, setFilter] = useState({ cat: "", kind: "", text: "" });
-  const [draft, setDraft] = useState(null);
+  const [filter, setFilter] = useState(blankFilter);
+  const [groupBy, setGroupBy] = useState("vendor");
+  const [picking, setPicking] = useState(null);       // { vendorName } while choosing a vendor
+  const [draft, setDraft] = useState(null);           // { groupId, entry }
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState({});
-  const [showCats, setShowCats] = useState(false);
+  const by = currentUser && currentUser.name;
 
   const files = useMemo(() => (queries || []).filter(q => q.seriesId === series.id), [queries, series.id]);
-  const fileLabel = (id) => { const q = (queries || []).find(x => x.id === id); return q ? `${q.tourFileId || q.id}${q.groupName ? " · " + q.groupName : ""}` : id; };
-  const catById = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])), [categories]);
+  const fileById = useMemo(() => Object.fromEntries((queries || []).map(q => [q.id, q])), [queries]);
+  const fileLabel = (id) => { const q = fileById[id]; return q ? `${q.tourFileId || q.id}${q.groupName ? " · " + q.groupName : ""}` : id; };
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    const [c, b] = await Promise.all([loadBookingCategories(db), loadSeriesBookings(db, series.id)]);
-    setCategories(c.categories); setBookings(b.bookings); setError(c.error || b.error || "");
-    setLoading(false);
+    const r = await loadSeriesBookings(db, series.id);
+    setGroups(r.groups); setError(r.error || ""); setLoading(false);
   }, [series.id]);
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { setLoading(true); reload(); }, [reload]);
+  useEffect(() => { onSummary && onSummary(seriesSummary(groups)); }, [groups]); // eslint-disable-line
 
-  const attention = useMemo(() => bookingAttention(bookings, categories), [bookings, categories]);
-  useEffect(() => { onAttentionCount && onAttentionCount(attention.length, seriesHealth(bookings, categories, attention.length)); }, [attention.length, bookings, categories]); // eslint-disable-line
+  const counts = useMemo(() => stateCounts(groups), [groups]);
+  const matches = useMemo(() => filterEntries(groups, filter), [groups, filter]);
+  const filtering = JSON.stringify(filter) !== JSON.stringify(blankFilter);
+  const setF = (k, v) => setFilter(p => ({ ...p, [k]: v }));
+  const vendorList = (vendors || []).filter(v => !v.deleted).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const typesInUse = [...new Set(groups.map(g => g.vendorType).filter(Boolean))];
 
-  const shown = bookings.filter(b => {
-    if (filter.cat && b.categoryId !== filter.cat) return false;
-    if (filter.kind && bookingKind(b, catById[b.categoryId]) !== filter.kind) return false;
-    if (filter.text) { const t = filter.text.toLowerCase(); if (![b.title, b.vendorName, b.reference, b.city].some(x => (x || "").toLowerCase().includes(t))) return false; }
-    return true;
-  });
-
-  const setD = (k, v) => setDraft(p => ({ ...p, [k]: v }));
-  const startNew = () => setDraft(blankDraft(series.id, categories.find(c => c.active) || categories[0]));
-  const startEdit = (b) => setDraft(JSON.parse(JSON.stringify(b)));
-  const draftCat = draft ? catById[draft.categoryId] : null;
-
-  const save = async () => {
+  const startVendor = async () => {
+    const name = (picking.vendorName || "").trim();
+    const v = vendorList.find(x => x.name === name);
+    const res = await addVendorBooking(db, { seriesId: series.id, vendorId: v ? v.id : "", vendorName: name, vendorType: v ? (v.type || v.category || "") : "Other" }, by);
+    if (res.error) { setError(res.error); return; }
+    setPicking(null); await reload();
+    if (res.id) setDraft({ groupId: res.id, entry: blankEntry() });
+  };
+  const saveEntry = async () => {
+    const group = groups.find(g => g.id === draft.groupId);
     setSaving(true); setError("");
-    const previous = draft.id ? bookings.find(b => b.id === draft.id) : null;
-    const res = await saveSeriesBooking(db, draft, previous, currentUser?.name);
-    if (res.error) { setError(res.error); setSaving(false); return; }
-    if (res.id) {
-      const r2 = await replaceBookingAllocations(db, res.id, draft.allocations || [], currentUser?.name);
-      if (r2.error) { setError(r2.error); setSaving(false); return; }
-    }
-    setSaving(false); setDraft(null); reload();
+    const res = await saveServiceEntry(db, draft.entry, group, by);
+    setSaving(false);
+    if (res.error) { setError(res.error); return; }
+    setDraft(null); reload();
   };
-  const quickStatus = async (b, status) => {
-    const res = await saveSeriesBooking(db, { ...b, status }, b, currentUser?.name);
+  const changeStatus = async (entry, status) => {
+    setGroups(gs => gs.map(g => ({ ...g, entries: g.entries.map(e => e.id === entry.id ? { ...e, status } : e) })));
+    const res = await setServiceStatus(db, entry, status);
+    if (res.error) { setError(res.error); reload(); }
+  };
+  const removeEntry = async (entry) => {
+    if (!window.confirm(`Delete "${entry.name || entry.title}"? It is also removed from its tour file's services.`)) return;
+    const res = await deleteServiceEntry(db, entry);
     if (res.error) setError(res.error); else reload();
   };
-  const remove = async (b) => {
-    if (!window.confirm(`Delete booking "${b.title}"? Its history is removed with it.`)) return;
-    const res = await deleteSeriesBooking(db, b.id);
+  const removeGroup = async (g) => {
+    if (!window.confirm(`Delete the ${g.vendorName} booking${g.entries.length ? ` and its ${g.entries.length} service${g.entries.length === 1 ? "" : "s"} (they are also removed from the tour files)` : ""}?`)) return;
+    const res = await deleteVendorBooking(db, g);
     if (res.error) setError(res.error); else reload();
   };
-
-  const vendorNames = (vendors || []).filter(v => !v.deleted).map(v => v.name);
-  const onVendorText = (text) => { const v = (vendors || []).find(x => x.name === text); setDraft(p => ({ ...p, vendorName: text, vendorId: v ? v.id : "" })); };
-  const itemNames = draft ? [...new Set((draft.lines || []).map(l => l.item).filter(Boolean))] : [];
 
   if (loading) return <div style={{ fontSize: 12, color: G.gray400 }}>Loading bookings…</div>;
+
+  const setE = (k, v) => setDraft(p => ({ ...p, entry: { ...p.entry, [k]: v } }));
+  const entryForm = (g) => draft && draft.groupId === g.id && (
+    <div style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 12, margin: "8px 0", background: G.gray50 }} data-testid="entry-form">
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <Field label="Tour file" grow="2 1 220px">
+          <select style={inp} aria-label="Tour file" value={draft.entry.queryId} onChange={e => setE("queryId", e.target.value)}>
+            <option value="">— no file yet (series only) —</option>
+            {files.map(q => <option key={q.id} value={q.id}>{fileLabel(q.id)}</option>)}
+          </select>
+        </Field>
+        <Field label="Title" grow="2 1 220px"><input style={inp} aria-label="Title" value={draft.entry.title} onChange={e => setE("title", e.target.value)} placeholder="e.g. Twin rooms, 2 nights" /></Field>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <Field label="Start of service"><DateField ariaLabel="Start date" value={draft.entry.dateFrom} onChange={v => setE("dateFrom", v)} /></Field>
+        <Field label="End of service"><DateField ariaLabel="End date" value={draft.entry.dateTo} onChange={v => setE("dateTo", v)} /></Field>
+        <Field label="Reservation / PNR no."><input style={inp} aria-label="Reservation or PNR number" value={draft.entry.reservationNo} onChange={e => setE("reservationNo", e.target.value)} /></Field>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, alignItems: "flex-end" }}>
+        <Field label="Status" grow="1 1 260px"><StatusSelect value={draft.entry.status} ariaLabel="Entry status" onChange={v => setE("status", v)} /></Field>
+        <Field label="Rates" grow="2 1 260px"><input style={inp} aria-label="Rates" value={draft.entry.rates} onChange={e => setE("rates", e.target.value)} placeholder="e.g. ₹6,050 APAI / ₹5,300 MAPAI" /></Field>
+      </div>
+      <div style={lbl}>Remarks</div>
+      <div style={{ marginBottom: 10 }}><RichTextEditor value={draft.entry.remarksHtml} onChange={v => setE("remarksHtml", v)} minHeight={60} placeholder="Anything worth remembering about this booking" /></div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn btn-ghost" onClick={() => setDraft(null)}>Cancel</button>
+        <button className="btn btn-primary" onClick={saveEntry} disabled={saving}>{saving ? "Saving…" : "Save booking"}</button>
+      </div>
+      {draft.entry.queryId && <div style={{ fontSize: 10.5, color: G.gray400, marginTop: 6 }}>Saving adds or updates this service in that tour file as “{[g.vendorName, draft.entry.title, draft.entry.reservationNo].filter(Boolean).join(" / ")}”.</div>}
+    </div>
+  );
+
+  const entryRow = ({ group, entry }, showVendor) => {
+    const [bg, fg] = STATE_STYLE[serviceState(entry.status)];
+    return (
+      <div key={entry.id} data-testid="series-entry" style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap", padding: "8px 0", borderTop: `1px solid ${G.gray100}` }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>{showVendor && <span style={{ color: G.gray600, fontWeight: 500 }}>{group.vendorName} / </span>}{entry.title || "—"}{entry.reservationNo && <span style={{ fontFamily: "monospace", fontWeight: 500, color: G.gray600 }}> / {entry.reservationNo}</span>}</div>
+          <div style={{ fontSize: 11, color: G.gray600 }}>
+            {entry.queryId ? <span style={{ color: "#1A5276", cursor: "pointer", textDecoration: "underline" }} onClick={() => fileById[entry.queryId] && document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: fileById[entry.queryId] } }))}>{fileLabel(entry.queryId)}</span> : <span style={{ color: G.gray400 }}>No tour file yet</span>}
+            {entry.dateFrom && ` · ${formatDMY(entry.dateFrom)}${entry.dateTo ? " – " + formatDMY(entry.dateTo) : ""}`}
+            {entry.rates && ` · ${entry.rates}`}
+          </div>
+          {entry.remarksHtml && <div style={{ fontSize: 11.5, color: G.gray800, marginTop: 3 }} dangerouslySetInnerHTML={{ __html: entry.remarksHtml }} />}
+        </div>
+        {canEdit ? <StatusSelect value={entry.status} ariaLabel={`Status of ${entry.title || entry.name}`} compact onChange={v => changeStatus(entry, v)} />
+          : <span style={{ padding: "2px 9px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: bg, color: fg }}>{entry.status}</span>}
+        {canEdit && <span style={{ whiteSpace: "nowrap" }}>
+          <button className="btn btn-ghost" style={{ fontSize: 10.5 }} aria-label={`Edit ${entry.title || entry.name}`} onClick={() => setDraft({ groupId: group.id, entry: { ...entry } })}>✏</button>
+          <button className="btn btn-ghost" style={{ fontSize: 10.5, color: "#C0392B" }} aria-label={`Delete ${entry.title || entry.name}`} onClick={() => removeEntry(entry)}>✕</button>
+        </span>}
+      </div>
+    );
+  };
+
+  const byFile = groupBy === "file" ? (() => {
+    const m = new Map();
+    matches.forEach(x => { const k = x.entry.queryId || ""; if (!m.has(k)) m.set(k, []); m.get(k).push(x); });
+    return [...m.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1));
+  })() : null;
 
   return (
     <div>
       {error && <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C", borderRadius: 6, padding: "8px 12px", fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-        <div style={{ flex: 1, fontSize: 12, color: G.gray600, minWidth: 160 }}>{seriesHealth(bookings, categories, attention.length) || "No bookings yet"}</div>
+        <div style={{ flex: 1, fontSize: 12, color: G.gray600, minWidth: 160 }}>{seriesSummary(groups) || "No bookings yet"}</div>
         <div style={{ display: "inline-flex", border: `1px solid ${G.gray200}`, borderRadius: 6, overflow: "hidden" }}>
-          {[["list", "By booking"], ["departures", "By departure"], ["timeline", "Timeline"]].map(([k, t]) => (
-            <button key={k} onClick={() => setView(k)} style={{ padding: "5px 10px", fontSize: 11, border: "none", cursor: "pointer", background: view === k ? G.navy : G.white, color: view === k ? "#fff" : G.gray800 }}>{t}</button>
+          {[["vendor", "By vendor"], ["file", "By tour file"]].map(([k, t]) => (
+            <button key={k} onClick={() => setGroupBy(k)} style={{ padding: "5px 10px", fontSize: 11, border: "none", cursor: "pointer", background: groupBy === k ? G.navy : G.white, color: groupBy === k ? "#fff" : G.gray800 }}>{t}</button>
           ))}
         </div>
-        {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowCats(s => !s)}>⚙ Categories &amp; statuses</button>}
-        {canEdit && <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={startNew} disabled={!categories.length}>+ New booking</button>}
+        {canEdit && <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={() => setPicking({ vendorName: "" })}>+ New vendor booking</button>}
       </div>
 
-      {showCats && <CategoryEditor categories={categories} onSaved={reload} onError={setError} />}
-
-      {attention.length > 0 && (
-        <div style={{ border: "1px solid #F5B7B1", background: "#FDF2F0", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#922B21", marginBottom: 6 }}>⚠ Needs attention ({attention.length})</div>
-          {attention.map((a, i) => { const b = bookings.find(x => x.id === a.bookingId); return b && (
-            <div key={i} style={{ fontSize: 12, color: G.gray800, padding: "2px 0", cursor: "pointer" }} onClick={() => setExpanded(p => ({ ...p, [b.id]: true }))}>
-              <span style={{ color: a.level === "high" ? "#C0392B" : "#B9770E", fontWeight: 700 }}>{a.level === "high" ? "●" : "○"}</span> <b>{b.title}</b> — {a.reason}
-            </div>); })}
+      {picking && (
+        <div style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 12, marginBottom: 12, background: G.gray50, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Field label="Vendor" grow="1 1 260px">
+            <input style={inp} list="series-vendor-list" aria-label="Vendor" autoFocus value={picking.vendorName} onChange={e => setPicking({ vendorName: e.target.value })} placeholder="Pick from your vendors, or type a name" />
+            <datalist id="series-vendor-list">{vendorList.map(v => <option key={v.id || v.name} value={v.name}>{v.type || v.category || ""}</option>)}</datalist>
+          </Field>
+          <button className="btn btn-ghost" onClick={() => setPicking(null)}>Cancel</button>
+          <button className="btn btn-primary" disabled={!picking.vendorName.trim()} onClick={startVendor}>Open booking</button>
         </div>
       )}
 
-      {draft && (
-        <div style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 14, marginBottom: 14, background: G.gray50 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: G.navy, marginBottom: 10 }}>{draft.id ? "Edit booking" : "New booking"}</div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-            <Field label="Category">
-              <select style={inp} value={draft.categoryId} aria-label="Category" onChange={e => { const c = catById[e.target.value]; setDraft(p => ({ ...p, categoryId: e.target.value, status: c && c.statuses.some(s => s.name === p.status) ? p.status : (c && c.statuses[0] ? c.statuses[0].name : "") })); }}>
-                {categories.filter(c => c.active || c.id === draft.categoryId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Title" grow="2 1 220px"><input style={inp} aria-label="Title" value={draft.title} onChange={e => setD("title", e.target.value)} placeholder="e.g. Hotel Imperial, Bodhgaya — 12 Nov block" /></Field>
-            <Field label="Status">
-              <select style={inp} value={draft.status} aria-label="Status" onChange={e => setD("status", e.target.value)}>
-                {(draftCat ? draftCat.statuses : []).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                {draft.status && !(draftCat && draftCat.statuses.some(s => s.name === draft.status)) && <option value={draft.status}>{draft.status}</option>}
-              </select>
-            </Field>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-            <Field label="Vendor">
-              <input style={inp} list="series-vendor-list" aria-label="Vendor" value={draft.vendorName} onChange={e => onVendorText(e.target.value)} placeholder="Pick or type" />
-              <datalist id="series-vendor-list">{vendorNames.map(n => <option key={n} value={n} />)}</datalist>
-            </Field>
-            <Field label="Reference (PNR / confirmation no.)"><input style={inp} aria-label="Reference" value={draft.reference} onChange={e => setD("reference", e.target.value)} /></Field>
-            <Field label="City"><input style={inp} aria-label="City" value={draft.city} onChange={e => setD("city", e.target.value)} /></Field>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-            <Field label="From"><input type="date" style={inp} aria-label="From date" value={draft.dateFrom} onChange={e => setD("dateFrom", e.target.value)} /></Field>
-            <Field label="To"><input type="date" style={inp} aria-label="To date" value={draft.dateTo} onChange={e => setD("dateTo", e.target.value)} /></Field>
-            <Field label="Deadline (hold expiry / ticketing limit)"><input type="date" style={inp} aria-label="Deadline date" value={draft.deadlineDate} onChange={e => setD("deadlineDate", e.target.value)} /></Field>
-            <Field label="Deadline is for"><input style={inp} aria-label="Deadline label" value={draft.deadlineLabel} onChange={e => setD("deadlineLabel", e.target.value)} placeholder="e.g. Option release" /></Field>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-            <Field label="Vendor clears waitlist … days before arrival"><input type="number" min="0" style={inp} aria-label="Waitlist days" value={draft.waitlistDays} onChange={e => setD("waitlistDays", e.target.value)} placeholder="e.g. 60" /></Field>
-          </div>
-          <div style={lbl}>Rates — our budget vs what the vendor quoted (₹)</div>
-          {(draft.rates || []).map((r, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-              <input style={inp} aria-label={`Rate label ${i + 1}`} value={r.label} placeholder="e.g. APAI single/twin" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))} />
-              <input type="number" min="0" style={{ ...inp, width: 110 }} aria-label={`Rate budget ${i + 1}`} value={r.budget} placeholder="Budget" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, budget: e.target.value } : x))} />
-              <input type="number" min="0" style={{ ...inp, width: 110 }} aria-label={`Rate quoted ${i + 1}`} value={r.quoted} placeholder="Quoted" onChange={e => setD("rates", draft.rates.map((x, xi) => xi === i ? { ...x, quoted: e.target.value } : x))} />
-              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setD("rates", draft.rates.filter((_, xi) => xi !== i))}>✕</button>
-            </div>
-          ))}
-          <button className="btn btn-ghost" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setD("rates", [...(draft.rates || []), { label: "", budget: "", quoted: "" }])}>+ Add rate</button>
-
-          <div style={lbl}>What is blocked / bought</div>
-          {(draft.lines || []).map((l, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-              <input style={inp} aria-label={`Line item ${i + 1}`} value={l.item} placeholder="e.g. Deluxe Double, 45-seater coach, Economy seat" onChange={e => setD("lines", draft.lines.map((x, xi) => xi === i ? { ...x, item: e.target.value } : x))} />
-              <input type="number" min="0" style={{ ...inp, width: 90 }} aria-label={`Line qty ${i + 1}`} value={l.qty} onChange={e => setD("lines", draft.lines.map((x, xi) => xi === i ? { ...x, qty: e.target.value } : x))} />
-              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setD("lines", draft.lines.filter((_, xi) => xi !== i))}>✕</button>
-            </div>
-          ))}
-          <button className="btn btn-ghost" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setD("lines", [...(draft.lines || []), { item: "", qty: 1 }])}>+ Add line</button>
-
-          <div style={lbl}>Which departures use it</div>
-          {(draft.allocations || []).map((a, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-              <select style={{ ...inp, flex: "2 1 180px" }} aria-label={`Allocation departure ${i + 1}`} value={a.queryId} onChange={e => setD("allocations", draft.allocations.map((x, xi) => xi === i ? { ...x, queryId: e.target.value } : x))}>
-                <option value="">— whole series / unassigned —</option>
-                {files.map(q => <option key={q.id} value={q.id}>{fileLabel(q.id)}</option>)}
-              </select>
-              <input style={{ ...inp, flex: "1 1 120px" }} list="series-item-list" aria-label={`Allocation item ${i + 1}`} value={a.item} placeholder="Item" onChange={e => setD("allocations", draft.allocations.map((x, xi) => xi === i ? { ...x, item: e.target.value } : x))} />
-              <input type="number" min="0" style={{ ...inp, width: 80 }} aria-label={`Allocation qty ${i + 1}`} value={a.qty} onChange={e => setD("allocations", draft.allocations.map((x, xi) => xi === i ? { ...x, qty: e.target.value } : x))} />
-              <input style={{ ...inp, flex: "1 1 120px" }} aria-label={`Allocation note ${i + 1}`} value={a.notes} placeholder="Note (e.g. 2 nights)" onChange={e => setD("allocations", draft.allocations.map((x, xi) => xi === i ? { ...x, notes: e.target.value } : x))} />
-              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setD("allocations", draft.allocations.filter((_, xi) => xi !== i))}>✕</button>
-            </div>
-          ))}
-          <datalist id="series-item-list">{itemNames.map(n => <option key={n} value={n} />)}</datalist>
-          <button className="btn btn-ghost" style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setD("allocations", [...(draft.allocations || []), { queryId: "", item: "", qty: 1, notes: "" }])}>+ Add allocation</button>
-
-          <div style={lbl}>Notes</div>
-          <textarea style={{ ...inp, minHeight: 50, resize: "vertical", marginBottom: 12 }} aria-label="Notes" value={draft.notes} onChange={e => setD("notes", e.target.value)} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => setDraft(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save booking"}</button>
-          </div>
+      {counts.all > 0 && (<>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {["", "open", "confirmed", "soldout", "cancelled"].map(k => {
+            const n = k ? counts[k] : counts.all; const on = filter.state === k;
+            return <button key={k || "all"} onClick={() => setF("state", k)} aria-pressed={on}
+              style={{ padding: "3px 11px", fontSize: 11, borderRadius: 14, cursor: "pointer", border: `1px solid ${on ? G.navy : G.gray200}`, background: on ? G.navy : G.white, color: on ? "#fff" : G.gray800 }}>{STATE_LABEL[k]} {n}</button>;
+          })}
         </div>
-      )}
-
-      {view === "list" && (<>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <input style={{ ...inp, flex: "2 1 160px" }} placeholder="Search title, vendor, reference, city…" aria-label="Search bookings" value={filter.text} onChange={e => setFilter(p => ({ ...p, text: e.target.value }))} />
-          <select style={{ ...inp, flex: "1 1 120px" }} aria-label="Filter category" value={filter.cat} onChange={e => setFilter(p => ({ ...p, cat: e.target.value }))}>
-            <option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6, alignItems: "flex-end" }}>
+          <input style={{ ...inp, flex: "2 1 170px" }} placeholder="Search vendor, title, reservation, rates…" aria-label="Search bookings" value={filter.text} onChange={e => setF("text", e.target.value)} />
+          <select style={{ ...inp, flex: "1 1 130px" }} aria-label="Filter vendor" value={filter.vendor} onChange={e => setF("vendor", e.target.value)}>
+            <option value="">All vendors</option>{groups.map(g => <option key={g.id} value={g.id}>{g.vendorName}</option>)}
           </select>
-          <select style={{ ...inp, flex: "1 1 120px" }} aria-label="Filter state" value={filter.kind} onChange={e => setFilter(p => ({ ...p, kind: e.target.value }))}>
-            <option value="">Any state</option><option value="open">Open</option><option value="done">Confirmed / done</option><option value="cancelled">Cancelled</option>
+          <select style={{ ...inp, flex: "1 1 120px" }} aria-label="Filter category" value={filter.type} onChange={e => setF("type", e.target.value)}>
+            <option value="">All categories</option>{[...new Set([...typesInUse, ...VENDOR_TYPES])].map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select style={{ ...inp, flex: "1 1 150px" }} aria-label="Filter tour file" value={filter.queryId} onChange={e => setF("queryId", e.target.value)}>
+            <option value="">All tour files</option><option value="__none">No tour file yet</option>{files.map(q => <option key={q.id} value={q.id}>{fileLabel(q.id)}</option>)}
           </select>
         </div>
-        {shown.length === 0 && <div style={{ fontSize: 12, color: G.gray400 }}>{bookings.length ? "No bookings match." : "No bookings yet — add the first one."}</div>}
-        {shown.map(b => {
-          const cat = catById[b.categoryId]; const kind = bookingKind(b, cat); const ks = KIND_STYLE[kind];
-          const usage = lineUsage(b); const open = !!expanded[b.id]; const hasRows = (b.rows || []).length > 0; const rates = rateStatus(b);
-          return (
-            <div key={b.id} data-testid="series-booking" style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8, background: G.white, opacity: kind === "cancelled" ? 0.65 : 1 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 180, cursor: "pointer" }} onClick={() => setExpanded(p => ({ ...p, [b.id]: !open }))}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{b.title}</div>
-                  <div style={{ fontSize: 11, color: G.gray400 }}>
-                    {[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`, b.city, range(b.dateFrom, b.dateTo)].filter(Boolean).join(" · ")}
-                  </div>
-                  {b.deadlineDate && <div style={{ fontSize: 11, color: "#B9770E" }}>⏰ {b.deadlineLabel || "Deadline"}: {fmt(b.deadlineDate)}</div>}
-                  {hasRows && <div style={{ fontSize: 11.5, color: G.gray800, marginTop: 2 }} data-testid="rows-summary">{rowsSummary(b, cat)}</div>}
-                  {rates.length > 0 && <div style={{ fontSize: 11, marginTop: 2 }}>{rates.map((r, i) => <span key={i} style={{ marginRight: 10, color: r.gap > 0 ? "#C0392B" : G.gray600 }}>{r.label}: {r.quoted !== null ? `₹${r.quoted.toLocaleString("en-IN")}` : "no quote"}{r.budget !== null ? ` (budget ₹${r.budget.toLocaleString("en-IN")}${r.gap > 0 ? `, +₹${r.gap.toLocaleString("en-IN")}` : ""})` : ""}</span>)}</div>}
-                  {b.awaiting && <div style={{ fontSize: 11, color: b.awaiting === "us" ? "#922B21" : "#1A5276" }}>⏳ {b.awaiting === "us" ? "Waiting on us" : "Waiting on vendor"}{b.followUpDate ? ` · follow up ${fmt(b.followUpDate)}` : ""}</div>}
-                  {usage.length > 0 && <div style={{ fontSize: 11, color: G.gray600, marginTop: 3 }}>{usage.map(u => <span key={u.item} style={{ marginRight: 10, color: u.over ? "#C0392B" : G.gray600 }}>{u.item}: {u.used}/{u.blocked}</span>)}</div>}
-                </div>
-                {!hasRows && <select aria-label={`Status of ${b.title}`} disabled={!canEdit} value={b.status} onChange={e => quickStatus(b, e.target.value)}
-                  style={{ padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 14, border: `1px solid ${ks.bd}`, background: ks.bg, color: ks.fg }}>
-                  {(cat ? cat.statuses : []).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                  {b.status && !(cat && cat.statuses.some(s => s.name === b.status)) && <option value={b.status}>{b.status}</option>}
-                </select>}
-              </div>
-              {open && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${G.gray100}` }}>
-                  {b.notes && <div style={{ fontSize: 12, color: G.gray800, marginBottom: 8, whiteSpace: "pre-wrap" }}>{b.notes}</div>}
-                  <SeriesBookingDetail booking={b} category={cat} files={files} fileLabel={fileLabel} canEdit={canEdit} currentUser={currentUser} onChanged={reload} onError={setError} />
-                  <div style={{ ...lbl, marginTop: 12 }}>Quantities by departure</div>
-                  {b.allocations.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400, marginBottom: 8 }}>Not allocated to any departure yet.</div>
-                    : b.allocations.map((a, i) => <div key={i} style={{ fontSize: 12, marginBottom: 2 }}>{a.queryId ? fileLabel(a.queryId) : "Whole series"} — {a.qty} × {a.item || "—"}{a.notes ? ` (${a.notes})` : ""}</div>)}
-                  <div style={{ ...lbl, marginTop: 8 }}>History</div>
-                  {b.history.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400 }}>No history.</div>
-                    : b.history.map(h => <div key={h.id} style={{ fontSize: 11.5, color: G.gray600, marginBottom: 1 }}>
-                        {new Date(h.at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · {h.by || "—"} · {h.kind === "status" ? `${h.from || "—"} → ${h.to || "—"}` : h.kind === "row_status" ? `${h.note || "row"}: ${h.from || "—"} → ${h.to || "—"}` : (h.note || h.kind)}
-                      </div>)}
-                  {canEdit && <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startEdit(b)}>✏ Edit</button>
-                    <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} onClick={() => remove(b)}>Delete</button>
-                  </div>}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "flex-end" }}>
+          <div style={{ flex: "1 1 130px" }}><div style={lbl}>Services from</div><DateField ariaLabel="Filter from" value={filter.from} onChange={v => setF("from", v)} /></div>
+          <div style={{ flex: "1 1 130px" }}><div style={lbl}>to</div><DateField ariaLabel="Filter to" value={filter.to} onChange={v => setF("to", v)} /></div>
+          <label style={{ fontSize: 11.5, display: "flex", gap: 5, alignItems: "center", padding: "7px 0" }}><input type="checkbox" checked={filter.noReservation} onChange={e => setF("noReservation", e.target.checked)} /> No reservation no.</label>
+          {filtering && <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setFilter(blankFilter)}>Clear filters</button>}
+        </div>
       </>)}
 
-      {view === "timeline" && (() => {
-        const tl = timelineBuckets(bookings);
-        if (!tl) return <div style={{ fontSize: 12, color: G.gray400 }}>Add dates to your bookings to see them on a timeline.</div>;
-        const dated = bookings.filter(b => b.dateFrom || b.dateTo || b.deadlineDate || (b.rows || []).some(r => r.dateFrom));
+      {groups.length === 0 && <div style={{ fontSize: 12, color: G.gray400 }}>No bookings yet — start with “+ New vendor booking”.</div>}
+      {filtering && groups.length > 0 && <div style={{ fontSize: 11, color: G.gray400, marginBottom: 6 }}>{matches.length} of {counts.all} match</div>}
+
+      {groupBy === "vendor" && groups.map(g => {
+        const mine = matches.filter(x => x.group.id === g.id);
+        if (filtering && !mine.length && draft?.groupId !== g.id) return null;
         return (
-          <div style={{ overflowX: "auto" }} data-testid="series-timeline">
-            <div style={{ fontSize: 10.5, color: G.gray400, marginBottom: 6 }}>{tl.step === 1 ? "One column per day." : "One column per week."} ⏰ marks a deadline.</div>
-            <div style={{ display: "grid", gridTemplateColumns: `200px repeat(${tl.cols.length}, minmax(${tl.step === 1 ? 22 : 34}px, 1fr))`, fontSize: 10.5, minWidth: 200 + tl.cols.length * (tl.step === 1 ? 22 : 34) }}>
-              <div />
-              {tl.cols.map(c => <div key={c.start} style={{ textAlign: "center", color: G.gray400, padding: "2px 0" }}>{c.label}</div>)}
-              {dated.map(b => { const cat = catById[b.categoryId]; const ks = KIND_STYLE[statusKind(cat, b.status)]; return (
-                <div key={b.id} style={{ display: "contents" }}>
-                  <div style={{ padding: "4px 6px 4px 0", fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={`${b.title} — ${b.status || ""}`}>
-                    <b>{b.title}</b> <span style={{ color: G.gray400 }}>{cat && cat.name}</span>
-                  </div>
-                  {tl.cols.map(c => {
-                    const rc = (b.rows || []).length ? rowCovering(b, c) : null;
-                    const on = (b.rows || []).length ? !!rc : coversColumn(b, c);
-                    const ks2 = rc ? KIND_STYLE[statusKind(cat, rc.status)] : ks;
-                    const dl = b.deadlineDate && b.deadlineDate >= c.start && b.deadlineDate <= c.end;
-                    return <div key={c.start} title={on ? `${b.title}: ${rc ? `${rc.label || ""} ${rc.status || ""}` : b.status || ""}` : ""} style={{ background: on ? ks2.bg : "transparent", borderTop: `3px solid ${on ? ks2.fg : "transparent"}`, borderBottom: `1px solid ${G.gray100}`, textAlign: "center", minHeight: 22 }}>{dl ? "⏰" : ""}</div>;
-                  })}
-                </div>); })}
+          <div key={g.id} data-testid="vendor-booking" style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 10, background: G.white }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ flex: 1 }}><span style={{ fontSize: 13.5, fontWeight: 700 }}>{g.vendorName}</span> <span style={{ fontSize: 10.5, color: G.gray400 }}>{g.vendorType}</span></div>
+              {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setDraft({ groupId: g.id, entry: blankEntry() })}>+ Add booking</button>}
+              {canEdit && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B" }} aria-label={`Delete ${g.vendorName} booking`} onClick={() => removeGroup(g)}>🗑</button>}
             </div>
+            {entryForm(g)}
+            {g.entries.length === 0 && !(draft && draft.groupId === g.id) && <div style={{ fontSize: 11.5, color: G.gray400, marginTop: 6 }}>No bookings inside yet.</div>}
+            {mine.map(x => entryRow(x, false))}
           </div>
         );
-      })()}
+      })}
 
-      {view === "departures" && (
-        files.length === 0 ? <div style={{ fontSize: 12, color: G.gray400 }}>No files in this series yet.</div> :
-        files.map(q => {
-          const rows = bookings.map(b => ({ b, allocs: b.allocations.filter(a => a.queryId === q.id), mine: rowsForDeparture(b, q.id) })).filter(r => r.allocs.length || r.mine.length);
-          return (
-            <div key={q.id} style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#1A5276" }}
-                onClick={() => document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } }))}>{fileLabel(q.id)}</div>
-              <div style={{ fontSize: 11, color: G.gray400, marginBottom: 6 }}>{q.dateDisplay || q.travelDate || ""}</div>
-              {rows.length === 0 ? <div style={{ fontSize: 11.5, color: G.gray400 }}>No bookings allocated to this departure yet.</div> :
-                rows.map(({ b, allocs, mine }) => { const cat = catById[b.categoryId]; const st = mine.length ? mine[0].status : b.status; const ks = KIND_STYLE[statusKind(cat, st)]; return (
-                  <div key={b.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, marginBottom: 3, flexWrap: "wrap" }}>
-                    <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 10.5, fontWeight: 600, background: ks.bg, color: ks.fg, border: `1px solid ${ks.bd}` }}>{st || "—"}</span>
-                    {mine.length > 0 && mine[0].confirmationNo && <span style={{ fontFamily: "monospace", fontSize: 11 }}>{mine[0].confirmationNo}</span>}
-                    <span><b>{b.title}</b> <span style={{ color: G.gray400 }}>{[cat && cat.name, b.vendorName, b.reference && `Ref ${b.reference}`].filter(Boolean).join(" · ")}</span></span>
-                    <span style={{ color: G.gray600 }}>{allocs.map(a => `${a.qty} × ${a.item || "—"}`).join(", ")}</span>
-                  </div>); })}
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
-
-// Editable categories, each with its own status list (name + whether it counts
-// as open, done or cancelled -- that drives the "needs attention" rules).
-function CategoryEditor({ categories, onSaved, onError }) {
-  const [edit, setEdit] = useState(null);
-  const save = async () => {
-    const res = await saveBookingCategory(db, edit);
-    if (res.error) { onError(res.error); return; }
-    setEdit(null); onSaved();
-  };
-  return (
-    <div style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: 12, marginBottom: 12, background: G.gray50 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Categories &amp; status lists</div>
-      {!edit && <>
-        {categories.map(c => (
-          <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, marginBottom: 4, opacity: c.active ? 1 : 0.5 }}>
-            <b style={{ minWidth: 130 }}>{c.name}</b><span style={{ flex: 1, color: G.gray600 }}>{c.statuses.map(s => s.name).join(" → ")}</span>
-            <button className="btn btn-ghost" style={{ fontSize: 10.5 }} onClick={() => setEdit(JSON.parse(JSON.stringify(c)))}>Edit</button>
-          </div>))}
-        <button className="btn btn-ghost" style={{ fontSize: 11, marginTop: 6 }} onClick={() => setEdit({ name: "", sortOrder: categories.length + 1, active: true, statuses: [{ name: "Enquiry", kind: "open" }, { name: "Confirmed", kind: "done" }, { name: "Cancelled", kind: "cancelled" }] })}>+ New category</button>
-      </>}
-      {edit && <>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-          <input style={inp} aria-label="Category name" value={edit.name} onChange={e => setEdit(p => ({ ...p, name: e.target.value }))} placeholder="Category name" />
-          <label style={{ fontSize: 11, whiteSpace: "nowrap" }}><input type="checkbox" checked={edit.active} onChange={e => setEdit(p => ({ ...p, active: e.target.checked }))} /> Active</label>
+      {groupBy === "file" && (byFile.length === 0 ? <div style={{ fontSize: 12, color: G.gray400 }}>{groups.length ? "Nothing matches." : ""}</div> : byFile.map(([qid, rows]) => (
+        <div key={qid || "none"} style={{ border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 10, background: G.white }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{qid ? fileLabel(qid) : "No tour file yet"}</div>
+          {rows.map(x => entryRow(x, true))}
         </div>
-        {edit.statuses.map((s, i) => (
-          <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-            <input style={inp} aria-label={`Status ${i + 1}`} value={s.name} onChange={e => setEdit(p => ({ ...p, statuses: p.statuses.map((x, xi) => xi === i ? { ...x, name: e.target.value } : x) }))} />
-            <select style={{ ...inp, width: 150 }} aria-label={`Status ${i + 1} meaning`} value={s.kind} onChange={e => setEdit(p => ({ ...p, statuses: p.statuses.map((x, xi) => xi === i ? { ...x, kind: e.target.value } : x) }))}>
-              <option value="open">Still open</option><option value="done">Confirmed / done</option><option value="cancelled">Cancelled</option>
-            </select>
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} disabled={i === 0} onClick={() => setEdit(p => { const a = [...p.statuses]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; return { ...p, statuses: a }; })}>↑</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setEdit(p => ({ ...p, statuses: p.statuses.filter((_, xi) => xi !== i) }))}>✕</button>
-          </div>))}
-        <button className="btn btn-ghost" style={{ fontSize: 11, marginBottom: 8 }} onClick={() => setEdit(p => ({ ...p, statuses: [...p.statuses, { name: "", kind: "open" }] }))}>+ Add status</button>
-        <div style={{ display: "flex", gap: 8 }}><button className="btn btn-ghost" onClick={() => setEdit(null)}>Cancel</button><button className="btn btn-primary" onClick={save}>Save category</button></div>
-      </>}
+      )))}
+      {groupBy === "file" && draft && <div>{entryForm(groups.find(g => g.id === draft.groupId) || {})}</div>}
     </div>
   );
 }

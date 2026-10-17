@@ -7,7 +7,7 @@ const { G, saveSeries, db, useIsNarrowViewport } = Lib;
 export default function SeriesManagement({ series, setSeries, queries, currentUser, onClose, initialSelectedId, asTab = false, onUpdateQuery, vendors }) {
   // Tabs inside a selected series: Overview · Documents · Bookings.
   const [tab, setTab] = useState("overview");
-  const [health, setHealth] = useState({ count: 0, line: "" });
+  const [summary, setSummary] = useState("");
   // Real, reported bug: this screen's fixed-width (260px) series list
   // beside a flex:1 detail pane squeezed both into a sliver on a phone.
   // Same fix as Vendor/Agent/User Management, Templates and Reports:
@@ -98,7 +98,7 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
             <div style={{ flex: 1, overflowY: "auto" }}>
               {filtered.length === 0 && <div style={{ padding: 16, fontSize: 12, color: G.gray400, textAlign: "center" }}>No series yet — create one above.</div>}
               {filtered.map(s => (
-                <div key={s.id} onClick={() => { if (selected?.id !== s.id) { setTab("overview"); setHealth({ count: 0, line: "" }); } setSelected(s); setEditing(false); setShowDetailMobile(true); }}
+                <div key={s.id} onClick={() => { if (selected?.id !== s.id) { setTab("overview"); setSummary(""); } setSelected(s); setEditing(false); setShowDetailMobile(true); }}
                   style={{ padding: "12px 14px", borderBottom: `1px solid ${G.gray100}`, cursor: "pointer", background: selected?.id === s.id ? "#EBF5FB" : G.white, opacity: s.active ? 1 : 0.55 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                     {s.name}
@@ -142,9 +142,9 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
                   <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => toggleActive(selected)}>{selected.active ? "Mark Inactive" : "Mark Active"}</button>
                   {currentUser?.role === "admin" && <button className="btn btn-ghost" style={{ fontSize: 11, color: "#C0392B", borderColor: "#FECACA" }} onClick={() => handleDelete(selected)} disabled={deleting}>🗑 Delete</button>}
                 </div>
-                {health.line && <div style={{ fontSize: 11.5, color: health.count ? "#922B21" : G.gray600, marginTop: 6 }}>{health.line}</div>}
+                {summary && <div style={{ fontSize: 11.5, color: G.gray600, marginTop: 6 }}>{summary}</div>}
                 <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${G.gray200}`, margin: "14px 0 14px" }}>
-                  {[["overview", "Overview"], ["documents", "Documents"], ["bookings", health.count ? `Bookings (${health.count} ⚠)` : "Bookings"]].map(([k, t]) => (
+                  {[["overview", "Overview"], ["documents", "Documents"], ["bookings", "Bookings"]].map(([k, t]) => (
                     <button key={k} onClick={() => setTab(k)} style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: "none", border: "none",
                       borderBottom: tab === k ? `2px solid ${G.accent}` : "2px solid transparent", color: tab === k ? G.accent : G.gray600 }}>{t}</button>
                   ))}
@@ -155,7 +155,7 @@ export default function SeriesManagement({ series, setSeries, queries, currentUs
                 )}
                 <div style={{ display: tab === "bookings" ? "block" : "none" }}>
                   <SeriesBookings key={selected.id} series={selected} queries={queries} vendors={vendors} currentUser={currentUser}
-                    onAttentionCount={(count, line) => setHealth(h => (h.count === count && h.line === line ? h : { count, line }))} />
+                    onSummary={setSummary} />
                 </div>
                 {tab === "overview" && <>
                 <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, textTransform: "uppercase", letterSpacing: "0.5px", margin: "4px 0 10px" }}>

@@ -2581,7 +2581,12 @@ export function toggleWFStep(manualWF, stepId, autoDetected, stepLabel) {
 
 // ─── QUERY SERVICES (Service Status list, now with real persistence + order) ──
 export function mapDbServiceRow(row) {
-  return { id: row.id, name: row.name, status: row.status, date: row.date, notes: row.notes || "", sortOrder: row.sort_order || 0 };
+  // Series-backed services (svbId set) carry the booking fields too; they are
+  // edited from Series -> Bookings, and shown read-only inside the tour file.
+  const base = { id: row.id, name: row.name, status: row.status, date: row.date, notes: row.notes || "", sortOrder: row.sort_order || 0 };
+  if (!row.svb_id) return base;
+  return { ...base, svbId: row.svb_id, seriesId: row.series_id || "", title: row.title || "", dateTo: row.date_to || "",
+    reservationNo: row.reservation_no || "", rates: row.rates || "", remarksHtml: row.remarks_html || "" };
 }
 
 export async function loadQueryServices(db, queryId) {
@@ -2624,6 +2629,13 @@ export async function saveQueryServices(db, queryId, services, deletedIds = []) 
   try {
     for (let i = 0; i < services.length; i++) {
       const s = services[i];
+      // A series-backed service is owned by Series -> Bookings: from here only
+      // status, remarks and order may change, so a stale tour-file snapshot can
+      // never overwrite the series side's title, dates or reservation number.
+      if (s.svbId) {
+        await db.from("query_services").upsert({ id: s.id, query_id: queryId, status: s.status, remarks_html: s.remarksHtml || null, sort_order: i });
+        continue;
+      }
       await db.from("query_services").upsert({
         id: s.id, query_id: queryId, name: s.name, status: s.status, date: s.date || null, notes: s.notes || null, sort_order: i,
       });
