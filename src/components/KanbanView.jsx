@@ -39,7 +39,8 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
   return (
     <div style={{display:"flex",gap:10,overflowX:"auto",height:"100%",padding:"0 4px 4px"}}>
       {PIPELINE_STAGES.map(stage => {
-        const cards = activeQueries.filter(q => q.status === stage.id);
+        const cards = activeQueries.filter(q => q.status === stage.id)
+          .sort((a, b) => String(a.tourFileId || a.id || "").localeCompare(String(b.tourFileId || b.id || ""), undefined, { numeric: true }));
         const isDragTarget = dragOver === stage.id;
         return (
           <div key={stage.id}

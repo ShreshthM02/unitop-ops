@@ -94,9 +94,12 @@ export function mealPlanLabel(mealPlan, taxInclusive) {
 // Similar" is always appended (that's the whole point of the phrasing:
 // naming the intended property/properties while leaving room for an
 // equivalent substitute).
-export function hotelPropertyLabel(hotel, hotelAlt) {
+// `suffix` is the closing word (default "Similar"); an explicitly empty string
+// leaves it out, so it stays editable without any toggle.
+export function hotelPropertyLabel(hotel, hotelAlt, suffix) {
   if (!hotel) return "";
-  return hotelAlt ? `${hotel} / ${hotelAlt} / Similar` : `${hotel} / Similar`;
+  const end = suffix === undefined || suffix === null ? "Similar" : String(suffix).trim();
+  return [hotel, hotelAlt, end].filter(Boolean).join(" / ");
 }
 
 export const nextInvoiceNo = (prefix, existing) => {

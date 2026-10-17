@@ -307,7 +307,7 @@ export async function searchGazetteerDb(db, term, { limit = 15, country = null }
       gazetteerResult = rpcResult;
     } else {
       const { data, error } = await (() => {
-        let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `${q}*`);
+        let builder = db.from("gazetteer").select(COLUMNS).ilike("name", `*${q}*`);
         if (country) builder = builder.eq("country", country);
         return builder.order("population", { ascending: false }).limit(limit);
       })();

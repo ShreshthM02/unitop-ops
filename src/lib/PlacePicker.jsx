@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { resolvePlace, searchGazetteer, manualPlace, isValidCoordinate } from './placeResolver.js';
 
@@ -93,14 +93,21 @@ export function PlacePicker({
   // toggle button's real screen coordinates, so no ancestor's overflow can
   // clip it regardless of where in the page this picker is used.
   const [panelPos, setPanelPos] = useState(null);
+  // The position depends ONLY on where the link is and how much room there is
+  // above/below -- never on the panel's own (changing) height. Measuring the
+  // panel and re-flipping it as search results arrived made it hop up and down
+  // under the cursor. Now: open downward if there is room (or more room than
+  // above), else anchor its bottom edge just above the link; it scrolls inside.
   const reposition = () => {
     if (!toggleBtnRef.current) return;
     const r = toggleBtnRef.current.getBoundingClientRect();
-    setPanelPos(computePanelPosition({
-      anchor: { top: r.top, bottom: r.bottom, left: r.left },
-      panelHeight: panelRef.current ? panelRef.current.offsetHeight : 0,
-      viewportW: window.innerWidth, viewportH: window.innerHeight,
-    }));
+    const vw = window.innerWidth, vh = window.innerHeight, margin = 8, gap = 4;
+    const below = vh - r.bottom - gap - margin, above = r.top - gap - margin;
+    const left = Math.max(margin, Math.min(r.left, vw - 280 - margin));
+    const next = (below >= 320 || below >= above)
+      ? { top: r.bottom + gap, left, maxHeight: Math.max(160, below) }
+      : { bottom: vh - r.top + gap, left, maxHeight: Math.max(160, above) };
+    setPanelPos(prev => (prev && prev.top === next.top && prev.bottom === next.bottom && prev.left === next.left && prev.maxHeight === next.maxHeight) ? prev : next);
   };
   useEffect(() => {
     if (!open || !toggleBtnRef.current) { setPanelPos(null); return; }
@@ -179,10 +186,14 @@ export function PlacePicker({
     if (!onSearch || term.trim().length < 2) { setDbResults([]); return; }
     let cancelled = false;
     setSearching(true);
-    Promise.resolve(onSearch(term)).then(rows => {
-      if (!cancelled) { setDbResults(rows || []); setSearching(false); }
-    }).catch(() => { if (!cancelled) setSearching(false); });
-    return () => { cancelled = true; };
+    // Short pause after the last keystroke: the list only changes once you stop
+    // typing, instead of reshuffling under the cursor on every key.
+    const timer = setTimeout(() => {
+      Promise.resolve(onSearch(term)).then(rows => {
+        if (!cancelled) { setDbResults(rows || []); setSearching(false); }
+      }).catch(() => { if (!cancelled) setSearching(false); });
+    }, 220);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [term, onSearch]);
 
   const results = term.trim().length >= 2
@@ -191,7 +202,6 @@ export function PlacePicker({
   const style = STATUS_STYLE[status] || STATUS_STYLE.unmatched;
   // The panel grows as results arrive; re-place it so it never ends up
   // hanging off-screen after it has already opened.
-  useLayoutEffect(() => { if (open) reposition(); }, [open, !!panelPos, dbResults, searching, term, alternatives.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (place) => { onChange && onChange(place); setOpen(false); };
 
@@ -228,7 +238,7 @@ export function PlacePicker({
 
       {open && !readOnly && panelPos && createPortal(
         <div ref={panelRef} style={{
-          position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 1000,
+          position: "fixed", ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }), left: panelPos.left, zIndex: 1000,
           width: 280, padding: 10, borderRadius: 8, maxHeight: panelPos.maxHeight, overflowY: "auto",
           border: `1px solid ${G.gray200}`, background: G.white, boxShadow: "0 6px 20px rgba(0,0,0,0.14)",
         }}>

@@ -142,12 +142,12 @@ describe('searchGazetteerDb: typeahead', () => {
     expect(out[0]).toMatchObject({ name: 'Kasia' });
   });
 
-  it('falls back to a prefix ilike on name when neither RPC is available', async () => {
+  it('falls back to a contains (substring) ilike on name when neither RPC is available', async () => {
     const db = fakeDbNoRpc([]);
     await searchGazetteerDb(db, 'vara');
     const ilike = db.calls.find(c => c.table === 'gazetteer').filters.find(f => f[0] === 'ilike');
     expect(ilike[1]).toBe('name');
-    expect(ilike[2]).toBe('vara*');
+    expect(ilike[2]).toBe('*vara*');
   });
 
   it('scopes the client-side fallback path to a country too', async () => {

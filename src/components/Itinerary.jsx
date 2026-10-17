@@ -93,6 +93,11 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
   const finalVersion = (flavorVersions.find(v => v.isFinal) || {}).version || null;
   const nextVersion = flavorVersions.length ? Math.max(...flavorVersions.map(v => v.version)) + 1 : 1;
 
+  const applyPhotoState = (v) => {
+    setRouteMapImage(v.routeMapImage ?? null);
+    setCoverImageOverride(v.hasOwnProperty("coverImageOverride") ? v.coverImageOverride : undefined);
+    setDayImageOverrides(v.dayImageOverrides || {});
+  };
   const loadVersionIntoDraft = (v) => {
     setTourTitle(v.tourTitle || query.destination || "");
     setTagline(v.tagline || "");
@@ -103,9 +108,11 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     setDetailedClosingText(v.detailedClosingText || v.closingText || DEFAULT_CLOSING);
     setBriefRemarks(v.briefRemarks || "");
     setDetailedRemarks(v.detailedRemarks || "");
-    setRouteMapImage(v.routeMapImage ?? null);
-    setCoverImageOverride(v.hasOwnProperty("coverImageOverride") ? v.coverImageOverride : undefined);
-    setDayImageOverrides(v.dayImageOverrides || {});
+    // Photos belong to the DETAILED itinerary. A Brief version never carries
+    // any, so opening one (or landing on the newest save, which may be a
+    // Brief) must not wipe the photos you chose -- that is how a later Detailed
+    // save ended up with default photos. Only a Detailed version sets them.
+    if ((v.activeTab || "brief") === "detailed") applyPhotoState(v);
     setPulledFromCostSheetVersion(v.pulledFromCostSheetVersion ?? null);
     setViewingVersion(v.version);
   };
@@ -163,11 +170,6 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     return { photo, error };
   };
 
-  const deletePhotoFromLibrary = async (id) => {
-    const { error } = await deleteLibraryPhoto(db, id);
-    if (!error) setPhotoLibrary(prev => prev.filter(p => p.id !== id));
-    return { error };
-  };
 
   useEffect(() => {
     // Optional: if the photo table/bucket doesn't exist yet, the brochure
@@ -201,6 +203,9 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
       }
       setVersions(loaded);
       loadVersionIntoDraft(loaded[loaded.length - 1]);
+      // Landing on a Brief save must still bring back the latest Detailed photos.
+      const latestDetailed = [...loaded].reverse().find(x => (x.activeTab || "brief") === "detailed");
+      if (latestDetailed && (loaded[loaded.length - 1].activeTab || "brief") !== "detailed") applyPhotoState(latestDetailed);
       loadFinalCostSheetVersion(db, query.id).then(setFinalCostSheetVersion);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -686,7 +691,6 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                     library={photoLibrary}
                     onChangeOverride={setCoverImageOverride}
                     onUpload={uploadPhoto}
-                    onDeleteFromLibrary={deletePhotoFromLibrary}
                     G={G}
                     inp={inp}
                     readOnly={readOnly}
@@ -765,8 +769,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                         library={photoLibrary}
                         onChangeOverride={(value) => setDayImageOverride(d.id, value)}
                         onUpload={uploadPhoto}
-                        onDeleteFromLibrary={deletePhotoFromLibrary}
-                        G={G}
+                            G={G}
                         inp={inp}
                         readOnly={readOnly}
                       />

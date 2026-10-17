@@ -40,9 +40,12 @@ export default function TeamView({ queries, staff }) {
             </div>
             <div style={{ fontSize: 10, fontWeight: 700, color: G.gray400, textTransform: "uppercase", letterSpacing: "0.5px", padding: "8px 16px 4px" }}>Working On</div>
             {myQueries.map(q => (
-              <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
+              <div key={q.id} role="button" tabIndex={0} data-testid="team-query-row" title="Open"
+                onClick={() => document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } }))}
+                onKeyDown={e => { if (e.key === "Enter") document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } })); }}
+                style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`, cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.tourFileId||q.id}</span>
+                <span style={{ fontSize: 11, color: G.accent, minWidth: 90, textDecoration: "underline" }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
                 <StatusBadge status={q.status} />
               </div>
@@ -54,9 +57,12 @@ export default function TeamView({ queries, staff }) {
             )}
             <div style={{ fontSize: 10, fontWeight: 700, color: G.gray400, textTransform: "uppercase", letterSpacing: "0.5px", padding: "10px 16px 4px", borderTop: `1px solid ${G.gray100}` }}>Reviewing</div>
             {reviewingQueries.map(q => (
-              <div key={q.id} style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`,
+              <div key={q.id} role="button" tabIndex={0} data-testid="team-query-row" title="Open"
+                onClick={() => document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } }))}
+                onKeyDown={e => { if (e.key === "Enter") document.dispatchEvent(new CustomEvent("unitop-activate-query", { detail: { query: q } })); }}
+                style={{ padding: "8px 16px", borderBottom: `1px solid ${G.gray100}`, cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: G.gray400, minWidth: 90 }}>{q.tourFileId||q.id}</span>
+                <span style={{ fontSize: 11, color: G.accent, minWidth: 90, textDecoration: "underline" }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
                 <StatusBadge status={q.status} />
               </div>

@@ -250,7 +250,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
               {query.seriesId&&(series||[]).find(x=>x.id===query.seriesId)?.masterQueryId===query.id&&(
                 <div data-testid="series-master-banner" style={{display:"inline-block",marginBottom:10,padding:"2px 10px",borderRadius:12,fontSize:10.5,fontWeight:600,background:"#F4ECF7",color:"#6C3483",border:"1px solid #D7BDE2"}}
                   title="The Cost Sheet, Quotation and Itinerary of this file are shown as the series documents. Change the master from Series → Documents.">
-                  ⛓ Master file of {(series||[]).find(x=>x.id===query.seriesId)?.name||"the series"}
+                  Master file of {(series||[]).find(x=>x.id===query.seriesId)?.name||"the series"}
                 </div>
               )}
               {isCaseFile && (

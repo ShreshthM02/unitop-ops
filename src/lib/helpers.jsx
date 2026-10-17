@@ -87,7 +87,10 @@ export function FileTypeBadge({ fileType, seriesId }) {
     <span role="button" tabIndex={0} title={label} aria-label={label}
       onClick={e => { e.stopPropagation(); document.dispatchEvent(new CustomEvent("unitop-activate-series", { detail: { id: seriesId } })); }}
       onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); document.dispatchEvent(new CustomEvent("unitop-activate-series", { detail: { id: seriesId } })); } }}
-      style={{ fontSize: 11, marginLeft: 5, color: "#6C3483", display: "inline-block", lineHeight: 1, cursor: "pointer" }}>⛓</span>
+      style={{ fontSize: 11, marginLeft: 5, color: "#6C3483", display: "inline-block", verticalAlign: "-1px", lineHeight: 1, cursor: "pointer" }}>
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true" style={{ display: "block" }}>
+        <rect x="5.5" y="1.5" width="8" height="10" rx="1.2"/><path d="M3.5 4v9.3a1 1 0 0 0 1 1H11" strokeLinecap="round"/><path d="M1.8 6.2v8" strokeLinecap="round" opacity="0.55"/>
+      </svg></span>
   ) : null;
   if (!fileType) return mark;
   const isFit = fileType === "FIT";
@@ -367,7 +370,7 @@ export function SearchableSelect({ value, onChange, options, getLabel, getValue,
   }, []);
 
   const filtered = query.trim()
-    ? options.filter(o => getLabel(o).toLowerCase().includes(query.trim().toLowerCase()))
+    ? options.filter(o => { const l = getLabel(o).toLowerCase(); return query.trim().toLowerCase().split(/\s+/).every(w => l.includes(w)); })
     : options;
 
   // Real, direct request: picking a vendor shouldn't be the only option

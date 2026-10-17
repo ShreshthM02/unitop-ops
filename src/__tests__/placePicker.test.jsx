@@ -135,6 +135,7 @@ describe('async search against the real gazetteer', () => {
     fireEvent.click(screen.getByText('Change'));
     fireEvent.change(screen.getByLabelText('Search places'), { target:{ value:'va' } });
     await screen.findByText('Searching…');
+    await vi.waitFor(() => expect(resolvePromise).toBeTypeOf('function'));
     resolvePromise([]);
     await screen.findByText(/Nothing found/);
   });

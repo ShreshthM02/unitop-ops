@@ -507,7 +507,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     const accommodationBlock = {
       type: "table",
       headerHTML: `<tr><th>Place</th><th>Nights</th><th>Hotel</th></tr>`,
-      rowsHTML: q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+hotelPropertyLabel(h.hotel,h.hotelAlt)+'</td></tr>'),
+      rowsHTML: q.hotels.map(h=>'<tr><td>'+h.place+'</td><td>'+h.nights+'</td><td>'+hotelPropertyLabel(h.hotel,h.hotelAlt,h.similarText)+'</td></tr>'),
     };
     const accommodationHeading = `<h2>Accommodation</h2>`;
 
@@ -915,7 +915,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, marginBottom:8 }}>
             <thead>
               <tr style={{ background:G.gray100 }}>
-                {(!readOnly ? [""] : []).concat(["Place","Nights","Hotel Name","Alt Hotel (optional)",""]).map((h,hi)=>(
+                {(!readOnly ? [""] : []).concat(["Place","Nights","Hotel Name","Alt Hotel (optional)","Ends with",""]).map((h,hi)=>(
                   <th key={hi} style={{ padding:"5px 6px", textAlign:"left", fontSize:10,
                     fontWeight:600, color:G.gray600, borderBottom:`1px solid ${G.gray200}` }}>{h}</th>
                 ))}
@@ -948,6 +948,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
                     <input style={{...inputStyle,padding:"3px 5px"}} value={row.hotelAlt||""}
                       onChange={e=>updateHotel(i,"hotelAlt",e.target.value)}
                       placeholder="e.g. Golden Tulip"/></td>
+                  <td style={{ padding:"3px 4px", width:80 }}>
+                    <input style={{...inputStyle,padding:"3px 5px"}} value={row.similarText===undefined?"Similar":row.similarText}
+                      onChange={e=>updateHotel(i,"similarText",e.target.value)} title="Printed after the hotel name. Clear it to print nothing." placeholder="(none)"/></td>
                   <td style={{ padding:"3px 4px", width:24, textAlign:"center" }}>
                     <span style={{ cursor:"pointer", color:G.gray400 }}
                       onClick={()=>setQ(p=>({...p,hotels:p.hotels.filter((_,idx)=>idx!==i)}))}>✕</span>
@@ -958,7 +961,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
           </table>
           {q.hotels.some(r=>r.hotel) && (
             <div style={{ fontSize:10.5, color:G.gray600, marginBottom:8 }}>
-              Will print as: {q.hotels.filter(r=>r.hotel).map((r,i)=><span key={i}>{i>0&&"; "}<strong>{hotelPropertyLabel(r.hotel,r.hotelAlt)}</strong></span>)}
+              Will print as: {q.hotels.filter(r=>r.hotel).map((r,i)=><span key={i}>{i>0&&"; "}<strong>{hotelPropertyLabel(r.hotel,r.hotelAlt,r.similarText)}</strong></span>)}
             </div>
           )}
           <button className="btn btn-ghost" style={{ fontSize:11 }} onClick={addHotelRow}>+ Add Hotel</button>
