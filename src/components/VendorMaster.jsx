@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import ExchangeOrderGenerator from './ExchangeOrderGenerator.jsx';
+import DateInput from '../lib/DateInput.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, RichTextEditor, TimePeriodFilter, isWithinPeriod, rangeOverlapsPeriod, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, getVendorAssignmentHistory, getVendorServiceHistory, loadExchangeOrdersForVendor, groupExchangeOrderVersions, updateExchangeOrderRowContent, logAudit, db, formatDateSlash, useIsNarrowViewport, mealPlanLabel, parseLanguagesList, vendorHasLanguage, allVendorLanguages } = Lib;
 
 export default function VendorMaster({ vendors, setVendors, queries, payments, tourExecutions, docTemplates, currentUser, onSaveVendor, onClose, initialSelectedId, asTab = false }) {
@@ -512,8 +513,8 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                         <div style={{background:G.white,border:`2px solid ${G.accent}`,borderRadius:8,padding:12,marginBottom:10}}>
                           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:8}}>
                             {sc.topLabel&&fld(sc.topLabel,<input style={smallInp} value={rateForm[sc.topKey]||""} onChange={e=>setRF(sc.topKey,e.target.value)}/>)}
-                            {sc.dateRange&&fld("Rates From",<input type="date" style={smallInp} value={rateForm.season_start||""} onChange={e=>setRF("season_start",e.target.value)}/>)}
-                            {sc.dateRange&&fld("Rates Till",<input type="date" style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
+                            {sc.dateRange&&fld("Rates From",<DateInput  style={smallInp} value={rateForm.season_start||""} onChange={e=>setRF("season_start",e.target.value)}/>)}
+                            {sc.dateRange&&fld("Rates Till",<DateInput  style={smallInp} value={rateForm.season_end||""} onChange={e=>setRF("season_end",e.target.value)}/>)}
                             {fld(sc.itemLabel,<input style={smallInp} value={rateForm[sc.itemKey]||""} onChange={e=>setRF(sc.itemKey,e.target.value)}/>)}
                             {sc.mealPlan&&fld("Meal Plan",<select style={smallInp} value={rateForm.meal_plan||"CP"} onChange={e=>setRF("meal_plan",e.target.value)}>{["EP","CP","MAP","AP"].map(m=><option key={m}>{m}</option>)}</select>)}
                             {sc.singleDouble&&fld("Single Rate",<><input type="number" style={smallInp} value={rateForm.single_rate||""} onChange={e=>setRF("single_rate",e.target.value)}/>{finalPreview(rateForm.single_rate)}</>)}
@@ -639,8 +640,8 @@ export default function VendorMaster({ vendors, setVendors, queries, payments, t
                           <div key={r.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
                             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:6,marginBottom:6}}>
                               {HAS_DATE_RANGE.includes(vtype) && <>
-                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates From</div><input style={{...inp,fontSize:11}} type="date" value={r.ratesFrom||""} onChange={e=>upd(i,"ratesFrom",e.target.value)}/></div>
-                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates Till</div><input style={{...inp,fontSize:11}} type="date" value={r.ratesTill||""} onChange={e=>upd(i,"ratesTill",e.target.value)}/></div>
+                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates From</div><DateInput style={{...inp,fontSize:11}}  value={r.ratesFrom||""} onChange={e=>upd(i,"ratesFrom",e.target.value)}/></div>
+                                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Rates Till</div><DateInput style={{...inp,fontSize:11}}  value={r.ratesTill||""} onChange={e=>upd(i,"ratesTill",e.target.value)}/></div>
                               </>}
                               {fields.map(([l,k,t])=>(
                                 <div key={k}>

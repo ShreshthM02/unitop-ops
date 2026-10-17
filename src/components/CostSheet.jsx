@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 import { makeCalculators } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash } = Lib;
+import DateInput from '../lib/DateInput.jsx';
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash, useDragReorder } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
   const n = v => parseFloat(v)||0;
@@ -50,7 +51,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // from -- same "confirmed vs TBC" distinction already used for pax.
   // When confirmed, each day's date is travelDate + its offset, kept as
   // a raw ISO string ("YYYY-MM-DD") since the actual field is a native
-  // <input type="date">, which requires that exact format and silently
+  // date input, which requires that exact format and silently
   // shows blank for anything else -- formatDateDMY's DD-MM-YYYY display
   // format (used elsewhere in the app for read-only text) would have
   // been rejected here.
@@ -174,6 +175,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // in the Final Price Summary below, alongside the group slabs, with its
   // own label -- not a separate reference number.
   const [tlSlabs, setTlSlabs] = useState([]);
+  const monDr = useDragReorder(setMonuments), tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras), slabDr = useDragReorder(setSlabs), tlDr = useDragReorder(setTlSlabs);
   const scrollRestoreRef = useRef(null);
   useLayoutEffect(() => {
     if (scrollRestoreRef.current) {
@@ -199,8 +201,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
     setTlSlabs(p=>[...p, {
       id: Date.now(), label: "10 pax + 1 T/L", vehicle: "", pax: "",
-      costs: { hotel:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" },
-      includes: { hotel:true, meals:true, transport:true, monument:true, localHandler:true, extras:true },
+      costs: { hotel:"", singleSupp:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" },
+      includes: { hotel:true, singleSupp:true, meals:true, transport:true, monument:true, localHandler:true, extras:true },
     }]);
   };
   const updateTlSlab = (i, patch) => setTlSlabs(p=>p.map((t,idx)=>idx===i?{...t,...patch}:t));
@@ -208,7 +210,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const fetchTlSlabCosts = (i) => {
     const ref = slabs[0] ? calcSlab(slabs[0]) : null;
     updateTlSlab(i, { costs: {
-      hotel: Math.round(totHotel)||"", meals: Math.round(totMeal)||"",
+      hotel: Math.round(totHotel)||"", singleSupp: Math.round(daySS)||"", meals: Math.round(totMeal)||"",
       transport: ref?ref.tptPP||"":"", monument: ref?ref.monPP||"":"",
       localHandler: ref?ref.localPP||"":"", extras: ref?ref.extrasPP||"":"",
     }});
@@ -437,7 +439,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
     const dayRows = days.map((d,i) => rowHTML([
       // Item 4 fix: d.date is kept as a raw ISO "YYYY-MM-DD" string in
-      // state (required by the native <input type="date"> editor above --
+      // state (required by the native date input editor above --
       // see the comment near dayDateFromTravelDate), but the printed
       // document is read-only text, so it should show the app-wide
       // dd/mm/yyyy convention like every other date in this app, not the
@@ -674,7 +676,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {secH("Monuments / Activities","🏛")}
           <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:10}}>
             {monuments.map((m,i)=>(
-              <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+              <div key={i} {...monDr.row(i,{display:"flex",gap:8,alignItems:"center",marginBottom:6})}>
+                <span {...monDr.grip(i)}>⠿</span>
                 <input style={{...inp,flex:2}} value={m.name} onChange={e=>updateMonument(i,"name",e.target.value)} placeholder="e.g. Taj Mahal entry"/>
                 <input style={{...inp,width:80,textAlign:"right"}} type="number" value={m.fee} onChange={e=>updateMonument(i,"fee",e.target.value)} placeholder="0"/>
                 <span style={{fontSize:10,color:G.gray400}}>₹</span>
@@ -709,7 +712,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                 {days.map((d,i)=>(
                   <tr key={d.id} style={{background:i%2===0?G.white:G.gray50}}>
                     <td style={{padding:"2px 3px",width:48}}><input style={{...inp,width:44,textAlign:"center"}} value={d.day} onChange={e=>updateDay(i,"day",e.target.value)}/></td>
-                    <td style={{padding:"2px 3px",width:100}}><input style={{...inp,fontSize:10}} type="date" value={d.date||""} onChange={e=>updateDay(i,"date",e.target.value)}/></td>
+                    <td style={{padding:"2px 3px",width:100}}><DateInput style={{...inp,fontSize:10}}  value={d.date||""} onChange={e=>updateDay(i,"date",e.target.value)}/></td>
                     <td style={{padding:"2px 3px",minWidth:130}}><input style={inp} value={d.movement} onChange={e=>updateDay(i,"movement",e.target.value)} placeholder="Movement / destination"/></td>
                     <td style={{padding:"2px 3px",width:68}}><input style={{...inp,textAlign:"center"}} value={d.mealPlan} onChange={e=>updateDay(i,"mealPlan",e.target.value)} placeholder="B/L/D"/></td>
                     <td style={{padding:"2px 3px",width:68}}><input style={{...inp,textAlign:"right"}} type="number" value={d.mealCost} onChange={e=>updateDay(i,"mealCost",e.target.value)} placeholder="0"/></td>
@@ -812,7 +815,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {/* 10.3 Transport */}
           {secH("Transport","🚌")}
           {transports.map((t,ti)=>(
-            <div key={t.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+            <div key={t.id} {...tptDr.row(ti,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
+              <span {...tptDr.cardGrip(ti)}>⠿</span>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:8,marginBottom:6}}>
                 <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Sector / Route</div>
                   <input style={inp} value={t.sector} onChange={e=>updateTransport(ti,"sector",e.target.value)} placeholder="e.g. Delhi–Agra–Jaipur circuit"/></div>
@@ -857,7 +861,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {secH("Local Handler","🤝")}
           <div style={{marginBottom:8}}>
             {localHandlers.map((h,hi)=>(
-              <div key={h.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+              <div key={h.id} {...lhDr.row(hi,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
+                <span {...lhDr.cardGrip(hi)}>⠿</span>
                 <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr auto",gap:8,marginBottom:6}}>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Sector</div>
@@ -865,11 +870,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                   </div>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>From</div>
-                    <input style={inp} type="date" value={h.dateFrom} max={h.dateTo||undefined} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
+                    <DateInput style={inp}  value={h.dateFrom} max={h.dateTo||undefined} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
                   </div>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>To</div>
-                    <input style={inp} type="date" value={h.dateTo} min={h.dateFrom||undefined} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
+                    <DateInput style={inp}  value={h.dateTo} min={h.dateFrom||undefined} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
                   </div>
                   <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
                     <span style={{cursor:"pointer",color:G.gray400,fontSize:16}} onClick={()=>removeLocalHandler(hi)}>✕</span>
@@ -907,7 +912,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {secH("Extra Services","✨")}
           <div style={{marginBottom:8}}>
             {extras.map((e,ei)=>(
-              <div key={e.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8}}>
+              <div key={e.id} {...exDr.row(ei,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
+                <span {...exDr.cardGrip(ei)}>⠿</span>
                 <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:8,marginBottom:6}}>
                   <div>
                     <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Service Description</div>
@@ -936,7 +942,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {secH("Group Size Slabs","👥")}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:8}}>
             {slabs.map((s,i)=>(
-              <div key={s.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10}}>
+              <div key={s.id} {...slabDr.row(i,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10})}>
+                <span {...slabDr.cardGrip(i)}>⠿</span>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                   <span style={{fontSize:11,fontWeight:600,color:G.gray600}}>Slab {i+1}</span>
                   {(slabs.length>1||tlSlabs.length>0)&&<span style={{cursor:"pointer",color:G.gray400,fontSize:12}} onClick={()=>setSlabs(p=>p.filter((_,idx)=>idx!==i))}>✕</span>}
@@ -967,7 +974,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>For when no FOC policy applies (small groups) — works out how much extra the paying guests need to cover for the Tour Leader's own costs. None added, doesn't affect the group slabs above. Each one you add appears as its own row in the Final Price Summary below, just like a group slab.</div>
           )}
           {tlSlabs.map((tl,ti)=>(
-            <div key={tl.id} style={{background:"#FFF9E6",border:"1px solid #F5D97A",borderRadius:8,padding:12,marginBottom:10}}>
+            <div key={tl.id} {...tlDr.row(ti,{background:"#FFF9E6",border:"1px solid #F5D97A",borderRadius:8,padding:12,marginBottom:10})}>
+              <span {...tlDr.cardGrip(ti)}>⠿</span>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:10,color:"#7D6608"}}>The Tour Leader doesn't pay — their costs get spread only across this slab's own paying guests.</div>
                 <span style={{cursor:"pointer",color:"#7D6608",fontSize:13}} onClick={()=>removeTlSlab(ti)}>✕</span>
@@ -990,13 +998,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                 <button className="btn btn-ghost" style={{fontSize:10}} onClick={()=>fetchTlSlabCosts(ti)}>↻ Fetch Latest Costs from Cost Sheet</button>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
-                {[["hotel","Hotel (PP)"],["meals","Extra Meals (PP)"],["transport","Transport (PP)"],["monument","Monument (PP)"],["localHandler","Local Handler (PP)"],["extras","Extras (PP)"]].map(([key,label])=>(
+                {[["hotel","Hotel (PP)"],["singleSupp","Single Supplement (PP)"],["meals","Extra Meals (PP)"],["transport","Transport (PP)"],["monument","Monument (PP)"],["localHandler","Local Handler (PP)"],["extras","Extras (PP)"]].map(([key,label])=>(
                   <div key={key} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:6,padding:8}}>
                     <label style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,cursor:"pointer"}}>
-                      <input type="checkbox" checked={tl.includes[key]} onChange={e=>updateTlSlab(ti,{includes:{...tl.includes,[key]:e.target.checked}})}/>
+                      <input type="checkbox" checked={!!(tl.includes||{})[key]} onChange={e=>updateTlSlab(ti,{includes:{...tl.includes,[key]:e.target.checked}})}/>
                       <span style={{fontSize:9,color:G.gray600,fontWeight:600}}>{label}</span>
                     </label>
-                    <input style={{...inp,textAlign:"right"}} type="number" value={tl.costs[key]} onChange={e=>updateTlSlab(ti,{costs:{...tl.costs,[key]:e.target.value}})} placeholder="0"/>
+                    <input style={{...inp,textAlign:"right"}} type="number" value={(tl.costs||{})[key]??""} onChange={e=>updateTlSlab(ti,{costs:{...tl.costs,[key]:e.target.value}})} placeholder="0"/>
                   </div>
                 ))}
               </div>

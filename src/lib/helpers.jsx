@@ -4,6 +4,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { ROLE_DEFAULTS, G, WF_STEPS, RICH_TEXT_HIGHLIGHT_COLORS } from "./constants.js";
 import { getWFStepStatus } from "./utils.js";
+import DateInput from './DateInput.jsx';
 
 // Merge role defaults with per-user overrides
 export function getPermissions(user) {
@@ -338,9 +339,9 @@ export function TimePeriodFilter({ value, onChange }) {
       </select>
       {filter.preset === "custom" && (
         <>
-          <input type="date" value={filter.from||""} onChange={e=>onChange({...filter, from:e.target.value})} style={selStyle}/>
+          <DateInput  value={filter.from||""} onChange={e=>onChange({...filter, from:e.target.value})} style={selStyle}/>
           <span style={{ fontSize: 11, color: G.gray400 }}>to</span>
-          <input type="date" value={filter.to||""} onChange={e=>onChange({...filter, to:e.target.value})} style={selStyle}/>
+          <DateInput  value={filter.to||""} onChange={e=>onChange({...filter, to:e.target.value})} style={selStyle}/>
         </>
       )}
     </div>

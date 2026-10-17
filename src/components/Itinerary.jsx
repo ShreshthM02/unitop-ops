@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, resolveDayPhotos, MAX_DAY_PHOTOS, formatDayDate, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
@@ -703,7 +704,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
                   <div style={{ flex:1, display:"flex", gap:8 }}>
                     <input style={{...inp, width:70, textAlign:"center", fontWeight:600}} value={d.dayLabel} onChange={e=>updateDay(i,"dayLabel",e.target.value)}/>
                     <div style={{ display:"flex", flexDirection:"column", flexShrink:0 }}>
-                      <input type="date" aria-label={`Date for day ${i+1}`} title="Optional date for this day" style={{...inp, width:128, fontSize:12}}
+                      <DateInput  aria-label={`Date for day ${i+1}`} title="Optional date for this day" style={{...inp, width:128, fontSize:12}}
                         value={d.date || ""} onChange={e=>updateDay(i,"date",e.target.value)}/>
                       {d.date && formatDayDate(d.date) && <span style={{ fontSize:10, color:G.gray400, marginTop:2 }}>Shows as {formatDayDate(d.date)}</span>}
                     </div>

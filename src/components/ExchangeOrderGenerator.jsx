@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const {
   SERVICE_TYPES, VENDOR_TYPES, DEFAULT_EXCHANGE_TEMPLATE, OtherInput, VersionDropdown, ExportMenu, G,
   LOGO_B64, STAMP_B64, WATERMARK_TEXT, formatDateDMY, formatDateSlash,
@@ -500,7 +501,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
     <div style={{ background: G.gray50, border: `1px solid ${G.gray200}`, borderRadius: 10, padding: 16 }}>
       {secHead("📋 Order Details")}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        <div>{label("Issue Date")}<input type="date" style={inp} value={form.issueDate} onChange={e => setF("issueDate", e.target.value)} /></div>
+        <div>{label("Issue Date")}<DateInput  style={inp} value={form.issueDate} onChange={e => setF("issueDate", e.target.value)} /></div>
         <div>
           {label("Type of Service")}
           <select style={inp} value={form.serviceType} onChange={e => setServiceType(e.target.value)} disabled={readOnly}>
@@ -532,7 +533,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, marginBottom: 8 }}>ARRIVAL</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>{label("Date")}<input type="date" style={inp} value={form.arrivalDate} onChange={e => setF("arrivalDate", e.target.value)} /></div>
+            <div>{label("Date")}<DateInput  style={inp} value={form.arrivalDate} onChange={e => setF("arrivalDate", e.target.value)} /></div>
             <div>{label("Time")}<input type="time" style={inp} value={form.arrivalTime} onChange={e => setF("arrivalTime", e.target.value)} /></div>
             <div>{label("From")}<input style={inp} value={form.arrivalFrom} onChange={e => setF("arrivalFrom", e.target.value)} placeholder="e.g. LEH" /></div>
             <div>{label("By")}<input style={inp} value={form.arrivalBy} onChange={e => setF("arrivalBy", e.target.value)} placeholder="e.g. Flight" /></div>
@@ -541,7 +542,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: G.gray600, marginBottom: 8 }}>DEPARTURE</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>{label("Date")}<input type="date" style={inp} value={form.departureDate} onChange={e => setF("departureDate", e.target.value)} /></div>
+            <div>{label("Date")}<DateInput  style={inp} value={form.departureDate} onChange={e => setF("departureDate", e.target.value)} /></div>
             <div>{label("Time")}<input type="time" style={inp} value={form.departureTime} onChange={e => setF("departureTime", e.target.value)} /></div>
             <div>{label("To")}<input style={inp} value={form.departureTo} onChange={e => setF("departureTo", e.target.value)} placeholder="e.g. HONGKONG" /></div>
             <div>{label("By")}<input style={inp} value={form.departureBy} onChange={e => setF("departureBy", e.target.value)} placeholder="e.g. Flight" /></div>

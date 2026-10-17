@@ -75,7 +75,7 @@ describe('ServicesList: the service itself (name and date) is now editable too, 
     render(<ServicesList query={fakeQuery} sec={sec} readOnly={true}/>);
     const nameInput = await waitFor(() => screen.getByDisplayValue('Hotel — Primary Hotel (Night 1–2)'));
     expect(nameInput.disabled).toBe(true);
-    const dateInputs = document.querySelectorAll('input[type="date"]');
+    const dateInputs = document.querySelectorAll('input[placeholder="dd/mm/yyyy"]');
     expect(dateInputs[0].disabled).toBe(true);
   });
 });

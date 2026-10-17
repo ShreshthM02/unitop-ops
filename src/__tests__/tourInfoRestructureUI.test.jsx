@@ -154,7 +154,7 @@ describe('Hotels + Meals tab', () => {
     fireEvent.click(screen.getByText('+ Add row'));
     const rows = screen.getAllByTestId('hotel-row');
     expect(rows).toHaveLength(2);
-    expect(within(rows[1]).getByLabelText('Date').value).toBe('2026-10-01'); // same day as the row above
+    expect(within(rows[1]).getByLabelText('Date').value).toBe('01/10/2026'); // same day as the row above
     fireEvent.click(within(rows[1]).getByLabelText('Remove row'));
     expect(screen.getAllByTestId('hotel-row')).toHaveLength(1);
   });
@@ -183,7 +183,7 @@ describe('Hotels + Meals tab', () => {
     fireEvent.click(screen.getByText('+ Add row'));
     const row = screen.getByTestId('hotel-row');
     fireEvent.change(within(row).getByLabelText('Day'), { target: { value: 'Day 2' } });
-    expect(within(row).getByLabelText('Date').value).toBe('2026-10-02');
+    expect(within(row).getByLabelText('Date').value).toBe('02/10/2026');
     fireEvent.change(within(row).getByLabelText('Hotel name'), { target: { value: 'Taj' } });
     fireEvent.change(within(row).getByLabelText('Rooming'), { target: { value: '5 Twin' } });
     fireEvent.change(within(row).getByLabelText('Breakfast'), { target: { value: 'At hotel' } });
@@ -212,8 +212,8 @@ describe('Others tab', () => {
     render(<QueryDrawerWithQuote {...props()} />);
     openOthers();
     fireEvent.click(screen.getByText('+ Add Transporter'));
-    expect(screen.getByLabelText('Start date').value).toBe('2026-10-01');
-    expect(screen.getByLabelText('End date').value).toBe('2026-10-03'); // 2 nights
+    expect(screen.getByLabelText('Start date').value).toBe('01/10/2026');
+    expect(screen.getByLabelText('End date').value).toBe('03/10/2026'); // 2 nights
   });
 
   it('moving the start past the end drags the end along, so a window is never inverted', () => {
@@ -221,7 +221,7 @@ describe('Others tab', () => {
     openOthers();
     fireEvent.click(screen.getByText('+ Add Facilitator'));
     fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-05' } });
-    expect(screen.getByLabelText('End date').value).toBe('2026-10-05');
+    expect(screen.getByLabelText('End date').value).toBe('05/10/2026');
   });
 
   it('warns on an entry with no dates, since it will not show on Ground View', () => {
@@ -265,7 +265,7 @@ describe('Others tab', () => {
     openOthers();
     fireEvent.click(screen.getByText('+ Add Other Service'));
     const card = screen.getByTestId('other-service');
-    expect(within(card).getByLabelText('Start date').value).toBe('2026-10-01');
+    expect(within(card).getByLabelText('Start date').value).toBe('01/10/2026');
     expect(card.querySelector('[contenteditable]')).toBeTruthy(); // the rich-text editor
     fireEvent.click(screen.getByText('💾 Save Others'));
     expect(onUpdate.mock.calls[0][1].otherServices).toHaveLength(1);

@@ -173,14 +173,5 @@ export function seriesSummary(groups) {
   return `${c.all} service${c.all === 1 ? "" : "s"} · ${c.confirmed} confirmed · ${c.open} open` + (c.soldout ? ` · ${c.soldout} sold out` : "") + (c.cancelled ? ` · ${c.cancelled} cancelled` : "");
 }
 
-// ── dd/mm/yyyy ──
-export function formatDMY(iso) { return /^\d{4}-\d{2}-\d{2}/.test(iso || "") ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : ""; }
-// Accepts 5/3/2027, 05-03-2027, 05.03.27. Returns ISO or "" when it isn't a real date.
-export function parseDMY(text) {
-  const m = /^\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})\s*$/.exec(text || "");
-  if (!m) return "";
-  const d = +m[1], mo = +m[2], y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return "";
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
+// dd/mm/yyyy helpers live in dateUtils.js
+export { formatDMY, parseDMY } from "./dateUtils.js";

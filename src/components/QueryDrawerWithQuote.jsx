@@ -6,6 +6,7 @@ import { DocRegistryInline } from './DocumentRegistry.jsx';
 import { ServicesList } from './ServicesList.jsx';
 import PricingTimeline from './PricingTimeline.jsx';
 import { HotelsMealsPanel, OtherServicesPanel, DateRangeFields, FlightLegFields, ReorderControls, useReorder, VendorOrCustomSelect, TourInfoSaveBar } from './TourInfoPanels.jsx';
+import DateInput from '../lib/DateInput.jsx';
 
 export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdvance, onGenerateQuote, onToggleWF, onCancel, currentUser, onUpdateRemarks, onUpdateQuery, onRecoverQuery, onForceMoveStage, onPromoteSeriesMaster, onApplySeriesMaster, tourExecution, onUpdateTourExecution, vendors, staff, series, agents, queries, costSheetExists, quotationExists, hasPayments, payments }) {
   const isCaseFile   = !!query.tourFileId;
@@ -310,8 +311,8 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     </div>
                     <div>
                       <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Travel Date</div>
-                      <input style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800}}
-                        type="date" value={editForm.travelDate||""} onChange={e=>setEF("travelDate",e.target.value)}/>
+                      <DateInput style={{padding:"6px 8px",border:`1px solid ${G.gray200}`,borderRadius:5,fontSize:12,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800}}
+                         value={editForm.travelDate||""} onChange={e=>setEF("travelDate",e.target.value)}/>
                     </div>
                     <div style={{gridColumn:"1/-1"}}>
                       <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Date Display / Period</div>
@@ -516,7 +517,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                     <div key={d.id} {...dayReorder.rowProps(i)} data-testid="itinerary-row" style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr 2fr auto",gap:6,marginBottom:6,background:G.gray50,padding:8,borderRadius:6,border:`1px solid ${G.gray200}`}}>
                       <ReorderControls index={i} count={te.days.length} onMove={moveDay} handleProps={dayReorder.handleProps(i)}/>
                       <input style={teInp} value={d.dayLabel} onChange={e=>updDay(i,"dayLabel",e.target.value)}/>
-                      <input style={teInp} type="date" value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
+                      <DateInput style={teInp}  value={d.date||""} onChange={e=>updDay(i,"date",e.target.value)}/>
                       <input style={teInp} value={d.route||""} placeholder="e.g. Delhi – Agra" onChange={e=>updDay(i,"route",e.target.value)}/>
                       {!query.cancelled && <span style={{cursor:"pointer",color:G.gray400,fontSize:14,alignSelf:"center"}} onClick={()=>rmDay(i)}>✕</span>}
                       <input style={{...teInp,gridColumn:"2 / -1"}} aria-label="Notes" value={d.notes||""} placeholder="Notes for this day (shown on Ground View)" onChange={e=>updDay(i,"notes",e.target.value)}/>
@@ -588,7 +589,7 @@ export default function QueryDrawerWithQuote({ query, onClose, onConvert, onAdva
                   {te.flights.map((f,i)=>(
                     <div key={f.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:6,padding:8,marginBottom:6}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:6,marginBottom:6}}>
-                        <input style={teInp} type="date" value={f.date||""} onChange={e=>updList("flights",i,"date",e.target.value)}/>
+                        <DateInput style={teInp}  value={f.date||""} onChange={e=>updList("flights",i,"date",e.target.value)}/>
                         <select style={teInp} value={f.type||"Flight"} onChange={e=>updList("flights",i,"type",e.target.value)}>
                           <option>Flight</option><option>Train</option>
                         </select>

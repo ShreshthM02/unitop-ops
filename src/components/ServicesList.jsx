@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadQueryServices, saveQueryServices, logAudit, db, formatDateSlash, reorderArray, queueSequential, SERVICE_STATUSES, SERVICE_STATUS_COLORS, serviceStatusTone, RichTextEditor } = Lib;
 import StatusSelect from './StatusSelect.jsx';
+import DateInput from '../lib/DateInput.jsx';
 
 export function ServicesList({ query, sec, currentUser, readOnly }) {
   const DEFAULT_SERVICES = [
@@ -113,7 +114,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
                   ⛓ {[s.date&&(formatDateSlash(s.date)+(s.dateTo?" – "+formatDateSlash(s.dateTo):"")), s.reservationNo&&`Res. ${s.reservationNo}`, s.rates&&`Rates: ${s.rates}`].filter(Boolean).join(" · ")||"Series booking"}
                   <span style={{color:G.gray400}}> · edit in Series → Bookings</span>
                 </div>
-              ) : <input type="date" value={s.date||""} disabled={readOnly}
+              ) : <DateInput  value={s.date||""} disabled={readOnly}
                 onChange={e=>setServices(prev=>prev.map((x,xi)=>xi===i?{...x,date:e.target.value}:x))}
                 onBlur={()=>persist(services)}
                 style={{fontSize:11,color:G.gray400,border:"none",outline:"none",background:"transparent",
@@ -153,7 +154,7 @@ export function ServicesList({ query, sec, currentUser, readOnly }) {
             </div>
             <div>
               <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Date</div>
-              <input style={inp} type="date" value={newSvc.date} onChange={e=>setNewSvc(p=>({...p,date:e.target.value}))}/>
+              <DateInput style={inp}  value={newSvc.date} onChange={e=>setNewSvc(p=>({...p,date:e.target.value}))}/>
             </div>
             <div>
               <div style={{fontSize:10,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3}}>Status</div>

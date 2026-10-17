@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, RichTextEditor, formatDateDMY, buildDownloadFilename, db, formatDateSlash } = Lib;
 
 const HOTEL_STATUS_OPTIONS = ["Requested","Available","Confirmed","Waitlisted","Sold Out","Cancelled"];
@@ -527,7 +528,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
                   </div>
                   {g.items.map((it,ii)=><div key={it.id} style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:6}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr auto",gap:6}}>
                     <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Day</div><input style={inp} value={it.day||""} onChange={e=>updOItem(gi,ii,"day",e.target.value)}/></div>
-                    <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Date</div><input style={inp} type="date" value={it.date||""} onChange={e=>updOItem(gi,ii,"date",e.target.value)}/></div>
+                    <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Date</div><DateInput style={inp}  value={it.date||""} onChange={e=>updOItem(gi,ii,"date",e.target.value)}/></div>
                     <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Description</div><input style={inp} value={it.description||""} onChange={e=>updOItem(gi,ii,"description",e.target.value)}/></div>
                     <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}><span style={{cursor:"pointer",color:G.gray400,fontSize:14}} onClick={()=>removeOItem(gi,ii)}>✕</span></div>
                   </div></div>)}
@@ -543,7 +544,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
                   <thead><tr style={{background:G.navy}}>{["Day","Date","Itinerary","☕ Breakfast","🍽 Lunch","🍛 Dinner","Notes",""].map(h=><th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
                   <tbody>{mealDays.map((r,i)=><tr key={r.id} style={{background:i%2===0?G.white:G.gray50}}>
                     <td style={{padding:"3px 4px"}}><input style={{...inp,width:52}} value={r.day} onChange={e=>updM(i,"day",e.target.value)}/></td>
-                    <td style={{padding:"3px 4px"}}><input style={{...inp,width:86}} type="date" value={r.date} onChange={e=>updM(i,"date",e.target.value)}/></td>
+                    <td style={{padding:"3px 4px"}}><DateInput style={{...inp,width:86}}  value={r.date} onChange={e=>updM(i,"date",e.target.value)}/></td>
                     <td style={{padding:"3px 4px",minWidth:120}}><input style={inp} value={r.itinerary||""} onChange={e=>updM(i,"itinerary",e.target.value)} placeholder="e.g. Delhi → Agra"/></td>
                     <td style={{padding:"3px 4px"}}><input style={inp} value={r.breakfast} onChange={e=>updM(i,"breakfast",e.target.value)} placeholder="Venue"/></td>
                     <td style={{padding:"3px 4px"}}><input style={inp} value={r.lunch} onChange={e=>updM(i,"lunch",e.target.value)} placeholder="Venue"/></td>

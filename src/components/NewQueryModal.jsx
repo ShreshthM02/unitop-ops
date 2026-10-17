@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, NATIONALITIES, nightsDaysLabel } = Lib;
 
 export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, series, queries }) {
@@ -277,8 +278,8 @@ export default function NewQueryModal({ onClose, onSave, nextId, agents, staff, 
           </div>
           {form.dateKnown ? (
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <div>{sl("From")}<input style={inp} type="date" value={form.travelDateFrom} max={form.travelDateTo||undefined} onChange={e=>set("travelDateFrom",e.target.value)}/></div>
-              <div>{sl("To")}<input style={inp} type="date" value={form.travelDateTo} min={form.travelDateFrom||undefined} onChange={e=>set("travelDateTo",e.target.value)}/></div>
+              <div>{sl("From")}<DateInput style={inp}  value={form.travelDateFrom} max={form.travelDateTo||undefined} onChange={e=>set("travelDateFrom",e.target.value)}/></div>
+              <div>{sl("To")}<DateInput style={inp}  value={form.travelDateTo} min={form.travelDateFrom||undefined} onChange={e=>set("travelDateTo",e.target.value)}/></div>
             </div>
           ) : (
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const { G, RichTextEditor, blankHotelRow, moveItem, getHotelRows, tourDateRange } = Lib;
 
 // Building blocks for the reworked Tour Info tabs (2026-10-06). Kept out of
@@ -59,10 +60,10 @@ export function DateRangeFields({ start, end, onChange }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
       <span style={{ ...labelStyle, marginBottom: 0 }}>From</span>
-      <input type="date" aria-label="Start date" value={start || ""} style={{ ...inputStyle, width: 140 }}
+      <DateInput  aria-label="Start date" value={start || ""} style={{ ...inputStyle, width: 140 }}
         onChange={e => { const s = e.target.value; onChange({ startDate: s, endDate: (!end || (s && end < s)) ? s : end }); }} />
       <span style={{ ...labelStyle, marginBottom: 0 }}>To</span>
-      <input type="date" aria-label="End date" value={end || ""} min={start || undefined} style={{ ...inputStyle, width: 140, borderColor: bad ? "#C0392B" : G.gray200 }}
+      <DateInput  aria-label="End date" value={end || ""} min={start || undefined} style={{ ...inputStyle, width: 140, borderColor: bad ? "#C0392B" : G.gray200 }}
         onChange={e => onChange({ startDate: start || e.target.value, endDate: e.target.value })} />
       {bad && <span style={{ fontSize: 10, color: "#C0392B" }}>End is before start</span>}
       {!start && !end && <span style={{ fontSize: 10, color: "#B9770E" }}>No dates: won't show on Ground View</span>}
@@ -77,7 +78,7 @@ export function FlightLegFields({ leg, onChange }) {
   return (
     <div style={{ background: G.gray50, border: `1px solid ${G.gray200}`, borderRadius: 6, padding: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6 }}>
-        <input style={inputStyle} type="date" aria-label="Date" value={l.date || ""} onChange={e => onChange({ date: e.target.value })} />
+        <DateInput style={inputStyle}  aria-label="Date" value={l.date || ""} onChange={e => onChange({ date: e.target.value })} />
         <select style={inputStyle} aria-label="Type" value={l.type || "Flight"} onChange={e => onChange({ type: e.target.value })}>
           <option>Flight</option><option>Train</option>
         </select>
@@ -159,7 +160,7 @@ export function HotelsMealsPanel({ te, onChange, quotationSource, onSync, readOn
                   {!labelKnown && <option value={r.dayLabel}>{r.dayLabel}</option>}
                   {days.map(d => <option key={d.id} value={d.dayLabel}>{d.dayLabel}</option>)}
                 </select>
-                <input style={inputStyle} type="date" aria-label="Date" value={r.date || ""} onChange={e => update(i, { date: e.target.value })} />
+                <DateInput style={inputStyle}  aria-label="Date" value={r.date || ""} onChange={e => update(i, { date: e.target.value })} />
                 <input style={inputStyle} aria-label="Hotel name" value={r.hotelName || ""} placeholder="Hotel name" onChange={e => update(i, { hotelName: e.target.value })} />
                 <input style={inputStyle} aria-label="Rooming" value={r.rooms || ""} placeholder="e.g. 5 Twin, 1 Sgl" onChange={e => update(i, { rooms: e.target.value })} />
                 <input style={inputStyle} aria-label="Breakfast" value={r.breakfast || ""} placeholder="—" onChange={e => update(i, { breakfast: e.target.value })} />

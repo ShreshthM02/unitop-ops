@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import * as Lib from '../lib/index.js';
+import DateInput from '../lib/DateInput.jsx';
 const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash, FileRemark,
   FLEET_PROFILE_FIELDS, blankVehicle, loadFleetVehicles, saveFleetVehicle, loadFleetRows, saveFleetRow, deleteFleetRow,
   mapDbFleetServiceRow, fleetServiceRowToDb, mapDbFleetExpenseRow, fleetExpenseRowToDb, newFleetId, vehicleFolderName,
@@ -159,8 +160,8 @@ function ExpenseLedgerTab({ vehicle, canEdit }) {
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", background: "#F8FAFC", border: `1px solid ${G.gray200}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
-        <div><div style={lbl}>From</div><input aria-label="Filter from date" style={{ ...inp, width: 150 }} type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
-        <div><div style={lbl}>To</div><input aria-label="Filter to date" style={{ ...inp, width: 150 }} type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+        <div><div style={lbl}>From</div><DateInput aria-label="Filter from date" style={{ ...inp, width: 150 }}  value={from} onChange={e => setFrom(e.target.value)} /></div>
+        <div><div style={lbl}>To</div><DateInput aria-label="Filter to date" style={{ ...inp, width: 150 }}  value={to} onChange={e => setTo(e.target.value)} /></div>
         {filtered && <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setFrom(""); setTo(""); }}>Clear</button>}
         <div style={{ flex: 1 }} />
         <div style={{ textAlign: "right" }}>
