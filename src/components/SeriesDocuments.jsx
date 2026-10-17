@@ -46,7 +46,6 @@ export default function SeriesDocuments({ series, queries, currentUser, canEdit 
     { icon: "📊", name: "Cost Sheet", panel: "costsheet", v: versions.costsheet },
     { icon: "📋", name: "Quotation", panel: "quotation", v: versions.quotation },
     { icon: "🗺", name: "Itinerary", panel: "itinerary", v: versions.itinerary },
-    { icon: "📋", name: "Tour Briefing Sheet", panel: "tourbriefing" },
   ];
 
   return (

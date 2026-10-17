@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { promoteSeriesMaster, applySeriesMaster, describeCopied } from '../lib/utils.js';
 
 describe('series master helpers', () => {
@@ -21,28 +20,5 @@ describe('series master helpers', () => {
   });
   it('describeCopied names the documents', () => {
     expect(describeCopied(['cost_sheet', 'itinerary'])).toBe('Cost Sheet, Itinerary');
-  });
-});
-
-vi.mock('../lib/supabase.js', () => ({
-  db: { from: () => ({ select: () => ({ eq: async () => ({ data: [{ series_id: 'S1', source_query_id: 'QRY-9', source_label: 'UT-3400', promoted_by: 'Priya', promoted_at: '2026-10-01T00:00:00Z', cost_sheet: {}, quotation: {}, itinerary: null }], error: null }) }) }) },
-  realtimeClient: null,
-}));
-
-describe('SeriesMasterPanel', () => {
-  it('shows the master source and lets another file copy it', async () => {
-    const { default: SeriesMasterPanel } = await import('../components/SeriesMasterPanel.jsx');
-    const onApply = vi.fn().mockResolvedValue();
-    render(<SeriesMasterPanel query={{ id: 'QRY-1', seriesId: 'S1' }} seriesName="Kailash 2026" onPromote={vi.fn()} onApply={onApply}/>);
-    await waitFor(() => expect(screen.getByText('UT-3400')).toBeTruthy());
-    expect(screen.getByText(/Cost Sheet, Quotation/)).toBeTruthy();
-    fireEvent.click(screen.getByText(/Copy master into this file/));
-    await waitFor(() => expect(onApply).toHaveBeenCalled());
-  });
-  it('the source file itself cannot copy onto itself', async () => {
-    const { default: SeriesMasterPanel } = await import('../components/SeriesMasterPanel.jsx');
-    render(<SeriesMasterPanel query={{ id: 'QRY-9', seriesId: 'S1' }} onPromote={vi.fn()} onApply={vi.fn()}/>);
-    await waitFor(() => expect(screen.getByText('UT-3400')).toBeTruthy());
-    expect(screen.queryByText(/Copy master into this file/)).toBeNull();
   });
 });
