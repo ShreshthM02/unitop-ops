@@ -6,8 +6,7 @@ const {
   buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx,
   DEFAULT_PROFORMA_TEMPLATE, DEFAULT_TAXINVOICE_TEMPLATE, nextInvoiceNo, nextDocNumber, nextDocNumberAtomic, buildDownloadFilename, numToWords, formatDateDMY, formatDateSlash, isIsoDateString,
   loadInvoiceVersions, saveInvoiceVersion, markInvoiceVersionFinal, loadExistingInvoiceNumbers,
-  logAudit, db, nightsDaysLabel,
-} = Lib;
+  logAudit, db, nightsDaysLabel, useUnsavedGuard } = Lib;
 
 const CUSTOM_PARTY = "__custom__";
 const inp = { padding: "6px 8px", border: `1px solid ${G.gray200}`, borderRadius: 5, fontSize: 12, fontFamily: "'Inter',sans-serif", width: "100%", outline: "none", color: G.gray800, background: G.white };
@@ -213,19 +212,21 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
     const inv = docFlavor === "proforma" ? pInv : tInv;
     if (!inv.invoiceNo) {
       alert("Still preparing a safe invoice number, please wait a moment and try again.");
-      return;
+      return false;
     }
     setSaving(true);
     const { invoiceNo, ...rest } = inv;
     const content = { ...rest, shared };
     const snap = { version, invoiceNo, content };
-    saveInvoiceVersion(db, query.id, docFlavor, snap, currentUser?.id).then(({ error }) => {
+    return saveInvoiceVersion(db, query.id, docFlavor, snap, currentUser?.id).then(({ error }) => {
       setSaving(false);
-      if (error) { alert(`Failed to save: ${error}`); return; }
+      if (error) { alert(`Failed to save: ${error}`); return false; }
       logAudit(db, query.id, currentUser?.name, `${docFlavor === "proforma" ? "Proforma Invoice" : "Tax Invoice"} v${version} saved (${invoiceNo})`);
       refreshVersions(docFlavor);
+      return true;
     });
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "invoice", onClose, onSave: () => saveVersion(), snapshot: { pInv, tInv, shared } });
 
   const onMarkFinal = (v) => {
     if (readOnly) return;
@@ -528,9 +529,9 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{query.tourFileId||query.id}{query.nights?" · "+nightsDaysLabel(query.nights):""}</div>
           </div>
           <VersionDropdown versions={versions} viewingVersion={viewingVersion} displayVersion={version} finalVersion={finalVersion}
-            onSelectVersion={loadVersionIntoDraft} onMarkFinal={onMarkFinal} readOnly={readOnly} G={G} />
+            onSelectVersion={(v)=>{loadVersionIntoDraft(v);guard.rebase();}} onMarkFinal={onMarkFinal} readOnly={readOnly} G={G} />
           {!readOnly && <button onClick={saveVersion} disabled={saving} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", fontSize: 11 }}>{saving ? "Saving…" : `💾 Save v${version}`}</button>}
-          <button onClick={onClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
+          {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
         </div>
 
         {/* Pro-Forma / Tax Invoice flavor toggle -- same pattern as Itinerary's Brief/Detailed */}
@@ -712,7 +713,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
         )}
 
         <div style={{ padding: "12px 20px", borderTop: `1px solid ${G.gray200}`, display: "flex", gap: 10, flexShrink: 0, background: G.gray50 }}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
           <div style={{ flex: 1 }} />
           <ExportMenu G={G} actions={[
             { id: "pdf", label: "PDF", icon: "📕", onSelect: handlePrint, hint: "Opens your browser's print dialog" },

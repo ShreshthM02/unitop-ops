@@ -3,7 +3,7 @@ import * as Lib from '../lib/index.js';
 import { makeCalculators } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash, useDragReorder } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash, useDragReorder , useUnsavedGuard } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
   const n = v => parseFloat(v)||0;
@@ -175,7 +175,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // in the Final Price Summary below, alongside the group slabs, with its
   // own label -- not a separate reference number.
   const [tlSlabs, setTlSlabs] = useState([]);
-  const monDr = useDragReorder(setMonuments), tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras), slabDr = useDragReorder(setSlabs), tlDr = useDragReorder(setTlSlabs);
+  const monDr = useDragReorder(setMonuments), tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras), slabDr = useDragReorder(setSlabs), tlDr = useDragReorder(setTlSlabs), dayDr = useDragReorder(setDays);
   const scrollRestoreRef = useRef(null);
   useLayoutEffect(() => {
     if (scrollRestoreRef.current) {
@@ -352,19 +352,23 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const saveVersion = () => {
     const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName, docNotes };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
-    saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(({ id, error }) => {
+    const savePromise = saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(({ id, error }) => {
       // saveCostSheetVersion now reports insert failures instead of
       // swallowing them -- previously a failed save returned null here and
       // was indistinguishable from a version that simply had no id yet.
-      if (error) { setSaveError(error); return; }
+      if (error) { setSaveError(error); return false; }
       setSaveError(null);
       if (id) setLastSavedCostSheetId(id);
+      return true;
     });
     logAudit(db, query.id, currentUser?.name, `Cost Sheet v${version} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(version);
     setVersionNote("");
     setVersion(v=>v+1);
+    return savePromise;
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "Cost Sheet", onClose, onSave: () => saveVersion(),
+    snapshot: { slabs, days, transports, gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments, localHandlers, extras, tlSlabs, clientAgentName, assignedStaffName, docNotes } });
 
   const inp = {padding:"4px 6px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
 
@@ -604,7 +608,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             viewingVersion={viewingVersion}
             displayVersion={version}
             finalVersion={finalVersion}
-            onSelectVersion={loadVersionIntoDraft}
+            onSelectVersion={(v)=>{loadVersionIntoDraft(v);guard.rebase();}}
             onMarkFinal={(v) => {
               setFinalVersion(v.version);markCostSheetVersionFinal(db,query.id,v.version);
               logAudit(db,query.id,currentUser?.name,`Cost Sheet v${v.version} marked final`);
@@ -613,7 +617,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             G={G}
           />
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
-          <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
+          {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
 
         {readOnly && (
@@ -703,14 +707,15 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:820}}>
               <thead>
                 <tr style={{background:G.gray50}}>
-                  {["Day","Date","Movement","Meal Plan","Meal Cost","Hotel Name","Alt Hotel","Plan","Net PP","Sngl Supp","Notes",""].map(h=>(
+                  {["","Day","Date","Movement","Meal Plan","Meal Cost","Hotel Name","Alt Hotel","Plan","Net PP","Sngl Supp","Notes",""].map(h=>(
                     <th key={h} style={{padding:"5px 4px",fontSize:10,fontWeight:600,color:G.gray600,borderBottom:`1px solid ${G.gray200}`,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {days.map((d,i)=>(
-                  <tr key={d.id} style={{background:i%2===0?G.white:G.gray50}}>
+                  <tr key={d.id} {...dayDr.row(i,{background:i%2===0?G.white:G.gray50})}>
+                    <td style={{padding:"2px 2px",width:16,textAlign:"center"}}><span {...dayDr.grip(i)}>⠿</span></td>
                     <td style={{padding:"2px 3px",width:48}}><input style={{...inp,width:44,textAlign:"center"}} value={d.day} onChange={e=>updateDay(i,"day",e.target.value)}/></td>
                     <td style={{padding:"2px 3px",width:100}}><DateInput style={{...inp,fontSize:10}}  value={d.date||""} onChange={e=>updateDay(i,"date",e.target.value)}/></td>
                     <td style={{padding:"2px 3px",minWidth:130}}><input style={inp} value={d.movement} onChange={e=>updateDay(i,"movement",e.target.value)} placeholder="Movement / destination"/></td>
@@ -799,7 +804,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                   </tr>
                 ))}
                 <tr style={{background:G.gray100,fontWeight:700}}>
-                  <td colSpan={3} style={{padding:"5px 4px",fontSize:11,color:G.gray600}}>TOTALS</td>
+                  <td colSpan={4} style={{padding:"5px 4px",fontSize:11,color:G.gray600}}>TOTALS</td>
                   <td></td>
                   <td style={{padding:"5px 4px",textAlign:"right",fontSize:11}}>{totMeal>0?`₹ ${totMeal.toLocaleString()}`:"—"}</td>
                   <td colSpan={3}></td>
@@ -1113,7 +1118,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         </fieldset>
 
         <div style={{padding:"12px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50,alignItems:"center"}}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
           <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
             disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>

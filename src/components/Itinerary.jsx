@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import DateInput from '../lib/DateInput.jsx';
-const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, resolveDayPhotos, MAX_DAY_PHOTOS, formatDayDate, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel } = Lib;
+const { G, DEFAULT_ITINERARY_TEMPLATE, STAMP_B64, LOGO_B64, LOGO_TRANSPARENT_B64, SOUTH_ASIA_LAND, INDIA_STATE_BORDERS, INDIA_STATE_LABELS, useLetterheadToggles, VersionDropdown, DayItemsEditor, ItemIcon, itineraryItemHTML, LetterheadToggleBar, DocTabBar, DocPreviewFrame, printHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, loadItineraryVersions, saveItineraryVersion, markItineraryVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractItineraryBuilderDaysFromCostSheet, loadPhotoLibrary, uploadLibraryPhoto, deleteLibraryPhoto, resolveDayImages, resolveDayPhotos, MAX_DAY_PHOTOS, formatDayDate, dayImageTextCandidates, buildBrochureDocument, computeBrochureFacts, STAT_FIELDS, brochureCSS, BROCHURE_CONTENT_WIDTH_PX, createMeasurementContext, domMeasureHeightPx, ExportMenu, logAudit, PlacePicker, PhotoPicker, DayPlacesEditor, fetchPlaceCandidates, searchGazetteerDb, fetchGazetteerInBBox, saveCustomPlace, buildMapDataFromResolvedDays, buildRouteMapSVG, computeBBox, buildSectorTableHTML, gatewayNoteHTML, partitionGateways, RichTextEditor, buildDownloadFilename, db, gazetteerDb, realtimeClient, daysFromNights, nightsDaysLabel , useUnsavedGuard } = Lib;
 
 // Itinerary -- merges what used to be two separate documents, Brief
 // Itinerary and Detailed Itinerary, into one. They always shared the same
@@ -232,13 +232,16 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     setSaving(false);
     if (error) {
       setSaveError(error);
-      return;
+      return false;
     }
     setVersions(p => [...p, { ...snap, date: new Date().toLocaleString("en-IN") }]);
     logAudit(db, query.id, currentUser?.name, `Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(nextVersion);
     setVersionNote("");
+    return true;
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "itinerary", onClose, onSave: () => saveVersion(),
+    snapshot: { tourTitle, tagline, route, duration, itinDays, briefClosingText, detailedClosingText, briefRemarks, detailedRemarks, routeMapImage, dayImageOverrides, coverImageOverride } });
 
   const updateDay = (i, field, val) => setItinDays(prev => prev.map((d,idx) => idx===i ? {...d,[field]:val} : d));
   const MEAL_ORDER = { B: 0, L: 1, D: 2 };
@@ -607,7 +610,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
               viewingVersion={viewingVersion}
               displayVersion={nextVersion-1}
               finalVersion={finalVersion}
-              onSelectVersion={loadVersionIntoDraft}
+              onSelectVersion={(v)=>{loadVersionIntoDraft(v);guard.rebase();}}
               onMarkFinal={(v) => {
                 markItineraryVersionFinal(db,query.id,v.version,v.activeTab || docFlavor);
                 setVersions(prev => prev.map(x =>
@@ -619,7 +622,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
               G={G}
             />
             {!readOnly && <button onClick={saveVersion} disabled={saving} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>{saving ? "Saving…" : `💾 Save v${nextVersion}`}</button>}
-            <button onClick={onClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
+            {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost" style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
           </div>
           {isStaleVsCostSheet && !readOnly && (
             <div style={{background:"#FEF9E7",border:"1px solid #F7DC6F",borderRadius:6,padding:"6px 10px",fontSize:10.5,color:"#7D6608",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
@@ -816,7 +819,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
         )}
 
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${G.gray200}`, display:"flex", gap:10, flexShrink:0, background:G.gray50 }}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
           <div style={{ flex:1 }}/>
           <ExportMenu G={G} actions={[
             { id:"brief-pdf",  label:"Brief PDF",       icon:"📕", onSelect: printBrief,     hint:"Plain letterhead, no photos" },

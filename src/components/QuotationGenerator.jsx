@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import DateInput from '../lib/DateInput.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, formatDateDayDMY, cascadeItineraryDates, isIsoDateString, reorderArray, hotelPropertyLabel } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, useLetterheadToggles, LetterheadToggleBar, DocPreviewFrame, VersionDropdown, loadQuotationVersions, saveQuotationVersion, markQuotationVersionFinal, computeFinalPriceTotals, isFinalPriceComplete, loadFinalPriceAgreementAudits, logFinalPriceAgreementChange, logAudit, updateFinalPriceAgreement, loadCostSheetVersions, mapDbCostSheetRow, calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX, extractItineraryFromCostSheetDays, extractHotelsFromCostSheetDays, buildDocxBlobFromBodyBlocks, downloadDocx, buildAddresseeBlock, ExportMenu, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, formatDateSlash, formatDateDayDMY, cascadeItineraryDates, isIsoDateString, reorderArray, hotelPropertyLabel , useUnsavedGuard } = Lib;
 
 export default function QuotationGenerator({ query, template, costSheetId, onClose, onSaved, currentUser, readOnly, onUpdateQuery, signatures, docSettings }) {
   const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
@@ -294,7 +294,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     setSaveError(null);
     const { error } = await saveQuotationVersion(db, query.id, snap, currentUser?.id);
     setSaving(false);
-    if (error) { setSaveError(error); return; }
+    if (error) { setSaveError(error); return false; }
     setVersions(p => [...p.filter(v => v.version !== version), snap]);
     logAudit(db, query.id, currentUser?.name, `Quotation v${version} saved${versionNote?" — "+versionNote:""}`);
     if (q.finalPriceEntries.length > 0) {
@@ -305,7 +305,9 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     setVersionNote("");
     setVersion(v => v + 1);
     onSaved && onSaved(q);
+    return true;
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "Quotation", onClose, onSave: () => saveVersion(), snapshot: q });
 
   const [activeTab,    setActiveTab]    = useState('content');
   const toggles = useLetterheadToggles();
@@ -718,7 +720,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
             viewingVersion={viewingVersion}
             displayVersion={version}
             finalVersion={finalVersion}
-            onSelectVersion={loadVersionIntoDraft}
+            onSelectVersion={(v)=>{loadVersionIntoDraft(v);guard.rebase();}}
             onMarkFinal={(v) => {
               if (!isFinalPriceComplete(v.finalPriceEntries)) {
                 alert('Before marking this version final: open it, go to the "Final Price" tab, add at least one rate line with pax and rate filled in, then save it again.');
@@ -745,7 +747,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
               {pulling ? "Pulling…" : "↻ Pull from Cost Sheet"}
             </button>
           )}
-          <button onClick={onClose} className="btn btn-ghost"
+          {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost"
             style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none" }}>✕</button>
         </div>
 
@@ -1219,7 +1221,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
         {/* Footer */}
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${G.gray200}`, display:"flex",
           gap:10, flexShrink:0, background:G.gray50, alignItems:"center" }}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
           <input value={versionNote} onChange={e=>setVersionNote(e.target.value)} placeholder="Why this version? e.g. client requested discount"
             disabled={readOnly}
             style={{flex:1,padding:"7px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none"}}/>

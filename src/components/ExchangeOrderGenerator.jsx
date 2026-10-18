@@ -6,8 +6,7 @@ const {
   LOGO_B64, STAMP_B64, WATERMARK_TEXT, formatDateDMY, formatDateSlash,
   loadExchangeOrdersForTourFile, loadExchangeOrderVersionHistory, nextExchangeOrderNo, groupExchangeOrderVersions,
   saveExchangeOrderVersion, markExchangeOrderVersionFinal, updateExchangeOrderRowContent,
-  DEFAULT_DOC_SETTINGS, logAudit, db,
-} = Lib;
+  DEFAULT_DOC_SETTINGS, logAudit, db, useUnsavedGuard } = Lib;
 
 // Inline (not CSS background-image) tiled watermark, sized to the exact
 // page it's rendered into. Deliberately NOT a CSS background-image data
@@ -260,6 +259,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
     if (error) {
       setToast(`Failed to save: ${error}`);
       setSaving(false);
+      return false;
     } else {
       logAudit(db, query.id, currentUser?.name, `Exchange Order ${orderNo} created`);
       setToast(`Exchange Order ${orderNo} saved.`);
@@ -268,6 +268,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
       const match = groups.find(g => g.orderNo === orderNo);
       if (match) await openOrder(match);
       setSaving(false);
+      return true;
     }
   };
 
@@ -282,16 +283,18 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
     const shown = finalV || versions[versions.length - 1];
     setOpenViewingVersion(shown.version);
     setForm({ ...emptyOrder(), ...shown.order });
+    guard.rebase();
   };
 
   const closeOpenOrder = () => {
     setOpenOrderNo(null);
     setOpenVersions([]);
     setForm(emptyOrder());
+    guard.rebase();
     refreshList();
   };
 
-  const selectOpenVersion = (v) => { setOpenViewingVersion(v.version); setForm({ ...emptyOrder(), ...v.order }); };
+  const selectOpenVersion = (v) => { setOpenViewingVersion(v.version); setForm({ ...emptyOrder(), ...v.order }); guard.rebase(); };
 
   const saveNewVersionOfOpenOrder = async () => {
     if (!openOrderNo) return;
@@ -301,6 +304,8 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
     const { error } = await saveExchangeOrderVersion(db, openOrderNo, query.id, vendorIdForSave, { version: nextV, order: form }, currentUser?.id);
     if (error) {
       setToast(`Failed to save: ${error}`);
+      setSaving(false);
+      return false;
     } else {
       logAudit(db, query.id, currentUser?.name, `Exchange Order ${openOrderNo} v${nextV} saved`);
       setToast(`Exchange Order ${openOrderNo} v${nextV} saved.`);
@@ -309,7 +314,14 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
       setOpenViewingVersion(nextV);
     }
     setSaving(false);
+    return true;
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "exchange order", onClose, snapshot: form,
+    onSave: async () => {
+      if (openOrderNo) return (await saveNewVersionOfOpenOrder()) !== false;
+      if (!form.drawnOn) { setToast("Fill in the 'Drawn on' date first, then save."); return false; }
+      return (await saveNewOrder()) !== false;
+    } });
 
   const onMarkOpenFinal = async (v) => {
     if (readOnly) return;
@@ -576,7 +588,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
             <div style={{ fontSize: 17, fontWeight: 700, color: G.white, fontFamily: "'Playfair Display',serif" }}>{query.groupName || query.clientName}</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{query.tourFileId || query.id} · {query.destination}</div>
           </div>
-          <button onClick={onClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
+          {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none" }}>✕</button>
         </div>
 
         {/* Order-context bar: only when a specific EO is open, so the
@@ -661,7 +673,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
         </div>
 
         <div style={{ padding: "12px 20px", borderTop: `1px solid ${G.gray200}`, display: "flex", gap: 10, flexShrink: 0, background: G.gray50 }}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
         </div>
       </div>
     </div>

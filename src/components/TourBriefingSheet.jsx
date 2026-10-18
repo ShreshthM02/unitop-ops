@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
 import DateInput from '../lib/DateInput.jsx';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, RichTextEditor, formatDateDMY, buildDownloadFilename, db, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_TOURBRIEFING_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, buildPaginatedLetterheadDocument, buildDocxBlobFromBodyBlocks, downloadDocx, ExportMenu, buildAddresseeBlock, useLetterheadToggles, LetterheadToggleBar, VersionDropdown, DocTabBar, DocPreviewFrame, printHTML, loadTourBriefingVersions, saveTourBriefingVersion, markTourBriefingVersionFinal, loadFinalCostSheetVersion, loadCostSheetVersions, extractTourBriefingHotelsFromCostSheetDays, extractTourBriefingProgrammeFromCostSheetDays, extractTourBriefingTransportSummary, extractItineraryFromCostSheetDays, logAudit, RichTextEditor, formatDateDMY, buildDownloadFilename, db, formatDateSlash , useUnsavedGuard } = Lib;
 
 const HOTEL_STATUS_OPTIONS = ["Requested","Available","Confirmed","Waitlisted","Sold Out","Cancelled"];
 
@@ -252,7 +252,9 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
     logAudit(db, query.id, currentUser?.name, `Tour Briefing Sheet v${version} saved`);
     setViewingVersion(version);
     setVersion(v => v+1);
+    return true;
   };
+  const guard = useUnsavedGuard({ enabled: !readOnly, what: "tour briefing", onClose, onSave: () => saveVersion(), snapshot: currentContent() });
 
   const inp={padding:"5px 7px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
   const noteField=(val,set)=>(
@@ -425,7 +427,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
             viewingVersion={viewingVersion}
             displayVersion={version}
             finalVersion={finalVersion}
-            onSelectVersion={loadVersionIntoDraft}
+            onSelectVersion={(v)=>{loadVersionIntoDraft(v);guard.rebase();}}
             onMarkFinal={(v) => {
               setFinalVersion(v.version);markTourBriefingVersionFinal(db,query.id,v.version);
               logAudit(db,query.id,currentUser?.name,`Tour Briefing Sheet v${v.version} marked final`);
@@ -434,7 +436,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
             G={G}
           />
           {!readOnly && <button onClick={saveVersion} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",fontSize:11}}>💾 Save v{version}</button>}
-          <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
+          {guard.dialog}<button onClick={guard.requestClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>✕</button>
         </div>
         {isStaleVsCostSheet && !readOnly && (
           <div style={{background:"#FEF9E7",borderBottom:"1px solid #F7DC6F",padding:"6px 18px",fontSize:11,color:"#7D6608",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
@@ -602,7 +604,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
           </div>
         )}
         <div style={{padding:"10px 18px",borderTop:`1px solid ${G.gray200}`,display:"flex",gap:10,flexShrink:0,background:G.gray50}}>
-          <button onClick={onClose} className="btn btn-ghost">Close</button>
+          <button onClick={guard.requestClose} className="btn btn-ghost">Close</button>
           <div style={{flex:1,fontSize:11,color:G.gray400,alignSelf:"center"}}>{viewMode==="content" ? "Drag section tiles to reorder in print output" : ""}</div>
           {!readOnly && <button onClick={saveVersion} className="btn btn-primary">💾 Save v{version}</button>}
           <ExportMenu G={G} actions={[
