@@ -223,6 +223,7 @@ export default function InvoiceGenerator({ query, payments, proformaTemplate, ta
       if (error) { alert(`Failed to save: ${error}`); return false; }
       logAudit(db, query.id, currentUser?.name, `${docFlavor === "proforma" ? "Proforma Invoice" : "Tax Invoice"} v${version} saved (${invoiceNo})`);
       refreshVersions(docFlavor);
+      guard.markSaved();
       return true;
     });
   };

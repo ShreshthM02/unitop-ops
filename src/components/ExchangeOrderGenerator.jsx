@@ -268,6 +268,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
       const match = groups.find(g => g.orderNo === orderNo);
       if (match) await openOrder(match);
       setSaving(false);
+      guard.markSaved();
       return true;
     }
   };
@@ -314,6 +315,7 @@ export default function ExchangeOrderGenerator({ query, template, vendors, docSe
       setOpenViewingVersion(nextV);
     }
     setSaving(false);
+    guard.markSaved();
     return true;
   };
   const guard = useUnsavedGuard({ enabled: !readOnly, what: "exchange order", onClose, snapshot: form,

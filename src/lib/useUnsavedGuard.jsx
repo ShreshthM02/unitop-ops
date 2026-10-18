@@ -18,6 +18,8 @@ const INTERACTION_WINDOW_MS = 2500;
 export function useUnsavedGuard({ snapshot, onClose, onSave, enabled = true, what = "document" }) {
   const ser = (() => { try { return JSON.stringify(snapshot); } catch (e) { return ""; } })();
   const baseline = useRef(null);
+  const serRef = useRef(ser);
+  serRef.current = ser;
   const lastTouch = useRef(0);
   const rebaseUntil = useRef(0);
   const [dirty, setDirty] = useState(false);
@@ -48,7 +50,9 @@ export function useUnsavedGuard({ snapshot, onClose, onSave, enabled = true, wha
     return () => window.removeEventListener("beforeunload", h);
   }, [enabled, dirty]);
 
-  const markSaved = () => { rebaseUntil.current = Date.now() + 1500; baseline.current = ser; setDirty(false); };
+  // Call when a save succeeded (the document's own Save button, or ours): what is on
+  // screen now counts as saved. Uses the latest content, not a stale render's.
+  const markSaved = () => { rebaseUntil.current = Date.now() + 1000; baseline.current = serRef.current; setDirty(false); };
   const rebase = markSaved;
 
   const requestClose = () => { if (enabled && dirty) setAsk(true); else onClose && onClose(); };

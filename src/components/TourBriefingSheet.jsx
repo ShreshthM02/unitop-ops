@@ -252,6 +252,7 @@ export default function TourBriefingSheet({ query, template, facilitators, vendo
     logAudit(db, query.id, currentUser?.name, `Tour Briefing Sheet v${version} saved`);
     setViewingVersion(version);
     setVersion(v => v+1);
+    guard.markSaved();
     return true;
   };
   const guard = useUnsavedGuard({ enabled: !readOnly, what: "tour briefing", onClose, onSave: () => saveVersion(), snapshot: currentContent() });

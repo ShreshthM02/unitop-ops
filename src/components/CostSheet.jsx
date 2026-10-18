@@ -359,6 +359,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       if (error) { setSaveError(error); return false; }
       setSaveError(null);
       if (id) setLastSavedCostSheetId(id);
+      guard.markSaved();
       return true;
     });
     logAudit(db, query.id, currentUser?.name, `Cost Sheet v${version} saved${versionNote?" — "+versionNote:""}`);

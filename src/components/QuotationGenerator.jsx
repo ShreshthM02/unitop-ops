@@ -305,6 +305,7 @@ export default function QuotationGenerator({ query, template, costSheetId, onClo
     setVersionNote("");
     setVersion(v => v + 1);
     onSaved && onSaved(q);
+    guard.markSaved();
     return true;
   };
   const guard = useUnsavedGuard({ enabled: !readOnly, what: "Quotation", onClose, onSave: () => saveVersion(), snapshot: q });

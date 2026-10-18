@@ -238,6 +238,7 @@ export default function Itinerary({ query, briefTemplate, detailTemplate, onClos
     logAudit(db, query.id, currentUser?.name, `Itinerary v${nextVersion} saved${versionNote?" — "+versionNote:""}`);
     setViewingVersion(nextVersion);
     setVersionNote("");
+    guard.markSaved();
     return true;
   };
   const guard = useUnsavedGuard({ enabled: !readOnly, what: "itinerary", onClose, onSave: () => saveVersion(),

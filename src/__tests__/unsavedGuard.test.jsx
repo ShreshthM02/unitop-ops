@@ -9,6 +9,7 @@ function Doc({ onClose, onSave, readOnly }) {
   const guard = useUnsavedGuard({ snapshot: { text }, onClose, onSave: async () => { await onSave(text); return true; }, enabled: !readOnly });
   return <div>
     <input aria-label="field" value={text} onChange={e => setText(e.target.value)} />
+    <button onClick={async () => { await new Promise(r => setTimeout(r, 20)); await onSave(text); guard.markSaved(); }}>save</button>
     <button onClick={guard.requestClose}>close</button>
     {guard.dialog}
   </div>;
@@ -51,6 +52,27 @@ describe('useUnsavedGuard', () => {
     await waitFor(() => expect(screen.getByLabelText('field').value).toBe('loaded by itself'));
     fireEvent.click(screen.getByText('close'));
     expect(onClose).toHaveBeenCalled();
+  });
+  it('after the document\'s own Save succeeds, closing does not ask again', async () => {
+    const onClose = vi.fn(), onSave = vi.fn(async () => {}); render(<Doc onClose={onClose} onSave={onSave} />);
+    fireEvent.keyDown(screen.getByLabelText('field'), { key: 'x' });
+    fireEvent.change(screen.getByLabelText('field'), { target: { value: 'edited' } });
+    fireEvent.click(screen.getByText('save'));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    await new Promise(r => setTimeout(r, 50));
+    fireEvent.click(screen.getByText('close'));
+    expect(onClose).toHaveBeenCalled(); expect(screen.queryByTestId('unsaved-dialog')).toBeNull();
+  });
+  it('editing again after a save asks again', async () => {
+    const onClose = vi.fn(); render(<Doc onClose={onClose} onSave={async () => {}} />);
+    fireEvent.keyDown(screen.getByLabelText('field'), { key: 'x' });
+    fireEvent.change(screen.getByLabelText('field'), { target: { value: 'edited' } });
+    fireEvent.click(screen.getByText('save'));
+    await new Promise(r => setTimeout(r, 1200));
+    fireEvent.keyDown(screen.getByLabelText('field'), { key: 'y' });
+    fireEvent.change(screen.getByLabelText('field'), { target: { value: 'edited again' } });
+    fireEvent.click(screen.getByText('close'));
+    expect(await screen.findByTestId('unsaved-dialog')).toBeTruthy();
   });
   it('does nothing in read-only mode', () => {
     const onClose = vi.fn(); render(<Doc onClose={onClose} onSave={vi.fn()} readOnly />);
