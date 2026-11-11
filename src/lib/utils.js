@@ -3297,3 +3297,33 @@ export function mergeBriefDaysIntoDetailed(briefDays, detailedDays) {
 
   return { days, preserved, droppedDescriptions, droppedDays: Math.max(0, detailed.length - brief.length) };
 }
+
+
+// Loads EVERY row of a table. The database API silently stops at 1000 rows per
+// request, so a plain "select *" quietly drops the newest rows once a table grows
+// past that (this is what hid the audit trail of recent queries). Reads in pages,
+// each starting where the last one ended (rows are ordered by orderCol; the
+// first row of a page can repeat the last of the previous one, so rows are
+// de-duplicated by idCol). `select` must include both orderCol and idCol.
+export async function fetchAllRows(db, table, { select = "*", orderCol = "created_at", idCol = "id", pageSize = 1000 } = {}) {
+  const out = [];
+  const seen = new Set();
+  let cursor = null;
+  for (let guard = 0; guard < 500; guard++) {
+    let b = db.from(table).select(select);
+    if (cursor !== null) b = b.gte(orderCol, encodeURIComponent(cursor));
+    const ordered = b.order(orderCol, { ascending: true });
+    const { data, error } = await (typeof ordered.limit === "function" ? ordered.limit(pageSize) : ordered);
+    if (error) return { data: out.length ? out : null, error };
+    const rows = data || [];
+    let added = 0;
+    for (const r of rows) {
+      const k = r[idCol];
+      if (seen.has(k)) continue;
+      seen.add(k); out.push(r); added++;
+    }
+    if (rows.length < pageSize || added === 0) break;
+    cursor = rows[rows.length - 1][orderCol];
+  }
+  return { data: out, error: null };
+}
