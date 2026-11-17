@@ -203,7 +203,7 @@ describe('CostSheet PDF: header and data cells in the same column share the same
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     clickExport('📕 PDF');
     const html = capturedHTML();
-    const sections = ['Day-wise Itinerary', 'Monuments</div>', 'Transport</div>', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'];
+    const sections = ['Day-wise Itinerary', 'Monuments</div>', 'Pricing Matrix', 'Final Price Summary'];
     sections.forEach((marker, i) => {
       const idx = html.indexOf(marker);
       expect(idx).toBeGreaterThan(-1);
@@ -220,7 +220,8 @@ describe('CostSheet PDF: header and data cells in the same column share the same
       // it doesn't contribute a full set of colCount styled cells -- only
       // count complete rows for the internal-consistency check below.
       const completeTds = tdAligns.slice(0, Math.floor(tdAligns.length / colCount) * colCount);
-      for (let col = 0; col < colCount; col++) {
+      // The matrix joins neighbouring slabs into spanning cells, so its cells no longer line up one per column.
+      for (let col = 0; col < colCount && marker !== 'Pricing Matrix'; col++) {
         const colTdAligns = completeTds.filter((_, j) => j % colCount === col);
         if (colTdAligns.length > 1) {
           colTdAligns.slice(1).forEach(a => expect(a).toBe(colTdAligns[0]));
@@ -239,7 +240,7 @@ describe('CostSheet PDF: every table remains full page width', () => {
     clickExport('📕 PDF');
     const html = capturedHTML();
     const contentGridCount = (html.match(/class="content-grid"/g) || []).length;
-    expect(contentGridCount).toBeGreaterThanOrEqual(5); // Day-wise, Monuments, Transport, Local Handler, Extras, Final Price Summary
+    expect(contentGridCount).toBeGreaterThanOrEqual(4); // Day-wise, Monuments, Pricing Matrix, Final Price Summary
     // .content-grid's own CSS rule sets width:100% -- confirmed present
     // in the shared stylesheet.
     expect(html).toContain('.content-grid { display: grid; width: 100%');
@@ -289,13 +290,13 @@ describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display;
     expect(html).toMatch(/\.section-title\s*\{[^}]*Inter/);
   });
 
-  it('every Cost Sheet section header (Day-wise, Transport, Local Handler, Extra Services, Final Price Summary) uses section-title, not inv-title', async () => {
+  it('every Cost Sheet section header (Day-wise, Pricing Matrix, Final Price Summary) uses section-title, not inv-title', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Local Handler'));
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     clickExport('📕 PDF');
     const html = capturedHTML();
-    ['Day-wise Itinerary', 'Local Handler</div>', 'Extra Services</div>', 'Final Price Summary'].forEach(marker => {
+    ['Day-wise Itinerary', 'Pricing Matrix', 'Final Price Summary'].forEach(marker => {
       const idx = html.indexOf(marker);
       expect(idx).toBeGreaterThan(-1);
       const before = html.slice(Math.max(0, idx - 60), idx);
@@ -312,7 +313,7 @@ describe('CostSheet PDF: column headers no longer visually collide (missing gap 
     expect(html).toMatch(/\.content-grid\s*\{[^}]*column-gap/);
   });
 
-  it('Monuments\' Included, Local Handler\'s Mode, and Extra Services\' Mode are center-aligned, not left-aligned directly against a right-aligned neighbor', async () => {
+  it('Monuments\' Included column header is center-aligned, not left-aligned directly against a right-aligned neighbor', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.click(screen.getByText('+ Add Monument / Activity'));
     fireEvent.click(screen.getByText('+ Add Local Handler'));
@@ -320,7 +321,6 @@ describe('CostSheet PDF: column headers no longer visually collide (missing gap 
     clickExport('📕 PDF');
     const html = capturedHTML();
     expect(html).toContain('<div class="grid-header" style="text-align:center">Included</div>');
-    expect(html).toContain('<div class="grid-header" style="text-align:center">Mode</div>');
   });
 });
 
@@ -336,5 +336,21 @@ describe('CostSheet PDF: fr units instead of % prevent wide tables (T/L Slabs, 1
       expect(decl).not.toContain('%');
       expect(decl).toContain('fr');
     });
+  });
+});
+
+describe('CostSheet PDF: the Pricing Matrix shows the whole cost taken, not just the per-pax figure', () => {
+  it('a group-total handler shows its whole amount and the per-pax result; amber marks a slab-specific figure', async () => {
+    const { capturedHTML } = await exportAndCaptureHTML();
+    fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getByText('per pax'));                                   // switch to a group total
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '30000' } });
+    fireEvent.change(screen.getAllByLabelText(/pax \+ 1 FOC cost/).slice(-1)[0], { target: { value: '45000' } });
+    clickExport('📕 PDF');
+    const html = capturedHTML();
+    expect(html).toContain('Pricing Matrix');
+    expect(html).toContain('₹30,000');
+    expect(html).toMatch(/&divide; 15 pax = ₹2,000 pp/);
+    expect(html).toContain('background:#fef3c7');
   });
 });

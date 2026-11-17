@@ -52,6 +52,37 @@ export function appliedSlabIds(line, slabIds, kind) {
   return (slabIds || []).filter((id) => lineCostFor(line, id, kind) !== null);
 }
 
+// ── Matrix read-out (PDF / Story view) ──────────────────────────────────────
+// For one cost line, walk the slab columns left to right and join neighbouring
+// slabs that show the same whole cost and the same paying pax (and the same
+// kind of column), so a row reads as a few blocks instead of one cell per slab.
+//   cols: [{ id, pax, tl }]   kind: "transport" | "local" | "extra"
+// Each block: { span, total, pp, custom, none } where total is the figure as
+// quoted by the supplier (whole group cost, or per-pax cost for a per-pax
+// line) and pp is that line's cost per paying pax in the slab.
+export function matrixSpans(line, kind, cols) {
+  const isPP = kind === "local" ? line.mode === "pp" : kind === "extra" ? line.mode === "PP" : false;
+  const cell = (c) => {
+    const total = lineCostFor(line, c.id, kind);
+    if (total === null) return { none: true, total: null, pp: null, custom: false, key: "x|" + !!c.tl };
+    const pax = n(c.pax);
+    const pp = isPP ? total : (pax > 0 ? total / pax : 0);
+    const own = line.cells && line.cells[c.id];
+    const custom = own !== undefined && own !== null && String(own).trim() !== "" && own !== NOT_APPLIED;
+    return { none: false, total, pp, pax, custom, isPP, key: [total, isPP ? "pp" : pax, custom, !!c.tl].join("|") };
+  };
+  const out = [];
+  let i = 0;
+  while (i < cols.length) {
+    const a = cell(cols[i]);
+    let j = i + 1;
+    while (j < cols.length && cell(cols[j]).key === a.key) j++;
+    out.push({ span: j - i, ...a });
+    i = j;
+  }
+  return out;
+}
+
 export function computeTotals({ days = [], localHandlers = [], monuments = [], monExtra = "" }) {
   const totMeal = days.reduce((s, d) => s + n(d.mealCost), 0);
   const totHotel = days.reduce((s, d) => s + n(d.hotelNetPP), 0);

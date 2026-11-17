@@ -1,3 +1,4 @@
+import { lineCostFor } from "./costSheetCalc.js";
 // Cost Sheet -> Excel workbook.
 //
 // A WORKING spreadsheet, not a printout. Design rules (each one answers a
@@ -39,6 +40,27 @@ export function excelDate(iso) {
   const m = typeof iso === "string" && iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return null;
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
+
+// A line with a different figure for some slabs becomes several ordinary
+// rows (one per distinct figure, each saying which slabs it applies to), so
+// the workbook keeps its simple "cost + Applies to" lists and live formulas
+// while giving exactly the app's prices. A line with one figure for every
+// slab stays one "All" row. Single supplement rides on the first row only.
+export function explodeLines(list, kind, slabEntries, nameOf) {
+  const out = [];
+  list.forEach((l) => {
+    const per = slabEntries.map((e) => ({ name: e.name, cost: lineCostFor(l, e.src.id, kind) }));
+    const applied = per.filter((p) => p.cost !== null);
+    const hasOverride = !!(l.cells && Object.values(l.cells).some((v) => v !== undefined && v !== ""));
+    if (!applied.length) { out.push({ src: l, label: nameOf(l), cost: n(l.cost), applies: kind === "transport" ? "" : "All", first: true }); return; }
+    if (!hasOverride && applied.length === per.length) { out.push({ src: l, label: nameOf(l), cost: applied[0].cost, applies: "All", first: true }); return; }
+    const byCost = new Map();
+    applied.forEach((p) => { const k = String(p.cost); if (!byCost.has(k)) byCost.set(k, { cost: p.cost, names: [] }); byCost.get(k).names.push(p.name); });
+    let i = 0;
+    byCost.forEach((g) => { out.push({ src: l, label: byCost.size > 1 ? `${nameOf(l)} — ${g.names.join(", ")}` : nameOf(l), cost: g.cost, applies: g.names.join(", "), first: i === 0 }); i++; });
+  });
+  return out;
 }
 
 const MAX_SLABS = 200; // safety cap on exported slabs
@@ -141,6 +163,9 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     ...tlSlabs.map((s, i) => ({ src: s, tl: true, name: uniqueName(s.label, `T/L ${i + 1}`) })),
   ].slice(0, MAX_SLABS);
   const SLAB_ROWS = Math.max(8, slabEntries.length + SPARE_SLABS);
+  const tptRows = explodeLines(transports, "transport", slabEntries, (t) => t.sector || t.vehicleType || "");
+  const lhRows = explodeLines(localHandlers, "local", slabEntries, (h) => h.sector || "");
+  const exRows = explodeLines(extras, "extra", slabEntries, (e) => e.description || "");
   const nameById = new Map(slabEntries.map((e) => [e.src.id, e.name]));
 
   // ═══ Row geometry: every block's position is fixed before any formula is written ═══
@@ -151,10 +176,10 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   let cursor = DETAILS + 2;
   const block = (rows) => { const b = { band: cursor, note: cursor + 1, tot: cursor + 2, hdr: cursor + 3, first: cursor + 4, rows, last: cursor + 3 + rows }; cursor = b.last + 4; return b; };
   const ITIN = block(rowsFor(days.length));
-  const TPT = block(rowsFor(transports.length));
+  const TPT = block(rowsFor(tptRows.length));
   const MON = block(rowsFor(monuments.length));
-  const LH = block(rowsFor(localHandlers.length));
-  const EXS = block(rowsFor(extras.length));
+  const LH = block(rowsFor(lhRows.length));
+  const EXS = block(rowsFor(exRows.length));
   const LASTROW = EXS.last;
 
   // ═══════════════ Title, group line, frozen "Jump to" row ═══════════════
@@ -241,8 +266,8 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sh.getRow(SLAB_HDR).height = 44;
 
   const T = { b: colRange("B", TPT.first, TPT.last), c: colRange("C", TPT.first, TPT.last) };
-  const L = { b: colRange("B", LH.first, LH.last), c: colRange("C", LH.first, LH.last) };
-  const X = { b: colRange("B", EXS.first, EXS.last), c: colRange("C", EXS.first, EXS.last) };
+  const L = { b: colRange("B", LH.first, LH.last), c: colRange("C", LH.first, LH.last), e: colRange("E", LH.first, LH.last) };
+  const X = { b: colRange("B", EXS.first, EXS.last), c: colRange("C", EXS.first, EXS.last), e: colRange("E", EXS.first, EXS.last) };
   const roeOk = `${roeAddr}>0`;
 
   for (let i = 0; i < SLAB_ROWS; i++) {
@@ -270,8 +295,11 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     const tlF = `IF(${isPP(tlModeAddr)},N(${tlCostAddr}),IF(${P}>0,N(${tlCostAddr})/${P},0))`;
     const miscF = `IF(${isPP(miscModeAddr)},N(${miscCostAddr}),IF(${P}>0,N(${miscCostAddr})/${P},0))`;
     const monF = `IF(${isPP(monModeAddr)},${monTotalAddr},IF(${P}>0,${monTotalAddr}/${P},0))`;
-    const lhF = `SUMPRODUCT(--(LOWER(TRIM(${L.c}))="pp"),${L.b})+IF(${P}>0,SUMPRODUCT(--(LOWER(TRIM(${L.c}))<>"pp"),${L.b})/${P},0)`;
-    const exF = `SUMPRODUCT(--(UPPER(TRIM(${X.c}))="PP"),${X.b})+IF(${P}>0,SUMPRODUCT(--(UPPER(TRIM(${X.c}))<>"PP"),${X.b})/${P},0)`;
+    // Applies-to for local handlers and extras: empty or All = every slab, otherwise slab names separated by commas.
+    const hits = (range) => `(((TRIM(${range})="")+(TRIM(${range})="All")+ISNUMBER(SEARCH(","&TRIM($A${row})&",",","&SUBSTITUTE(${range},", ",",")&",")))>0)`;
+    const lhHit = hits(L.e), exHit = hits(X.e);
+    const lhF = `SUMPRODUCT(--(LOWER(TRIM(${L.c}))="pp"),--${lhHit},${L.b})+IF(${P}>0,SUMPRODUCT(--(LOWER(TRIM(${L.c}))<>"pp"),--${lhHit},${L.b})/${P},0)`;
+    const exF = `SUMPRODUCT(--(UPPER(TRIM(${X.c}))="PP"),--${exHit},${X.b})+IF(${P}>0,SUMPRODUCT(--(UPPER(TRIM(${X.c}))<>"PP"),--${exHit},${X.b})/${P},0)`;
     formulaCell(row, 5, tptF, c0.tptPP, MONEY);
     formulaCell(row, 6, tlF, c0.tlPP, MONEY);
     formulaCell(row, 7, miscF, c0.miscPP, MONEY);
@@ -335,19 +363,14 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     "The cost is divided by each slab's paying pax. Leave 'Applies to' empty and the line is not used.");
   headerSpans(TPT.hdr, [[1, 1, "Sector / Description"], [2, 2, "Cost (total)"], [3, 6, "Applies to — All, or slab names separated by commas"], [7, 12, "Notes"]]);
   for (let i = 0; i < TPT.rows; i++) {
-    const row = TPT.first + i, tr = transports[i];
-    let applies = "";
-    if (tr) {
-      const ids = (tr.slabs || []).filter((id) => nameById.has(id));
-      applies = ids.length && ids.length === slabEntries.length ? "All" : ids.map((id) => nameById.get(id)).join(", ");
-    }
-    inputCell(row, 1, tr ? tr.sector || tr.vehicleType || "" : null);
-    inputCell(row, 2, tr ? n(tr.cost) || null : null, MONEY, numValidation(0));
-    inputCell(row, 3, tr ? applies : null, undefined, {
+    const row = TPT.first + i, tr = tptRows[i], src = tr && tr.src;
+    inputCell(row, 1, tr ? tr.label : null);
+    inputCell(row, 2, tr ? tr.cost || null : null, MONEY, numValidation(0));
+    inputCell(row, 3, tr ? tr.applies : null, undefined, {
       type: "list", allowBlank: true, formulae: [`$A$${SLAB_FIRST}:$A$${SLAB_LAST}`], showErrorMessage: false,
       showInputMessage: true, promptTitle: "Applies to", prompt: "Pick one slab, or type All, or several slab names separated by commas.",
     }, 6);
-    inputCell(row, 7, tr ? tr.notes || "" : null, undefined, undefined, 12);
+    inputCell(row, 7, tr && tr.first ? src.notes || "" : null, undefined, undefined, 12);
   }
 
   // Monuments
@@ -362,24 +385,27 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   }
 
   // Local Handlers
-  listBand(LH, "LOCAL HANDLERS", "One row per sector / handler. pp = cost per person; lumpsum = one total divided by each slab's paying pax. Single Supp is added to the Single Supplement total.");
+  listBand(LH, "LOCAL HANDLERS", "One row per sector / handler. pp = cost per person; lumpsum = one total divided by each slab's paying pax. 'Applies to' (empty or All = every slab) names the slabs a figure is for, so a handler quoted differently per slab has one row per figure. Single Supp is added to the Single Supplement total.");
   label(LH.tot, 3, "Single Supp total →"); sh.getCell(LH.tot, 3).alignment = { horizontal: "right", wrapText: false };
   formulaCell(LH.tot, 4, `SUM(D${LH.first}:D${LH.last})`, Math.round(handlerSS), MONEY, { bold: true });
-  headerSpans(LH.hdr, [[1, 1, "Sector"], [2, 2, "Cost"], [3, 3, "Mode (pp / lumpsum)"], [4, 4, "Single Supp"]]);
+  headerSpans(LH.hdr, [[1, 1, "Sector"], [2, 2, "Cost"], [3, 3, "Mode (pp / lumpsum)"], [4, 4, "Single Supp"], [5, 8, "Applies to — empty or All, or slab names separated by commas"]]);
+  const APPLIES_LIST = (range) => ({ type: "list", allowBlank: true, formulae: [`$A$${SLAB_FIRST}:$A$${SLAB_LAST}`], showErrorMessage: false, showInputMessage: true, promptTitle: "Applies to", prompt: "Leave empty or type All for every slab, or pick slab names separated by commas." });
   for (let i = 0; i < LH.rows; i++) {
-    const row = LH.first + i, h = localHandlers[i];
-    inputCell(row, 1, h ? h.sector || "" : null); inputCell(row, 2, h ? n(h.cost) || null : null, MONEY, numValidation(0));
-    inputCell(row, 3, h ? h.mode || "pp" : null, undefined, MODE_PP); inputCell(row, 4, h ? n(h.singleSupp) || null : null, MONEY, numValidation(0));
+    const row = LH.first + i, h = lhRows[i], src = h && h.src;
+    inputCell(row, 1, h ? h.label : null); inputCell(row, 2, h ? h.cost || null : null, MONEY, numValidation(0));
+    inputCell(row, 3, h ? src.mode || "pp" : null, undefined, MODE_PP); inputCell(row, 4, h && h.first ? n(src.singleSupp) || null : null, MONEY, numValidation(0));
+    inputCell(row, 5, h ? h.applies : null, undefined, APPLIES_LIST(), 8);
   }
 
   // Extra Services
-  listBand(EXS, "EXTRA SERVICES", "One row per extra service. PP = per person. Lumpsum / Per Vehicle / Per Group = one total, divided by each slab's paying pax.");
-  headerSpans(EXS.hdr, [[1, 1, "Description"], [2, 2, "Cost"], [3, 4, "Mode (PP / Lumpsum / Per Vehicle / Per Group)"]]);
+  listBand(EXS, "EXTRA SERVICES", "One row per extra service. PP = per person. Lumpsum / Per Vehicle / Per Group = one total, divided by each slab's paying pax. 'Applies to' (empty or All = every slab) names the slabs a figure is for.");
+  headerSpans(EXS.hdr, [[1, 1, "Description"], [2, 2, "Cost"], [3, 4, "Mode (PP / Lumpsum / Per Vehicle / Per Group)"], [5, 8, "Applies to — empty or All, or slab names separated by commas"]]);
   for (let i = 0; i < EXS.rows; i++) {
-    const row = EXS.first + i, e = extras[i];
-    inputCell(row, 1, e ? e.description || "" : null); inputCell(row, 2, e ? n(e.cost) || null : null, MONEY, numValidation(0));
+    const row = EXS.first + i, e = exRows[i], src = e && e.src;
+    inputCell(row, 1, e ? e.label : null); inputCell(row, 2, e ? e.cost || null : null, MONEY, numValidation(0));
     // Merged C:D, but the formulas read column C: the mode lives in the anchor cell.
-    inputCell(row, 3, e ? e.mode || "PP" : null, undefined, MODE_EXTRA, 4);
+    inputCell(row, 3, e ? src.mode || "PP" : null, undefined, MODE_EXTRA, 4);
+    inputCell(row, 5, e ? e.applies : null, undefined, APPLIES_LIST(), 8);
   }
 
   // ── names, widths, freeze, print, protection ──

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -472,23 +472,40 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         [34,33,33], [2])}
       ${n(monExtra)?`<div style="font-size:9pt;margin-bottom:10pt">Extra Monument Cost: ₹${n(monExtra).toLocaleString()}</div>`:""}` : "";
 
-    const tptBlock = transports.length ? `
-      <div class="section-title" style="margin-bottom:8pt">Transport</div>
-      ${tableBlock(["Sector","Vehicle","Cost","Applies To"], [2],
-        transports.map((t,i)=>rowHTML([t.sector||"—", t.vehicleType||"—", n(t.cost)?"₹"+n(t.cost).toLocaleString():"—", (t.slabs||[]).map(sid=>slabs.find(s=>s.id===sid)?.label||tlSlabs.find(tl=>tl.id===sid)?.label).filter(Boolean).join(", ")||"—"], [2], i, [1,2])).join(""), "",
-        [22,22,16,40])}` : "";
-
-    const lhBlock = localHandlers.length ? `
-      <div class="section-title" style="margin-bottom:8pt">Local Handler</div>
-      ${tableBlock(["Sector","Cost","Mode","Single Supp"], [1,3],
-        localHandlers.map((h,i)=>rowHTML([h.sector||"—", n(h.cost)?"₹"+n(h.cost).toLocaleString():"—", h.mode==="pp"?"Per Pax":"Lumpsum", n(h.singleSupp)?"₹"+n(h.singleSupp).toLocaleString():"—"], [1,3], i, [1,2,3], [2])).join(""), "",
-        [25,25,25,25], [2])}` : "";
-
-    const exBlock = extras.length ? `
-      <div class="section-title" style="margin-bottom:8pt">Extra Services</div>
-      ${tableBlock(["Description","Cost","Mode"], [1],
-        extras.map((e,i)=>rowHTML([e.description||"—", n(e.cost)?"₹"+n(e.cost).toLocaleString():"—", e.mode||"PP"], [1], i, [1,2], [2])).join(""), "",
-        [40,30,30], [2])}` : "";
+    // Pricing matrix, as exported: every slab is a column, neighbouring slabs
+    // that show the same cost join into one block, and each cost shows the
+    // WHOLE figure that was taken as well as what it comes to per paying pax.
+    const mxCols = [
+      ...slabs.map(s=>({ id:s.id, label:s.label, pax:n(s.foc), vehicle:s.vehicle==="Others"?(s.vehicleOther||""):(s.vehicle||""), tl:false, calc:calcSlab(s) })),
+      ...tlSlabs.map(tl=>({ id:tl.id, label:tl.label, pax:n(tl.pax), vehicle:tl.vehicle==="Others"?(tl.vehicleOther||""):(tl.vehicle||""), tl:true, obj:tl, calc:calcTlSlab(tl) })),
+    ];
+    const money = v => "₹"+Math.round(v).toLocaleString();
+    const gridCell = (inner, align, extra, zebra) => `<div class="grid-cell${zebra?" zebra":""}" style="text-align:${align}${extra||""}">${inner}</div>`;
+    const bandRow = (title, perPaxOf) => gridCell(`<b>${title}</b>`, "left", ";background:#e5e7eb;color:#374151;white-space:nowrap")
+      + mxCols.map(c=>gridCell(`<b>${perPaxOf(c)}</b>`, "center", `;background:${c.tl?"#fff3c4":"#e5e7eb"};color:#374151;white-space:nowrap`)).join("");
+    const lineRows = (list, kind, nameKey, blankName) => list.map((l,i)=>{
+      const spans = matrixSpans(l, kind, mxCols);
+      return gridCell(l[nameKey]||blankName, "left", "", i%2===1)
+        + spans.map(m=>{
+            const sp = m.span>1 ? `;grid-column:span ${m.span}` : "";
+            if (m.none) return gridCell("—", "center", `;color:#999${sp}`, i%2===1);
+            const inner = m.isPP ? `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">per pax</span>`
+              : `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">&divide; ${m.pax} pax = ${money(m.pp)} pp</span>`;
+            return gridCell(m.custom ? `<b>${inner}</b>` : inner, "center", `${m.custom?";background:#fef3c7":""}${sp}`, i%2===1);
+          }).join("");
+    }).join("");
+    const tlOwnRows = tlSlabs.length ? [["hotel","Hotel"],["singleSupp","Single supplement"],["meals","Extra meals"],["transport","Transport"],["monument","Monument"],["localHandler","Local handler"],["extras","Extras"]]
+      .filter(([k])=>tlSlabs.some(tl=>(tl.includes||{})[k] && n((tl.costs||{})[k])))
+      .map(([k,label],i)=>gridCell(label, "left", "", i%2===1) + mxCols.map(c=>gridCell(c.tl ? (((c.obj.includes||{})[k] && n((c.obj.costs||{})[k])) ? money(n(c.obj.costs[k])) : "—") : "", "center", c.tl?";background:#fffbeb":"", i%2===1)).join("")).join("") : "";
+    const matrixBlock = (transports.length || localHandlers.length || extras.length || tlSlabs.length) ? `
+      <div class="section-title" style="margin-bottom:4pt">Pricing Matrix</div>
+      <div style="font-size:7.5pt;color:#555;margin-bottom:6pt">Each column is a slab. Every cost shows the whole amount taken and what it comes to per paying pax; slabs that share a figure are joined. Amber = a figure specific to that slab. A dash means the cost is not applied to that slab.</div>
+      ${tableBlock(["Cost", ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</span>`)], [],
+        (transports.length ? bandRow("Transport", c=>c.calc.tptPP?money(c.calc.tptPP):"—") + lineRows(transports, "transport", "sector", "—") : "")
+        + (localHandlers.length ? bandRow("Local Handler", c=>c.calc.localPP?money(c.calc.localPP):"—") + lineRows(localHandlers, "local", "sector", "—") : "")
+        + (extras.length ? bandRow("Extra Services", c=>c.calc.extrasPP?money(c.calc.extrasPP):"—") + lineRows(extras, "extra", "description", "—") : "")
+        + (tlSlabs.length ? bandRow("Tour Leader surcharge", c=>c.tl ? (c.calc.surchargePP?money(c.calc.surchargePP):"—") : "") + tlOwnRows : ""),
+        "", [18, ...mxCols.map(()=>Math.max(6, Math.round(82/Math.max(mxCols.length,1))))])}` : "";
 
     const slabRows = slabs.map((s,si) => {
       const c = calcSlab(s);
@@ -537,7 +554,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const csFilename = buildDownloadFilename("Cost Sheet", "costsheet", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector });
     return buildLetterheadDocument({
       title: csFilename,
-      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, tptBlock, lhBlock, exBlock, summaryBlock, tlSummaryBlock, notesBlock].filter(Boolean),
+      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, matrixBlock, summaryBlock, tlSummaryBlock, notesBlock].filter(Boolean),
       extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
