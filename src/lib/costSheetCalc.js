@@ -16,6 +16,42 @@ const n = (v) => parseFloat(v) || 0;
 // CEILING ignores such dust, so the app must as well to agree with the sheet.
 export const ceilFX = (x) => Math.ceil(Math.round(x * 1e6) / 1e6);
 
+
+// ── Per-slab cost lines ─────────────────────────────────────────────────────
+// A transport / local handler / extra line carries ONE cost ("same for every
+// slab") and, optionally, a different figure for particular slabs:
+//   line.cells = { [slabId]: "12000" }  -> that slab uses its own figure
+//   line.cells = { [slabId]: "x" }      -> the line does not apply to that slab
+// A slab with no entry uses line.cost. Lines saved before this existed have
+// no `cells`: local handlers and extras applied to every slab, and transports
+// applied only to the slabs listed in `line.slabs`. Both shapes price the same.
+export const NOT_APPLIED = "x";
+export function lineCostFor(line, slabId, kind) {
+  const l = line || {};
+  const hasCells = l.cells && typeof l.cells === "object";
+  if (!hasCells) {
+    if (kind === "transport" && !(l.slabs || []).includes(slabId)) return null;
+    return n(l.cost);
+  }
+  const own = l.cells[slabId];
+  if (own === NOT_APPLIED) return null;
+  if (own !== undefined && own !== null && String(own).trim() !== "") return n(own);
+  return n(l.cost);
+}
+// Turn an old transport (explicit list of ticked slabs) into the cells shape,
+// so the matrix can show and edit it. Prices stay exactly the same.
+export function withCells(line, slabIds, kind) {
+  if (!line || (line.cells && typeof line.cells === "object")) return line;
+  const cells = {};
+  if (kind === "transport") (slabIds || []).forEach((id) => { if (!(line.slabs || []).includes(id)) cells[id] = NOT_APPLIED; });
+  const { slabs: _old, ...rest } = line;
+  return { ...rest, cells };
+}
+// The ids of the slabs a line applies to (what the old `slabs` list held).
+export function appliedSlabIds(line, slabIds, kind) {
+  return (slabIds || []).filter((id) => lineCostFor(line, id, kind) !== null);
+}
+
 export function computeTotals({ days = [], localHandlers = [], monuments = [], monExtra = "" }) {
   const totMeal = days.reduce((s, d) => s + n(d.mealCost), 0);
   const totHotel = days.reduce((s, d) => s + n(d.hotelNetPP), 0);
@@ -34,15 +70,15 @@ export function makeCalculators(s) {
   const { totMeal, totHotel, totSS, monTotal } = s.totals || computeTotals(s);
 
   const calcSlab = (slab) => {
-    const tptTotal = transports.filter((t) => (t.slabs || []).includes(slab.id)).reduce((a, t) => a + n(t.cost), 0);
+    const tptTotal = transports.reduce((a, t) => a + (lineCostFor(t, slab.id, "transport") || 0), 0);
     const tptPP = slab.foc > 0 ? tptTotal / slab.foc : 0;
     const tlPP = tlMode === "pp" ? n(tlCost) : (slab.foc > 0 ? n(tlCost) / slab.foc : 0);
     const miscPP = miscMode === "pp" ? n(miscCost) : (slab.foc > 0 ? n(miscCost) / slab.foc : 0);
     const monPP = monMode === "pp" ? monTotal : (slab.foc > 0 ? monTotal / slab.foc : 0);
-    const localPP = localHandlers.reduce((a, h) => a + (h.mode === "pp" ? n(h.cost) : (slab.foc > 0 ? n(h.cost) / slab.foc : 0)), 0);
+    const localPP = localHandlers.reduce((a, h) => { const c = lineCostFor(h, slab.id, "local"); return a + (c === null ? 0 : h.mode === "pp" ? c : (slab.foc > 0 ? c / slab.foc : 0)); }, 0);
     // "PP" is already per-pax; Lumpsum / Per Vehicle / Per Group are one total
     // for the group, divided across the paying pax like local handler lumpsums.
-    const extrasPP = extras.reduce((a, e) => a + (e.mode === "PP" ? n(e.cost) : (slab.foc > 0 ? n(e.cost) / slab.foc : 0)), 0);
+    const extrasPP = extras.reduce((a, e) => { const c = lineCostFor(e, slab.id, "extra"); return a + (c === null ? 0 : e.mode === "PP" ? c : (slab.foc > 0 ? c / slab.foc : 0)); }, 0);
 
     const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
     const tax = Math.round(sub * gst / 100);

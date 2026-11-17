@@ -8,7 +8,7 @@ describe('Tour Leader Slabs: none by default, multiple allowed, correct default 
   it('starts with none added, showing an explanatory note', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     expect(screen.getByText(/For when no FOC policy applies/)).toBeTruthy();
-    expect(screen.queryByText(/Costs to cover/)).toBeNull();
+    expect(screen.queryByText(/Tour Leader surcharge/)).toBeNull();
   });
 
   it('"+ Add T/L Slab" adds one with the correct new default label "10 pax + 1 T/L"', () => {
@@ -30,14 +30,9 @@ describe('Tour Leader Slabs: none by default, multiple allowed, correct default 
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
     const labelInputs = screen.getAllByDisplayValue('10 pax + 1 T/L');
     fireEvent.change(labelInputs[0], { target: { value: 'First Slab Renamed' } });
-    // T/L slab cards render with a distinct background (#FFF9E6, i.e.
-    // rgb(255, 249, 230) once jsdom normalizes it) -- this reliably
-    // distinguishes their own "✕" from the 5 default group slabs' remove
-    // buttons, which render earlier in the DOM.
-    const tlCards = Array.from(document.querySelectorAll('div')).filter(el => el.getAttribute('style')?.includes('rgb(255, 249, 230)'));
-    expect(tlCards.length).toBe(2);
-    const removeSpan = Array.from(tlCards[0].querySelectorAll('span')).find(el => el.textContent === '✕');
-    fireEvent.click(removeSpan);
+    // Each T/L slab is a tinted column; its own remove button sits in its header.
+    const header = labelInputs[0].closest('th');
+    fireEvent.click(header.querySelector('[aria-label="Remove slab"]'));
     expect(screen.queryByDisplayValue('First Slab Renamed')).toBeNull();
     expect(screen.getByDisplayValue('10 pax + 1 T/L')).toBeTruthy();
   });
@@ -56,11 +51,10 @@ describe('Tour Leader Slabs: appear as real rows in the Final Price Summary, "ju
   it('the T/L slab row computes real Total T/L Cost and Surcharge, not folded into group slabs', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '2500' } });
-    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '10' } });
-    expect(screen.getByText('Total T/L Cost')).toBeTruthy();
-    expect(screen.getByText('Surcharge Per Paying Pax')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '2500' } });
+    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '10' } });
+    expect(screen.getByText('Total tour leader cost')).toBeTruthy();
+    expect(screen.getByText(/Tour Leader surcharge/)).toBeTruthy();
   });
 });
 
@@ -68,22 +62,19 @@ describe('Tour Leader Slabs: correct math (T/L never pays, surcharge divides onl
   it('surcharge is checked-cost total divided by paying pax only', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '12000' } });
-    ['Extra Meals (PP)','Transport (PP)','Monument (PP)','Local Handler (PP)','Extras (PP)'].forEach(label => {
-      const checkbox = screen.getByText(label).closest('label').querySelector('input[type="checkbox"]');
-      fireEvent.click(checkbox);
+    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '12000' } });
+    ['Extra meals','Transport','Monument','Local handler','Extras'].forEach(label => {
+      fireEvent.change(screen.getByLabelText(`${label} (T/L)`), { target: { value: 'x' } });
     });
-    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '12' } });
-    expect(screen.getByText('Surcharge Per Paying Pax').parentElement.textContent).toContain('1,000');
+    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '12' } });
+    expect(screen.getByText(/^▾ Tour Leader surcharge/).closest('tr').textContent).toContain('1,000');
   });
 
   it('shows a clear prompt instead of a bad number when paying pax is not set', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const hotelInput = screen.getByText('Hotel (PP)').closest('div').querySelector('input[type="number"]');
-    fireEvent.change(hotelInput, { target: { value: '5000' } });
-    expect(screen.getByText('Set paying pax above')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '5000' } });
+    expect(screen.getByText(/Set paying pax/)).toBeTruthy();
   });
 });
 
@@ -99,7 +90,7 @@ describe('Tour Leader Slabs: "Fetch Latest Costs" works per-slab, independently'
     const fetchButtons = screen.getAllByText(/Fetch Latest Costs from Cost Sheet/);
     fireEvent.click(fetchButtons[0]);
 
-    const hotelInputs = screen.getAllByText('Hotel (PP)').map(el => el.closest('div').querySelector('input[type="number"]'));
+    const hotelInputs = screen.getAllByLabelText('Hotel (T/L)');
     expect(hotelInputs[0].value).toBe('2500');
     expect(hotelInputs[1].value).toBe('');
   });
@@ -126,8 +117,8 @@ describe('Without any T/L slab, the last group slab still cannot be removed (the
   it('the remove button condition requires either >1 group slabs or at least one T/L slab', async () => {
     const fs = await import('fs');
     const path = await import('path');
-    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/components/CostSheet.jsx'), 'utf-8');
-    expect(src).toContain('(slabs.length>1||tlSlabs.length>0)&&<span');
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/components/PricingMatrix.jsx'), 'utf-8');
+    expect(src).toContain('col.tl || slabs.length > 1 || tlSlabs.length > 0');
   });
 });
 

@@ -1,4 +1,4 @@
-import { ceilFX } from "./costSheetCalc.js";
+import { ceilFX, lineCostFor } from "./costSheetCalc.js";
 import { extractMentions } from "./Mentions.jsx";
 import { entryServiceName, getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
 
@@ -1726,13 +1726,13 @@ export function calcCostSheetSlabFinalPrice(snap, slab) {
   const totHotel = days.reduce((s,d)=>s+n(d.hotelNetPP),0);
   const monTotal = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(snap.monExtra);
 
-  const tptTotal = transports.filter(t=>t.slabs.includes(slab.id)).reduce((s,t)=>s+n(t.cost),0);
+  const tptTotal = transports.reduce((s,t)=>s+(lineCostFor(t, slab.id, "transport")||0),0);
   const tptPP = slab.foc > 0 ? tptTotal / slab.foc : 0;
   const tlPP = snap.tlMode==="pp" ? n(snap.tlCost) : (slab.foc>0 ? n(snap.tlCost)/slab.foc : 0);
   const miscPP = snap.miscMode==="pp" ? n(snap.miscCost) : (slab.foc>0 ? n(snap.miscCost)/slab.foc : 0);
   const monPP = snap.monMode==="pp" ? monTotal : (slab.foc>0 ? monTotal/slab.foc : 0);
-  const localPP = localHandlers.reduce((s,h) => s + (h.mode==="pp" ? n(h.cost) : (slab.foc>0 ? n(h.cost)/slab.foc : 0)), 0);
-  const extrasPP = extras.reduce((s,e) => s + (e.mode==="PP" ? n(e.cost) : (slab.foc>0 ? n(e.cost)/slab.foc : 0)), 0);
+  const localPP = localHandlers.reduce((s,h) => { const c = lineCostFor(h, slab.id, "local"); return s + (c===null ? 0 : h.mode==="pp" ? c : (slab.foc>0 ? c/slab.foc : 0)); }, 0);
+  const extrasPP = extras.reduce((s,e) => { const c = lineCostFor(e, slab.id, "extra"); return s + (c===null ? 0 : e.mode==="PP" ? c : (slab.foc>0 ? c/slab.foc : 0)); }, 0);
 
   const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
   const tax = Math.round(sub * (snap.gst||0)/100);

@@ -18,31 +18,25 @@ describe('CostSheet: Extra Services now actually included in the Final Price Sum
     const descInput = screen.getByPlaceholderText(/Boat ride at Varanasi/);
     fireEvent.change(descInput, { target: { value: 'Cultural show' } });
 
-    // Cost input is the number input in the same row as the description
-    const row = descInput.closest('div').parentElement;
-    const costInput = row.querySelector('input[type="number"]');
-    fireEvent.change(costInput, { target: { value: '15000' } });
-    // Mode defaults to "PP" in the UI, but the default slab's math is
-    // easiest to verify with Lumpsum -- explicitly select it.
-    const modeSelect = row.querySelector('select');
-    fireEvent.change(modeSelect, { target: { value: 'Lumpsum' } });
+    // Cost is the "same for all slabs" cell in the same matrix row
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '15000' } });
+    // Mode defaults to "PP" (chip says "per pax"); the default slab's math is
+    // easiest to verify with a group total -- click the chip to switch to Lumpsum.
+    fireEvent.click(screen.getByText('per pax'));
 
     // Default slab: foc=15, gst=5%, markup=15%, roe=90, currency=US $.
     // extrasPP = 15000/15 = 1000. sub = 1000 (no other costs entered).
     // tax = round(1000*0.05) = 50. afterTax = 1050.
     // markupAmt = round(1050*0.15) = 158. sellingINR = 1208.
     // finalFX = ceil(1208/90) = 14.
-    expect(screen.getByText('US $ 14')).toBeTruthy();
+    expect(screen.getAllByText('US $ 14').length).toBeGreaterThan(0);
   });
 
   it('a "PP" mode extra cost is added directly, not divided by slab pax', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
 
-    const descInput = screen.getByPlaceholderText(/Boat ride at Varanasi/);
-    const row = descInput.closest('div').parentElement;
-    const costInput = row.querySelector('input[type="number"]');
-    fireEvent.change(costInput, { target: { value: '100' } });
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '100' } });
     // Mode already defaults to "PP" -- no change needed.
 
     // sub = 100 (added directly, not divided). tax = round(100*0.05) = 5.

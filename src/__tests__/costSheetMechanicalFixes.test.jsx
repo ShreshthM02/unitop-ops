@@ -93,10 +93,7 @@ describe('CostSheet: Proceed to Quotation now requires an actual saved version (
   it('shows a hint explaining why Proceed to Quotation is not available yet, once real pricing exists but is unsaved', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    const descInput = screen.getByPlaceholderText(/Boat ride at Varanasi/);
-    const row = descInput.closest('div').parentElement;
-    const costInput = row.querySelector('input[type="number"]');
-    fireEvent.change(costInput, { target: { value: '5000' } });
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '5000' } });
     expect(screen.getByText(/Save a version to proceed/)).toBeTruthy();
   });
 
@@ -107,10 +104,7 @@ describe('CostSheet: Proceed to Quotation now requires an actual saved version (
     const { CostSheet: CS } = await import('../components/CostSheet.jsx');
     render(<CS query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
-    const descInput = screen.getByPlaceholderText(/Boat ride at Varanasi/);
-    const row = descInput.closest('div').parentElement;
-    const costInput = row.querySelector('input[type="number"]');
-    fireEvent.change(costInput, { target: { value: '5000' } });
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '5000' } });
     fireEvent.click(screen.getAllByText(/💾 Save v1/)[0]);
     await new Promise(r => setTimeout(r, 50));
     expect(screen.getByText(/Proceed to Quotation/)).toBeTruthy();
@@ -141,6 +135,7 @@ describe('CostSheet: Single Supplement breakdown is now transparent (the 29750 q
     // Day single supp is the 3rd "0"-placeholder number input in the day row
     fireEvent.change(ssInputs[2], { target: { value: '1750' } });
     fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getAllByLabelText('Details').pop());
     const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
     fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
 
@@ -153,6 +148,7 @@ describe('CostSheet: Single Supplement breakdown is now transparent (the 29750 q
   it('shows a clear callout explaining Local Handler SS combines into the final total', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Local Handler'));
+    fireEvent.click(screen.getAllByLabelText('Details').pop());
     const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
     fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
     expect(screen.getByText(/combined with the Day-wise Single Supplement total/)).toBeTruthy();

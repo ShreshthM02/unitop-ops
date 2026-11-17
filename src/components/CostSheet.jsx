@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
+import { PricingMatrix } from './PricingMatrix.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, SearchableSelect, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, loadCostSheetVersions, saveCostSheetVersion, markCostSheetVersionFinal, VersionDropdown, ExportMenu, loadTourExecutionForQuery, logAudit, buildLetterheadDocument, printHTML, RichTextEditor, buildDownloadFilename, db, daysFromNights, nightsDaysLabel, mealPlanLabel, formatDateSlash, useDragReorder , useUnsavedGuard } = Lib;
 
 export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, readOnly, staff, docSettings, vendors }) {
@@ -128,7 +129,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   // 10.3 Transport rows
   const [transports, setTransports] = useState([
-    { id:1, sector:"", vehicleType:"Large Coach", cost:"", slabs:[], notes:"" },
+    { id:1, sector:"", vehicleType:"Large Coach", cost:"", cells:{}, notes:"" },
   ]);
   const [extras, setExtras] = useState([]);
   const updateExtra = (i,f,v) => setExtras(p=>p.map((e,idx)=>idx===i?{...e,[f]:v}:e));
@@ -141,7 +142,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const [localHandlers, setLocalHandlers] = useState([]);
   const updateLocalHandler = (i,f,v) => setLocalHandlers(p=>p.map((h,idx)=>idx===i?{...h,[f]:v}:h));
   const addLocalHandler = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
-  setLocalHandlers(p=>[...p,{id:Date.now(),sector:"",dateFrom:"",dateTo:"",mode:"pp",cost:"",singleSupp:"",remarks:""}]); };
+  setLocalHandlers(p=>[...p,{id:Date.now(),sector:"",dateFrom:"",dateTo:"",mode:"pp",cost:"",singleSupp:"",remarks:"",cells:{}}]); };
   const removeLocalHandler = i => setLocalHandlers(p=>p.filter((_,idx)=>idx!==i));
 
   // 10.4 Slabs
@@ -175,7 +176,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // in the Final Price Summary below, alongside the group slabs, with its
   // own label -- not a separate reference number.
   const [tlSlabs, setTlSlabs] = useState([]);
-  const monDr = useDragReorder(setMonuments), tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras), slabDr = useDragReorder(setSlabs), tlDr = useDragReorder(setTlSlabs), dayDr = useDragReorder(setDays);
+  const monDr = useDragReorder(setMonuments), dayDr = useDragReorder(setDays);
   const scrollRestoreRef = useRef(null);
   useLayoutEffect(() => {
     if (scrollRestoreRef.current) {
@@ -238,7 +239,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     setTlMode(v.tlMode); setTlCost(v.tlCost);
     setMiscMode(v.miscMode); setMiscCost(v.miscCost);
     setMonMode(v.monMode); setMonExtra(v.monExtra); setMonuments(v.monuments);
-    setDays(v.days); setTransports(v.transports); setSlabs(v.slabs);
+    setDays(v.days);
+    { const ids = [...(v.slabs||[]).map(x=>x.id), ...(Array.isArray(v.tlSlabs)?v.tlSlabs:[]).map(x=>x.id)]; setTransports((v.transports||[]).map(t=>withCells(t, ids, "transport"))); }
+    setSlabs(v.slabs);
     setLocalHandlers(v.localHandlers); setExtras(v.extras);
     // Defensive fallbacks: versions saved before Tour Leader Slab existed
     // won't have these fields at all; versions saved with the OLD
@@ -324,7 +327,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return {...t, slabs};
   }));
   const addTransport = () => { scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
-  setTransports(p=>[...p,{id:Date.now(),sector:"",vehicleType:"Large Coach",cost:"",slabs:[],notes:""}]); };
+  setTransports(p=>[...p,{id:Date.now(),sector:"",vehicleType:"Large Coach",cost:"",cells:{},notes:""}]); };
   const removeTransport = i => setTransports(p=>p.filter((_,idx)=>idx!==i));
 
   const updateSlab = (i,f,v) => setSlabs(p=>p.map((s,idx)=>idx===i?{...s,[f]:v}:s));
@@ -551,7 +554,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return buildCostSheetWorkbookFile(ExcelJS, {
       query, currentVersionLabel, savedTimestamp, clientAgentName, assignedStaffName,
       gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra,
-      monuments, days, transports, localHandlers, extras, slabs, tlSlabs,
+      monuments, days, transports: transports.map(t=>({ ...t, slabs: appliedSlabIds(t, [...slabs.map(x=>x.id), ...tlSlabs.map(x=>x.id)], "transport") })), localHandlers, extras, slabs, tlSlabs,
       totals: { totMeal, totHotel, daySS, handlerSS, totSS, monTotal },
       calcSlab, calcTlSlab, formatDateSlash,
     });
@@ -650,7 +653,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
 
           {/* TL / Tour Facilitator */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
             <div>
               <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Tour Facilitator Cost</div>
               <div style={{display:"flex",gap:4,marginBottom:4}}>
@@ -667,19 +670,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
               </div>
               <input style={{...inp,textAlign:"right"}} type="number" placeholder="Cost" value={miscCost} onChange={e=>setMiscCost(e.target.value)}/>
             </div>
-            <div>
-              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Monument Fees Mode</div>
-              <div style={{display:"flex",gap:4,marginBottom:4}}>
-                {modeBtn(monMode,"lumpsum","Lumpsum",setMonMode)}
-                {modeBtn(monMode,"pp","Per Person",setMonMode)}
-              </div>
-              <input style={{...inp,textAlign:"right"}} type="number" placeholder="Extra misc monument" value={monExtra} onChange={e=>setMonExtra(e.target.value)}/>
-            </div>
           </div>
 
           {/* ── Monuments / Activities ── */}
           {secH("Monuments / Activities","🏛")}
           <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:10}}>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginRight:4}}>Monument Fees Mode</span>
+              {modeBtn(monMode,"lumpsum","Lumpsum",setMonMode)}
+              {modeBtn(monMode,"pp","Per Person",setMonMode)}
+            </div>
             {monuments.map((m,i)=>(
               <div key={i} {...monDr.row(i,{display:"flex",gap:8,alignItems:"center",marginBottom:6})}>
                 <span {...monDr.grip(i)}>⠿</span>
@@ -689,7 +689,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
                 <span style={{cursor:"pointer",color:G.gray400,fontSize:13}} onClick={()=>setMonuments(p=>p.filter((_,idx)=>idx!==i))}>✕</span>
               </div>
             ))}
-            <button className="btn btn-ghost" style={{fontSize:11,marginTop:2}} onClick={()=>setMonuments(p=>[...p,{name:"",fee:0,include:true}])}>+ Add Monument / Activity</button>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:2}}>
+              <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setMonuments(p=>[...p,{name:"",fee:0,include:true}])}>+ Add Monument / Activity</button>
+              <span style={{fontSize:10,color:G.gray400}}>or a single amount:</span>
+              <input style={{...inp,width:110,textAlign:"right"}} type="number" placeholder="Extra misc monument" value={monExtra} onChange={e=>setMonExtra(e.target.value)}/>
+            </div>
             {monuments.length>0 && (
               <div style={{marginTop:8,fontSize:11,color:G.navy,fontWeight:600}}>
                 Total: ₹ {monTotal.toLocaleString()} ({monMode==="pp"?"per person":"lumpsum"})
@@ -818,212 +822,17 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           </div>
           <button className="btn btn-ghost" style={{fontSize:11}} onClick={addDay}>+ Add Day</button>
 
-          {/* 10.3 Transport */}
-          {secH("Transport","🚌")}
-          {transports.map((t,ti)=>(
-            <div key={t.id} {...tptDr.row(ti,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
-              <span {...tptDr.cardGrip(ti)}>⠿</span>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:8,marginBottom:6}}>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Sector / Route</div>
-                  <input style={inp} value={t.sector} onChange={e=>updateTransport(ti,"sector",e.target.value)} placeholder="e.g. Delhi–Agra–Jaipur circuit"/></div>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vehicle Type</div>
-                  <select style={inp} value={t.vehicleType} onChange={e=>updateTransport(ti,"vehicleType",e.target.value)}>
-                    {VEHICLE_TYPES.map(v=><option key={v}>{v}</option>)}
-                  </select>
-                  {t.vehicleType==="Others" && <input style={{...inp,marginTop:4}} value={t.vehicleOther||""} onChange={e=>updateTransport(ti,"vehicleOther",e.target.value)} placeholder="Specify vehicle type..."/>}
-                  </div>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Cost (₹)</div>
-                  <input style={{...inp,textAlign:"right"}} type="number" value={t.cost} onChange={e=>updateTransport(ti,"cost",e.target.value)} placeholder="0"/></div>
-                <div style={{display:"flex",alignItems:"flex-end"}}>
-                  <span style={{cursor:"pointer",color:G.gray400,fontSize:16,paddingBottom:4}} onClick={()=>removeTransport(ti)}>✕</span>
-                </div>
-              </div>
-              <div style={{marginBottom:6}}>
-                <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Include in Slabs (cost divided by paying pax in selected slabs)</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {slabs.map(s=>(
-                    <label key={s.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,cursor:"pointer",padding:"3px 8px",borderRadius:10,
-                      background:t.slabs.includes(s.id)?"#DBEAFE":"#F3F4F6",color:t.slabs.includes(s.id)?"#1E40AF":G.gray600}}>
-                      <input type="checkbox" checked={t.slabs.includes(s.id)} onChange={()=>toggleTransportSlab(ti,s.id)} style={{accentColor:G.accent}}/>
-                      {s.label}
-                    </label>
-                  ))}
-                  {tlSlabs.map(tl=>(
-                    <label key={tl.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,cursor:"pointer",padding:"3px 8px",borderRadius:10,
-                      background:t.slabs.includes(tl.id)?"#FEF3C7":"#F3F4F6",color:t.slabs.includes(tl.id)?"#7D6608":G.gray600}}>
-                      <input type="checkbox" checked={t.slabs.includes(tl.id)} onChange={()=>toggleTransportSlab(ti,tl.id)} style={{accentColor:"#7D6608"}}/>
-                      🧑‍✈️ {tl.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Notes</div>
-                <input style={inp} value={t.notes} onChange={e=>updateTransport(ti,"notes",e.target.value)} placeholder="Any notes on this transport segment"/></div>
-            </div>
-          ))}
-          <button className="btn btn-ghost" style={{fontSize:11,marginBottom:4}} onClick={addTransport}>+ Add Transport</button>
-
-          {/* ── Local Handler(s) ── */}
-          {secH("Local Handler","🤝")}
-          <div style={{marginBottom:8}}>
-            {localHandlers.map((h,hi)=>(
-              <div key={h.id} {...lhDr.row(hi,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
-                <span {...lhDr.cardGrip(hi)}>⠿</span>
-                <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr auto",gap:8,marginBottom:6}}>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Sector</div>
-                    <input style={inp} value={h.sector} onChange={e=>updateLocalHandler(hi,"sector",e.target.value)} placeholder="e.g. Bodhgaya / Rajgir"/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>From</div>
-                    <DateInput style={inp}  value={h.dateFrom} max={h.dateTo||undefined} onChange={e=>updateLocalHandler(hi,"dateFrom",e.target.value)}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>To</div>
-                    <DateInput style={inp}  value={h.dateTo} min={h.dateFrom||undefined} onChange={e=>updateLocalHandler(hi,"dateTo",e.target.value)}/>
-                  </div>
-                  <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
-                    <span style={{cursor:"pointer",color:G.gray400,fontSize:16}} onClick={()=>removeLocalHandler(hi)}>✕</span>
-                  </div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr",gap:8}}>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Cost (₹)</div>
-                    <div style={{display:"flex",gap:4}}>
-                      <input style={{...inp,textAlign:"right"}} type="number" value={h.cost} onChange={e=>updateLocalHandler(hi,"cost",e.target.value)} placeholder="0"/>
-                      {modeBtn(h.mode,"pp","PP",v=>updateLocalHandler(hi,"mode",v))}
-                      {modeBtn(h.mode,"lumpsum","Lump",v=>updateLocalHandler(hi,"mode",v))}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Single Supp. (₹)</div>
-                    <input style={{...inp,textAlign:"right"}} type="number" value={h.singleSupp} onChange={e=>updateLocalHandler(hi,"singleSupp",e.target.value)} placeholder="0"/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Remarks</div>
-                    <input style={inp} value={h.remarks} onChange={e=>updateLocalHandler(hi,"remarks",e.target.value)} placeholder="Any notes on this handler/sector"/>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {handlerSS>0 && (
-              <div style={{background:"#FEF9E7",border:"1px solid #F9E79F",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#784212",marginBottom:8}}>
-                Local Handler Single Supplement adds up to ₹{handlerSS.toLocaleString()} — this is combined with the Day-wise Single Supplement total (₹{daySS.toLocaleString()}) in the Final Price Summary below, not shown separately there.
-              </div>
-            )}
-            <button className="btn btn-ghost" style={{fontSize:11}} onClick={addLocalHandler}>+ Add Local Handler</button>
-          </div>
-
-          {/* ── Extra Services ── */}
-          {secH("Extra Services","✨")}
-          <div style={{marginBottom:8}}>
-            {extras.map((e,ei)=>(
-              <div key={e.id} {...exDr.row(ei,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10,marginBottom:8})}>
-                <span {...exDr.cardGrip(ei)}>⠿</span>
-                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:8,marginBottom:6}}>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Service Description</div>
-                    <input style={inp} value={e.description} onChange={ev=>updateExtra(ei,"description",ev.target.value)} placeholder="e.g. Boat ride at Varanasi, Cultural show, Camel ride..."/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Cost (₹)</div>
-                    <input style={{...inp,textAlign:"right"}} type="number" value={e.cost} onChange={ev=>updateExtra(ei,"cost",ev.target.value)} placeholder="0"/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Mode</div>
-                    <select style={inp} value={e.mode} onChange={ev=>updateExtra(ei,"mode",ev.target.value)}>
-                      {["PP","Lumpsum","Per Vehicle","Per Group"].map(m=><option key={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div style={{display:"flex",alignItems:"flex-end",paddingBottom:2}}>
-                    <span style={{cursor:"pointer",color:G.gray400,fontSize:16}} onClick={()=>setExtras(p=>p.filter((_,idx)=>idx!==ei))}>✕</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setExtras(p=>[...p,{id:Date.now(),description:"",cost:"",mode:"PP"}])}>+ Add Extra Service</button>
-          </div>
-
-          {/* 10.4 Slabs */}
-          {secH("Group Size Slabs","👥")}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:8}}>
-            {slabs.map((s,i)=>(
-              <div key={s.id} {...slabDr.row(i,{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:10})}>
-                <span {...slabDr.cardGrip(i)}>⠿</span>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontSize:11,fontWeight:600,color:G.gray600}}>Slab {i+1}</span>
-                  {(slabs.length>1||tlSlabs.length>0)&&<span style={{cursor:"pointer",color:G.gray400,fontSize:12}} onClick={()=>setSlabs(p=>p.filter((_,idx)=>idx!==i))}>✕</span>}
-                </div>
-                <div style={{marginBottom:6}}><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Label (shown in final price)</div>
-                  <input style={inp} value={s.label} onChange={e=>updateSlab(i,"label",e.target.value)}/></div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>FOC (N paying)</div>
-                    <input style={{...inp,textAlign:"right"}} type="number" value={s.foc} onChange={e=>updateSlab(i,"foc",Number(e.target.value))}/></div>
-                  <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vehicle (label only)</div>
-                    <select style={inp} value={s.vehicle} onChange={e=>updateSlab(i,"vehicle",e.target.value)}>
-                      {VEHICLE_TYPES.map(v=><option key={v}>{v}</option>)}
-                    </select>
-                    {s.vehicle==="Others" && <input style={{...inp,marginTop:4}} value={s.vehicleOther||""} onChange={e=>updateSlab(i,"vehicleOther",e.target.value)} placeholder="Specify..."/>}
-                    </div>
-                </div>
-              </div>
-            ))}
-            <div style={{border:`1px dashed ${G.gray200}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",minHeight:100,color:G.gray400,fontSize:12}} onClick={addSlab}>+ Add Slab</div>
-          </div>
-
-          {/* ── Tour Leader Slab(s) (optional, multiple allowed) ── */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"14px 0 8px"}}>
-            <span style={{fontSize:11,fontWeight:700,color:G.gray600,textTransform:"uppercase",letterSpacing:"0.5px"}}>🧑‍✈️ Tour Leader Slabs (optional)</span>
-            <button className="btn btn-ghost" style={{fontSize:11}} onClick={addTlSlab}>+ Add T/L Slab</button>
-          </div>
-          {tlSlabs.length===0 && (
-            <div style={{fontSize:11,color:G.gray400,marginBottom:8}}>For when no FOC policy applies (small groups) — works out how much extra the paying guests need to cover for the Tour Leader's own costs. None added, doesn't affect the group slabs above. Each one you add appears as its own row in the Final Price Summary below, just like a group slab.</div>
-          )}
-          {tlSlabs.map((tl,ti)=>(
-            <div key={tl.id} {...tlDr.row(ti,{background:"#FFF9E6",border:"1px solid #F5D97A",borderRadius:8,padding:12,marginBottom:10})}>
-              <span {...tlDr.cardGrip(ti)}>⠿</span>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <div style={{fontSize:10,color:"#7D6608"}}>The Tour Leader doesn't pay — their costs get spread only across this slab's own paying guests.</div>
-                <span style={{cursor:"pointer",color:"#7D6608",fontSize:13}} onClick={()=>removeTlSlab(ti)}>✕</span>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:10}}>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Label (shown in quotation)</div>
-                  <input style={inp} value={tl.label} onChange={e=>updateTlSlab(ti,{label:e.target.value})}/></div>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Vehicle (label only)</div>
-                  <select style={inp} value={tl.vehicle} onChange={e=>updateTlSlab(ti,{vehicle:e.target.value})}>
-                    <option value="">—</option>
-                    {VEHICLE_TYPES.map(v=><option key={v}>{v}</option>)}
-                  </select>
-                  {tl.vehicle==="Others" && <input style={{...inp,marginTop:4}} value={tl.vehicleOther||""} onChange={e=>updateTlSlab(ti,{vehicleOther:e.target.value})} placeholder="Specify vehicle type..."/>}
-                  </div>
-                <div><div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Paying Pax (for this calc)</div>
-                  <input style={{...inp,textAlign:"right"}} type="number" value={tl.pax} onChange={e=>updateTlSlab(ti,{pax:e.target.value})} placeholder="e.g. 12"/></div>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Costs to cover — check which apply</div>
-                <button className="btn btn-ghost" style={{fontSize:10}} onClick={()=>fetchTlSlabCosts(ti)}>↻ Fetch Latest Costs from Cost Sheet</button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
-                {[["hotel","Hotel (PP)"],["singleSupp","Single Supplement (PP)"],["meals","Extra Meals (PP)"],["transport","Transport (PP)"],["monument","Monument (PP)"],["localHandler","Local Handler (PP)"],["extras","Extras (PP)"]].map(([key,label])=>(
-                  <div key={key} style={{background:G.white,border:`1px solid ${G.gray200}`,borderRadius:6,padding:8}}>
-                    <label style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,cursor:"pointer"}}>
-                      <input type="checkbox" checked={!!(tl.includes||{})[key]} onChange={e=>updateTlSlab(ti,{includes:{...tl.includes,[key]:e.target.checked}})}/>
-                      <span style={{fontSize:9,color:G.gray600,fontWeight:600}}>{label}</span>
-                    </label>
-                    <input style={{...inp,textAlign:"right"}} type="number" value={(tl.costs||{})[key]??""} onChange={e=>updateTlSlab(ti,{costs:{...tl.costs,[key]:e.target.value}})} placeholder="0"/>
-                  </div>
-                ))}
-              </div>
-              {(()=>{ const c=calcTlSlab(tl); return (
-                <div style={{display:"flex",gap:16,paddingTop:8,borderTop:"1px solid #F5D97A",flexWrap:"wrap"}}>
-                  <div><div style={{fontSize:9,color:"#7D6608",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total T/L Cost</div>
-                    <div style={{fontSize:14,fontWeight:700,color:"#7D6608"}}>₹ {c.surchargeTotal.toLocaleString()}</div></div>
-                  <div><div style={{fontSize:9,color:"#7D6608",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Surcharge Per Paying Pax</div>
-                    <div style={{fontSize:14,fontWeight:700,color:"#7D6608"}}>{c.surchargePP>0?`₹ ${c.surchargePP.toLocaleString()}`:"—"}{n(tl.pax)<=0&&<span style={{fontSize:9,fontWeight:400,marginLeft:6}}>Set paying pax above</span>}</div></div>
-                </div>
-              );})()}
-            </div>
-          ))}
+          {/* 10.3 - 10.4  Pricing matrix: transport, local handler, extra services, group slabs and tour leader slabs on one grid */}
+          {secH("Pricing Matrix — Transport, Local Handler, Extras & Slabs","🧮")}
+          <PricingMatrix
+            slabs={slabs} setSlabs={setSlabs} tlSlabs={tlSlabs} setTlSlabs={setTlSlabs}
+            transports={transports} setTransports={setTransports} localHandlers={localHandlers} setLocalHandlers={setLocalHandlers}
+            extras={extras} setExtras={setExtras} calcSlab={calcSlab} calcTlSlab={calcTlSlab} currency={currency}
+            totHotel={totHotel} totMeal={totMeal} handlerSS={handlerSS} daySS={daySS}
+            onAddSlab={addSlab} onAddTlSlab={addTlSlab} onAddTransport={addTransport} onAddLocalHandler={addLocalHandler}
+            onAddExtra={()=>{ scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY }; setExtras(p=>[...p,{id:Date.now(),description:"",cost:"",mode:"PP",cells:{}}]); }}
+            onFetchTl={fetchTlSlabCosts}
+          />
 
           {/* 10.5 Final price summary */}
           {secH("Final Price Summary","💰")}

@@ -186,7 +186,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '6000' } });
     fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.change(screen.getByPlaceholderText('e.g. 12'), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '6' } });
     clickExport('📕 PDF');
     const html = capturedHTML();
     // Tour Facilitator: lumpsum 6000 / 6 pax = 1000, should appear as a

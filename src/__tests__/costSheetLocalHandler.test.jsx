@@ -7,7 +7,7 @@ const fakeQuery = { id: 'UTQ-2026-080', groupName: 'Local Handler Test Group', n
 describe('CostSheet: Local Handler section', () => {
   it('is optional -- starts empty and does not appear anywhere until "+ Add Local Handler" is clicked', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    expect(screen.getByText('Local Handler')).toBeTruthy(); // section header always visible (like Extra Services)
+    expect(screen.getByText(/^▾ Local Handler/)).toBeTruthy(); // matrix group row always visible (like Extra Services)
     expect(screen.queryByPlaceholderText('e.g. Bodhgaya / Rajgir')).toBeNull(); // but no entry row yet
   });
 
@@ -28,12 +28,8 @@ describe('CostSheet: Local Handler section', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Local Handler'));
 
-    // Find the local handler cost input: first number input in the row
-    // containing the sector text input.
-    const sectorInput = screen.getByPlaceholderText('e.g. Bodhgaya / Rajgir');
-    const row = sectorInput.closest('div[style]').parentElement;
-    const numberInputs = row.querySelectorAll('input[type="number"]');
-    fireEvent.change(numberInputs[0], { target: { value: '50000' } });
+    // The handler's cost is the "same for all slabs" cell on its matrix row
+    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '50000' } });
 
     // "Local Hdlr PP" column header should now be present in the summary table
     expect(screen.getByText('Local Hdlr PP')).toBeTruthy();
@@ -42,9 +38,10 @@ describe('CostSheet: Local Handler section', () => {
   it('single supplement field is present alongside the cost field in each handler row', () => {
     render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Local Handler'));
+    // Details (single supplement, remarks, dates) open from the row's arrow
+    fireEvent.click(screen.getAllByLabelText('Details').pop());
     expect(screen.getByPlaceholderText('Any notes on this handler/sector')).toBeTruthy();
-    const allNumberInputs = document.querySelectorAll('input[type="number"]');
-    expect(allNumberInputs.length).toBeGreaterThan(1);
+    expect(screen.getByText('Single Supp. (₹)')).toBeTruthy();
   });
 
   it('renders without crashing when a query has no local handlers at all (default/backward-compatible state)', () => {
