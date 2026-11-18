@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { G, VEHICLE_TYPES } from '../lib/constants.js';
 import { useDragReorder } from '../lib/useDragReorder.jsx';
-import { lineCostFor, withCells, NOT_APPLIED } from '../lib/costSheetCalc.js';
+import { lineCostFor, withCells, NOT_APPLIED, fxRate, hasFx } from '../lib/costSheetCalc.js';
 import DateInput from '../lib/DateInput.jsx';
 
 // The pricing matrix: Transport, Local Handler, Extra Services and the T/L
@@ -30,11 +30,12 @@ const parseCell = (t) => {
 
 export function PricingMatrix({
   slabs, setSlabs, tlSlabs, setTlSlabs, transports, setTransports, localHandlers, setLocalHandlers, extras, setExtras,
-  calcSlab, calcTlSlab, currency, totHotel, totMeal, handlerSS, daySS,
+  calcSlab, calcTlSlab, currency, roe, totHotel, totMeal, handlerSS, daySS,
   onAddSlab, onAddTlSlab, onAddTransport, onAddLocalHandler, onAddExtra, onFetchTl,
 }) {
   const [shut, setShut] = useState({});
   const [open, setOpen] = useState({});
+  const [fxOpen, setFxOpen] = useState({});
   const tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras);
   const slabDr = useDragReorder(setSlabs), tlDr = useDragReorder(setTlSlabs);
 
@@ -101,6 +102,8 @@ export function PricingMatrix({
   const lineRow = (l, i, kind, setter, dr, ph, nameKey) => {
     const view = withCells(l, slabIds, kind);
     const isOpen = !!open[l.id];
+    const fxOn = hasFx(l), fxShown = !!fxOpen[l.id];
+    const setFx = (patch) => patchLine(setter, kind, l.id, { fx: patch });
     const hasUnit = kind !== "transport";
     const isPP = kind === "local" ? l.mode === "pp" : l.mode === "PP";
     const toggleUnit = () => patchLine(setter, kind, l.id, { mode: kind === "local" ? (isPP ? "lumpsum" : "pp") : (isPP ? "Lumpsum" : "PP") });
@@ -115,6 +118,10 @@ export function PricingMatrix({
                 style={{ border: 0, background: "none", cursor: "pointer", color: hasDetail ? G.accent : G.gray400, fontSize: 11, padding: 0 }}>{isOpen ? "▾" : "▸"}</button>
               <input style={{ ...inp, flex: 1, minWidth: 90 }} value={l[nameKey] || ""} onChange={(e) => patchLine(setter, kind, l.id, { [nameKey]: e.target.value })} placeholder={ph} />
               {hasUnit && unitChip(isPP, isPP ? "per pax" : "group", toggleUnit, "Per pax, or one total for the group (divided by each slab's paying pax)")}
+              <button type="button" aria-label="Foreign currency" onClick={() => setFxOpen((o) => ({ ...o, [l.id]: !o[l.id] }))}
+                title={fxOn ? `Quoted in ${l.fx.cur} at ROE ₹${l.fx.roe}. Click to change.` : "Quoted in a foreign currency? Click to set it."}
+                style={{ border: fxOn ? "1px solid #93C5FD" : "1px solid transparent", background: fxOn ? "#EFF6FF" : "none", color: fxOn ? "#1D4ED8" : G.gray400, opacity: fxOn || fxShown ? 1 : 0.55, borderRadius: 10, fontSize: 9, fontWeight: 600, padding: "1px 6px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                {fxOn ? `${l.fx.cur} @ ${l.fx.roe || "?"}` : "FX"}</button>
               <span style={{ cursor: "pointer", color: G.gray400, fontSize: 14 }} onClick={() => setter((p) => p.filter((x) => x.id !== l.id))} aria-label="Remove">✕</span>
             </div>
           </td>
@@ -138,6 +145,28 @@ export function PricingMatrix({
             );
           })}
         </tr>
+        {fxShown && (
+          <tr>
+            <td colSpan={span} style={{ background: "#EFF6FF", padding: "6px 10px", borderBottom: `1px solid ${G.gray200}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: G.gray600 }}>
+                <span style={{ fontWeight: 600, color: "#1D4ED8" }}>Quoted in</span>
+                <select style={{ ...inp, width: 96 }} aria-label="Quoted currency" value={fxOn ? l.fx.cur : ""}
+                  onChange={(e) => { const cur = e.target.value; if (!cur) setFx(undefined); else setFx({ cur, roe: cur === currency && roe ? String(roe) : (l.fx && l.fx.roe) || "" }); }}>
+                  <option value="">₹ Rupees</option>
+                  {[...new Set([currency, "US $", "EUR", "GBP", "AED", "AUD", "SGD", "THB", "JPY", "CHF"])].filter((c) => c && c !== "INR" && c !== "Other").map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {fxOn && (<>
+                  <span>ROE ₹</span>
+                  <input style={{ ...inp, width: 70, textAlign: "right" }} inputMode="decimal" aria-label="ROE for this line" value={l.fx.roe || ""} placeholder="per 1"
+                    onChange={(e) => setFx({ cur: l.fx.cur, roe: e.target.value.replace(/[^0-9.]/g, "") })} />
+                  <span>per 1 {l.fx.cur}. Figures on this row are in {l.fx.cur}; they are added to the total as rupees.</span>
+                  {n(l.cost) > 0 && n(l.fx.roe) > 0 && <b style={{ color: "#1D4ED8" }}>{l.fx.cur} {n(l.cost).toLocaleString()} = {inr(n(l.cost) * fxRate(l))}</b>}
+                </>)}
+                {!fxOn && <span>Pick a currency if this cost was quoted in it. Leave as ₹ for everything else.</span>}
+              </div>
+            </td>
+          </tr>
+        )}
         {isOpen && (
           <tr>
             <td colSpan={span} style={{ background: G.gray50, padding: "8px 10px", borderBottom: `1px solid ${G.gray200}` }}>

@@ -26,17 +26,24 @@ export const ceilFX = (x) => Math.ceil(Math.round(x * 1e6) / 1e6);
 // no `cells`: local handlers and extras applied to every slab, and transports
 // applied only to the slabs listed in `line.slabs`. Both shapes price the same.
 export const NOT_APPLIED = "x";
+// A line quoted in a foreign currency carries fx = { cur, roe } (roe = rupees
+// for one unit of that currency). Every figure typed on that line is then in
+// that currency; this is the ONE place it becomes rupees, so the screen, the
+// quotation maths, the PDF and the Excel all agree. No fx = rupees, as before.
+export const fxRate = (line) => (line && line.fx && n(line.fx.roe) > 0 ? n(line.fx.roe) : 1);
+export const hasFx = (line) => !!(line && line.fx && line.fx.cur);
 export function lineCostFor(line, slabId, kind) {
   const l = line || {};
+  const k = fxRate(l);
   const hasCells = l.cells && typeof l.cells === "object";
   if (!hasCells) {
     if (kind === "transport" && !(l.slabs || []).includes(slabId)) return null;
-    return n(l.cost);
+    return n(l.cost) * k;
   }
   const own = l.cells[slabId];
   if (own === NOT_APPLIED) return null;
-  if (own !== undefined && own !== null && String(own).trim() !== "") return n(own);
-  return n(l.cost);
+  if (own !== undefined && own !== null && String(own).trim() !== "") return n(own) * k;
+  return n(l.cost) * k;
 }
 // Turn an old transport (explicit list of ticked slabs) into the cells shape,
 // so the matrix can show and edit it. Prices stay exactly the same.
@@ -69,7 +76,7 @@ export function matrixSpans(line, kind, cols) {
     const pp = isPP ? total : (pax > 0 ? total / pax : 0);
     const own = line.cells && line.cells[c.id];
     const custom = own !== undefined && own !== null && String(own).trim() !== "" && own !== NOT_APPLIED;
-    return { none: false, total, pp, pax, custom, isPP, key: [total, isPP ? "pp" : pax, custom, !!c.tl].join("|") };
+    return { none: false, total, pp, pax, custom, isPP, orig: total / fxRate(line), key: [total, isPP ? "pp" : pax, custom, !!c.tl].join("|") };
   };
   const out = [];
   let i = 0;

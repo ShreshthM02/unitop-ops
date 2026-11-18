@@ -118,3 +118,54 @@ describe('PDF / Story view: neighbouring slabs with the same whole cost join int
     expect(spans).toHaveLength(2);
   });
 });
+
+describe('Foreign-currency cost line (FX)', () => {
+  const sl = [{ id: 1, label: '10 pax', foc: 10 }, { id: 2, label: '20 pax', foc: 20 }];
+  const mk = (extra) => makeCalculators({ ...base, days, slabs: sl, transports: [], localHandlers: [], extras: [extra] });
+  it('a line with no fx prices exactly as before', () => {
+    expect(mk({ id: 1, cost: '5000', mode: 'Lumpsum', cells: {} }).calcSlab(sl[0]).extrasPP).toBe(500);
+  });
+  it('EUR 1000 at ROE 95 adds Rs 95,000 as a group cost, divided by paying pax', () => {
+    const c = mk({ id: 1, cost: '1000', mode: 'Lumpsum', cells: {}, fx: { cur: 'EUR', roe: '95' } });
+    expect(c.calcSlab(sl[0]).extrasPP).toBe(9500);
+    expect(c.calcSlab(sl[1]).extrasPP).toBe(4750);
+  });
+  it('a per-slab figure on an fx line is in the same foreign currency', () => {
+    const c = mk({ id: 1, cost: '1000', mode: 'Lumpsum', cells: { 2: '2000' }, fx: { cur: 'EUR', roe: '95' } });
+    expect(c.calcSlab(sl[1]).extrasPP).toBe(9500);
+  });
+  it('a missing ROE never zeroes the line (treated as rupees until filled)', () => {
+    expect(lineCostFor({ cost: '700', cells: {}, fx: { cur: 'EUR', roe: '' } }, 1, 'extra')).toBe(700);
+  });
+  it('Quotation maths (utils) agree', () => {
+    const snap = { ...base, days, slabs: sl, transports: [{ id: 1, cost: '400', cells: {}, fx: { cur: 'AED', roe: '23' } }], localHandlers: [], extras: [] };
+    const { calcSlab } = makeCalculators(snap);
+    expect(calcCostSheetSlabFinalPrice(snap, sl[0]).finalFX).toBe(calcSlab(sl[0]).finalFX);
+    expect(calcSlab(sl[0]).tptPP).toBe(920);
+  });
+  it('PDF block names the foreign amount, ROE and rupee equivalent', () => {
+    const spans = matrixSpans({ cost: '1000', mode: 'Lumpsum', cells: {}, fx: { cur: 'EUR', roe: '95' } }, 'extra', [{ id: 1, pax: 10 }]);
+    expect(spans[0].total).toBe(95000);
+    expect(spans[0].orig).toBe(1000);
+  });
+  it('Excel rows carry rupees and say which currency/ROE the label came from', () => {
+    const entries = [{ src: { id: 1 }, name: '10 pax' }];
+    const rows = explodeLines([{ sector: 'Jaipur', cost: '400', mode: 'lumpsum', cells: {}, fx: { cur: 'AED', roe: '23' } }], 'local', entries, (l) => l.sector);
+    expect(rows[0].cost).toBe(9200);
+    expect(rows[0].label).toBe('Jaipur [AED @ 23]');
+  });
+});
+
+describe('FX control on screen', () => {
+  const q = { id: 'UTQ-2026-778', tourFileId: 'TF-778', groupName: 'Fx Test', nights: 3 };
+  it('is a small FX button; choosing a currency shows ROE, and the line shows the chip', () => {
+    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    fireEvent.click(screen.getByText('+ Add Extra Service'));
+    const btn = screen.getAllByLabelText('Foreign currency').pop();
+    expect(btn.textContent).toBe('FX');
+    fireEvent.click(btn);
+    fireEvent.change(screen.getByLabelText('Quoted currency'), { target: { value: 'EUR' } });
+    fireEvent.change(screen.getByLabelText('ROE for this line'), { target: { value: '95' } });
+    expect(screen.getAllByLabelText('Foreign currency').pop().textContent).toBe('EUR @ 95');
+  });
+});

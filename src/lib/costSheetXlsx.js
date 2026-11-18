@@ -1,4 +1,4 @@
-import { lineCostFor } from "./costSheetCalc.js";
+import { lineCostFor, fxRate, hasFx } from "./costSheetCalc.js";
 // Cost Sheet -> Excel workbook.
 //
 // A WORKING spreadsheet, not a printout. Design rules (each one answers a
@@ -49,16 +49,18 @@ export function excelDate(iso) {
 // slab stays one "All" row. Single supplement rides on the first row only.
 export function explodeLines(list, kind, slabEntries, nameOf) {
   const out = [];
-  list.forEach((l) => {
+  list.forEach((l0) => {
+    // A foreign-currency line says so in its label; its figures below are already rupees.
+    const l = l0, nm = (x) => nameOf(x) + (hasFx(l0) ? ` [${l0.fx.cur} @ ${l0.fx.roe}]` : "");
     const per = slabEntries.map((e) => ({ name: e.name, cost: lineCostFor(l, e.src.id, kind) }));
     const applied = per.filter((p) => p.cost !== null);
     const hasOverride = !!(l.cells && Object.values(l.cells).some((v) => v !== undefined && v !== ""));
-    if (!applied.length) { out.push({ src: l, label: nameOf(l), cost: n(l.cost), applies: kind === "transport" ? "" : "All", first: true }); return; }
-    if (!hasOverride && applied.length === per.length) { out.push({ src: l, label: nameOf(l), cost: applied[0].cost, applies: "All", first: true }); return; }
+    if (!applied.length) { out.push({ src: l, label: nm(l), cost: n(l.cost) * fxRate(l), applies: kind === "transport" ? "" : "All", first: true }); return; }
+    if (!hasOverride && applied.length === per.length) { out.push({ src: l, label: nm(l), cost: applied[0].cost, applies: "All", first: true }); return; }
     const byCost = new Map();
     applied.forEach((p) => { const k = String(p.cost); if (!byCost.has(k)) byCost.set(k, { cost: p.cost, names: [] }); byCost.get(k).names.push(p.name); });
     let i = 0;
-    byCost.forEach((g) => { out.push({ src: l, label: byCost.size > 1 ? `${nameOf(l)} — ${g.names.join(", ")}` : nameOf(l), cost: g.cost, applies: g.names.join(", "), first: i === 0 }); i++; });
+    byCost.forEach((g) => { out.push({ src: l, label: byCost.size > 1 ? `${nm(l)} — ${g.names.join(", ")}` : nm(l), cost: g.cost, applies: g.names.join(", "), first: i === 0 }); i++; });
   });
   return out;
 }

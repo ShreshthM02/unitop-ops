@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds, matrixSpans } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -485,11 +485,14 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       + mxCols.map(c=>gridCell(`<b>${perPaxOf(c)}</b>`, "center", `;background:${c.tl?"#fff3c4":"#e5e7eb"};color:#374151;white-space:nowrap`)).join("");
     const lineRows = (list, kind, nameKey, blankName) => list.map((l,i)=>{
       const spans = matrixSpans(l, kind, mxCols);
-      return gridCell(l[nameKey]||blankName, "left", "", i%2===1)
+      const fx = hasFx(l) ? l.fx : null;
+      const fxAmt = (v) => fx.cur + " " + (Math.round(v * 100) / 100).toLocaleString();
+      return gridCell((l[nameKey]||blankName) + (fx ? `<br/><span style="font-size:6.5pt;color:#1D4ED8">quoted in ${fx.cur} &middot; ROE &#8377;${fx.roe}</span>` : ""), "left", "", i%2===1)
         + spans.map(m=>{
             const sp = m.span>1 ? `;grid-column:span ${m.span}` : "";
             if (m.none) return gridCell("—", "center", `;color:#999${sp}`, i%2===1);
-            const inner = m.isPP ? `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">per pax</span>`
+            const inner = fx ? `${fxAmt(m.orig)}<br/><span style="font-size:6.5pt;color:#1D4ED8">= ${money(m.total)}</span><br/><span style="font-size:6.5pt;color:#777">${m.isPP ? "per pax" : `&divide; ${m.pax} pax = ${money(m.pp)} pp`}</span>`
+              : m.isPP ? `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">per pax</span>`
               : `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">&divide; ${m.pax} pax = ${money(m.pp)} pp</span>`;
             return gridCell(m.custom ? `<b>${inner}</b>` : inner, "center", `${m.custom?";background:#fef3c7":""}${sp}`, i%2===1);
           }).join("");
@@ -844,7 +847,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           <PricingMatrix
             slabs={slabs} setSlabs={setSlabs} tlSlabs={tlSlabs} setTlSlabs={setTlSlabs}
             transports={transports} setTransports={setTransports} localHandlers={localHandlers} setLocalHandlers={setLocalHandlers}
-            extras={extras} setExtras={setExtras} calcSlab={calcSlab} calcTlSlab={calcTlSlab} currency={currency}
+            extras={extras} setExtras={setExtras} calcSlab={calcSlab} calcTlSlab={calcTlSlab} currency={currency} roe={roe}
             totHotel={totHotel} totMeal={totMeal} handlerSS={handlerSS} daySS={daySS}
             onAddSlab={addSlab} onAddTlSlab={addTlSlab} onAddTransport={addTransport} onAddLocalHandler={addLocalHandler}
             onAddExtra={()=>{ scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY }; setExtras(p=>[...p,{id:Date.now(),description:"",cost:"",mode:"PP",cells:{}}]); }}
