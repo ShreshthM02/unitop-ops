@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, isTourOnGround } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, NameWithBadges, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, isTourOnGround } = Lib;
 
 export default function Dashboard({ queries, onOpenQuery, currentUser, onStatClick }) {
   // Season = Apr 1 current year → Mar 31 next year
@@ -105,10 +105,10 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseEnter={e => e.currentTarget.style.background = G.gray50}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}><NameWithBadges name={q.groupName||q.clientName} fileType={q.fileType} seriesId={q.seriesId}/></div>
                 <div style={{ fontSize: 11, color: G.gray400 }}>{q.tourFileId||q.id} · {q.destination||q.sector}</div>
               </div>
-              <StatusBadge status={q.status} />
+              <StatusBadge status={q.status} cancelled={q.cancelled}/>
             </div>
           ))}
           {queries.filter(q=>!q.cancelled).length===0&&<div style={{padding:24,textAlign:"center",color:G.gray400,fontSize:12}}>No queries yet</div>}
@@ -127,7 +127,7 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 500 }}>{t.name}<FileTypeBadge fileType={t.query.fileType} seriesId={t.query.seriesId}/></div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}><NameWithBadges name={t.name} fileType={t.query.fileType} seriesId={t.query.seriesId}/></div>
                 <div style={{ fontSize: 11, color: G.gray400 }}>{t.dates} · {t.pax}</div>
               </div>
               <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,

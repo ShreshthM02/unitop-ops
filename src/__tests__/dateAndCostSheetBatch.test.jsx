@@ -61,11 +61,11 @@ describe('batch 2/3', () => {
     expect(h).toHaveBeenCalled(); expect(h.mock.calls[0][0].detail.query.id).toBe('QRY-1');
     document.removeEventListener('unitop-activate-query', h);
   });
-  it('Kanban cards are in ascending file-number order', () => {
+  it('Kanban cards are newest first (same day: higher number first)', () => {
     const qs = ['QRY-2026-010', 'QRY-2026-002', 'QRY-2026-009'].map(id => ({ id, status: 'new_query', groupName: 'G' + id, clientName: 'c', audit: [], remarks: [] }));
     const { container } = render(<KanbanView queries={qs} onOpenQuery={() => {}} onConvert={() => {}} staff={[]} />);
     const txt = container.textContent;
-    expect(txt.indexOf('QRY-2026-002')).toBeLessThan(txt.indexOf('QRY-2026-009'));
-    expect(txt.indexOf('QRY-2026-009')).toBeLessThan(txt.indexOf('QRY-2026-010'));
+    expect(txt.indexOf('QRY-2026-010')).toBeLessThan(txt.indexOf('QRY-2026-009'));
+    expect(txt.indexOf('QRY-2026-009')).toBeLessThan(txt.indexOf('QRY-2026-002'));
   });
 });

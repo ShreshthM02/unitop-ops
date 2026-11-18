@@ -37,7 +37,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
 
   // Only show queries that are in operations or completed AND have a confirmed travel date
   const allTours = queries
-    .filter(q=>["operations","finance","completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .filter(q=>["operations","finance","completed"].includes(q.status) && q.tourFileId && !q.cancelled && q.travelDate)
     .map((q,idx)=>{
       const nights = parseInt(q.nights)||7;
       const tDate  = parseLocalDate(q.travelDate);
@@ -125,18 +125,18 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
             {" · "}<span style={{color:G.accent}}>Today marked in red</span>
           </div>
           <div style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,overflow:"hidden"}}>
-            <div style={{overflowX:"auto"}}>
-              <table style={{borderCollapse:"collapse",width:"100%",minWidth:600}}>
+            <div style={{overflow:"auto",maxHeight:"calc(100vh - 280px)"}}>
+              <table style={{borderCollapse:"separate",borderSpacing:0,width:"100%",minWidth:600}}>
                 <thead>
                   <tr>
-                    <th style={{padding:"8px 12px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,minWidth:160,position:"sticky",left:0,zIndex:2}}>
+                    <th style={{padding:"8px 12px",fontSize:11,fontWeight:600,color:G.gray600,textAlign:"left",borderBottom:`1px solid ${G.gray200}`,background:G.gray50,minWidth:160,position:"sticky",top:0,left:0,zIndex:4}}>
                       Tour / Group
                     </th>
                     {monthDays.map(d=>(
                       <th key={d} style={{padding:"6px 2px",fontSize:10,fontWeight:isToday(d)?700:400,
                         color:isToday(d)?G.accent:G.gray400,textAlign:"center",
                         borderBottom:`1px solid ${G.gray200}`,background:isToday(d)?"#FEF2F2":G.gray50,
-                        borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",minWidth:26}}>
+                        borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",minWidth:26,position:"sticky",top:0,zIndex:3}}>
                         {d}<br/>
                         <span style={{fontSize:8}}>{"SMTWTFS"[new Date(selectedYear,selectedMonth,d).getDay()]}</span>
                       </th>

@@ -91,7 +91,7 @@ export default function AgentLedgerPanel({ agent, queries, payments, onClose }) 
                       {" · "}{q.sector||q.destination||""}
                     </div>
                   </div>
-                  <StatusBadge status={q.status}/>
+                  <StatusBadge status={q.status} cancelled={q.cancelled}/>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
                   {[["Tour Value",tourVal,G.navy],["Received",received,"#059669"],

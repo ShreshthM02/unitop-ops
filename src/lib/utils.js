@@ -649,7 +649,7 @@ export function getRunningToursForDate(queries, tourExecutions, vendors, dateStr
   const chosen = parseLocalDateStr(dateStr);
   if (!chosen) return [];
   return queries
-    .filter(q => ["operations", "finance"].includes(q.status) && !q.cancelled && q.travelDate)
+    .filter(q => ["operations", "finance"].includes(q.status) && q.tourFileId && !q.cancelled && q.travelDate)
     .map(q => {
       const start = parseLocalDateStr(q.travelDate);
       if (!start) return null;
@@ -682,7 +682,7 @@ export function getMovementChartRows(queries, users, year, month, tourExecutions
   const monthEnd = new Date(year, month + 1, 0);
 
   return queries
-    .filter(q => ["operations", "finance", "completed"].includes(q.status) && !q.cancelled && q.travelDate)
+    .filter(q => ["operations", "finance", "completed"].includes(q.status) && q.tourFileId && !q.cancelled && q.travelDate)
     .map(q => {
       const start = parseLocalDateStr(q.travelDate);
       if (!start) return null;

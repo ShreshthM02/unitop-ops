@@ -122,7 +122,7 @@ export default function SmartSearch({ queries, agents, vendors, series, staff, c
                 <div style={{fontSize:11,color:G.gray400,marginTop:2}}>{getSub(r)}</div>
               </div>
               <TypeBadge type={r._type}/>
-              {r._type==="query"&&<StatusBadge status={r.status}/>}
+              {r._type==="query"&&<StatusBadge status={r.status} cancelled={r.cancelled}/>}
             </div>
           ))}
         </div>

@@ -57,7 +57,7 @@ export function Avatar({ user, size = 28, onClick, style }) {
   );
 }
 
-export function StatusBadge({ status }) {
+export function StatusBadge({ status, cancelled }) {
   const map = {
     new_query:  { label: "New Query",  bg: "#DBEAFE", color: "#1E40AF" },
     costing:    { label: "Costing",    bg: "#FEF3C7", color: "#92400E" },
@@ -65,7 +65,9 @@ export function StatusBadge({ status }) {
     finance:    { label: "Finance",    bg: "#F3E8FF", color: "#6B21A8" },
     completed:  { label: "Completed",  bg: "#ECFDF5", color: "#065F46" },
   };
-  const s = map[status] || map.new_query;
+  // A cancelled query keeps its old pipeline status underneath (so recovery
+  // can restore it), but it must never read as a live "New Query".
+  const s = cancelled ? { label: "Cancelled", bg: "#FEE2E2", color: "#991B1B" } : (map[status] || map.new_query);
   return <span className="status-badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>;
 }
 
@@ -104,6 +106,18 @@ export function FileTypeBadge({ fileType, seriesId }) {
     }}>{fileType}</span>
     {mark}
   </>);
+}
+
+// Name + its FIT/GIT and series symbols for a cell that may be too narrow.
+// Only the NAME shrinks (and shows "..."); the symbols never do, so they are
+// always visible however long the name is.
+export function NameWithBadges({ name, fileType, seriesId, style }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", minWidth: 0, ...style }}>
+      <span style={{ minWidth: 0, flex: "0 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={typeof name === "string" ? name : undefined}>{name}</span>
+      <span style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center" }}><FileTypeBadge fileType={fileType} seriesId={seriesId} /></span>
+    </div>
+  );
 }
 
 // Real, pre-existing bug caught on review: this always prefixed "✓"

@@ -47,7 +47,7 @@ export default function TeamView({ queries, staff }) {
                 display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 11, color: G.accent, minWidth: 90, textDecoration: "underline" }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
-                <StatusBadge status={q.status} />
+                <StatusBadge status={q.status} cancelled={q.cancelled}/>
               </div>
             ))}
             {myQueries.length === 0 && (
@@ -64,7 +64,7 @@ export default function TeamView({ queries, staff }) {
                 display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 11, color: G.accent, minWidth: 90, textDecoration: "underline" }}>{q.tourFileId||q.id}</span>
                 <span style={{ fontSize: 12, flex: 1 }}>{q.clientName}</span>
-                <StatusBadge status={q.status} />
+                <StatusBadge status={q.status} cancelled={q.cancelled}/>
               </div>
             ))}
             {reviewingQueries.length === 0 && (

@@ -11,7 +11,7 @@ const realStaff = [
 ];
 
 const realQuery = {
-  id: 'UTQ-2026-200', groupName: 'Real Staff Test', status: 'operations', cancelled: false,
+  id: 'UTQ-2026-200', tourFileId: 'UT-3200', groupName: 'Real Staff Test', status: 'operations', cancelled: false,
   assignedTo: 'cfff444a-718e-4c14-83a3-f55f368d64dd', // a real uuid, not a small int
 };
 

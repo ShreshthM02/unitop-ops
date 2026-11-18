@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, NameWithBadges, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash } = Lib;
 
 export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,currentUser,staff}){
   const [search,setSearch]=React.useState('');
@@ -43,7 +43,7 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
   const pageData=sorted.slice((page-1)*PER_PAGE,page*PER_PAGE);
   const onSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}setPage(1);};
   const SortIcon=({col})=>sortCol===col?<span style={{marginLeft:3,fontSize:10}}>{sortDir==='asc'?'▲':'▼'}</span>:<span style={{marginLeft:3,fontSize:10,opacity:0.3}}>⇅</span>;
-  const exportCSV=()=>{const cols=['ID','Group/Client','Destination','Agent','Stage','Travel Date','Pax','Source','Tour File'];const rows=sorted.map(q=>[q.id,q.groupName||q.clientName,q.destination||q.sector,q.agentCompany,stageLabel(q.status),formatDateSlash(q.travelDate),q.paxDisplay,q.source,q.tourFileId||'']);const csv=[cols,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='queries.csv';a.click();URL.revokeObjectURL(url);};
+  const exportCSV=()=>{const cols=['ID','Group/Client','Destination','Agent','Stage','Travel Date','Pax','Source','Tour File'];const rows=sorted.map(q=>[q.id,q.groupName||q.clientName,q.destination||q.sector,q.agentCompany,(q.cancelled?'Cancelled':stageLabel(q.status)),formatDateSlash(q.travelDate),q.paxDisplay,q.source,q.tourFileId||'']);const csv=[cols,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='queries.csv';a.click();URL.revokeObjectURL(url);};
   const inp={padding:"6px 10px",border:`1px solid ${G.gray200}`,borderRadius:6,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none",color:G.gray800,background:G.white};
   const th={padding:"9px 10px",textAlign:"left",fontSize:11,fontWeight:700,color:G.white,background:G.navy,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",borderRight:"1px solid rgba(255,255,255,0.1)"};
   const td={padding:"8px 10px",fontSize:11,borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle"};
@@ -86,17 +86,17 @@ export default function AllQueriesView({queries,agents,onOpenQuery,onConvert,cur
           <tbody>
             {pageData.map((q,i)=>{
               const user=(staff||USERS).find(u=>u.id===q.assignedTo);
-              const sc=stageColor(q.status);
+              const sc=q.cancelled?'#991B1B':stageColor(q.status);
               return(
                 <tr key={q.id} onClick={()=>onOpenQuery(q)} style={{background:i%2===0?G.white:G.gray50,cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="#EBF5FB"}
                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?G.white:G.gray50}>
                   <td style={{...td,fontFamily:"monospace",fontSize:10,fontWeight:700,color:sc}}>{q.tourFileId||q.id}</td>
                   <td style={{...td,color:G.gray400,fontSize:10,maxWidth:72,whiteSpace:'nowrap'}}>{q.date||'—'}</td>
-                  <td style={{...td,fontWeight:600,width:'18%',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></td>
+                  <td style={{...td,fontWeight:600,width:'18%',overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><NameWithBadges name={q.groupName||q.clientName} fileType={q.fileType} seriesId={q.seriesId}/></td>
                   <td style={{...td,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.destination||q.sector||'—'}</td>
                   <td style={{...td,fontSize:10,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.agentCompany||'—'}</td>
-                  <td style={td}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:sc+'22',color:sc,fontWeight:600,whiteSpace:"nowrap"}}>{stageLabel(q.status)}</span></td>
+                  <td style={td}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:sc+'22',color:sc,fontWeight:600,whiteSpace:"nowrap"}}>{q.cancelled?'Cancelled':stageLabel(q.status)}</span></td>
                   <td style={{...td,fontSize:10,whiteSpace:"nowrap"}}>{formatDateSlash(q.travelDate)||'—'}</td>
                   <td style={{...td,textAlign:"center"}}>{q.paxDisplay||'—'}</td>
                   <td style={{...td,textAlign:"center"}} onClick={e=>e.stopPropagation()}>{user&&<Avatar user={user} size={20}/>}</td>

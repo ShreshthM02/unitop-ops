@@ -220,7 +220,7 @@ export default function QueryDrawerWithQuote({ openTab, onDiscussionSeen, query,
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
             <button onClick={onClose} className="btn btn-ghost" style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",padding:"4px 10px"}}>✕</button>
-            <StatusBadge status={query.status}/>
+            <StatusBadge status={query.status} cancelled={query.cancelled}/>
           </div>
         </div>
 
@@ -349,7 +349,7 @@ export default function QueryDrawerWithQuote({ openTab, onDiscussionSeen, query,
                 <div>
                   {sec(isCaseFile?"Tour Details":"Query Details")}
                   <div className="info-grid">
-                    <div className="info-item"><label>Status</label><StatusBadge status={query.status}/></div>
+                    <div className="info-item"><label>Status</label><StatusBadge status={query.status} cancelled={query.cancelled}/></div>
                     <div className="info-item"><label>Source</label><span style={{color:SOURCE_COLORS[query.source]||G.gray600}}>● {query.source}{query.sourceOther?" ("+query.sourceOther+")":""}</span></div>
                     <div className="info-item"><label>Foreign Agency</label><span>{query.agentCompany||"—"}</span></div>
                     <div className="info-item"><label>Correspondent</label><span>{query.correspondent||"—"}</span></div>

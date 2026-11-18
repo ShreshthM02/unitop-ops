@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, nightsDaysLabel } = Lib;
+const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, DEFAULT_TEMPLATE, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, NameWithBadges, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, formatDateSlash, nightsDaysLabel } = Lib;
 
 export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusChange, staff }) {
   const [dragId,    setDragId]    = React.useState(null);
@@ -35,12 +35,19 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
   const handleDragEnd = () => { setDragId(null); setDragOver(null); };
 
   const activeQueries = queries.filter(q => !q.cancelled);
+  // Most recently created first, in every column. Same-day queries fall back
+  // to the running number in the query id (QRY-2026-053 is newer than -052).
+  const newestFirst = (a, b) => {
+    const d = String(b.date || "").localeCompare(String(a.date || ""));
+    if (d) return d;
+    return String(b.id || "").localeCompare(String(a.id || ""), undefined, { numeric: true });
+  };
 
   return (
     <div style={{display:"flex",gap:10,overflowX:"auto",height:"100%",padding:"0 4px 4px"}}>
       {PIPELINE_STAGES.map(stage => {
         const cards = activeQueries.filter(q => q.status === stage.id)
-          .sort((a, b) => String(a.tourFileId || a.id || "").localeCompare(String(b.tourFileId || b.id || ""), undefined, { numeric: true }));
+          .sort(newestFirst);
         const isDragTarget = dragOver === stage.id;
         return (
           <div key={stage.id}
@@ -95,7 +102,7 @@ export default function KanbanView({ queries, onOpenQuery, onConvert, onStatusCh
                     {/* Client/Group name */}
                     <div style={{fontSize:12,fontWeight:600,color:"#1a1a1a",marginBottom:2,
                       whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/>
+                      <NameWithBadges name={q.groupName||q.clientName} fileType={q.fileType} seriesId={q.seriesId}/>
                     </div>
                     {/* Destination */}
                     <div style={{fontSize:11,color:"#555",marginBottom:6,

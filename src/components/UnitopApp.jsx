@@ -1190,7 +1190,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                         <div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div>
                         <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector} · {formatDateSlash(q.travelDate)||q.travelMonth||""}</div>
                       </div>
-                      <StatusBadge status={q.status}/>
+                      <StatusBadge status={q.status} cancelled={q.cancelled}/>
                     </div>
                   </div>
                 ))}
@@ -1210,7 +1210,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                         <div style={{fontSize:13,color:G.gray600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/> — {q.destination||q.sector}</div>
                         <div style={{fontSize:11,color:G.gray400}}>Travel: {formatDateSlash(q.travelDate)||q.travelMonth||"TBC"} · {q.paxDisplay} · {nightsDaysLabel(q.nights)}</div>
                       </div>
-                      <StatusBadge status={q.status}/>
+                      <StatusBadge status={q.status} cancelled={q.cancelled}/>
                     </div>
                     <DocButtons q={q} stopProp={true}/>
                   </div>
@@ -1223,7 +1223,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
                     <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
-                    <StatusBadge status={q.status}/>
+                    <StatusBadge status={q.status} cancelled={q.cancelled}/>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowInvoices({query:q, flavor:"proforma"})}>🧾 Invoices</button>
                   </div>
                 ))}
@@ -1241,7 +1241,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                     <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                         <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
-                        <StatusBadge status={q.status}/>
+                        <StatusBadge status={q.status} cancelled={q.cancelled}/>
                         <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowPayments(q)}>₹ Open Tracker</button>
                       </div>
                       {pt&&<>
@@ -1359,7 +1359,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                       <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector||""} · {formatDateSlash(q.travelDate)||q.travelMonth||""}</div>
                       {q.tourFileId&&<div style={{fontSize:10,color:G.navy,fontWeight:600,marginTop:2}}>📁 {q.tourFileId}</div>}
                     </div>
-                    <StatusBadge status={q.status}/>
+                    <StatusBadge status={q.status} cancelled={q.cancelled}/>
                   </div>
                 ))}
               </div>
