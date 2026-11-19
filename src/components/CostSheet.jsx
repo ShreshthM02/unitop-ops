@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -341,7 +341,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   const totMeal    = days.reduce((s,d)=>s+n(d.mealCost),0);
   const totHotel   = days.reduce((s,d)=>s+n(d.hotelNetPP),0);
   const daySS      = days.reduce((s,d)=>s+n(d.singleSupp),0);
-  const handlerSS  = localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
+  const handlerSS  = localHandlers.reduce((s,h)=>s+n(h.singleSupp)*fxRate(h),0);
   const totSS      = daySS + handlerSS;
   const monTotal   = monuments.filter(m=>m.include).reduce((s,m)=>s+n(m.fee),0) + n(monExtra);
 
@@ -843,105 +843,16 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           <button className="btn btn-ghost" style={{fontSize:11}} onClick={addDay}>+ Add Day</button>
 
           {/* 10.3 - 10.4  Pricing matrix: transport, local handler, extra services, group slabs and tour leader slabs on one grid */}
-          {secH("Pricing Matrix — Transport, Local Handler, Extras & Slabs","🧮")}
+          {secH("Pricing Matrix & Final Prices","🧮")}
           <PricingMatrix
             slabs={slabs} setSlabs={setSlabs} tlSlabs={tlSlabs} setTlSlabs={setTlSlabs}
             transports={transports} setTransports={setTransports} localHandlers={localHandlers} setLocalHandlers={setLocalHandlers}
             extras={extras} setExtras={setExtras} calcSlab={calcSlab} calcTlSlab={calcTlSlab} currency={currency} roe={roe}
-            totHotel={totHotel} totMeal={totMeal} handlerSS={handlerSS} daySS={daySS}
+            totHotel={totHotel} totMeal={totMeal} handlerSS={handlerSS} daySS={daySS} gst={gst} markup={markup}
             onAddSlab={addSlab} onAddTlSlab={addTlSlab} onAddTransport={addTransport} onAddLocalHandler={addLocalHandler}
             onAddExtra={()=>{ scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY }; setExtras(p=>[...p,{id:Date.now(),description:"",cost:"",mode:"PP",cells:{}}]); }}
             onFetchTl={fetchTlSlabCosts}
           />
-
-          {/* 10.5 Final price summary */}
-          {secH("Final Price Summary","💰")}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
-            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
-              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Accommodation (per pax)</div>
-              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totHotel).toLocaleString()}</div>
-            </div>
-            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
-              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Extra Meals (per pax)</div>
-              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totMeal).toLocaleString()}</div>
-            </div>
-            <div style={{background:G.gray50,border:`1px solid ${G.gray200}`,borderRadius:8,padding:"8px 12px"}}>
-              <div style={{fontSize:9,color:G.gray600,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>Single Supplement (total)</div>
-              <div style={{fontSize:14,fontWeight:700,color:G.navy}}>₹ {Math.round(totSS).toLocaleString()}</div>
-              {handlerSS>0 && <div style={{fontSize:9,color:G.gray400,marginTop:2}}>Day-wise ₹{daySS.toLocaleString()} + Local Handler ₹{handlerSS.toLocaleString()}</div>}
-            </div>
-          </div>
-          <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Accommodation and Extra Meals are the same across every slab below (from the day-wise section), shown once here rather than repeated in each row. Everything else below varies by slab, since it's split across each slab's own paying-pax count.</div>
-          <div style={{overflowX:"auto",marginBottom:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:760}}>
-              <thead>
-                <tr style={{background:G.navy}}>
-                  {["Slab","Transport PP","Tour Facil. PP","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
-                    <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {slabs.map((s,i)=>{
-                  const c = calcSlab(s);
-                  return (
-                    <tr key={s.id} style={{background:i%2===0?G.white:G.gray50}}>
-                      <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{s.label}<br/><span style={{fontSize:9,color:G.gray400}}>{s.vehicle==="Others"?s.vehicleOther:s.vehicle}</span></td>
-                      {[c.tptPP,c.tlPP,c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
-                        <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
-                      ))}
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:G.navy}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
-                      <td style={{padding:"7px 6px",textAlign:"right",fontSize:12,color:G.accent,fontWeight:600}}>{c.ssFX>0?`${currency} ${c.ssFX}`:"—"}</td>
-                    </tr>
-                  );
-                })}
-                {slabs.length===0 && (
-                  <tr><td colSpan={14} style={{padding:24,textAlign:"center",color:G.gray400,fontSize:12}}>No group slabs added</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div style={{fontSize:10,color:G.gray400,fontStyle:"italic",marginBottom:tlSlabs.length?16:0}}>
-            SS = cumulative single supplement from hotel day rows (editable). Final price rounded up to nearest whole unit.
-          </div>
-
-          {tlSlabs.length>0 && (
-            <>
-              <div style={{fontSize:11,fontWeight:700,color:"#7D6608",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>🧑‍✈️ Tour Leader Slabs</div>
-              <div style={{fontSize:10,color:G.gray400,marginBottom:8}}>Same math as a group slab above, plus the T/L Surcharge — the foreign agent's own escort's costs, spread across this slab's paying pax, since the T/L doesn't pay. Kept as its own table so it's never mistaken for a group slab.</div>
-              <div style={{overflowX:"auto",marginBottom:8}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:920}}>
-                  <thead>
-                    <tr style={{background:"#7D6608"}}>
-                      {["T/L Slab","Vehicle","Paying Pax","Transport PP","Tour Facil. PP","T/L Surcharge","Misc PP","Mon. PP","Local Hdlr PP","Extras PP","Sub-total","GST","After Tax","Markup","Selling ₹","Final Price","SS"].map(h=>(
-                        <th key={h} style={{padding:"7px 6px",color:"#fff",fontSize:10,textAlign:h==="T/L Slab"?"left":"right",whiteSpace:"nowrap"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tlSlabs.map((tl,i)=>{
-                      const c = calcTlSlab(tl);
-                      return (
-                        <tr key={tl.id} style={{background:i%2===0?"#FFFBEB":"#FEF3C7"}}>
-                          <td style={{padding:"7px 6px",fontWeight:500,fontSize:11}}>{tl.label}</td>
-                          <td style={{padding:"7px 6px",fontSize:11,color:G.gray600}}>{tl.vehicle==="Others"?tl.vehicleOther:tl.vehicle||"—"}</td>
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{n(tl.pax)||"—"}</td>
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tptPP>0?`₹ ${Math.round(c.tptPP).toLocaleString()}`:"—"}</td>
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{c.tlPP>0?`₹ ${Math.round(c.tlPP).toLocaleString()}`:"—"}</td>
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:11,fontWeight:600,color:"#7D6608"}}>{c.surchargePP>0?`₹ ${Math.round(c.surchargePP).toLocaleString()}`:"—"}</td>
-                          {[c.miscPP,c.monPP,c.localPP,c.extrasPP,c.sub,c.tax,c.afterTax,c.markupAmt,c.sellingINR].map((v,j)=>(
-                            <td key={j} style={{padding:"7px 6px",textAlign:"right",fontSize:11}}>{v>0?`₹ ${Math.round(v).toLocaleString()}`:"—"}</td>
-                          ))}
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:13,fontWeight:700,color:"#7D6608"}}>{c.finalFX>0?`${currency} ${c.finalFX}`:"—"}</td>
-                          <td style={{padding:"7px 6px",textAlign:"right",fontSize:12,color:G.accent,fontWeight:600}}>{c.ssFX>0?`${currency} ${c.ssFX}`:"—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
 
           {secH("Notes","📝")}
           <RichTextEditor value={docNotes} onChange={setDocNotes} readOnly={readOnly}/>

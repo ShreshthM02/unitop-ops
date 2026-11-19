@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { renderOpen } from './helpers/matrix.js';
 import { CostSheet } from '../components/CostSheet.jsx';
 
 const fakeQuery = { id: 'UTQ-2026-090', groupName: 'Extras Bug Test Group', nights: 3 };
@@ -12,7 +13,7 @@ const fakeQuery = { id: 'UTQ-2026-090', groupName: 'Extras Bug Test Group', nigh
 // just "the total changed."
 describe('CostSheet: Extra Services now actually included in the Final Price Summary (real bug fix)', () => {
   it('a Lumpsum extra cost flows all the way through to the Final Price, with the exact right math', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
 
     const descInput = screen.getByPlaceholderText(/Boat ride at Varanasi/);
@@ -33,7 +34,7 @@ describe('CostSheet: Extra Services now actually included in the Final Price Sum
   });
 
   it('a "PP" mode extra cost is added directly, not divided by slab pax', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
 
     fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '100' } });
@@ -46,14 +47,15 @@ describe('CostSheet: Extra Services now actually included in the Final Price Sum
   });
 
   it('with no extras entered, extras contribute nothing (no regression to the zero-cost baseline)', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     // No extras added at all -- Final Price should show "—" for a slab
     // with zero cost anywhere (matching the existing zero-cost display).
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
-  it('the Extras PP column header now appears in the Final Price Summary table', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    expect(screen.getByText('Extras PP')).toBeTruthy();
+  it('the price build-up (Sub-total to Final) sits under the matrix, in the same columns', () => {
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    ['Sub-total per paying pax', 'Selling price (₹)'].forEach(t => expect(screen.getByText(t)).toBeTruthy());
+    expect(screen.getByText(/Final price per pax/)).toBeTruthy();
   });
 });

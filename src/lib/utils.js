@@ -1,4 +1,4 @@
-import { ceilFX, lineCostFor } from "./costSheetCalc.js";
+import { ceilFX, lineCostFor, fxRate } from "./costSheetCalc.js";
 import { extractMentions } from "./Mentions.jsx";
 import { entryServiceName, getOvernightHotel, hotelRowsForDate, roomingSummary, getServicesForDate, formatFlightLeg, isLegFilled } from "./tourInfo.js";
 
@@ -1713,7 +1713,7 @@ export function calcCostSheetSingleSupplementFX(snap) {
   const n = v => parseFloat(v)||0;
   const days = snap.days || [], localHandlers = snap.localHandlers || [];
   const daySS = days.reduce((s,d)=>s+n(d.singleSupp),0);
-  const handlerSS = localHandlers.reduce((s,h)=>s+n(h.singleSupp),0);
+  const handlerSS = localHandlers.reduce((s,h)=>s+n(h.singleSupp)*fxRate(h),0);
   const totSS = daySS + handlerSS;
   return ceilFX(((totSS + totSS*(snap.gst||0)/100) * (1 + (snap.markup||0)/100)) / (snap.roe||1));
 }

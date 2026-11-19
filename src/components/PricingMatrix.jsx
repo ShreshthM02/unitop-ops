@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { G, VEHICLE_TYPES } from '../lib/constants.js';
 import { useDragReorder } from '../lib/useDragReorder.jsx';
-import { lineCostFor, withCells, NOT_APPLIED, fxRate, hasFx } from '../lib/costSheetCalc.js';
+import { lineCostFor, withCells, NOT_APPLIED, fxRate, hasFx, ssBuild } from '../lib/costSheetCalc.js';
 import DateInput from '../lib/DateInput.jsx';
 
 // The pricing matrix: Transport, Local Handler, Extra Services and the T/L
@@ -15,6 +15,7 @@ import DateInput from '../lib/DateInput.jsx';
 const n = (v) => parseFloat(v) || 0;
 const inr = (v) => (v ? `₹ ${Math.round(v).toLocaleString()}` : "—");
 const LBL = { fontSize: 9, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 };
+const SS_BG = "#F4F1FB";
 const TL_BG = "#FFF9E6", TL_LINE = "#F5D97A", TL_INK = "#7D6608";
 const TL_KEYS = [["hotel", "Hotel"], ["singleSupp", "Single supplement"], ["meals", "Extra meals"], ["transport", "Transport"], ["monument", "Monument"], ["localHandler", "Local handler"], ["extras", "Extras"]];
 
@@ -30,10 +31,13 @@ const parseCell = (t) => {
 
 export function PricingMatrix({
   slabs, setSlabs, tlSlabs, setTlSlabs, transports, setTransports, localHandlers, setLocalHandlers, extras, setExtras,
-  calcSlab, calcTlSlab, currency, roe, totHotel, totMeal, handlerSS, daySS,
+  calcSlab, calcTlSlab, currency, roe, gst, markup, totHotel, totMeal, handlerSS, daySS,
   onAddSlab, onAddTlSlab, onAddTransport, onAddLocalHandler, onAddExtra, onFetchTl,
 }) {
-  const [shut, setShut] = useState({});
+  // Every section starts closed; the person opens what they want to work on.
+  const [shut, setShut] = useState({ fixed: true, tpt: true, lh: true, ex: true, tls: true });
+  const openThen = (key, fn) => () => { setShut((x) => ({ ...x, [key]: false })); fn(); };
+  const ss = ssBuild(handlerSS + daySS, gst, markup, roe);
   const [open, setOpen] = useState({});
   const [fxOpen, setFxOpen] = useState({});
   const tptDr = useDragReorder(setTransports), lhDr = useDragReorder(setLocalHandlers), exDr = useDragReorder(setExtras);
@@ -45,7 +49,7 @@ export function PricingMatrix({
     ...tlSlabs.map((t, i) => ({ id: t.id, tl: true, i, label: t.label, pax: t.pax, vehicle: t.vehicle, vehicleOther: t.vehicleOther, calc: calcTlSlab(t), obj: t })),
   ];
   const hasTl = tlSlabs.length > 0;
-  const span = cols.length + 2;
+  const span = cols.length + 3;
 
   const setSlabField = (col, f, v) => (col.tl ? setTlSlabs : setSlabs)((p) => p.map((s) => (s.id === col.id ? { ...s, [f]: v } : s)));
   const removeCol = (col) => (col.tl ? setTlSlabs : setSlabs)((p) => p.filter((s) => s.id !== col.id));
@@ -88,13 +92,14 @@ export function PricingMatrix({
     <button type="button" onClick={onClick} title={title} style={{ border: `1px solid ${on ? G.accent : G.gray200}`, background: on ? "#FDEDEC" : G.white, color: on ? G.accent : G.gray600, borderRadius: 10, fontSize: 10, padding: "1px 7px", cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>
   );
 
-  const groupRow = (key, title, perPaxOf, count, extraNote) => (
+  const groupRow = (key, title, perPaxOf, count, extraNote, ssText) => (
     <tr onClick={() => setShut((s) => ({ ...s, [key]: !s[key] }))} style={{ cursor: "pointer", background: G.gray100 }}>
       <td style={{ ...stickyCol, background: G.gray100, fontSize: 11, fontWeight: 700, color: G.gray600, textTransform: "uppercase", letterSpacing: "0.4px", padding: "6px 8px" }}>
         {shut[key] ? "▸" : "▾"} {title} · {count}{extraNote ? <span style={{ fontWeight: 400, textTransform: "none", marginLeft: 8, color: G.gray400 }}>{extraNote}</span> : null}
       </td>
       <td />
       {cols.map((c) => (<td key={c.id} style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: G.gray600, padding: "4px 8px", background: c.tl ? TL_BG : undefined }}>{perPaxOf(c)}</td>))}
+      <td style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: G.gray600, padding: "4px 8px", background: SS_BG }}>{ssText || ""}</td>
     </tr>
   );
 
@@ -107,7 +112,7 @@ export function PricingMatrix({
     const hasUnit = kind !== "transport";
     const isPP = kind === "local" ? l.mode === "pp" : l.mode === "PP";
     const toggleUnit = () => patchLine(setter, kind, l.id, { mode: kind === "local" ? (isPP ? "lumpsum" : "pp") : (isPP ? "Lumpsum" : "PP") });
-    const hasDetail = kind === "transport" ? !!l.notes : kind === "local" ? !!(l.dateFrom || l.dateTo || l.singleSupp || l.remarks) : false;
+    const hasDetail = kind === "transport" ? !!l.notes : kind === "local" ? !!(l.dateFrom || l.dateTo || l.remarks) : false;
     return (
       <Fragment key={l.id}>
         <tr {...dr.row(i, {})}>
@@ -144,6 +149,13 @@ export function PricingMatrix({
               </td>
             );
           })}
+          <td style={{ ...cellBorder, background: SS_BG }}>
+            {kind === "local" ? (
+              <input style={{ ...cellInp, border: `1px solid ${G.gray200}`, background: G.white }} inputMode="decimal" value={l.singleSupp ?? ""} placeholder="0" aria-label="Single supplement, this handler"
+                title={`Single room supplement charged by this handler${fxOn ? ` (in ${l.fx.cur})` : ""}`}
+                onChange={(e) => patchLine(setter, kind, l.id, { singleSupp: e.target.value.replace(/[^0-9.]/g, "") })} />
+            ) : null}
+          </td>
         </tr>
         {fxShown && (
           <tr>
@@ -178,10 +190,9 @@ export function PricingMatrix({
                   <div><div style={LBL}>Notes</div><input style={inp} value={l.notes || ""} onChange={(e) => patchLine(setter, kind, l.id, { notes: e.target.value })} placeholder="Any notes on this transport segment" /></div>
                 </div>)}
               {kind === "local" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 8 }}>
                   <div><div style={LBL}>From</div><DateInput style={inp} value={l.dateFrom} max={l.dateTo || undefined} onChange={(e) => patchLine(setter, kind, l.id, { dateFrom: e.target.value })} /></div>
                   <div><div style={LBL}>To</div><DateInput style={inp} value={l.dateTo} min={l.dateFrom || undefined} onChange={(e) => patchLine(setter, kind, l.id, { dateTo: e.target.value })} /></div>
-                  <div><div style={LBL}>Single Supp. (₹)</div><input style={{ ...inp, textAlign: "right" }} type="number" value={l.singleSupp} onChange={(e) => patchLine(setter, kind, l.id, { singleSupp: e.target.value })} placeholder="0" /></div>
                   <div><div style={LBL}>Remarks</div><input style={inp} value={l.remarks || ""} onChange={(e) => patchLine(setter, kind, l.id, { remarks: e.target.value })} placeholder="Any notes on this handler/sector" /></div>
                 </div>)}
               {kind === "extra" && (
@@ -194,11 +205,12 @@ export function PricingMatrix({
     );
   };
 
-  const lockedRow = (label, note, valueOf) => (
+  const lockedRow = (label, note, valueOf, ssText) => (
     <tr>
       <td style={{ ...stickyCol, ...cellBorder, color: G.gray600, fontSize: 11, background: G.gray50 }}>{label} <span style={{ fontSize: 9, color: G.gray400 }}>{note}</span></td>
       <td style={{ ...cellBorder, background: G.gray50 }} />
       {cols.map((c) => (<td key={c.id} style={{ ...cellBorder, textAlign: "right", fontSize: 11, color: G.gray600, padding: "2px 8px", background: c.tl ? TL_BG : G.gray50 }}>{valueOf(c)}</td>))}
+      <td style={{ ...cellBorder, textAlign: "right", fontSize: 11, color: G.gray600, padding: "2px 8px", background: SS_BG }}>{ssText || ""}</td>
     </tr>
   );
 
@@ -206,13 +218,13 @@ export function PricingMatrix({
     <div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={onAddSlab}>+ Add Slab</button>
-        <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={onAddTlSlab}>+ Add T/L Slab</button>
+        <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={openThen("tls", onAddTlSlab)}>+ Add T/L Slab</button>
         {!hasTl && <span style={{ fontSize: 10, color: G.gray400 }}>For when no FOC policy applies (small groups): T/L slabs work out how much extra the paying guests need to cover for the Tour Leader's own costs. None added doesn't affect the group slabs.</span>}
         <span style={{ fontSize: 10, color: G.gray400 }}>Each column is a slab. Type one figure in "Same for all", or a different figure under a single slab (turns amber). Type x to leave a slab out. You can paste a row of rates from Excel into "Same for all".</span>
       </div>
       <div style={{ overflow: "auto", maxHeight: "72vh", border: `1px solid ${G.gray200}`, borderRadius: 8 }}>
-        <table style={{ borderCollapse: "separate", borderSpacing: 0, width: 270 + 104 + cols.length * 156, tableLayout: "fixed", fontSize: 11 }}>
-          <colgroup><col style={{ width: 270 }} /><col style={{ width: 104 }} />{cols.map((c) => <col key={c.id} style={{ width: 156 }} />)}</colgroup>
+        <table style={{ borderCollapse: "separate", borderSpacing: 0, width: 270 + 104 + cols.length * 156 + 112, tableLayout: "fixed", fontSize: 11 }}>
+          <colgroup><col style={{ width: 270 }} /><col style={{ width: 104 }} />{cols.map((c) => <col key={c.id} style={{ width: 156 }} />)}<col style={{ width: 112 }} /></colgroup>
           <thead>
             <tr>
               <th style={{ ...stickyCol, position: "sticky", top: 0, zIndex: 4, background: G.gray100, textAlign: "left", fontSize: 10, color: G.gray600, padding: "6px 8px", verticalAlign: "bottom" }}>Cost per paying pax</th>
@@ -241,12 +253,16 @@ export function PricingMatrix({
                   </th>
                 );
               })}
+              <th style={{ position: "sticky", top: 0, zIndex: 3, background: SS_BG, padding: "4px 8px", textAlign: "right", verticalAlign: "bottom", fontSize: 10, color: G.gray600 }}>
+                <div style={{ fontWeight: 700, color: G.gray800, fontSize: 11 }}>Single supp.</div>
+                <div style={{ fontSize: 9, color: G.gray400, fontWeight: 400 }}>per single room, ₹ · not divided by pax</div>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {groupRow("fixed", "From days & settings", () => "", 5)}
+            {groupRow("fixed", "From days & settings", (c) => inr(totHotel + totMeal + c.calc.monPP + c.calc.tlPP + c.calc.miscPP), 5, "", daySS > 0 ? inr(daySS) : "")}
             {!shut.fixed && (<>
-              {lockedRow("Accommodation", "from days", () => inr(totHotel))}
+              {lockedRow("Accommodation", "from days", () => inr(totHotel), daySS > 0 ? inr(daySS) : "")}
               {lockedRow("Extra meals", "from days", () => inr(totMeal))}
               {lockedRow("Monuments", "from monuments", (c) => inr(c.calc.monPP))}
               {lockedRow("Tour facilitator", "from settings", (c) => inr(c.calc.tlPP))}
@@ -255,18 +271,18 @@ export function PricingMatrix({
 
             {groupRow("tpt", "Transport", (c) => inr(c.calc.tptPP), transports.length)}
             {!shut.tpt && transports.map((t, i) => lineRow(t, i, "transport", setTransports, tptDr, "e.g. Delhi–Agra–Jaipur circuit", "sector"))}
-            {!shut.tpt && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={onAddTransport}>+ Add Transport</button></td><td colSpan={cols.length + 1} /></tr>)}
+            {!shut.tpt && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={openThen("tpt", onAddTransport)}>+ Add Transport</button></td><td colSpan={cols.length + 2} /></tr>)}
 
-            {groupRow("lh", "Local Handler", (c) => inr(c.calc.localPP), localHandlers.length, handlerSS > 0 ? `single supplement ₹${handlerSS.toLocaleString()}` : "")}
+            {groupRow("lh", "Local Handler", (c) => inr(c.calc.localPP), localHandlers.length, "", handlerSS > 0 ? inr(handlerSS) : "")}
             {!shut.lh && localHandlers.map((h, i) => lineRow(h, i, "local", setLocalHandlers, lhDr, "e.g. Bodhgaya / Rajgir", "sector"))}
-            {!shut.lh && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={onAddLocalHandler}>+ Add Local Handler</button></td><td colSpan={cols.length + 1} /></tr>)}
+            {!shut.lh && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={openThen("lh", onAddLocalHandler)}>+ Add Local Handler</button></td><td colSpan={cols.length + 2} /></tr>)}
 
             {groupRow("ex", "Extra Services", (c) => inr(c.calc.extrasPP), extras.length)}
             {!shut.ex && extras.map((e, i) => lineRow(e, i, "extra", setExtras, exDr, "e.g. Boat ride at Varanasi, Cultural show, Camel ride...", "description"))}
-            {!shut.ex && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={onAddExtra}>+ Add Extra Service</button></td><td colSpan={cols.length + 1} /></tr>)}
+            {!shut.ex && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={openThen("ex", onAddExtra)}>+ Add Extra Service</button></td><td colSpan={cols.length + 2} /></tr>)}
 
             {hasTl && (<>
-              {groupRow("tls", "Tour Leader surcharge", (c) => (c.tl ? (n(c.pax) <= 0 && c.calc.surchargeTotal > 0 ? "Set paying pax" : inr(c.calc.surchargePP)) : ""), tlSlabs.length, "the T/L doesn't pay: their costs are spread over that slab's paying pax")}
+              {groupRow("tls", "Tour Leader surcharge", (c) => (c.tl ? (n(c.pax) <= 0 && c.calc.surchargeTotal > 0 ? "Set paying pax" : inr(c.calc.surchargePP)) : ""), tlSlabs.length, "T/L costs spread over paying pax")}
               {!shut.tls && (<>
                 {TL_KEYS.map(([key, label]) => (
                   <tr key={key}>
@@ -283,40 +299,45 @@ export function PricingMatrix({
                         </td>
                       );
                     })}
-                  </tr>
+                  <td style={{ background: SS_BG }} /></tr>
                 ))}
                 <tr>
                   <td style={{ ...stickyCol, ...cellBorder, fontSize: 10, color: G.gray600 }}>Total tour leader cost</td><td style={cellBorder} />
                   {cols.map((c) => (<td key={c.id} style={{ ...cellBorder, textAlign: "right", fontSize: 11, padding: "2px 8px", background: c.tl ? TL_BG : G.gray50 }}>{c.tl ? inr(c.calc.surchargeTotal) : ""}</td>))}
-                </tr>
+                <td style={{ background: SS_BG }} /></tr>
                 <tr>
                   <td style={stickyCol} /><td />
                   {cols.map((c) => (<td key={c.id} style={{ padding: "4px", textAlign: "center", background: c.tl ? TL_BG : undefined }}>
                     {c.tl && <button className="btn btn-ghost" style={{ fontSize: 10 }} onClick={() => onFetchTl(c.i)}>↻ Fetch Latest Costs from Cost Sheet</button>}
                   </td>))}
-                </tr>
+                <td style={{ background: SS_BG }} /></tr>
               </>)}
             </>)}
           </tbody>
           <tfoot>
-            <tr>
-              <td style={{ ...stickyCol, position: "sticky", bottom: 34, zIndex: 4, background: G.gray100, fontSize: 11, fontWeight: 600, padding: "0 8px", height: 34 }}>Sub-total per paying pax</td>
-              <td style={{ position: "sticky", bottom: 34, zIndex: 3, background: G.gray100, height: 34 }} />
-              {cols.map((c) => (<td key={c.id} style={{ position: "sticky", bottom: 34, zIndex: 3, background: c.tl ? TL_BG : G.gray100, textAlign: "right", fontSize: 11, fontWeight: 600, padding: "0 8px", height: 34 }}>{inr(c.calc.sub)}</td>))}
-            </tr>
+            {[
+              ["Sub-total per paying pax", "sub", true],
+              [`GST ${gst}%`, "tax"],
+              ["After tax", "afterTax"],
+              [`Markup ${markup}%`, "markupAmt"],
+              ["Selling price (₹)", "sellingINR", true],
+            ].map(([label, key, bold]) => (
+              <tr key={key}>
+                <td style={{ ...stickyCol, ...cellBorder, background: G.gray50, fontSize: 11, fontWeight: bold ? 700 : 400, color: G.gray800 }}>{label}</td>
+                <td style={{ ...cellBorder, background: G.gray50 }} />
+                {cols.map((c) => (<td key={c.id} style={{ ...cellBorder, background: c.tl ? TL_BG : G.gray50, textAlign: "right", fontSize: 11, fontWeight: bold ? 700 : 400, padding: "2px 8px" }}>{inr(c.calc[key])}</td>))}
+                <td style={{ ...cellBorder, background: SS_BG, textAlign: "right", fontSize: 11, fontWeight: bold ? 700 : 400, padding: "2px 8px" }}>{inr(ss[key])}</td>
+              </tr>
+            ))}
             <tr>
               <td style={{ ...stickyCol, position: "sticky", bottom: 0, zIndex: 4, background: G.navy, color: "#fff", fontSize: 11, fontWeight: 700, padding: "0 8px", height: 34 }}>Final price per pax ({currency})</td>
               <td style={{ position: "sticky", bottom: 0, zIndex: 3, background: G.navy, height: 34 }} />
               {cols.map((c) => (<td key={c.id} style={{ position: "sticky", bottom: 0, zIndex: 3, background: G.navy, color: "#fff", textAlign: "right", fontSize: 12, fontWeight: 700, padding: "0 8px", height: 34 }}>{c.calc.finalFX > 0 ? `${currency} ${c.calc.finalFX}` : "—"}</td>))}
+              <td style={{ position: "sticky", bottom: 0, zIndex: 3, background: G.navy, color: "#fff", textAlign: "right", fontSize: 12, fontWeight: 700, padding: "0 8px", height: 34 }} title="Single supplement, per single room">{ss.finalFX > 0 ? `${currency} ${ss.finalFX}` : "—"}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-      {handlerSS > 0 && (
-        <div style={{ background: "#FEF9E7", border: "1px solid #F9E79F", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#784212", margin: "8px 0" }}>
-          Local Handler Single Supplement adds up to ₹{handlerSS.toLocaleString()} — this is combined with the Day-wise Single Supplement total (₹{daySS.toLocaleString()}) in the Final Price Summary below, not shown separately there.
-        </div>
-      )}
     </div>
   );
 }

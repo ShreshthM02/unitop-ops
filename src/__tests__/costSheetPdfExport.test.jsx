@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { openMatrixSections } from './helpers/matrix.js';
 
 // The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
 // consolidated into the shared ExportMenu dropdown (one Export button, the
@@ -39,6 +40,7 @@ async function exportAndCaptureHTML() {
   vi.resetModules();
   const { CostSheet } = await import('../components/CostSheet.jsx');
   render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}} staff={fakeStaff}/>);
+  openMatrixSections();
   return { capturedHTML: () => capturedHTML, screen };
 }
 

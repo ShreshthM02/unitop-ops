@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { renderOpen, openMatrixSections } from './helpers/matrix.js';
 import { CostSheet } from '../components/CostSheet.jsx';
 
 // The Cost Sheet's separate "Export PDF" / "Export XLSX" footer buttons were
@@ -17,7 +18,7 @@ const fakeQuery = { id: 'UTQ-2026-095', tourFileId: 'TF-095', groupName: 'Export
 
 describe('CostSheet: PDF and XLSX export buttons now exist (item #1)', () => {
   it('offers both PDF and Excel from a single Export control', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     // One control now, not two buttons -- the formats live inside it.
     expect(screen.queryByText(/🖨 Export PDF/)).toBeNull();
     expect(screen.queryByText(/📊 Export XLSX/)).toBeNull();
@@ -28,7 +29,7 @@ describe('CostSheet: PDF and XLSX export buttons now exist (item #1)', () => {
 
   it('clicking Export PDF opens a print window and logs to the audit trail', () => {
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({ document: { write: vi.fn(), close: vi.fn() }, print: vi.fn() });
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     clickExport('📕 PDF');
     expect(openSpy).toHaveBeenCalled();
     openSpy.mockRestore();
@@ -53,7 +54,7 @@ describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare
       return el;
     });
 
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
     clickExport('📊 Excel');
     // exceljs writeBuffer on a fully styled workbook genuinely takes
     // variable time -- poll rather than assume a fixed delay is enough.
@@ -84,14 +85,14 @@ describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare
 
 describe('CostSheet: Proceed to Quotation now requires an actual saved version (item #10)', () => {
   it('does not show Proceed to Quotation until a version is actually saved, even with valid pricing entered', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     // Default slabs already compute a nonzero price with zero cost inputs
     // if GST/markup default nonzero -- but nothing has been saved yet.
     expect(screen.queryByText(/Proceed to Quotation/)).toBeNull();
   });
 
   it('shows a hint explaining why Proceed to Quotation is not available yet, once real pricing exists but is unsaved', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '5000' } });
     expect(screen.getByText(/Save a version to proceed/)).toBeTruthy();
@@ -103,6 +104,7 @@ describe('CostSheet: Proceed to Quotation now requires an actual saved version (
     vi.resetModules();
     const { CostSheet: CS } = await import('../components/CostSheet.jsx');
     render(<CS query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}} currentUser={{id:1,name:'Priya'}}/>);
+    openMatrixSections();
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '5000' } });
     fireEvent.click(screen.getAllByText(/💾 Save v1/)[0]);
@@ -113,7 +115,7 @@ describe('CostSheet: Proceed to Quotation now requires an actual saved version (
 
 describe('CostSheet: Day-wise TOTALS row alignment (item #7)', () => {
   it('Meal Cost total sits under the Meal Cost column, not Meal Plan', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Day'));
     const mealCostInputs = document.querySelectorAll('input[placeholder="0"]');
     fireEvent.change(mealCostInputs[0], { target: { value: '500' } });
@@ -129,13 +131,12 @@ describe('CostSheet: Day-wise TOTALS row alignment (item #7)', () => {
 
 describe('CostSheet: Single Supplement breakdown is now transparent (the 29750 question)', () => {
   it('the day-wise TOTALS row shows only day-wise SS, not silently combined with local handler SS', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Day'));
     const ssInputs = document.querySelectorAll('input[placeholder="0"]');
     // Day single supp is the 3rd "0"-placeholder number input in the day row
     fireEvent.change(ssInputs[2], { target: { value: '1750' } });
     fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getAllByLabelText('Details').pop());
     const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
     fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
 
@@ -146,11 +147,10 @@ describe('CostSheet: Single Supplement breakdown is now transparent (the 29750 q
   });
 
   it('shows a clear callout explaining Local Handler SS combines into the final total', () => {
-    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getAllByLabelText('Details').pop());
-    const handlerSSInputs = document.querySelectorAll('input[placeholder="0"]');
-    fireEvent.change(handlerSSInputs[handlerSSInputs.length-1], { target: { value: '28000' } });
-    expect(screen.getByText(/combined with the Day-wise Single Supplement total/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Single supplement, this handler'), { target: { value: '28000' } });
+    // handler SS and day-wise SS are added in the matrix's Single supp. column: the group row shows the handler's part
+    expect(screen.getAllByText('₹ 28,000').length).toBeGreaterThan(0);
   });
 });

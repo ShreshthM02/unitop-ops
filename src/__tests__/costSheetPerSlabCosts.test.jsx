@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { makeCalculators, lineCostFor, withCells, appliedSlabIds } from '../lib/costSheetCalc.js';
-import { calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice } from '../lib/utils.js';
+import { renderOpen } from './helpers/matrix.js';
+import { makeCalculators, lineCostFor, withCells, appliedSlabIds, ssBuild } from '../lib/costSheetCalc.js';
+import { calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice, calcCostSheetSingleSupplementFX } from '../lib/utils.js';
 import { CostSheet } from '../components/CostSheet.jsx';
 
 const base = { gst: 5, markup: 15, roe: 85, tlMode: 'lumpsum', tlCost: '', miscMode: 'lumpsum', miscCost: '', monMode: 'pp', monuments: [], monExtra: '' };
@@ -51,13 +52,13 @@ describe('per-slab cost lines: pricing', () => {
 describe('Pricing matrix on screen', () => {
   const q = { id: 'UTQ-2026-777', tourFileId: 'TF-777', groupName: 'Matrix Test', nights: 3 };
   it('shows every slab as a column with its label, paying pax and vehicle fields', () => {
-    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    renderOpen(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
     expect(screen.getAllByLabelText('Slab label').length).toBe(5);
     expect(screen.getAllByLabelText('FOC (N paying)').length).toBe(5);
     expect(screen.getAllByLabelText('Vehicle (label only)').length).toBe(5);
   });
   it('typing in one slab\'s cell prices only that slab, "x" leaves one out', () => {
-    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    renderOpen(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '1000' } });
     const first = screen.getAllByLabelText(/pax \+ 1 FOC cost/)[0];
@@ -67,7 +68,7 @@ describe('Pricing matrix on screen', () => {
     expect(first.value).toBe('');
   });
   it('the monument mode toggle now lives with Monuments / Activities, not in Settings', () => {
-    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    renderOpen(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
     expect(screen.getAllByText('Monument Fees Mode').length).toBe(1);
     const monHeading = screen.getByText(/Monuments \/ Activities/);
     const settingsHeading = screen.getByText('Settings');
@@ -159,7 +160,7 @@ describe('Foreign-currency cost line (FX)', () => {
 describe('FX control on screen', () => {
   const q = { id: 'UTQ-2026-778', tourFileId: 'TF-778', groupName: 'Fx Test', nights: 3 };
   it('is a small FX button; choosing a currency shows ROE, and the line shows the chip', () => {
-    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    renderOpen(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
     fireEvent.click(screen.getByText('+ Add Extra Service'));
     const btn = screen.getAllByLabelText('Foreign currency').pop();
     expect(btn.textContent).toBe('FX');
@@ -167,5 +168,27 @@ describe('FX control on screen', () => {
     fireEvent.change(screen.getByLabelText('Quoted currency'), { target: { value: 'EUR' } });
     fireEvent.change(screen.getByLabelText('ROE for this line'), { target: { value: '95' } });
     expect(screen.getAllByLabelText('Foreign currency').pop().textContent).toBe('EUR @ 95');
+  });
+});
+
+describe('Single supplement column, collapsed sections, merged build-up', () => {
+  const q = { id: 'UTQ-2026-779', tourFileId: 'TF-779', groupName: 'SS Test', nights: 3 };
+  it('every matrix section starts collapsed, and adding a row opens its section', () => {
+    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    expect(screen.queryByText('+ Add Transport')).toBeNull();
+    expect(screen.getAllByText(/▸ Transport/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByText(/▸ Transport/)[0]);
+    expect(screen.getByText('+ Add Transport')).toBeTruthy();
+  });
+  it('the old separate Final Price Summary tables are gone; the story ends the matrix', () => {
+    render(<CostSheet query={q} onClose={() => {}} onProceedToQuotation={() => {}} />);
+    expect(screen.queryByText('Final Price Summary')).toBeNull();
+    ['Sub-total per paying pax', 'GST 5%', 'After tax', 'Markup 15%', 'Selling price (₹)'].forEach(t => expect(screen.getByText(t)).toBeTruthy());
+  });
+  it('a local handler single supplement is typed on its own row and priced with the day-wise one', () => {
+    const snap = { ...base, days: [{ mealCost: '', hotelNetPP: '4000', singleSupp: '1500' }], slabs, transports: [], extras: [], localHandlers: [{ id: 1, cost: '', mode: 'pp', singleSupp: '500', cells: {} }, { id: 2, cost: '', mode: 'pp', singleSupp: '10', cells: {}, fx: { cur: 'EUR', roe: '95' } }] };
+    const { totals } = { totals: undefined };
+    expect(ssBuild(1500 + 500 + 950, 5, 15, 85)).toMatchObject({ sub: 2950, tax: 148, finalFX: expect.any(Number) });
+    expect(calcCostSheetSingleSupplementFX(snap)).toBe(ssBuild(1500 + 500 + 950, 5, 15, 85).finalFX);
   });
 });

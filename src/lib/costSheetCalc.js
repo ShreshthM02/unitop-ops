@@ -90,11 +90,24 @@ export function matrixSpans(line, kind, cols) {
   return out;
 }
 
+// The single supplement's own build-up (it is one figure, not per slab), in the
+// same steps as a slab's price: GST, markup, then rupees into the quote currency.
+export function ssBuild(totSS, gst, markup, roe) {
+  const sub = n(totSS);
+  const tax = Math.round(sub * gst / 100);
+  const afterTax = sub + tax;
+  const markupAmt = Math.round(afterTax * markup / 100);
+  const sellingINR = afterTax + markupAmt;
+  // Same expression the quotation has always used, so the figure cannot drift.
+  const finalFX = ceilFX(((sub + sub * gst / 100) * (1 + markup / 100)) / roe);
+  return { sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt, sellingINR: Math.round(sellingINR), finalFX };
+}
+
 export function computeTotals({ days = [], localHandlers = [], monuments = [], monExtra = "" }) {
   const totMeal = days.reduce((s, d) => s + n(d.mealCost), 0);
   const totHotel = days.reduce((s, d) => s + n(d.hotelNetPP), 0);
   const daySS = days.reduce((s, d) => s + n(d.singleSupp), 0);
-  const handlerSS = localHandlers.reduce((s, h) => s + n(h.singleSupp), 0);
+  const handlerSS = localHandlers.reduce((s, h) => s + n(h.singleSupp) * fxRate(h), 0);
   const totSS = daySS + handlerSS;
   const monTotal = monuments.filter((m) => m.include).reduce((s, m) => s + n(m.fee), 0) + n(monExtra);
   return { totMeal, totHotel, daySS, handlerSS, totSS, monTotal };
