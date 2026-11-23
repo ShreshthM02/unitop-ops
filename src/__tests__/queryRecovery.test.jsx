@@ -53,7 +53,7 @@ describe('Cancelled query cards are actually clickable (the original reported bu
     const anchorIndex = src.indexOf('queries.filter(q=>q.cancelled).map(q=>(');
     expect(anchorIndex).toBeGreaterThan(-1);
     const nearbySlice = src.slice(anchorIndex, anchorIndex + 300);
-    expect(nearbySlice).toContain('onClick={()=>setActiveQuery(q)}');
+    expect(nearbySlice).toContain('onClick={()=>openQuery(q)}');
   });
 });
 

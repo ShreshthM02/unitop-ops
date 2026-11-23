@@ -73,3 +73,27 @@ describe('Dashboard Tour Calendar: status label uses real dates, and ordering fo
     expect(onOpenQuery).toHaveBeenCalledWith(expect.objectContaining({ id: 'UTQ-9' }));
   });
 });
+
+
+describe('Dashboard Tour Calendar: past tours are never "Upcoming"', () => {
+  it('a tour whose dates have passed but was never closed is "Past – not closed", sorted after Upcoming and before Completed', async () => {
+    const { default: Dashboard } = await import('../components/Dashboard.jsx');
+    const queries = [
+      { id: 'P', tourFileId: 'TF-P', status: 'operations', cancelled: false, travelDate: daysFromToday(-30), nights: 4, groupName: 'Forgotten Past' },
+      { id: 'U', tourFileId: 'TF-U', status: 'operations', cancelled: false, travelDate: daysFromToday(10), nights: 3, groupName: 'Really Upcoming' },
+      { id: 'C', tourFileId: 'TF-C', status: 'completed', cancelled: false, travelDate: daysFromToday(-90), nights: 3, groupName: 'Closed Long Ago' },
+    ];
+    render(<Dashboard queries={queries} onOpenQuery={()=>{}} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
+    expect(screen.getByText('Past – not closed')).toBeTruthy();
+    expect(screen.getAllByText('Upcoming').length).toBe(1);
+    const names = screen.getAllByText(/—/).map(el => el.textContent);
+    const order = names.map(n => queries.find(q => n.startsWith(q.groupName))?.id).filter(Boolean);
+    expect(order).toEqual(['U', 'P', 'C']);
+  });
+
+  it('a tour ending today is still not past', async () => {
+    const { default: Dashboard } = await import('../components/Dashboard.jsx');
+    render(<Dashboard queries={[{ id: 'T', tourFileId: 'TF-T', status: 'new_query', cancelled: false, travelDate: daysFromToday(-3), nights: 3, groupName: 'Ends Today' }]} onOpenQuery={()=>{}} currentUser={{id:1,role:'admin'}} onStatClick={()=>{}}/>);
+    expect(screen.queryByText('Past – not closed')).toBeNull();
+  });
+});

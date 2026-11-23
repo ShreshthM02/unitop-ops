@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { G, VEHICLE_TYPES } from '../lib/constants.js';
 import { useDragReorder } from '../lib/useDragReorder.jsx';
-import { lineCostFor, withCells, NOT_APPLIED, fxRate, hasFx, ssBuild } from '../lib/costSheetCalc.js';
+import { lineCostFor, withCells, NOT_APPLIED, fxRate, hasFx, ssBuild, TL_PARTS } from '../lib/costSheetCalc.js';
 import DateInput from '../lib/DateInput.jsx';
 
 // The pricing matrix: Transport, Local Handler, Extra Services and the T/L
@@ -17,7 +17,7 @@ const inr = (v) => (v ? `₹ ${Math.round(v).toLocaleString()}` : "—");
 const LBL = { fontSize: 9, color: G.gray600, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 };
 const SS_BG = "#F4F1FB";
 const TL_BG = "#FFF9E6", TL_LINE = "#F5D97A", TL_INK = "#7D6608";
-const TL_KEYS = [["hotel", "Hotel"], ["singleSupp", "Single supplement"], ["meals", "Extra meals"], ["transport", "Transport"], ["monument", "Monument"], ["localHandler", "Local handler"], ["extras", "Extras"]];
+const TL_KEYS = TL_PARTS;
 
 // What a typed figure means: "" resets to the line's own cost, a dash or "x"
 // leaves the slab out, anything else is a number.

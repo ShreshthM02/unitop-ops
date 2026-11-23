@@ -229,6 +229,20 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   const [drawerOpenTab, setDrawerOpenTab] = useState(null);
   const [showProfile,    setShowProfile]    = useState(false);
   const [statFilter,     setStatFilter]     = useState(null); // {key, label, items}
+
+  // ONE way to open a tour-file drawer from anywhere (a list, search, a
+  // notification, a ledger link, a Master panel...). The drawer always lands
+  // alone on top: every other overlay is closed first, so nothing ends up
+  // underneath it, or on top of it, needing to be dismissed layer by layer.
+  const openQuery = (q, tab = null) => {
+    setShowChat(false); setFocusConvId(null); setShowProfile(false); setShowSearch(false); setStatFilter(null); setShowUserMgmt(false);
+    setShowAgents(false); setShowSeries(false); setShowVendors(false);
+    setShowCostSheet(null); setShowItinerary(null); setShowQuotation(null); setShowInvoices(null); setShowPayments(null); setShowTourBrief(null); setShowVoucher(null); setShowEditor(null);
+    setDrawerOpenTab(tab);
+    setActiveQuery(q);
+  };
+  const openQueryRef = useRef(openQuery);
+  openQueryRef.current = openQuery;
   const [toast, setToast] = useState(null);
   const [toastType, setToastType] = useState("success");
   // Build currentUser from authUser (Supabase) or fall back to demo
@@ -285,7 +299,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // setActiveQuery directly) opens that query's drawer here, the same
   // custom-event bridge the panel-open buttons above already use.
   useEffect(()=>{
-    const handler = (e) => setActiveQuery(e.detail.query);
+    const handler = (e) => openQueryRef.current(e.detail.query);
     document.addEventListener("unitop-activate-query", handler);
     return ()=>document.removeEventListener("unitop-activate-query", handler);
   },[]);
@@ -992,7 +1006,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   ];
 
   const VIEW_TITLES={dashboard:"Dashboard",kanban:"Kanban Board",gantt:"Tour Calendar",queries:"All Queries",tourfiles:"Tour Files",cancelled:"Cancelled",completed:"Completed Tour Files",team:"Team",chat:"Team Chat",agents:"Agents & Clients",vendors:"Vendors",fleet:"Fleet",series:"Series",invoices:"Invoices",payments:"Payments",reports:"Reports",templates_hub:"Templates",usermgmt:"User Management",place_library:"Photo & Place Library",maintenance:"Maintenance"};
-  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showSeries||showVendors||showTourBrief||showEditor;
+  const anyPanel = showCostSheet||showItinerary||showQuotation||showInvoices||showPayments||showVoucher||showAgents||showSeries||showVendors||showTourBrief||showEditor||showChat||showProfile||showUserMgmt;
 
   const DocButtons = ({q,stopProp=false}) => (
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -1120,19 +1134,19 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               chats={unreadChats.map(c=>({...c,label:c.type==="group"?"# "+(c.name||"Group"):(staff.find(x=>c.members.some(m=>m.staffId===x.id)&&x.id!==myId)?.name||c.lastMessage?.senderName||"Chat")}))}
               discussions={unreadDiscussions} fleet={dueFleetDocs} vehicleNames={fleetVehicleNames}
               onOpenChat={(id)=>{setFocusConvId(id);setShowChat(true);}}
-              onOpenQuery={(q)=>{setDrawerOpenTab("remarks");setActiveQuery(q);}}
+              onOpenQuery={(q)=>openQuery(q,"remarks")}
               onOpenFleet={(vid)=>{setFocusFleetVehicle(vid);setView("fleet");}}/>
             <button className="btn btn-ghost" onClick={()=>setView("gantt")}>📅 Calendar</button>
             {can("queries_create") && <button className="btn btn-primary" onClick={()=>setShowNewQuery(true)}>+ New Query</button>}
           </div>
 
           <div className="content">
-            {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
-            {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} onConvert={handleConvertToCaseFile} staff={staff}/>}
-            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={setActiveQuery} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>}
+            {view==="dashboard"  && <Dashboard queries={queries.filter(q=>!q.cancelled)} onOpenQuery={openQuery} currentUser={currentUser} onStatClick={handleStatClick}/>}
+            {view==="kanban"     && <KanbanView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={openQuery} onConvert={handleConvertToCaseFile} staff={staff}/>}
+            {view==="gantt"      && <GanttView queries={queries.filter(q=>!q.cancelled)} onOpenQuery={openQuery} staff={staff} vendors={vendors} tourExecutions={tourExecutions}/>}
 
             {view==="team"       && <TeamView queries={queries.filter(q=>!q.cancelled)} staff={staff}/>}
-            {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={setActiveQuery} currentUser={currentUser} staff={staff}/>}
+            {view==="queries"    && <AllQueriesView queries={queries} agents={agents} onOpenQuery={openQuery} currentUser={currentUser} staff={staff}/>}
             {view==="templates_hub" && <TemplatesHub docTemplates={docTemplates} onSaveDocTemplates={saveDocTemplates} docSettings={docSettings} setDocSettings={saveDocSettings} onSignaturesChanged={()=>loadSignatures(db).then(setSignatures)}/>}
             {view==="place_library" && <AdminPlaceLibrary/>}
             {view==="maintenance" && <MaintenancePanel currentUser={currentUser}/>}
@@ -1159,7 +1173,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                 {queries.filter(q=>q.cancelled).length===0?(
                   <div style={{textAlign:"center",padding:48,color:G.gray400}}><div style={{fontSize:32,marginBottom:8}}>✓</div><div style={{fontSize:14}}>No cancelled queries</div></div>
                 ):queries.filter(q=>q.cancelled).map(q=>(
-                  <div key={q.id} onClick={()=>setActiveQuery(q)} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85,cursor:"pointer"}}>
+                  <div key={q.id} onClick={()=>openQuery(q)} style={{background:G.white,borderRadius:10,border:`1px solid #FECACA`,padding:"12px 16px",marginBottom:8,opacity:0.85,cursor:"pointer"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                       <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#FEE2E2",color:"#991B1B",fontWeight:600}}>CANCELLED</span>
                       <div style={{flex:1}}><span style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}</span><FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/><span style={{fontSize:11,color:G.gray400,marginLeft:8}}>{q.tourFileId||q.id} · {q.destination||q.sector}</span></div>
@@ -1183,7 +1197,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   </div>
                 ) : queries.filter(q=>q.status==="completed"&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"14px 16px",marginBottom:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>openQuery(q)}>
                       <div style={{fontSize:22}}>✅</div>
                       <div style={{flex:1}}>
                         {q.tourFileId&&<div style={{fontSize:11,fontWeight:700,color:G.navy,marginBottom:1}}>{q.tourFileId}</div>}
@@ -1203,7 +1217,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   <div style={{textAlign:"center",padding:48,color:G.gray400}}><div style={{fontSize:32,marginBottom:8}}>📁</div><div style={{fontSize:14,fontWeight:500}}>No tour files yet</div></div>
                 ):queries.filter(q=>q.tourFileId&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"14px 16px",marginBottom:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,cursor:"pointer"}} onClick={()=>openQuery(q)}>
                       <div style={{fontSize:22}}>📁</div>
                       <div style={{flex:1}}>
                         <div style={{fontSize:14,fontWeight:700,fontFamily:"'Playfair Display',serif"}}>{q.tourFileId}</div>
@@ -1222,7 +1236,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
               <div>
                 {queries.filter(q=>["operations","finance","completed"].includes(q.status)&&!q.cancelled).map(q=>(
                   <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
+                    <div style={{flex:1,cursor:"pointer"}} onClick={()=>openQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · {q.destination||q.sector}</div></div>
                     <StatusBadge status={q.status} cancelled={q.cancelled}/>
                     <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowInvoices({query:q, flavor:"proforma"})}>🧾 Invoices</button>
                   </div>
@@ -1240,7 +1254,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   return (
                     <div key={q.id} style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,padding:"12px 16px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <div style={{flex:1,cursor:"pointer"}} onClick={()=>setActiveQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
+                        <div style={{flex:1,cursor:"pointer"}} onClick={()=>openQuery(q)}><div style={{fontSize:13,fontWeight:600}}>{q.groupName||q.clientName}<FileTypeBadge fileType={q.fileType} seriesId={q.seriesId}/></div><div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id}</div></div>
                         <StatusBadge status={q.status} cancelled={q.cancelled}/>
                         <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>setShowPayments(q)}>₹ Open Tracker</button>
                       </div>
@@ -1261,7 +1275,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
             )}
 
             {view==="reports" && (
-              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions} staff={staff} onOpenQuery={setActiveQuery}/>
+              <ReportsView queries={queries} payments={payments} currentUser={currentUser} vendors={vendors} tourExecutions={tourExecutions} staff={staff} onOpenQuery={openQuery}/>
             )}
 
           </div>{/* end content */}
@@ -1323,7 +1337,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
 
         {/* Smart Search */}
         {showSearch && <SmartSearch queries={queries} agents={agents} vendors={vendors} series={series} staff={staff} chatConversations={chatConversations} currentUser={currentUser}
-          onSelectQuery={q=>{setActiveQuery(q);}}
+          onSelectQuery={q=>openQuery(q)}
           onSelectStaff={async(s)=>{
             // Search finding a colleague jumps straight into a DM with
             // them, reusing the same findOrCreateDM used everywhere
@@ -1350,7 +1364,7 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
                   <div style={{padding:32,textAlign:"center",color:G.gray400,fontSize:13}}>No results in this category</div>
                 )}
                 {statFilter.items.map(q=>(
-                  <div key={q.id} onClick={()=>{setActiveQuery(q);setStatFilter(null);}}
+                  <div key={q.id} onClick={()=>openQuery(q)}
                     style={{padding:"12px 18px",borderBottom:`1px solid ${G.gray100}`,cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"background .1s"}}
                     onMouseEnter={e=>e.currentTarget.style.background=G.gray50}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>

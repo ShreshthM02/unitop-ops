@@ -1,4 +1,4 @@
-import { lineCostFor, hasFx, NOT_APPLIED, ssBuild } from "./costSheetCalc.js";
+import { lineCostFor, hasFx, NOT_APPLIED, ssBuild, TL_PARTS } from "./costSheetCalc.js";
 // Cost Sheet -> Excel workbook.
 //
 // A WORKING spreadsheet that reads like the app and like the PDF. Two tabs:
@@ -123,6 +123,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const LH = group(localHandlers.length + SPARE);
   const EXS = group(extras.length + SPARE);
   const FIX = { band: cur, tf: cur + 1, misc: cur + 2, mon: cur + 3 }; cur = FIX.mon + 1;
+  const TLB = { band: cur + 1, first: cur + 2, last: cur + 1 + TL_PARTS.length, total: cur + 2 + TL_PARTS.length }; cur = TLB.total;
   const PB = cur + 1; // price band
   const P = { hotels: PB + 1, meals: PB + 2, tpt: PB + 3, lh: PB + 4, ex: PB + 5, tf: PB + 6, misc: PB + 7, mon: PB + 8, tls: PB + 9, sub: PB + 10, gst: PB + 11, after: PB + 12, mk: PB + 13, sell: PB + 14, final: PB + 15, app: PB + 16, match: PB + 17 };
   const CB = P.match + 2; // checks band
@@ -147,7 +148,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   label(sh, R.name, 1, "Slab name (shown in the quotation)", { size: 10 });
   label(sh, R.pax, 1, "Paying pax (costs are divided by this)", { size: 10 });
   label(sh, R.veh, 1, "Vehicle", { size: 10 });
-  label(sh, R.tlOwn, 1, "Tour leader's own cost, total (T/L slabs only)", { size: 10 });
+  label(sh, R.tlOwn, 1, "Tour leader's own cost, total (see the T/L block below)", { size: 10 });
   for (let r = R.name; r <= R.tlOwn; r++) { sh.getCell(r, 1).fill = solid(LIGHT); for (let c = 2; c <= 5; c++) sh.getCell(r, c).fill = solid(LIGHT); }
   sh.getCell(R.name, 2).value = "Slabs →"; sh.getCell(R.name, 2).font = { bold: true, size: 9, color: { argb: GREY } };
   const calcOf = [];
@@ -226,6 +227,39 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   formulaCell(sh, FIX.mon, 3, `Itinerary!$B$${MON_TOT}`, Math.round(monTotal), MONEY, { bold: true });
   sh.getCell(FIX.mon, 3).protection = { locked: true };
   for (const r of [FIX.tf, FIX.misc, FIX.mon]) for (let c = 6; c <= SSC; c++) sh.getCell(r, c).fill = solid(c === SSC ? SS_TINT : WHITE);
+
+  // ═══════════ Tour leader's own costs, split by part ═══════════
+  // Only T/L slab columns use this. Type a figure for each part (or x / blank to
+  // leave it out); the total feeds the frozen "own cost" row and the surcharge.
+  groupBand(TLB, "TOUR LEADER'S OWN COSTS   (T/L slabs only; the total is spread over that slab's paying pax)");
+  TL_PARTS.forEach(([key, lbl], i) => {
+    const r = TLB.first + i;
+    label(sh, r, 1, lbl, { size: 10 });
+    for (let c = 2; c <= 5; c++) sh.getCell(r, c).fill = solid(WHITE);
+    for (let k = 0; k < NS; k++) {
+      const e = slabEntries[k], cell = sh.getCell(r, FC + k);
+      styleInput(cell, MONEY); cell.alignment = { horizontal: "right" }; cell.dataValidation = numValidation(0);
+      if (e && e.tl) {
+        const v = n((e.src.costs || {})[key]);
+        if (!(e.src.includes || {})[key] && v > 0) { cell.value = "x"; cell.alignment = { horizontal: "center" }; }
+        else cell.value = v > 0 ? v : null;
+      }
+    }
+    sh.getCell(r, SSC).fill = solid(SS_TINT);
+  });
+  label(sh, TLB.total, 1, "Tour leader's own cost, total", { size: 10, color: { argb: "FF111827" } });
+  for (let c = 2; c <= 5; c++) sh.getCell(TLB.total, c).fill = solid(LIGHT);
+  sh.getCell(TLB.total, 1).fill = solid(LIGHT);
+  for (let k = 0; k < NS; k++) {
+    const e = slabEntries[k], L = colLetter(FC + k);
+    const tot = e && e.tl ? Object.entries(e.src.costs || {}).reduce((a, [kk, v]) => a + ((e.src.includes || {})[kk] ? n(v) : 0), 0) : 0;
+    formulaCell(sh, TLB.total, FC + k, `SUM(${L}${TLB.first}:${L}${TLB.last})`, tot, MONEY, { bold: true });
+    sh.getCell(TLB.total, FC + k).fill = solid(LIGHT);
+    // the frozen header row now just shows that total
+    formulaCell(sh, R.tlOwn, FC + k, `${L}${TLB.total}`, tot, MONEY, { bold: true });
+    sh.getCell(R.tlOwn, FC + k).fill = solid(LIGHT); sh.getCell(R.tlOwn, FC + k).protection = { locked: true };
+  }
+  sh.getCell(TLB.total, SSC).fill = solid(SS_TINT);
 
   // ═══════════ Price per paying pax ═══════════
   band(sh, PB, "PRICE PER PAYING PAX (₹)   all formulas, built up exactly as in the app", NCOLS);

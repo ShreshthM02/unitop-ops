@@ -167,6 +167,18 @@ export function makeCalculators(s) {
 
 // ── Export read-outs shared by the PDF and the Excel ────────────────────────
 
+// The parts a Tour Leader's own cost is made of, in display order. Used by the
+// matrix, the PDF and the Excel so the bifurcation reads the same everywhere.
+export const TL_PARTS = [["hotel", "Hotel"], ["singleSupp", "Single supplement"], ["meals", "Extra meals"], ["transport", "Transport"], ["monument", "Monument"], ["localHandler", "Local handler"], ["extras", "Extras"]];
+// One T/L slab's own costs split by part: [{ key, label, total, perPax }] (only parts that are included and above zero).
+export function tlBreakdown(tl) {
+  const pax = n(tl && tl.pax);
+  return TL_PARTS.map(([key, label]) => {
+    const total = (tl && tl.includes && tl.includes[key]) ? n(tl.costs && tl.costs[key]) : 0;
+    return { key, label, total, perPax: pax > 0 ? total / pax : 0 };
+  }).filter((x) => x.total > 0);
+}
+
 const rs = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
 const fxAmt = (cur, v) => cur + " " + (Math.round(v * 100) / 100).toLocaleString("en-IN");
 

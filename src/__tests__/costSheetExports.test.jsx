@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { lineBasis, costSheetChecks, makeCalculators } from '../lib/costSheetCalc.js';
+import { lineBasis, costSheetChecks, makeCalculators, tlBreakdown, TL_PARTS } from '../lib/costSheetCalc.js';
 
 // A realistic saved version: group slabs, a T/L slab, left-out cells, a
 // per-slab override, and two foreign-currency lines.
@@ -45,18 +45,30 @@ async function mount() {
 }
 const exportMenu = (label) => { fireEvent.click(screen.getByText('⬇ Export ▾')); fireEvent.click(screen.getByText(label)); };
 
-describe('PDF export: answer first, then how each price is built', () => {
-  it('has the settings strip, a tile per slab plus single supplement, the build-up and the checks', async () => {
+describe('PDF export: itinerary first, then the price matrix, then the final costs', () => {
+  it('has the settings strip, the day-wise itinerary, the build-up, then the final cost tiles; no checks box', async () => {
     await mount();
     exportMenu('📕 PDF');
-    expect(pdfHtml).toContain('GST');
-    expect(pdfHtml).toContain('How each price is built');
-    expect(pdfHtml).toContain('Checked before export');
-    expect(pdfHtml).toContain('Single supp');
-    for (const w of ['10 pax', '16 pax', '9 + 1 T/L', 'Sub-total', 'After tax', 'Selling price', 'Final price']) expect(pdfHtml).toContain(w);
-    // the two old summary tables are gone
+    for (const w of ['GST', 'Day-wise Itinerary', 'How each price is built', 'Final cost per pax', 'Single supp', '10 pax', '16 pax', '9 + 1 T/L', 'Sub-total', 'After tax', 'Selling price', 'Final price']) expect(pdfHtml).toContain(w);
+    const at = (w) => pdfHtml.indexOf(w);
+    expect(at('Day-wise Itinerary')).toBeGreaterThan(-1);
+    expect(at('Day-wise Itinerary')).toBeLessThan(at('How each price is built'));
+    expect(at('How each price is built')).toBeLessThan(at('Final cost per pax'));
+    expect(pdfHtml).not.toContain('Checked before export');
     expect(pdfHtml).not.toContain('Final Price Summary');
     expect(pdfHtml).not.toContain('Tour Leader Slabs');
+  });
+
+  it('splits the tour leader surcharge into its parts, in the matrix and on the final tile', async () => {
+    await mount();
+    exportMenu('📕 PDF');
+    const i = pdfHtml.indexOf('Tour leader surcharge');
+    expect(i).toBeGreaterThan(-1);
+    const after = pdfHtml.slice(i, i + 4000);
+    expect(after).toContain('Hotel');
+    expect(after).toContain('Single supplement');
+    expect(after).toContain('Extra meals');
+    expect(pdfHtml).toMatch(/incl\. T\/L surcharge ₹856 pp: Hotel ₹467, Single supplement ₹311, Extra meals ₹78/);
   });
 
   it('shows the foreign-currency details: amount, ROE and rupee equivalent', async () => {
@@ -73,6 +85,20 @@ describe('PDF export: answer first, then how each price is built', () => {
     exportMenu('📕 PDF');
     expect(pdfHtml).toContain('Mini Coach');
     expect(pdfHtml).toMatch(/not for/);
+  });
+});
+
+describe('tlBreakdown', () => {
+  it('lists only included, non-zero parts, each as total and per paying pax', () => {
+    const tl = { pax: 9, costs: { hotel: '4200', meals: '700', transport: '9999', singleSupp: '' }, includes: { hotel: true, meals: true, transport: false } };
+    const b = tlBreakdown(tl);
+    expect(b.map(x => x.key)).toEqual(['hotel', 'meals']);
+    expect(b[0].total).toBe(4200);
+    expect(Math.round(b[0].perPax)).toBe(467);
+    expect(TL_PARTS.length).toBe(7);
+  });
+  it('with no paying pax the per-pax figure is 0, never Infinity', () => {
+    expect(tlBreakdown({ pax: 0, costs: { hotel: '100' }, includes: { hotel: true } })[0].perPax).toBe(0);
   });
 });
 
@@ -182,6 +208,21 @@ describe('Excel export: mirrors the matrix with live formulas', () => {
     let spare = 0;
     for (let r = band + 1; r < band + 12; r++) { const v = sh.getCell(r, 1).value; if ((v == null || v === '') && sh.getCell(r, 1).protection && sh.getCell(r, 1).protection.locked === false) spare++; }
     expect(spare).toBeGreaterThanOrEqual(3);
+  }, 30000);
+
+  it("the tour leader's own costs are split by part in their own block, and the frozen row just totals them", async () => {
+    const sh = (await workbook()).getWorksheet('Cost Sheet');
+    const band = [...Array(sh.rowCount).keys()].map(k => k + 1).find(r => String(sh.getCell(r, 1).value).startsWith("TOUR LEADER'S OWN COSTS"));
+    expect(band).toBeTruthy();
+    const names = [1, 2, 3, 4, 5, 6, 7].map(k => sh.getCell(band + k, 1).value);
+    expect(names).toEqual(TL_PARTS.map(p => p[1]));
+    // the T/L slab is column J (6th slab column): hotel 4200, single supp 2800, meals 700
+    const col = [6, 7, 8, 9, 10, 11].find(c => sh.getCell(band + 1, c).value === 4200);
+    expect(col).toBeTruthy();
+    expect(sh.getCell(band + 2, col).value).toBe(2800);
+    expect(sh.getCell(band + 3, col).value).toBe(700);
+    expect(sh.getCell(7, col).value.formula).toMatch(/^[A-Z]+\d+$/);
+    expect(String(sh.getCell(band + 8, col).value.formula)).toMatch(/^SUM\(/);
   }, 30000);
 
   it('Itinerary tab has day rows with totals above the list', async () => {

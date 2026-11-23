@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate, lineCostFor, lineBasis, costSheetChecks, ssBuild } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate, lineCostFor, lineBasis, ssBuild, tlBreakdown, TL_PARTS } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -524,9 +524,17 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const buildHeaders = ["Cost per paying pax (₹)", "What was quoted",
       ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</span>`),
       `Single supp.<br/><span style="font-size:6.5pt;font-weight:400">per single room</span>`];
+    // The surcharge, split by what the tour leader's own costs are made of.
+    const tlPartRows = TL_PARTS.map(([key,label]) => {
+      const per = mxCols.map(c => c.tl ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).perPax : null);
+      if (!per.some(v=>v>0)) return "";
+      const tot = mxCols.map(c => c.tl ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).total : null);
+      const basis = tot.filter(v=>v>0).length ? "₹"+tot.filter(v=>v>0).map(v=>Math.round(v).toLocaleString()).join(" / ₹")+" &divide; paying pax" : "";
+      return mxRow(label, basis, per.map(v=>v>0?v:(v===undefined?0:null)), "", { indent:true, style:";font-size:7.4pt" });
+    }).join("");
     const buildBlock = `
-      <div class="section-title" style="margin:10pt 0 4pt">How each price is built</div>
-      <div style="font-size:7.5pt;color:#555;margin-bottom:5pt">Every cost shows what was quoted and its share per paying pax in each slab. Amber = a figure specific to that slab. A dash = not applied to that slab. Blue note = quoted in a foreign currency. Single supplement is per single room and is not divided by pax.</div>
+      <div class="section-title" style="margin:0 0 3pt">How each price is built</div>
+      <div style="font-size:7pt;color:#555;margin-bottom:3pt">Amber = figure specific to that slab &middot; dash = not applied &middot; blue = quoted in a foreign currency &middot; single supplement is per single room, not divided by pax.</div>
       ${tableBlock(buildHeaders, [],
         mxRow("Hotels", `${nightsWithHotel} night${nightsWithHotel===1?"":"s"}, net rates (page 2)`, mxCols.map(()=>totHotel), daySS)
         + mxRow("Extra meals", "per day plans (page 2)", mxCols.map(()=>totMeal), "")
@@ -536,22 +544,17 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         + mxRow("Tour Facilitator", n(tlCost) ? `₹${n(tlCost).toLocaleString()} ${tlMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.tlPP), "")
         + mxRow("Miscellaneous", n(miscCost) ? `₹${n(miscCost).toLocaleString()} ${miscMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.miscPP), "")
         + mxRow("Monuments", monuments.some(m=>m.include)||n(monExtra) ? `₹${Math.round(monTotal).toLocaleString()} ${monMode==="pp"?"per pax":"group"}` : "none included", mxCols.map(c=>c.calc.monPP), "")
-        + (tlSlabs.length ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.tl?c.calc.surchargePP:null), "", { style:"" }) : "")
+        + (tlSlabs.length ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.tl?c.calc.surchargePP:null), "", { style:"" }) + tlPartRows : "")
         + buildRows + finalRow,
         "", [19,17,...mxCols.map(()=>8),8])}`;
-    const tilesBlock = `
-      <div style="display:grid;grid-template-columns:repeat(${mxCols.length+1},1fr);gap:5pt;margin-bottom:6pt">
-        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;${c.tl?"background:"+TLTINT:""}"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div></div>`).join("")}
+    const tlTileNote = c => { if(!c.tl) return ""; const parts = tlBreakdown(c.obj); return `<div style="font-size:6.5pt;color:#7a5a00;margin-top:2pt">incl. T/L surcharge ${money(c.calc.surchargePP)} pp${parts.length?": "+parts.map(x=>`${x.label} ${money(x.perPax)}`).join(", "):""}</div>`; };
+    const finalBlock = `
+      <div class="section-title" style="margin:7pt 0 4pt">Final cost per pax</div>
+      <div style="display:grid;grid-template-columns:repeat(${mxCols.length+1},1fr);gap:5pt;margin-bottom:4pt;page-break-inside:avoid;break-inside:avoid">
+        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;${c.tl?"background:"+TLTINT:""}"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div>${tlTileNote(c)}</div>`).join("")}
         <div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;background:${SSTINT}"><div style="font-weight:700;font-size:8.5pt">Single supplement</div><div style="font-size:6.8pt;color:#666">per single room</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${ssB.finalFX>0?currency+" "+ssB.finalFX.toLocaleString():"—"}</div></div>
       </div>`;
-    const checkItems = costSheetChecks({ days, slabs, tlSlabs, transports, localHandlers, extras, monuments, monExtra, roe }, { calcSlab, calcTlSlab });
-    const nWarn = checkItems.filter(x=>!x.ok).length;
-    const checksBlock = `
-      <div class="section-title" style="margin:10pt 0 4pt">Checked before export <span style="font-weight:400;font-size:8pt;color:#555">&middot; ${checkItems.filter(x=>x.ok).length} passed${nWarn?`, <b style="color:#a65b00">${nWarn} to review</b>`:""}</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2pt 14pt;font-size:8pt">
-        ${checkItems.map(x=>x.ok ? `<div><b style="color:#16794a">&#10003;</b> ${x.text}</div>` : `<div style="background:#fff1dc;border-radius:2pt;padding:1pt 4pt"><b style="color:#a65b00">!</b> ${x.text}</div>`).join("")}
-      </div>`;
-    const matrixBlock = [tilesBlock, buildBlock, checksBlock].join("");
+    const matrixBlock = buildBlock;
     const pageBreak = `<div style="page-break-before:always"></div>`;
 
     const notesBlock = docNotes ? `<div class="section-title" style="margin:14pt 0 6pt">Notes</div><div style="font-size:9pt">${docNotes}</div>` : "";
@@ -559,8 +562,8 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const csFilename = buildDownloadFilename("Cost Sheet", "costsheet", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector });
     return buildLetterheadDocument({
       title: csFilename,
-      bodyBlocks: [headerBlock, settingsBlock, matrixBlock, pageBreak, dayTableBlock, monBlock, notesBlock].filter(Boolean),
-      extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}.content-grid .grid-cell{padding:2pt 5pt;font-size:8.3pt}.content-grid .grid-header{font-size:7.8pt;padding:3pt 4pt}`,
+      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, pageBreak, `<div style="zoom:0.91">${matrixBlock}${finalBlock}</div>`, notesBlock].filter(Boolean),
+      extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}.content-grid .grid-cell{padding:1.1pt 5pt;font-size:8pt}.content-grid .grid-header{font-size:7.8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
     });

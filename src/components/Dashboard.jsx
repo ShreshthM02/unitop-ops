@@ -48,7 +48,12 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
     .filter(q=>q.tourFileId&&!q.cancelled)
     .map((q,idx)=>{
       const onGroundNow = isTourOnGround(q);
-      const statusLabel = onGroundNow ? "On Ground" : q.status==="completed" ? "Completed" : "Upcoming";
+      // Dates decide Upcoming vs Past. A tour whose last day has gone but whose
+      // file was never closed is "Past - not closed", never "Upcoming".
+      const endOfTour = (() => { if (!q.travelDate) return null; const d = new Date(q.travelDate); if (isNaN(d)) return null; d.setHours(0,0,0,0); d.setDate(d.getDate() + (parseInt(q.nights)||0)); return d; })();
+      const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+      const isPast = !!endOfTour && endOfTour < todayMid;
+      const statusLabel = onGroundNow ? "On Ground" : q.status==="completed" ? "Completed" : isPast ? "Past – not closed" : "Upcoming";
       return {
         id: q.id, query: q,
         name: `${q.groupName||q.clientName||""} — ${q.destination||q.sector||""}`,
@@ -58,11 +63,11 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
       };
     })
     .sort((a,b)=>{
-      const rank = s => s==="On Ground" ? 0 : s==="Upcoming" ? 1 : 2;
+      const rank = s => s==="On Ground" ? 0 : s==="Upcoming" ? 1 : s==="Past – not closed" ? 2 : 3;
       const ra = rank(a.statusLabel), rb = rank(b.statusLabel);
       if (ra !== rb) return ra - rb;
       const da = new Date(a.travelDate||0), db = new Date(b.travelDate||0);
-      return ra===2 ? (db-da) : (da-db); // Completed: latest first; others: chronological
+      return ra>=2 ? (db-da) : (da-db); // Past and Completed: latest first; others: chronological
     });
 
   const counts = {
@@ -131,8 +136,8 @@ export default function Dashboard({ queries, onOpenQuery, currentUser, onStatCli
                 <div style={{ fontSize: 11, color: G.gray400 }}>{t.dates} · {t.pax}</div>
               </div>
               <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,
-                background: t.statusLabel === "On Ground" ? "#EAFAF1" : t.statusLabel === "Completed" ? G.gray100 : "#DBEAFE",
-                color: t.statusLabel === "On Ground" ? "#0E6655" : t.statusLabel === "Completed" ? G.gray400 : "#1E40AF" }}>
+                background: t.statusLabel === "On Ground" ? "#EAFAF1" : t.statusLabel === "Completed" ? G.gray100 : t.statusLabel === "Past – not closed" ? "#FEF3C7" : "#DBEAFE",
+                color: t.statusLabel === "On Ground" ? "#0E6655" : t.statusLabel === "Completed" ? G.gray400 : t.statusLabel === "Past – not closed" ? "#92400E" : "#1E40AF" }}>
                 {t.statusLabel}
               </span>
             </div>
