@@ -37,7 +37,7 @@ describe('CostSheet: PDF and XLSX export buttons now exist (item #1)', () => {
 });
 
 describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare 3-sheet dump (item requested: "modern 2026 style")', () => {
-  it('clicking Export XLSX generates a real, single-sheet workbook with actual styling and content', async () => {
+  it('clicking Export XLSX generates a real, two-tab workbook with actual styling and content', async () => {
     // Capture the Blob passed to a real download instead of mocking
     // exceljs itself -- this exercises the actual cell/style-building
     // code, then re-reads the generated file with exceljs to confirm the
@@ -68,7 +68,7 @@ describe('CostSheet: XLSX export is a single, styled sheet (exceljs), not a bare
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
 
-    expect(wb.worksheets.length).toBe(1); // everything lives in one tab: settings, price table and the lists behind it
+    expect(wb.worksheets.map(w => w.name)).toEqual(['Cost Sheet', 'Itinerary']);
     const sheet = wb.worksheets[0];
     expect(sheet.name).toBe('Cost Sheet');
 

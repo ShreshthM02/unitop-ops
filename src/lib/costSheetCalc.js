@@ -164,3 +164,99 @@ export function makeCalculators(s) {
 
   return { calcSlab, calcTlSlab };
 }
+
+// ── Export read-outs shared by the PDF and the Excel ────────────────────────
+
+const rs = (v) => "₹" + Math.round(v).toLocaleString("en-IN");
+const fxAmt = (cur, v) => cur + " " + (Math.round(v * 100) / 100).toLocaleString("en-IN");
+
+// One short sentence for the "What was quoted" column: the figure as the
+// supplier quoted it, who it is for, and any foreign-currency conversion.
+//   cols: [{ id, label, pax, tl }]   kind: "transport" | "local" | "extra"
+export function lineBasis(line, kind, cols) {
+  const l = line || {};
+  const isPP = kind === "local" ? l.mode === "pp" : kind === "extra" ? l.mode === "PP" : false;
+  const fx = hasFx(l) && fxRate(l) !== 1 ? l.fx : null;
+  const k = fxRate(l);
+  const show = (amt) => (fx ? fxAmt(fx.cur, amt) : rs(amt)) + (isPP ? " per pax" : " group");
+  const parts = [];
+  const base = n(l.cost);
+  const cells = l.cells && typeof l.cells === "object" ? l.cells : {};
+  const own = (c) => { const v = cells[c.id]; return v !== undefined && v !== null && String(v).trim() !== "" && v !== NOT_APPLIED; };
+  const out = cols.filter((c) => lineCostFor(l, c.id, kind) === null);
+  const applied = cols.filter((c) => lineCostFor(l, c.id, kind) !== null);
+  if (base > 0 || !applied.some(own)) parts.push(fx ? `${show(base)} @ ₹${l.fx.roe} = ${rs(base * k)}${isPP ? " pp" : ""}` : show(base));
+  // slab-specific figures, one phrase per distinct figure
+  const byAmt = new Map();
+  applied.filter(own).forEach((c) => { const a = n(cells[c.id]); if (!byAmt.has(a)) byAmt.set(a, []); byAmt.get(a).push(c.label || "slab"); });
+  byAmt.forEach((names, a) => parts.push(`${fx ? fxAmt(fx.cur, a) : rs(a)} for ${names.join(", ")}`));
+  if (out.length && out.length < cols.length) parts.push(`not for ${out.map((c) => c.label || "slab").join(", ")}`);
+  else if (out.length === cols.length && cols.length) parts.push("not applied to any slab");
+  return parts.filter(Boolean).join(" · ");
+}
+
+// What to look at before a cost sheet goes out. Pure: reads the saved figures
+// and the app's own results. Each item is { ok, text }; an "ok" line means a
+// whole group of checks passed.
+export function costSheetChecks(snap, { calcSlab, calcTlSlab }) {
+  const { days = [], slabs = [], tlSlabs = [], transports = [], localHandlers = [], extras = [], monuments = [], monExtra = "", roe } = snap;
+  const cols = [
+    ...slabs.map((s) => ({ id: s.id, label: s.label, pax: n(s.foc), tl: false, calc: calcSlab(s) })),
+    ...tlSlabs.map((t) => ({ id: t.id, label: t.label, pax: n(t.pax), tl: true, calc: calcTlSlab(t), obj: t })),
+  ];
+  const out = [];
+  const group = (okText, warns) => { if (warns.length) warns.forEach((w) => out.push({ ok: false, text: w })); else if (okText) out.push({ ok: true, text: okText }); };
+
+  // Slabs
+  const slabWarns = [];
+  cols.forEach((c) => {
+    const nm = c.label || "A slab";
+    if (!(c.pax > 0)) slabWarns.push(`${nm} has no paying pax`);
+    else if (!(c.calc.tptPP > 0)) slabWarns.push(`${nm} has no transport cost`);
+    else if (!(c.calc.finalFX > 0)) slabWarns.push(`${nm} has no final price`);
+    if (c.tl && c.pax > 0 && !(c.calc.surchargeTotal > 0)) slabWarns.push(`${nm} is a T/L slab but no tour leader cost is included`);
+  });
+  if (!cols.length) slabWarns.push("No slabs added");
+  group("Every slab has paying pax, transport and a final price", slabWarns);
+
+  // Cost lines
+  const lineWarns = [];
+  const lines = [["transport", transports, (t) => t.sector || t.vehicleType || "Transport"], ["local", localHandlers, (h) => h.sector || "Local handler"], ["extra", extras, (e) => e.description || "Extra service"]];
+  lines.forEach(([kind, list, nameOf]) => list.forEach((l) => {
+    const nm = nameOf(l);
+    const apps = cols.filter((c) => lineCostFor(l, c.id, kind) !== null);
+    const any = n(l.cost) > 0 || cols.some((c) => { const v = l.cells && l.cells[c.id]; return v && v !== NOT_APPLIED && n(v) > 0; });
+    if (!any) lineWarns.push(`${nm} has no cost`);
+    else if (!apps.length) lineWarns.push(`${nm} is not applied to any slab`);
+    else if (apps.length < cols.length && kind !== "transport") lineWarns.push(`${nm} is left out of ${cols.filter((c) => !apps.includes(c)).map((c) => c.label || "a slab").join(", ")}. Intended?`);
+  }));
+  group(lines.some(([, l]) => l.length) ? "Every cost line has a figure and is applied to a slab" : "", lineWarns);
+
+  // Foreign currency
+  const fxLines = [...transports, ...localHandlers, ...extras].filter((l) => hasFx(l));
+  const fxWarns = fxLines.filter((l) => !(n(l.fx.roe) > 0)).map((l) => `${l.sector || l.description || "A cost line"} is quoted in ${l.fx.cur} but has no ROE`);
+  group(fxLines.length ? "ROE is set on every foreign-currency line" : "", fxWarns);
+
+  // Itinerary
+  const dayWarns = [];
+  days.forEach((d, i) => {
+    const hotel = String(d.hotel || "").trim();
+    const isLast = i === days.length - 1;
+    const named = hotel && !/^departure$/i.test(hotel);
+    if (named && !(n(d.hotelNetPP) > 0)) dayWarns.push(`${d.day || "Day " + (i + 1)}: ${hotel} has no net rate`);
+    else if (named && !(n(d.singleSupp) > 0)) dayWarns.push(`${d.day || "Day " + (i + 1)}: ${hotel} has no single supplement`);
+    else if (!named && !isLast && !(n(d.hotelNetPP) > 0)) dayWarns.push(`${d.day || "Day " + (i + 1)} has no hotel`);
+  });
+  group(days.length ? "Hotel rate and single supplement filled for every night" : "", dayWarns);
+
+  // Monuments
+  if (monuments.length && !monuments.some((m) => m.include) && !(n(monExtra) > 0)) out.push({ ok: false, text: `${monuments.length} monument${monuments.length > 1 ? "s are" : " is"} listed but none is included in the price` });
+
+  // Settings and sanity
+  const sane = [];
+  if (!(n(roe) > 0)) sane.push("ROE is not set");
+  const grp = cols.filter((c) => !c.tl && c.pax > 0 && c.calc.finalFX > 0).sort((a, b) => a.pax - b.pax);
+  for (let i = 1; i < grp.length; i++) if (grp[i].calc.finalFX > grp[i - 1].calc.finalFX) { sane.push(`${grp[i].label} costs more per pax than the smaller ${grp[i - 1].label}`); break; }
+  group(grp.length > 1 ? "Prices fall as group size grows" : "", sane);
+  return out;
+}

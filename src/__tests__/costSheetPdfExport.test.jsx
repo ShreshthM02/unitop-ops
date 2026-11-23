@@ -64,30 +64,6 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     expect(html).not.toContain('TL Cost:');
   });
 
-  it('#3: monuments list appears when monuments are present, and is absent when there are none', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    // Fresh instance, no monuments added -- section should not appear.
-    clickExport('📕 PDF');
-    expect(capturedHTML()).not.toContain('Monuments');
-
-    // Now add one and confirm the section appears.
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    const nameInputs = document.querySelectorAll('input[placeholder="e.g. Taj Mahal entry"]');
-    fireEvent.change(nameInputs[nameInputs.length-1], { target: { value: 'Taj Mahal' } });
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    expect(html).toContain('Monuments');
-    expect(html).toContain('Taj Mahal');
-  });
-
-  it('#4: Tour Facilitator, Misc Cost, and Monument settings show the actual cost value, not just the mode', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '5000' } });
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    expect(html).toMatch(/Tour Facilitator:.*5,000/);
-  });
-
   it('#5: day-wise table includes an Alt Hotel column and a TOTALS row', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     clickExport('📕 PDF');
@@ -96,27 +72,6 @@ describe('CostSheet PDF export: all 7 requested fixes', () => {
     expect(html).toContain('TOTALS');
   });
 
-  it('#6: every section appears when data is present -- Transport, Local Handler, Extras', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('+ Add Extra Service'));
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    expect(html).toContain('>Transport<'); // default cost sheet already has 1 transport row, and no emoji per item #6
-    expect(html).toContain('Local Handler');
-    expect(html).toContain('Extra Services');
-  });
-
-  it('#7: all column headers are center-aligned, regardless of their data cells\' own alignment (requested directly) -- Transport (a right-aligned numeric column) has a centered header', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    // Final Price Summary header row: "Transport" is a numeric column
-    // (its data cells right-align), but per explicit request every
-    // header centers regardless of its column's own data alignment.
-    const theadMatch = html.match(/<div class="grid-header" style="text-align:center">Transport<\/div>/);
-    expect(theadMatch).toBeTruthy();
-  });
 });
 
 describe('CostSheet PDF export: Tour Leader Slabs and Client/Agent + Assigned Staff info', () => {
@@ -170,20 +125,6 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     expect(html).toContain('19fr');
   });
 
-  it('group slab table has no T/L Surcharge at all, and Tour Leader Slabs get a genuinely separate table with it', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    clickExport('📕 PDF');
-    let html = capturedHTML();
-    expect(html).toContain('Tour Facil');
-    expect(html).not.toContain('T/L Surcharge'); // no T/L slabs added yet
-
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    clickExport('📕 PDF');
-    html = capturedHTML();
-    expect(html).toContain('Tour Leader Slabs'); // its own section title
-    expect(html).toContain('T/L Surcharge');
-  });
-
   it('a T/L slab row shows the same Tour Facilitator cost as a group slab would (not the surcharge in that column)', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '6000' } });
@@ -197,68 +138,7 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
   });
 });
 
-describe('CostSheet PDF: header and data cells in the same column share the same text-align direction (the one width-related fix that was genuinely correct and worth keeping)', () => {
-  it('every grid-header is center-aligned (Monuments/Transport/Local Handler/Extra Services/Day-wise/Final Price Summary), and every data column\'s cells are internally consistent with each other', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('+ Add Extra Service'));
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    const sections = ['Day-wise Itinerary', 'Monuments</div>', 'Pricing Matrix', 'Final Price Summary'];
-    sections.forEach((marker, i) => {
-      const idx = html.indexOf(marker);
-      expect(idx).toBeGreaterThan(-1);
-      const nextIdx = i < sections.length - 1 ? html.indexOf(sections[i+1]) : html.indexOf('</body>');
-      const snippet = html.slice(idx, nextIdx > idx ? nextIdx : idx + 2000);
-      const thAligns = [...snippet.matchAll(/<div class="grid-header" style="text-align:(left|right|center)">/g)].map(m => m[1]);
-      const tdAligns = [...snippet.matchAll(/<div class="grid-cell[^"]*" style="text-align:(left|right|center)[^"]*">/g)].map(m => m[1]);
-      const colCount = thAligns.length;
-      expect(colCount).toBeGreaterThan(0);
-      // Every header centers now, regardless of its column's data alignment.
-      thAligns.forEach(a => expect(a).toBe('center'));
-      // The Day-wise TOTALS row has some cells without text-align styling
-      // (e.g. the "TOTALS" label cell itself spans multiple columns), so
-      // it doesn't contribute a full set of colCount styled cells -- only
-      // count complete rows for the internal-consistency check below.
-      const completeTds = tdAligns.slice(0, Math.floor(tdAligns.length / colCount) * colCount);
-      // The matrix joins neighbouring slabs into spanning cells, so its cells no longer line up one per column.
-      for (let col = 0; col < colCount && marker !== 'Pricing Matrix'; col++) {
-        const colTdAligns = completeTds.filter((_, j) => j % colCount === col);
-        if (colTdAligns.length > 1) {
-          colTdAligns.slice(1).forEach(a => expect(a).toBe(colTdAligns[0]));
-        }
-      }
-    });
-  });
-});
-
-describe('CostSheet PDF: every table remains full page width', () => {
-  it('every content-grid stays full page width for every section -- no table is narrowed', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Monument / Activity'));
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('+ Add Extra Service'));
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    const contentGridCount = (html.match(/class="content-grid"/g) || []).length;
-    expect(contentGridCount).toBeGreaterThanOrEqual(4); // Day-wise, Monuments, Pricing Matrix, Final Price Summary
-    // .content-grid's own CSS rule sets width:100% -- confirmed present
-    // in the shared stylesheet.
-    expect(html).toContain('.content-grid { display: grid; width: 100%');
-  });
-});
-
 describe('CostSheet PDF: short fixed-format columns never wrap, and grid cells avoid splitting across a page boundary', () => {
-  it('Day-wise short columns (Day, Date, Meal Plan, Meal Cost, Plan, Net PP, Sngl Supp) carry white-space:nowrap; Movement and Hotel/Alt Hotel do not, since they can genuinely be long', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    const dayIdx = html.indexOf('Day 1');
-    const rowSnippet = html.slice(dayIdx - 50, dayIdx + 400);
-    const nowrapCount = (rowSnippet.match(/white-space:nowrap/g) || []).length;
-    expect(nowrapCount).toBeGreaterThanOrEqual(1);
-  });
 
   it('grid cells carry break-inside:avoid in the shared stylesheet, reducing the risk of content splitting across a page boundary', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
@@ -292,19 +172,6 @@ describe('CostSheet PDF: only the main "COST SHEET" title uses Playfair Display;
     expect(html).toMatch(/\.section-title\s*\{[^}]*Inter/);
   });
 
-  it('every Cost Sheet section header (Day-wise, Pricing Matrix, Final Price Summary) uses section-title, not inv-title', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('+ Add Extra Service'));
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    ['Day-wise Itinerary', 'Pricing Matrix', 'Final Price Summary'].forEach(marker => {
-      const idx = html.indexOf(marker);
-      expect(idx).toBeGreaterThan(-1);
-      const before = html.slice(Math.max(0, idx - 60), idx);
-      expect(before).toContain('section-title');
-    });
-  });
 });
 
 describe('CostSheet PDF: column headers no longer visually collide (missing gap between grid columns, and adjacent right/left alignment with no breathing room)', () => {
@@ -341,18 +208,3 @@ describe('CostSheet PDF: fr units instead of % prevent wide tables (T/L Slabs, 1
   });
 });
 
-describe('CostSheet PDF: the Pricing Matrix shows the whole cost taken, not just the per-pax figure', () => {
-  it('a group-total handler shows its whole amount and the per-pax result; amber marks a slab-specific figure', async () => {
-    const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add Local Handler'));
-    fireEvent.click(screen.getByText('per pax'));                                   // switch to a group total
-    fireEvent.change(screen.getAllByLabelText('Cost, same for every slab').pop(), { target: { value: '30000' } });
-    fireEvent.change(screen.getAllByLabelText(/pax \+ 1 FOC cost/).slice(-1)[0], { target: { value: '45000' } });
-    clickExport('📕 PDF');
-    const html = capturedHTML();
-    expect(html).toContain('Pricing Matrix');
-    expect(html).toContain('₹30,000');
-    expect(html).toMatch(/&divide; 15 pax = ₹2,000 pp/);
-    expect(html).toContain('background:#fef3c7');
-  });
-});

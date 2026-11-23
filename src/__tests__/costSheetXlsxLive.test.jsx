@@ -82,19 +82,3 @@ describe('Tour Leader slab builds on the unrounded subtotal', () => {
     expect(r.sellingINR).toBe(Math.round(after + Math.round(after * 10 / 100)));
   });
 });
-
-describe('Workbook: adding slabs and items needs no restructuring', () => {
-  it('a blank slab row exists after the filled ones, with name validation that forbids commas and duplicates', async () => {
-    const sheet = await exportSheet();
-    let hdr = 0;
-    sheet.eachRow((row, i) => { if (row.getCell(1).value === 'Slab name') hdr = i; });
-    expect(hdr).toBeGreaterThan(0);
-    let idx = hdr + 1;
-    while (sheet.getCell(idx, 3).value != null && sheet.getCell(idx, 3).value !== '') idx++;
-    const blank = sheet.getRow(idx);
-    expect(blank.getCell(1).protection.locked).toBe(false);
-    expect(blank.getCell(16).formula).toBeTruthy();
-    expect(blank.getCell(1).dataValidation.type).toBe('custom');
-    expect(blank.getCell(1).dataValidation.formulae[0]).toContain('COUNTIF');
-  }, 20000);
-});

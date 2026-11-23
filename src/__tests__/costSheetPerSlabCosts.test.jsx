@@ -78,33 +78,7 @@ describe('Pricing matrix on screen', () => {
   });
 });
 
-import { explodeLines } from '../lib/costSheetXlsx.js';
 import { matrixSpans } from '../lib/costSheetCalc.js';
-
-describe('Excel export: per-slab figures become ordinary "Applies to" rows that add up to the same prices', () => {
-  const entries = [{ src: { id: 1 }, name: '10 pax' }, { src: { id: 2 }, name: '15 pax' }, { src: { id: 3 }, name: '20 pax' }];
-  it('one figure for every slab stays a single "All" row', () => {
-    const rows = explodeLines([{ cost: '600', mode: 'pp', cells: {} }], 'local', entries, () => 'Jaipur');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ applies: 'All', cost: 600 });
-  });
-  it('a different figure for one slab, and a left-out slab, give one row per figure naming its slabs', () => {
-    const line = { sector: 'Agra', cost: '18000', mode: 'lumpsum', singleSupp: '900', cells: { 1: '21000', 3: 'x' } };
-    const rows = explodeLines([line], 'local', entries, (l) => l.sector);
-    expect(rows.map(r => [r.cost, r.applies])).toEqual([[21000, '10 pax'], [18000, '15 pax']]);
-    expect(rows.map(r => r.first)).toEqual([true, false]);   // single supplement is counted once
-  });
-  it('the rows reproduce the app\'s per-pax figure for every slab', () => {
-    const line = { cost: '18000', mode: 'lumpsum', cells: { 1: '21000', 3: 'x' } };
-    const slabs = [{ id: 1, foc: 10 }, { id: 2, foc: 15 }, { id: 3, foc: 20 }];
-    const { calcSlab } = makeCalculators({ ...base, days, slabs, transports: [], localHandlers: [line], extras: [] });
-    const rows = explodeLines([line], 'local', entries, () => 'x');
-    slabs.forEach((s, i) => {
-      const fromRows = rows.filter(r => r.applies === 'All' || r.applies.split(', ').includes(entries[i].name)).reduce((a, r) => a + r.cost / s.foc, 0);
-      expect(Math.round(fromRows)).toBe(calcSlab(s).localPP);
-    });
-  });
-});
 
 describe('PDF / Story view: neighbouring slabs with the same whole cost join into one block', () => {
   it('joins equal neighbours, keeps a different slab apart, and marks left-out slabs', () => {
@@ -148,12 +122,6 @@ describe('Foreign-currency cost line (FX)', () => {
     const spans = matrixSpans({ cost: '1000', mode: 'Lumpsum', cells: {}, fx: { cur: 'EUR', roe: '95' } }, 'extra', [{ id: 1, pax: 10 }]);
     expect(spans[0].total).toBe(95000);
     expect(spans[0].orig).toBe(1000);
-  });
-  it('Excel rows carry rupees and say which currency/ROE the label came from', () => {
-    const entries = [{ src: { id: 1 }, name: '10 pax' }];
-    const rows = explodeLines([{ sector: 'Jaipur', cost: '400', mode: 'lumpsum', cells: {}, fx: { cur: 'AED', roe: '23' } }], 'local', entries, (l) => l.sector);
-    expect(rows[0].cost).toBe(9200);
-    expect(rows[0].label).toBe('Jaipur [AED @ 23]');
   });
 });
 

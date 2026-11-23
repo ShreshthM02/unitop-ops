@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate, lineCostFor, lineBasis, costSheetChecks, ssBuild } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -438,11 +438,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       </div>`;
 
     const settingsBlock = `
-      <div style="display:grid;grid-template-columns:25% 25% 25% 25%;width:100%;margin-bottom:10pt;font-size:9pt">
-        <div><b>GST:</b> ${gst}%</div><div><b>Markup:</b> ${markup}%</div><div><b>ROE:</b> ${roe}</div><div><b>Currency:</b> ${currency}</div>
-        <div><b>Tour Facilitator:</b> ${tlMode==="pp"?"Per Pax":"Lumpsum"} &mdash; ₹${n(tlCost).toLocaleString()}</div>
-        <div><b>Misc Cost:</b> ${miscMode==="pp"?"Per Pax":"Lumpsum"} &mdash; ₹${n(miscCost).toLocaleString()}</div>
-        <div style="grid-column:span 2"><b>Monument:</b> ${monMode==="pp"?"Per Pax":"Lumpsum"} &mdash; ₹${Math.round(monTotal).toLocaleString()} total</div>
+      <div style="display:flex;justify-content:center;gap:16pt;flex-wrap:wrap;margin-bottom:8pt;font-size:9pt">
+        <span><b>GST:</b> ${gst}%</span><span><b>Markup:</b> ${markup}%</span><span><b>ROE:</b> ${roe}</span><span><b>Currency:</b> ${currency}</span>
+        <span style="color:#555">Costs are in rupees unless a row says otherwise</span>
       </div>`;
 
     const dayRows = days.map((d,i) => rowHTML([
@@ -481,84 +479,88 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     ];
     const money = v => "₹"+Math.round(v).toLocaleString();
     const gridCell = (inner, align, extra, zebra) => `<div class="grid-cell${zebra?" zebra":""}" style="text-align:${align}${extra||""}">${inner}</div>`;
-    const bandRow = (title, perPaxOf) => gridCell(`<b>${title}</b>`, "left", ";background:#e5e7eb;color:#374151;white-space:nowrap")
-      + mxCols.map(c=>gridCell(`<b>${perPaxOf(c)}</b>`, "center", `;background:${c.tl?"#fff3c4":"#e5e7eb"};color:#374151;white-space:nowrap`)).join("");
-    const lineRows = (list, kind, nameKey, blankName) => list.map((l,i)=>{
-      const spans = matrixSpans(l, kind, mxCols);
-      const fx = hasFx(l) ? l.fx : null;
-      const fxAmt = (v) => fx.cur + " " + (Math.round(v * 100) / 100).toLocaleString();
-      return gridCell((l[nameKey]||blankName) + (fx ? `<br/><span style="font-size:6.5pt;color:#1D4ED8">quoted in ${fx.cur} &middot; ROE &#8377;${fx.roe}</span>` : ""), "left", "", i%2===1)
-        + spans.map(m=>{
-            const sp = m.span>1 ? `;grid-column:span ${m.span}` : "";
-            if (m.none) return gridCell("—", "center", `;color:#999${sp}`, i%2===1);
-            const inner = fx ? `${fxAmt(m.orig)}<br/><span style="font-size:6.5pt;color:#1D4ED8">= ${money(m.total)}</span><br/><span style="font-size:6.5pt;color:#777">${m.isPP ? "per pax" : `&divide; ${m.pax} pax = ${money(m.pp)} pp`}</span>`
-              : m.isPP ? `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">per pax</span>`
-              : `${money(m.total)}<br/><span style="font-size:6.5pt;color:#777">&divide; ${m.pax} pax = ${money(m.pp)} pp</span>`;
-            return gridCell(m.custom ? `<b>${inner}</b>` : inner, "center", `${m.custom?";background:#fef3c7":""}${sp}`, i%2===1);
-          }).join("");
+    // ── Page 1: the answer first, then how it is built, then what to check ──
+    // Slabs are columns. One table reads top to bottom: what each cost is and
+    // how it was quoted, its share per paying pax for every slab, then the
+    // steps from sub-total to the final price. The single supplement is its
+    // own right-hand column (it is per single room, never divided by pax).
+    const ssB = ssBuild(totSS, gst, markup, roe);
+    const colsMeta = mxCols.map(c=>({ id:c.id, label:c.label, pax:c.pax, tl:c.tl }));
+    const TLTINT = "#fff8e1", SSTINT = "#f4f1fb";
+    const dash = '<span style="color:#999">&ndash;</span>';
+    const val = v => v==null ? dash : (v ? money(v) : "—");
+    const numCells = (vals, o={}) => mxCols.map((c,i)=>gridCell(
+      (vals[i]==null ? dash : (vals[i] || o.zero===false ? money(vals[i]) : "—")),
+      "right", `${o.bold?";font-weight:700":""}${o.style||""}${!o.style && c.tl ? ";background:"+TLTINT : ""}${o.custom&&o.custom[i]?";background:#fef3c7;font-weight:700":""}`)).join("");
+    const mxRow = (label, basis, vals, ssV, o={}) =>
+      gridCell(label, "left", `${o.indent?";padding-left:10pt":""}${o.bold?";font-weight:700":""}${o.style||""}`)
+      + gridCell(basis||"", "left", `;font-size:6.8pt;${o.style?"":"color:#555"}${o.style||""}`)
+      + numCells(vals, o)
+      + gridCell(ssV==null||ssV===""?"":money(ssV), "right", `${o.bold?";font-weight:700":""};background:${o.style?"transparent":SSTINT}${o.style||""}`);
+    const bandR = (title, key, ssV) => mxRow(`<b>${title}</b>`, "", mxCols.map(c=>c.calc[key]), ssV, { style:";background:#e5e7eb;color:#374151", bold:true });
+    const perPaxOf = (l, kind, c) => {
+      const t = lineCostFor(l, c.id, kind); if (t===null) return null;
+      const isPP = kind==="local" ? l.mode==="pp" : kind==="extra" ? l.mode==="PP" : false;
+      return isPP ? t : (c.pax>0 ? t/c.pax : 0);
+    };
+    const customAt = (l, c) => { const v = l.cells && l.cells[c.id]; return v!==undefined && v!==null && String(v).trim()!=="" && v!=="x"; };
+    const listRows = (list, kind, nameKey, blank) => list.map(l=>{
+      const fxL = hasFx(l) ? `<br/><span style="font-size:6.3pt;color:#1D4ED8">quoted in ${l.fx.cur}</span>` : "";
+      return mxRow((kind==="transport" && l.vehicleType && l.vehicleType!=="Others" ? `${l[nameKey]||blank} &middot; ${l.vehicleType}` : (l[nameKey]||blank))+fxL, lineBasis(l, kind, colsMeta), mxCols.map(c=>perPaxOf(l, kind, c)), kind==="local" && n(l.singleSupp) ? n(l.singleSupp)*fxRate(l) : "", { indent:true, custom:mxCols.map(c=>customAt(l,c)), zero:false });
     }).join("");
-    const tlOwnRows = tlSlabs.length ? [["hotel","Hotel"],["singleSupp","Single supplement"],["meals","Extra meals"],["transport","Transport"],["monument","Monument"],["localHandler","Local handler"],["extras","Extras"]]
-      .filter(([k])=>tlSlabs.some(tl=>(tl.includes||{})[k] && n((tl.costs||{})[k])))
-      .map(([k,label],i)=>gridCell(label, "left", "", i%2===1) + mxCols.map(c=>gridCell(c.tl ? (((c.obj.includes||{})[k] && n((c.obj.costs||{})[k])) ? money(n(c.obj.costs[k])) : "—") : "", "center", c.tl?";background:#fffbeb":"", i%2===1)).join("")).join("") : "";
-    const matrixBlock = (transports.length || localHandlers.length || extras.length || tlSlabs.length) ? `
-      <div class="section-title" style="margin-bottom:4pt">Pricing Matrix</div>
-      <div style="font-size:7.5pt;color:#555;margin-bottom:6pt">Each column is a slab. Every cost shows the whole amount taken and what it comes to per paying pax; slabs that share a figure are joined. Amber = a figure specific to that slab. A dash means the cost is not applied to that slab.</div>
-      ${tableBlock(["Cost", ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</span>`)], [],
-        (transports.length ? bandRow("Transport", c=>c.calc.tptPP?money(c.calc.tptPP):"—") + lineRows(transports, "transport", "sector", "—") : "")
-        + (localHandlers.length ? bandRow("Local Handler", c=>c.calc.localPP?money(c.calc.localPP):"—") + lineRows(localHandlers, "local", "sector", "—") : "")
-        + (extras.length ? bandRow("Extra Services", c=>c.calc.extrasPP?money(c.calc.extrasPP):"—") + lineRows(extras, "extra", "description", "—") : "")
-        + (tlSlabs.length ? bandRow("Tour Leader surcharge", c=>c.tl ? (c.calc.surchargePP?money(c.calc.surchargePP):"—") : "") + tlOwnRows : ""),
-        "", [18, ...mxCols.map(()=>Math.max(6, Math.round(82/Math.max(mxCols.length,1))))])}` : "";
-
-    const slabRows = slabs.map((s,si) => {
-      const c = calcSlab(s);
-      return rowHTML([
-        `${s.label}<br/><span style="font-size:7pt;color:#888">${s.vehicle==="Others"?s.vehicleOther:s.vehicle||""}</span>`,
-        c.tptPP?"₹"+c.tptPP.toLocaleString():"—", c.tlPP?"₹"+c.tlPP.toLocaleString():"—", c.miscPP?"₹"+c.miscPP.toLocaleString():"—",
-        c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
-        "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
-        `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [1,2,3,4,5,6,7,8,9,10,11,12], si, [1,2,3,4,5,6,7,8,9,10,11,12]);
-    }).join("");
-    const tlSlabRows = tlSlabs.map((tl,ti) => {
-      const c = calcTlSlab(tl);
-      return rowHTML([
-        tl.label, tl.vehicle==="Others"?(tl.vehicleOther||"—"):(tl.vehicle||"—"), n(tl.pax)||"—",
-        c.tptPP?"₹"+c.tptPP.toLocaleString():"—", c.tlPP?"₹"+c.tlPP.toLocaleString():"—",
-        `<b>${c.surchargePP?"₹"+c.surchargePP.toLocaleString():"—"}</b>`, c.miscPP?"₹"+c.miscPP.toLocaleString():"—",
-        c.monPP?"₹"+c.monPP.toLocaleString():"—", c.localPP?"₹"+c.localPP.toLocaleString():"—", c.extrasPP?"₹"+c.extrasPP.toLocaleString():"—",
-        "₹"+c.sub.toLocaleString(), "₹"+c.tax.toLocaleString(), "₹"+c.afterTax.toLocaleString(), "₹"+c.markupAmt.toLocaleString(),
-        `<b>${c.finalFX?currency+" "+c.finalFX.toLocaleString():"—"}</b>`, c.ssFX?currency+" "+c.ssFX.toLocaleString():"—",
-      ], [2,3,4,5,6,7,8,9,10,11,12,13,14,15], ti, [2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
-    }).join("");
-
-    const summaryBlock = `
-      <div class="section-title" style="margin:14pt 0 8pt">Final Price Summary</div>
-      <div style="display:grid;grid-template-columns:33.33% 33.33% 33.34%;width:100%;margin-bottom:8pt;font-size:9pt">
-        <div><b>Accommodation (PP):</b> ₹${Math.round(totHotel).toLocaleString()}</div>
-        <div><b>Extra Meals (PP):</b> ₹${Math.round(totMeal).toLocaleString()}</div>
-        <div><b>Single Supplement (total):</b> ₹${Math.round(totSS).toLocaleString()}</div>
-      </div>
-      ${tableBlock(["Slab","Transport","Tour Facil.","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [1,2,3,4,5,6,7,8,9,10,11,12], slabRows, "No group slabs added",
-        [15,7,7,6,6,7,6,8,6,8,7,9,8])}`;
-
-    // Tour Leader Slabs are deliberately their own table -- never a column
-    // (not even blank) inside the group slabs table, since T/L Surcharge
-    // simply does not apply to a group slab at all.
-    const tlSummaryBlock = tlSlabs.length ? `
-      <div class="section-title" style="margin:14pt 0 8pt">Tour Leader Slabs</div>
-      ${tableBlock(["T/L Slab","Vehicle","Paying Pax","Transport","Tour Facil.","T/L Surcharge","Misc","Mon.","Local Hdlr","Extras","Sub-total","GST","After Tax","Markup","Final Price","SS"],
-        [2,3,4,5,6,7,8,9,10,11,12,13,14,15], tlSlabRows, "",
-        [12,7,6,6,6,7,5,5,6,5,6,5,6,5,7,6])}` : "";
+    const nightsWithHotel = days.filter(d=>n(d.hotelNetPP)>0).length;
+    const flat = (label, basis, key, ssV) => mxRow(label, basis, mxCols.map(c=>c.calc[key]), ssV);
+    const buildRows = [
+      ["Sub-total", "per paying pax", "sub", true],
+      [`GST`, `${gst}%`, "tax"],
+      ["After tax", "", "afterTax"],
+      [`Markup`, `${markup}% on after-tax`, "markupAmt"],
+      ["Selling price (₹)", "", "sellingINR", true],
+    ].map(([l,b,k,bold])=>mxRow(l, b, mxCols.map(c=>c.calc[k]), ssB[k], { bold, style: bold?";background:#eef0f3":"" })).join("");
+    const finalRow = gridCell("Final price per pax", "left", ";background:#0d1b2a;color:#fff;font-weight:700")
+      + gridCell(`&divide; ROE ${roe}, rounded up`, "left", ";background:#0d1b2a;color:#fff;font-size:7pt")
+      + mxCols.map(c=>gridCell(c.calc.finalFX>0?`${currency} ${c.calc.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700")).join("")
+      + gridCell(ssB.finalFX>0?`${currency} ${ssB.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700");
+    const buildHeaders = ["Cost per paying pax (₹)", "What was quoted",
+      ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</span>`),
+      `Single supp.<br/><span style="font-size:6.5pt;font-weight:400">per single room</span>`];
+    const buildBlock = `
+      <div class="section-title" style="margin:10pt 0 4pt">How each price is built</div>
+      <div style="font-size:7.5pt;color:#555;margin-bottom:5pt">Every cost shows what was quoted and its share per paying pax in each slab. Amber = a figure specific to that slab. A dash = not applied to that slab. Blue note = quoted in a foreign currency. Single supplement is per single room and is not divided by pax.</div>
+      ${tableBlock(buildHeaders, [],
+        mxRow("Hotels", `${nightsWithHotel} night${nightsWithHotel===1?"":"s"}, net rates (page 2)`, mxCols.map(()=>totHotel), daySS)
+        + mxRow("Extra meals", "per day plans (page 2)", mxCols.map(()=>totMeal), "")
+        + (transports.length ? bandR("Transport","tptPP","") + listRows(transports,"transport","sector","Transport") : "")
+        + (localHandlers.length ? bandR("Local handler","localPP", handlerSS||"") + listRows(localHandlers,"local","sector","Local handler") : "")
+        + (extras.length ? bandR("Extra services","extrasPP","") + listRows(extras,"extra","description","Extra service") : "")
+        + mxRow("Tour Facilitator", n(tlCost) ? `₹${n(tlCost).toLocaleString()} ${tlMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.tlPP), "")
+        + mxRow("Miscellaneous", n(miscCost) ? `₹${n(miscCost).toLocaleString()} ${miscMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.miscPP), "")
+        + mxRow("Monuments", monuments.some(m=>m.include)||n(monExtra) ? `₹${Math.round(monTotal).toLocaleString()} ${monMode==="pp"?"per pax":"group"}` : "none included", mxCols.map(c=>c.calc.monPP), "")
+        + (tlSlabs.length ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.tl?c.calc.surchargePP:null), "", { style:"" }) : "")
+        + buildRows + finalRow,
+        "", [19,17,...mxCols.map(()=>8),8])}`;
+    const tilesBlock = `
+      <div style="display:grid;grid-template-columns:repeat(${mxCols.length+1},1fr);gap:5pt;margin-bottom:6pt">
+        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;${c.tl?"background:"+TLTINT:""}"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div></div>`).join("")}
+        <div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;background:${SSTINT}"><div style="font-weight:700;font-size:8.5pt">Single supplement</div><div style="font-size:6.8pt;color:#666">per single room</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${ssB.finalFX>0?currency+" "+ssB.finalFX.toLocaleString():"—"}</div></div>
+      </div>`;
+    const checkItems = costSheetChecks({ days, slabs, tlSlabs, transports, localHandlers, extras, monuments, monExtra, roe }, { calcSlab, calcTlSlab });
+    const nWarn = checkItems.filter(x=>!x.ok).length;
+    const checksBlock = `
+      <div class="section-title" style="margin:10pt 0 4pt">Checked before export <span style="font-weight:400;font-size:8pt;color:#555">&middot; ${checkItems.filter(x=>x.ok).length} passed${nWarn?`, <b style="color:#a65b00">${nWarn} to review</b>`:""}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2pt 14pt;font-size:8pt">
+        ${checkItems.map(x=>x.ok ? `<div><b style="color:#16794a">&#10003;</b> ${x.text}</div>` : `<div style="background:#fff1dc;border-radius:2pt;padding:1pt 4pt"><b style="color:#a65b00">!</b> ${x.text}</div>`).join("")}
+      </div>`;
+    const matrixBlock = [tilesBlock, buildBlock, checksBlock].join("");
+    const pageBreak = `<div style="page-break-before:always"></div>`;
 
     const notesBlock = docNotes ? `<div class="section-title" style="margin:14pt 0 6pt">Notes</div><div style="font-size:9pt">${docNotes}</div>` : "";
 
     const csFilename = buildDownloadFilename("Cost Sheet", "costsheet", docSettings, { id: query.id, tourfile: query.tourFileId, group: query.groupName || query.clientName, sector: query.destination || query.sector });
     return buildLetterheadDocument({
       title: csFilename,
-      bodyBlocks: [headerBlock, settingsBlock, dayTableBlock, monBlock, matrixBlock, summaryBlock, tlSummaryBlock, notesBlock].filter(Boolean),
-      extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}`,
+      bodyBlocks: [headerBlock, settingsBlock, matrixBlock, pageBreak, dayTableBlock, monBlock, notesBlock].filter(Boolean),
+      extraHeadCSS: `table.content-table thead tr th{font-size:7.5pt;padding:4pt 4pt}table.content-table tbody tr td{font-size:8pt;padding:3pt 4pt}.content-grid .grid-cell{padding:2pt 5pt;font-size:8.3pt}.content-grid .grid-header{font-size:7.8pt;padding:3pt 4pt}`,
       orientation: "landscape",
       showPageNum: true,
     });
