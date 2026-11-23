@@ -368,6 +368,33 @@ export function applyQueryRealtimeEvent(queries, eventType, newRow, oldRow) {
   return next;
 }
 
+// Discussion messages fetched (or pushed) from query_remarks, merged into the
+// queries array. Skips the person's own messages (already shown optimistically
+// when they were sent) and anything already present by id, so a catch-up fetch
+// and a live event can both arrive without ever doubling a message.
+export function mergeRemarkRows(queries, rows, meId) {
+  if (!rows || !rows.length) return queries;
+  const byQuery = new Map();
+  for (const r of rows) {
+    if (!r || !r.id || !r.query_id) continue;
+    if (meId && r.by_staff_id && r.by_staff_id === meId) continue;
+    if (!byQuery.has(r.query_id)) byQuery.set(r.query_id, []);
+    byQuery.get(r.query_id).push(r);
+  }
+  if (!byQuery.size) return queries;
+  let changed = false;
+  const next = queries.map((q) => {
+    const add = byQuery.get(q.id);
+    if (!add) return q;
+    const have = new Set((q.remarks || []).map((m) => m.id));
+    const fresh = add.filter((r) => !have.has(r.id)).map((r) => ({ id: r.id, by: r.by_name, byStaffId: r.by_staff_id, at: new Date(r.created_at).toLocaleString("en-IN"), createdAt: r.created_at, text: r.text, mentions: r.mentions || [] }));
+    if (!fresh.length) return q;
+    changed = true;
+    return { ...q, remarks: [...(q.remarks || []), ...fresh] };
+  });
+  return changed ? next : queries;
+}
+
 // ─── PAYMENTS DB <-> APP OBJECT MAPPING ────────────────────────────────────────
 // Merges the three payments tables (payments, payment_incoming,
 // payment_outgoing) into the { queryId, tourValue, currency, roeUsed,

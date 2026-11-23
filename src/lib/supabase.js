@@ -129,7 +129,11 @@ if (!gazetteerDb && typeof console !== "undefined") {
 // realtimeClient is null when unconfigured; useRealtimeTable() no-ops in
 // that case rather than throwing.
 export const realtimeClient = (SUPABASE_URL && SUPABASE_KEY)
-  ? createClient(SUPABASE_URL, SUPABASE_KEY)
+  // autoRefreshToken is OFF: the 'refresh token' we hand it is our own session
+  // token, not a Supabase one, so an automatic refresh can only fail and sign
+  // the client back out to anon -- after which Realtime (RLS: authenticated
+  // only) silently stops delivering chat and discussion events.
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
 if (!realtimeClient && typeof console !== "undefined") {
   console.warn("Supabase Realtime disabled: VITE_SUPABASE_URL/VITE_SUPABASE_KEY not set.");
@@ -316,7 +320,7 @@ export const _supa = (() => {
         // directly: staff-avatars' upload policy correctly requires
         // authenticated, and Storage was never actually being called as
         // anything but anon. Syncing it here so it's authenticated too.
-        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: data.token }).catch(()=>{});
+        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: data.token }).then(()=>realtimeClient.realtime.setAuth(data.jwt)).catch(()=>{ try { realtimeClient.realtime.setAuth(data.jwt); } catch(e) {} });
         return { user: data.user, error: null };
       } catch(e) { return { user: null, error: "Cannot reach server. Check internet connection." }; }
     },
@@ -364,7 +368,7 @@ export const _supa = (() => {
         // otherwise every reload silently drops back to anon for
         // Storage uploads even though the rest of the app correctly
         // stays logged in.
-        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: sess.token }).catch(()=>{});
+        if (realtimeClient) realtimeClient.auth.setSession({ access_token: data.jwt, refresh_token: sess.token }).then(()=>realtimeClient.realtime.setAuth(data.jwt)).catch(()=>{ try { realtimeClient.realtime.setAuth(data.jwt); } catch(e) {} });
         return data.user;
       } catch(e) { return sess?.user || null; }
     },

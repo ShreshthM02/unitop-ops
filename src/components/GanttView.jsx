@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } fr
 import * as Lib from '../lib/index.js';
 import DateInput from '../lib/DateInput.jsx';
 const { DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, buildLetterheadDocument, getMovementChartRows, printHTML, getRunningToursForDate } = Lib;
-const { formatFlightLeg, sanitizeRichHtml } = Lib;
+const { formatFlightLeg, sanitizeRichHtml, ExportMenu } = Lib;
+import { downloadSimpleXlsx } from '../lib/simpleXlsx.js';
 
 export default function GanttView({ queries, onOpenQuery, staff, vendors, tourExecutions }) {
   const [calTab, setCalTab]         = useState("gantt");
@@ -302,6 +303,27 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
           });
         };
 
+        // Same rows and same optional columns as the PDF and the screen.
+        const exportMovementXlsx = () => {
+          const cols = [
+            { header: "S.No", key: "sNo", width: 6, type: "number" },
+            { header: "File Handler", key: "fileHandler", width: 18 },
+            { header: "Tour File", key: "tourFileId", width: 14 },
+            { header: "Arr. Date", key: "arrDate", width: 11, type: "date" },
+            ...(visibleCols.arrFlight ? [{ header: "Arr. Flight", key: "arrFlight", width: 18 }] : []),
+            { header: "Dep. Date", key: "depDate", width: 11, type: "date" },
+            ...(visibleCols.depFlight ? [{ header: "Dep. Flight", key: "depFlight", width: 18 }] : []),
+            { header: "FTO / Agent", key: "fto", width: 24 },
+            { header: "Sector", key: "sector", width: 26 },
+            { header: "Pax", key: "pax", width: 8 },
+            ...activeAppended.map(c => ({ header: c.label, key: c.id, width: c.id === "route" ? 36 : 22 })),
+            { header: "Remarks", key: "remarks", width: 36 },
+          ];
+          const data = rows.map(r => ({ ...r, route: r.routeLines.join("\n") }));
+          return downloadSimpleXlsx({ title: `Movement Chart — ${MONTH_NAMES[selectedMonth]} ${selectedYear}`, sheetName: "Movement Chart", info: [`${rows.length} tour${rows.length===1?"":"s"} · exported ${new Date().toLocaleDateString("en-IN")}`], columns: cols, rows: data },
+            `Movement Chart - ${MONTH_NAMES[selectedMonth]} ${selectedYear}`);
+        };
+
         return (
           <div>
             <div style={{display:"flex",alignItems:"center",marginBottom:10,gap:10}}>
@@ -322,7 +344,10 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                   </div>
                 )}
               </div>
-              <button className="btn btn-primary" style={{fontSize:11}} onClick={()=>printHTML(buildMovementChartHTML())}>🖨 Download PDF</button>
+              <ExportMenu G={G} openDirection="down" actions={[
+                { id:"pdf",   label:"PDF",   icon:"📕", onSelect: ()=>printHTML(buildMovementChartHTML()), hint:"Landscape A4" },
+                { id:"excel", label:"Excel", icon:"📊", onSelect: exportMovementXlsx, hint:"Same rows and columns" },
+              ]}/>
             </div>
             <div style={{background:G.white,borderRadius:10,border:`1px solid ${G.gray200}`,overflow:"hidden"}}>
               <div style={{overflowX:"auto"}}>

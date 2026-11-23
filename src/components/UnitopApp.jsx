@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-const { fetchAllRows, loadDiscussionReads, markDiscussionRead, discussionUnread, fleetDue, todayISO, tabTitle, SeriesLookupContext, cancelLinkedServices, promoteSeriesMaster, applySeriesMaster, describeCopied, DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
+const { fetchAllRows, loadDiscussionReads, markDiscussionRead, discussionUnread, fleetDue, todayISO, tabTitle, SeriesLookupContext, cancelLinkedServices, promoteSeriesMaster, applySeriesMaster, describeCopied, DOC_CATEGORIES, DOC_STATUS, DOC_FROM, USERS, ROLE_LABELS, INITIAL_QUERIES, TOUR_DATA, KANBAN_COLS, SOURCE_COLORS, GANTT_DAYS, TODAY_IDX, APP_VERSION, COMPANY_INFO, INITIAL_PAYMENTS, QUERY_SOURCES, ROLE_COLOR, ROLE_BG, INITIAL_AGENTS, VENDOR_TYPES, INITIAL_VENDORS, VEHICLE_TYPES, DEFAULT_MONUMENTS, ROLE_DEFAULTS, PERM_LABELS, G, css, WF_STEPS, STATUS_WF_MAP, PIPELINE_STAGES, MONTH_NAMES, DEST_COLORS, ALL_REPORTS, VENDOR_TYPES_TBS, MEAL_ICONS, AVATAR_COLORS, DOC_TYPES, PATTERN_PLACEHOLDERS, DEFAULT_DOC_SETTINGS, TYPOGRAPHY_DEFAULTS, DEFAULT_QUOT_TEMPLATE, DEFAULT_DOC_TEMPLATES, SERVICE_TYPES, WATERMARK_TEXT, WatermarkSVG, LOGO_B64, BADGE_MOT_B64, BADGE_INDIA_B64, BADGE_IATO_B64, STAMP_B64, BADGE_AWARD_B64, getPermissions, useCan, Avatar, StatusBadge, FileTypeBadge, Toast, WorkflowProgress, OtherInput, nextInvoiceNo, numToWords, invoiceLetterheadCSS, invoiceLetterheadHTML, invoiceFooterHTML, mapDbQueryRow, applyQueryRealtimeEvent, mergeRemarkRows, useRealtimeTable, mergePaymentsRows, savePaymentsToDB, saveVendorToDB, saveAgentToDB, buildQuerySavePayload, mergeQueryForSave, stripWorkflowFields, queueSequential, mergeTourExecutionRows, saveTourExecutionToDB, blankTourExecution, loadCostSheetVersions, mapCostSheetDaysToTourExecutionDays, loadFinalCostSheetVersion, loadAppSetting, saveAppSetting, mergeDocTemplates, formatDateDMY, getAutoDetectedSteps, toggleWFStep, logAudit, db, formatDateSlash, loadSeries, nextDocNumber, nextDocNumberAtomic, loadSignatures, migrateContacts, isUuid, loadConversationsForStaff, isConversationUnread, findOrCreateDM, nightsDaysLabel, isTourOnGround, entryINR, formatSidebarClock } = Lib;
 import AgentMaster from './AgentMaster.jsx';
 import SeriesManagement from './SeriesManagement.jsx';
 import AllQueriesView from './AllQueriesView.jsx';
@@ -510,18 +510,43 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
   // tradeoff is the same account open in two tabs won't see its own
   // just-sent message in the second tab until a reload, a low-stakes
   // edge case.
+  // Catch up on discussion messages missed while the socket was down (sleep,
+  // background tab, network blip): fetch everything newer than the latest
+  // message already held and merge it in. Duplicates are impossible (by id).
+  const queriesRef = useRef(queries);
+  queriesRef.current = queries;
+  const syncRemarks = useCallback(async () => {
+    if (!authUser || !currentUser?.id) return;
+    try {
+      let latest = "";
+      for (const q of queriesRef.current) for (const r of (q.remarks || [])) if (r.createdAt && r.createdAt > latest) latest = r.createdAt;
+      let qb = db.from("query_remarks").select("*").order("created_at", { ascending: true });
+      if (latest) qb = qb.gte("created_at", latest);
+      const { data } = await qb;
+      if (!data || !data.length) return;
+      const me = currentUser.id;
+      setQueries(qs => mergeRemarkRows(qs, data, me));
+      setActiveQuery(aq => {
+        if (!aq) return aq;
+        const merged = mergeRemarkRows([aq], data, me)[0];
+        return merged;
+      });
+      data.filter(r => r.by_staff_id !== me && (r.mentions || []).some(m => m.type === "staff" && m.id === me) && r.created_at > latest)
+        .slice(-1).forEach(r => showToast(`💬 ${r.by_name} mentioned you in a discussion`));
+    } catch (e) { /* best effort; the next sync tries again */ }
+  }, [authUser, currentUser?.id]);
+
   useRealtimeTable("query_remarks", (eventType, newRow) => {
     if (eventType !== "INSERT" || !newRow) return;
     if (newRow.by_staff_id && newRow.by_staff_id === currentUser?.id) return;
-    const msg = { id: newRow.id, by: newRow.by_name, byStaffId: newRow.by_staff_id, at: new Date(newRow.created_at).toLocaleString("en-IN"), createdAt: newRow.created_at, text: newRow.text, mentions: newRow.mentions || [] };
-    setQueries(qs => qs.map(q => q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q));
-    setActiveQuery(q => q && q.id === newRow.query_id ? { ...q, remarks: [...(q.remarks || []), msg] } : q);
+    setQueries(qs => mergeRemarkRows(qs, [newRow], currentUser?.id));
+    setActiveQuery(aq => aq ? mergeRemarkRows([aq], [newRow], currentUser?.id)[0] : aq);
     // Mention notification, part of "is he notified" -- applies to
     // discussion threads the same as DM/Group chat below.
     if (authUser && currentUser?.id && (newRow.mentions || []).some(m => m.type === "staff" && m.id === currentUser.id)) {
       showToast(`💬 ${newRow.by_name} mentioned you in a discussion`);
     }
-  });
+  }, true, syncRemarks);
 
   // Global chat conversations, kept loaded even when the chat panel is
   // closed -- purely to drive the sidebar unread badge and mention
@@ -556,7 +581,17 @@ export default function UnitopApp({ authUser, onOpenVendorLedger, onOpenAgentLed
       }
     }
     reloadChatConversations();
-  });
+  }, true, () => reloadChatConversations());
+  // Safety net under Realtime: while the tab is visible, re-check every 45s.
+  useEffect(() => {
+    if (!authUser || !currentUser?.id) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      reloadChatConversations();
+      syncRemarks();
+    }, 45000);
+    return () => clearInterval(t);
+  }, [authUser, currentUser?.id, reloadChatConversations, syncRemarks]);
   useEffect(() => {
     if (!authUser || !currentUser?.id) return;
     let live = true;

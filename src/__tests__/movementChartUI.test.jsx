@@ -32,14 +32,15 @@ describe('GanttView: Movement Chart tab', () => {
     expect(screen.getByText(/No active tours in/)).toBeTruthy();
   });
 
-  it('"Download PDF" generates a landscape document containing the same data as the on-screen table', async () => {
+  it('Export > PDF generates a landscape document containing the same data as the on-screen table', async () => {
     const writeSpy = vi.fn();
     const mockWin = { document: { write: writeSpy, close: vi.fn(), readyState: 'complete' }, print: vi.fn() };
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
 
     render(<GanttView queries={queries} tours={[]}/>);
     fireEvent.click(screen.getByText('📋 Movement Chart'));
-    fireEvent.click(screen.getByText('🖨 Download PDF'));
+    fireEvent.click(screen.getByText('⬇ Export ▾'));
+    fireEvent.click(screen.getByText('📕 PDF'));
 
     expect(openSpy).toHaveBeenCalled();
     expect(writeSpy).toHaveBeenCalledTimes(1);
@@ -51,6 +52,31 @@ describe('GanttView: Movement Chart tab', () => {
 
     openSpy.mockRestore();
   });
+
+  it('Export > Excel produces a workbook with the same rows, real dates and a frozen filtered header', async () => {
+    let blob = null;
+    const a = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => { blob = b; return 'blob:x'; });
+    const b = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const real = document.createElement.bind(document);
+    const c = vi.spyOn(document, 'createElement').mockImplementation((t) => { const el = real(t); if (t === 'a') el.click = vi.fn(); return el; });
+    render(<GanttView queries={queries} tours={[]}/>);
+    fireEvent.click(screen.getByText('📋 Movement Chart'));
+    fireEvent.click(screen.getByText('⬇ Export ▾'));
+    fireEvent.click(screen.getByText('📊 Excel'));
+    await vi.waitFor(() => expect(blob).toBeTruthy(), { timeout: 15000 });
+    const buf = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsArrayBuffer(blob); });
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+    const ws = wb.getWorksheet('Movement Chart');
+    expect(ws).toBeTruthy();
+    expect(String(ws.getCell(1, 1).value)).toMatch(/^Movement Chart — /);
+    const text = []; ws.eachRow((row) => row.eachCell((cell) => text.push(String(cell.value && cell.value.result !== undefined ? cell.value.result : cell.value))));
+    expect(text.join('|')).toContain('TF-2026-100');
+    expect(text.join('|')).toContain('Uni Travel');
+    expect(ws.views[0].state).toBe('frozen');
+    expect(ws.autoFilter).toBeTruthy();
+    a.mockRestore(); b.mockRestore(); c.mockRestore();
+  }, 30000);
 
   it('does not crash when queries have no assignedTo match or missing fields', () => {
     const sparse = [{ id: 'UTQ-1', tourFileId: 'TF-1', status: 'operations', cancelled: false, travelDate: queries[0].travelDate, nights: 3 }];
