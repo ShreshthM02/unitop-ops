@@ -5,124 +5,119 @@ import { CostSheet } from '../components/CostSheet.jsx';
 
 const fakeQuery = { id: 'UTQ-2026-500', tourFileId: 'TF-500', groupName: 'TL Slab Redesign Test', nights: 3 };
 
-describe('Tour Leader Slabs: none by default, multiple allowed, correct default label', () => {
-  it('starts with none added, showing an explanatory note', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    expect(screen.getByText(/For when no FOC policy applies/)).toBeTruthy();
-    expect(screen.queryByText(/Tour Leader surcharge/)).toBeNull();
+import { migrateTlSlabs, surchargeOf, tlBreakdown, makeCalculators } from '../lib/costSheetCalc.js';
+import { calcCostSheetSlabFinalPrice, calcCostSheetTlSlabFinalPrice } from '../lib/utils.js';
+import { openMatrixSections } from './helpers/matrix.js';
+
+// One kind of slab. The tour leader surcharge is an optional, collapsed section
+// that applies to any slab; it shows a value only for a slab that uses it.
+describe('One kind of slab: a single "+ Add Slab", no separate T/L slab', () => {
+  it('has no "+ Add T/L Slab" button and no T/L note', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    expect(screen.queryByText('+ Add T/L Slab')).toBeNull();
+    expect(screen.queryByText(/For when no FOC policy applies/)).toBeNull();
+    expect(screen.getByText('+ Add Slab')).toBeTruthy();
   });
 
-  it('"+ Add T/L Slab" adds one with the correct new default label "10 pax + 1 T/L"', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    expect(screen.getByDisplayValue('10 pax + 1 T/L')).toBeTruthy();
+  it('the tour leader surcharge section starts collapsed, saying none is used', () => {
+    render(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
+    const row = screen.getByText(/Tour leader surcharge ·/);
+    expect(row.textContent).toContain('▸');
+    expect(row.textContent).toContain('none used');
+    expect(screen.queryByLabelText('Hotel (tour leader)')).toBeNull();
   });
 
-  it('allows adding a second, independent T/L slab', () => {
+  it('opened, it has an input per part for every slab, and nothing is tinted yellow', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    expect(screen.getAllByDisplayValue('10 pax + 1 T/L').length).toBe(2);
+    const slabCount = document.querySelectorAll('th [aria-label="Slab label"]').length;
+    expect(screen.getAllByLabelText('Hotel (tour leader)').length).toBe(slabCount);
+    expect(document.body.innerHTML).not.toMatch(/#FFF9E6|#fff9e6|F5D97A/i);
   });
 
-  it('removing one T/L slab leaves the other untouched', () => {
+  it('"+ Add Slab" adds one more column, and removing one leaves the others', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const labelInputs = screen.getAllByDisplayValue('10 pax + 1 T/L');
-    fireEvent.change(labelInputs[0], { target: { value: 'First Slab Renamed' } });
-    // Each T/L slab is a tinted column; its own remove button sits in its header.
-    const header = labelInputs[0].closest('th');
-    fireEvent.click(header.querySelector('[aria-label="Remove slab"]'));
-    expect(screen.queryByDisplayValue('First Slab Renamed')).toBeNull();
-    expect(screen.getByDisplayValue('10 pax + 1 T/L')).toBeTruthy();
-  });
-});
-
-describe('Tour Leader Slabs: appear as real rows in the Final Price Summary, "just like a normal slab"', () => {
-  it('an added T/L slab with a real label shows up as its own row in the Final Price Summary table', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
-    fireEvent.change(labelInput, { target: { value: 'Small Group T/L Slab' } });
-    expect(screen.getAllByDisplayValue('Small Group T/L Slab').length).toBeGreaterThanOrEqual(1);   // its own column in the matrix
-  });
-
-  it('the T/L slab row computes real Total T/L Cost and Surcharge, not folded into group slabs', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '2500' } });
-    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '10' } });
-    expect(screen.getByText('Total tour leader cost')).toBeTruthy();
-    expect(screen.getByText(/Tour Leader surcharge/)).toBeTruthy();
+    const before = document.querySelectorAll('th [aria-label="Slab label"]').length;
+    fireEvent.click(screen.getByText('+ Add Slab'));
+    expect(document.querySelectorAll('th [aria-label="Slab label"]').length).toBe(before + 1);
+    const added = screen.getByDisplayValue('New Slab');
+    fireEvent.click(added.closest('th').querySelector('[aria-label="Remove slab"]'));
+    expect(document.querySelectorAll('th [aria-label="Slab label"]').length).toBe(before);
   });
 });
 
-describe('Tour Leader Slabs: correct math (T/L never pays, surcharge divides only across paying pax)', () => {
-  it('surcharge is checked-cost total divided by paying pax only', () => {
+describe('Surcharge on any slab: correct math (spread over that slab\'s paying pax only)', () => {
+  it('typing a hotel cost on a slab shows its surcharge per paying pax in the section row', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '12000' } });
-    ['Extra meals','Transport','Monument','Local handler','Extras'].forEach(label => {
-      fireEvent.change(screen.getByLabelText(`${label} (T/L)`), { target: { value: 'x' } });
-    });
-    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '12' } });
-    expect(screen.getByText(/^▾ Tour Leader surcharge/).closest('tr').textContent).toContain('1,000');
+    const slabLabel = document.querySelector('th [aria-label="Slab label"]');
+    const th = slabLabel.closest('th');
+    const paxInput = th.querySelector('input[aria-label="FOC (N paying)"]');
+    fireEvent.change(paxInput, { target: { value: '12' } });
+    const col = Array.from(th.parentElement.children).indexOf(th);
+    const hotel = screen.getAllByLabelText('Hotel (tour leader)')[0];
+    fireEvent.change(hotel, { target: { value: '12000' } });
+    const secRow = screen.getByText(/Tour leader surcharge ·/).closest('tr');
+    expect(secRow.children[col].textContent).toContain('1,000');
   });
 
-  it('shows a clear prompt instead of a bad number when paying pax is not set', () => {
+  it('shows "Set paying pax" instead of a bad number when pax is missing', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.change(screen.getByLabelText('Hotel (T/L)'), { target: { value: '5000' } });
+    const th = document.querySelector('th [aria-label="Slab label"]').closest('th');
+    fireEvent.change(th.querySelector('input[aria-label="FOC (N paying)"]'), { target: { value: '0' } });
+    fireEvent.change(screen.getAllByLabelText('Hotel (tour leader)')[0], { target: { value: '5000' } });
     expect(screen.getByText(/Set paying pax/)).toBeTruthy();
   });
-});
 
-describe('Tour Leader Slabs: "Fetch Latest Costs" works per-slab, independently', () => {
-  it('fetching costs for one T/L slab does not affect another', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    const mealCostInputs = document.querySelectorAll('input[placeholder="0"]');
-    fireEvent.change(mealCostInputs[0], { target: { value: '800' } });
-    fireEvent.change(mealCostInputs[1], { target: { value: '2500' } });
+  it('a slab with no surcharge prices exactly as it always did', () => {
+    const base = { transports: [], tlMode: 'pp', tlCost: 0, miscMode: 'pp', miscCost: 0, monMode: 'pp', localHandlers: [], extras: [], gst: 5, markup: 10, roe: 1, totals: { totMeal: 0, totHotel: 1000, totSS: 0, monTotal: 0 } };
+    const { calcSlab } = makeCalculators(base);
+    const plain = calcSlab({ id: 1, foc: 10 });
+    const withEmpty = calcSlab({ id: 1, foc: 10, tlCosts: { hotel: '' }, tlIncludes: { hotel: true } });
+    expect(withEmpty.finalFX).toBe(plain.finalFX);
+    expect(plain.surchargePP).toBe(0);
+  });
 
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const fetchButtons = screen.getAllByText(/Fetch Latest Costs from Cost Sheet/);
-    fireEvent.click(fetchButtons[0]);
-
-    const hotelInputs = screen.getAllByLabelText('Hotel (T/L)');
-    expect(hotelInputs[0].value).toBe('2500');
-    expect(hotelInputs[1].value).toBe('');
+  it('the surcharge adds total / paying pax before GST and markup, and skips parts marked x', () => {
+    const base = { transports: [], tlMode: 'pp', tlCost: 0, miscMode: 'pp', miscCost: 0, monMode: 'pp', localHandlers: [], extras: [], gst: 5, markup: 10, roe: 1, totals: { totMeal: 0, totHotel: 0, totSS: 0, monTotal: 0 } };
+    const { calcSlab } = makeCalculators(base);
+    const r = calcSlab({ id: 1, foc: 12, tlCosts: { hotel: '12000', meals: '999' }, tlIncludes: { hotel: true, meals: false } });
+    expect(r.surchargeTotal).toBe(12000);
+    expect(r.surchargePP).toBe(1000);
+    expect(r.sub).toBe(1000);
+    expect(r.sellingINR).toBe(Math.round(1050 + Math.round(1050 * 10 / 100)));
   });
 });
 
-describe('Group slabs can be fully deleted when a T/L slab exists (no forced minimum)', () => {
-  it('shows a remove button on the last remaining group slab once a T/L slab exists', () => {
-    renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
-    // Remove down to exactly 1 group slab first (5 default slabs)
-    let removeButtons = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕' && el.closest('div')?.style.cursor === 'pointer');
-    // Without a T/L slab, the very last group slab should have NO remove button
-    for (let i = 0; i < 4; i++) {
-      const btns = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕');
-      if (btns.length) fireEvent.click(btns[0]);
-    }
-    // Down to 1 slab, no T/L slab yet -- confirm no remove option remains for it
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const finalRemoveButtons = Array.from(document.querySelectorAll('span')).filter(el => el.textContent === '✕');
-    expect(finalRemoveButtons.length).toBeGreaterThan(0); // the last group slab can now be removed
+describe('Older saved cost sheets: T/L slabs fold into the one list with identical prices', () => {
+  const snap = {
+    gst: 5, markup: 10, roe: 85, currency: 'US $', tlMode: 'lumpsum', tlCost: 15000, miscMode: 'pp', miscCost: 300, monMode: 'pp', monExtra: '', monuments: [],
+    days: [{ id: 1, hotelNetPP: '4000', mealCost: '500', singleSupp: '2000' }],
+    transports: [{ id: 31, cost: '90000', cells: { 21: 'x' } }, { id: 32, cost: '60000', cells: { 11: 'x' } }],
+    localHandlers: [], extras: [],
+  };
+  const slabs = [{ id: 11, label: '10 pax', foc: 10, vehicle: 'Coach' }];
+  const tl = [{ id: 21, label: '9 + 1 T/L', pax: 9, vehicle: 'Coach', costs: { hotel: '4000', meals: '500', transport: '' }, includes: { hotel: true, meals: true, transport: true } }];
+
+  it('keeps ids, makes pax the slab pax, and moves the costs into the slab', () => {
+    const merged = migrateTlSlabs(slabs, tl);
+    expect(merged.map(x => x.id)).toEqual([11, 21]);
+    expect(merged[1]).toMatchObject({ label: '9 + 1 T/L', foc: 9, tlCosts: { hotel: '4000', meals: '500' } });
+    expect(surchargeOf(merged[1]).total).toBe(4500);
+    expect(tlBreakdown(merged[1]).map(x => x.key)).toEqual(['hotel', 'meals']);
+    expect(migrateTlSlabs(slabs, undefined)).toEqual(slabs);
+  });
+
+  it('every merged slab prices exactly as the old T/L calculation did (screen maths and quotation maths)', () => {
+    const merged = migrateTlSlabs(slabs, tl);
+    const totals = { totMeal: 500, totHotel: 4000, totSS: 2000, monTotal: 0 };
+    const { calcSlab, calcTlSlab } = makeCalculators({ ...snap, totals });
+    expect(calcSlab(merged[1]).finalFX).toBe(calcTlSlab(tl[0]).finalFX);
+    expect(calcSlab(merged[1]).sellingINR).toBe(calcTlSlab(tl[0]).sellingINR);
+    expect(calcCostSheetSlabFinalPrice(snap, merged[1]).finalFX).toBe(calcCostSheetTlSlabFinalPrice(snap, tl[0]).finalFX);
+    expect(calcCostSheetSlabFinalPrice(snap, merged[0]).finalFX).toBe(calcCostSheetSlabFinalPrice(snap, slabs[0]).finalFX);
   });
 });
 
-describe('Without any T/L slab, the last group slab still cannot be removed (the original safety net still holds)', () => {
-  it('the remove button condition requires either >1 group slabs or at least one T/L slab', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
-    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/components/PricingMatrix.jsx'), 'utf-8');
-    expect(src).toContain('col.tl || slabs.length > 1 || tlSlabs.length > 0');
-  });
-});
-
-describe('CostSheet: scroll anchoring disabled on the main content area (mitigates the "jumps to top" report when adding a T/L slab)', () => {
+describe('CostSheet: scroll anchoring disabled on the main content area (mitigates the "jumps to top" report when adding a slab)', () => {
   it('the fieldset has minHeight:0 -- the actual root cause fix. Without it, a flex:1 child in a column layout never shrinks to fit its container and never actually scrolls itself, silently pushing all scrolling onto the outer 100vh wrapper instead, which is what made the scroll position unstable when content was added', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     const fieldset = document.querySelector('fieldset');
@@ -138,14 +133,14 @@ describe('CostSheet: scroll anchoring disabled on the main content area (mitigat
     expect(outer.style.overflowY).toBe('hidden');
   });
 
-  it('directly restores fieldset scroll position after adding a T/L slab -- the definitive fix, verified live in the browser to survive after two prior CSS-based theories did not', () => {
+  it('directly restores fieldset scroll position after adding a slab -- the definitive fix, verified live in the browser to survive after two prior CSS-based theories did not', () => {
     renderOpen(<CostSheet query={fakeQuery} onClose={()=>{}} onProceedToQuotation={()=>{}}/>);
     const fieldset = document.querySelector('fieldset');
     Object.defineProperty(fieldset, 'scrollHeight', { value: 5000, configurable: true });
     Object.defineProperty(fieldset, 'clientHeight', { value: 600, configurable: true });
     fieldset.scrollTop = 2000;
     expect(fieldset.scrollTop).toBe(2000);
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText('+ Add Slab'));
     expect(fieldset.scrollTop).toBe(2000);
   });
 });

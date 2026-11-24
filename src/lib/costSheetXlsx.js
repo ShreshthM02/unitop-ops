@@ -23,7 +23,7 @@ import { lineCostFor, hasFx, NOT_APPLIED, ssBuild, TL_PARTS } from "./costSheetC
 //   4. Never shows #DIV/0!: a slab with no paying pax stays blank.
 
 const NAVY = "FF0D1B2A", ACCENT = "FFC0392B", LIGHT = "FFF3F4F6", WHITE = "FFFFFFFF", GREY = "FF6B7280";
-const BORDER = "FFD1D5DB", INPUT_BG = "FFFFFDE7", TL_BROWN = "FF7D6608", TL_TINT = "FFFFF8E1";
+const BORDER = "FFD1D5DB", INPUT_BG = "FFFFFDE7";
 const GOOD = "FF047857", WARN_BG = "FFFEF3C7", STEP_BLUE = "FF1D4ED8", SS_TINT = "FFF4F1FB", BAND = "FFE5E7EB";
 
 const solid = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
@@ -46,8 +46,8 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const {
     query = {}, currentVersionLabel, savedTimestamp, clientAgentName, assignedStaffName,
     gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra,
-    monuments = [], days = [], transports = [], localHandlers = [], extras = [], slabs = [], tlSlabs = [],
-    totals, calcSlab, calcTlSlab, formatDateSlash = (x) => x,
+    monuments = [], days = [], transports = [], localHandlers = [], extras = [], slabs = [],
+    totals, calcSlab, formatDateSlash = (x) => x,
   } = d;
   const { totMeal, totHotel, daySS, handlerSS, totSS, monTotal } = totals;
 
@@ -101,8 +101,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
 
   // ═══ Slab columns ═══
   const slabEntries = [
-    ...slabs.map((s, i) => ({ src: s, tl: false, name: String(s.label || "").trim() || `Slab ${i + 1}` })),
-    ...tlSlabs.map((s, i) => ({ src: s, tl: true, name: String(s.label || "").trim() || `T/L ${i + 1}` })),
+    ...slabs.map((s, i) => ({ src: s, name: String(s.label || "").trim() || `Slab ${i + 1}` })),
   ].slice(0, MAX_SLABS);
   const NS = slabEntries.length + SPARE_COLS;
   const FC = 6, LC = FC + NS - 1, SSC = LC + 1, NCOLS = SSC;
@@ -154,16 +153,13 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   const calcOf = [];
   for (let i = 0; i < NS; i++) {
     const c = FC + i, e = slabEntries[i] || null;
-    const tlE = e && e.tl;
-    const pax = e ? (e.tl ? n(e.src.pax) : Number(e.src.foc) || 0) : null;
+    const pax = e ? Number(e.src.foc) || 0 : null;
     const vehicle = e ? (e.src.vehicle === "Others" ? e.src.vehicleOther : e.src.vehicle) || "" : "";
-    const tlOwn = tlE ? Object.entries(e.src.costs || {}).reduce((a, [k, v]) => a + ((e.src.includes || {})[k] ? n(v) : 0), 0) : null;
     const nm = inputCell(sh, R.name, c, e ? e.name : "", undefined);
-    nm.font = { bold: true, color: { argb: tlE ? TL_BROWN : "FF111827" } }; nm.alignment = { horizontal: "center", wrapText: true };
+    nm.font = { bold: true, color: { argb: "FF111827" } }; nm.alignment = { horizontal: "center", wrapText: true };
     inputCell(sh, R.pax, c, pax, "0", numValidation(0)).font = { bold: true };
     inputCell(sh, R.veh, c, vehicle).alignment = { horizontal: "center", wrapText: true };
-    inputCell(sh, R.tlOwn, c, tlOwn, MONEY, numValidation(0));
-    calcOf.push(e ? (e.tl ? calcTlSlab(e.src) : calcSlab(e.src)) : null);
+    calcOf.push(e ? calcSlab(e.src) : null);
   }
   const ssH = sh.getCell(R.name, SSC); ssH.value = "Single supp."; ssH.font = { bold: true, size: 10 }; ssH.alignment = { horizontal: "center", wrapText: true };
   sh.getCell(R.pax, SSC).value = "per single room"; sh.getCell(R.pax, SSC).font = { size: 8, italic: true, color: { argb: GREY } }; sh.getCell(R.pax, SSC).alignment = { horizontal: "center" };
@@ -229,9 +225,9 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   for (const r of [FIX.tf, FIX.misc, FIX.mon]) for (let c = 6; c <= SSC; c++) sh.getCell(r, c).fill = solid(c === SSC ? SS_TINT : WHITE);
 
   // ═══════════ Tour leader's own costs, split by part ═══════════
-  // Only T/L slab columns use this. Type a figure for each part (or x / blank to
+  // Any slab column can use this; it stays empty (and adds nothing) unless used. Type a figure for each part (or x / blank to
   // leave it out); the total feeds the frozen "own cost" row and the surcharge.
-  groupBand(TLB, "TOUR LEADER'S OWN COSTS   (T/L slabs only; the total is spread over that slab's paying pax)");
+  groupBand(TLB, "TOUR LEADER'S OWN COSTS   (optional; the total is spread over the slab's paying pax)");
   TL_PARTS.forEach(([key, lbl], i) => {
     const r = TLB.first + i;
     label(sh, r, 1, lbl, { size: 10 });
@@ -239,9 +235,9 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     for (let k = 0; k < NS; k++) {
       const e = slabEntries[k], cell = sh.getCell(r, FC + k);
       styleInput(cell, MONEY); cell.alignment = { horizontal: "right" }; cell.dataValidation = numValidation(0);
-      if (e && e.tl) {
-        const v = n((e.src.costs || {})[key]);
-        if (!(e.src.includes || {})[key] && v > 0) { cell.value = "x"; cell.alignment = { horizontal: "center" }; }
+      if (e) {
+        const v = n((e.src.tlCosts || {})[key]);
+        if (!(e.src.tlIncludes || {})[key] && v > 0) { cell.value = "x"; cell.alignment = { horizontal: "center" }; }
         else cell.value = v > 0 ? v : null;
       }
     }
@@ -252,7 +248,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
   sh.getCell(TLB.total, 1).fill = solid(LIGHT);
   for (let k = 0; k < NS; k++) {
     const e = slabEntries[k], L = colLetter(FC + k);
-    const tot = e && e.tl ? Object.entries(e.src.costs || {}).reduce((a, [kk, v]) => a + ((e.src.includes || {})[kk] ? n(v) : 0), 0) : 0;
+    const tot = e ? Object.entries(e.src.tlCosts || {}).reduce((a, [kk, v]) => a + ((e.src.tlIncludes || {})[kk] ? n(v) : 0), 0) : 0;
     formulaCell(sh, TLB.total, FC + k, `SUM(${L}${TLB.first}:${L}${TLB.last})`, tot, MONEY, { bold: true });
     sh.getCell(TLB.total, FC + k).fill = solid(LIGHT);
     // the frozen header row now just shows that total
@@ -282,7 +278,7 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     F(P.tf, guard(pc, `IF(LOWER(TRIM($B$${FIX.tf}))="pp",N($C$${FIX.tf}),N($C$${FIX.tf})/${pc})`), v("tlPP"));
     F(P.misc, guard(pc, `IF(LOWER(TRIM($B$${FIX.misc}))="pp",N($C$${FIX.misc}),N($C$${FIX.misc})/${pc})`), v("miscPP"));
     F(P.mon, guard(pc, `IF(LOWER(TRIM($B$${FIX.mon}))="pp",N($C$${FIX.mon}),N($C$${FIX.mon})/${pc})`), v("monPP"));
-    F(P.tls, guard(pc, `N(${L}$${R.tlOwn})/${pc}`), e && e.tl ? c0.surchargePP : (c0 ? 0 : ""));
+    F(P.tls, guard(pc, `N(${L}$${R.tlOwn})/${pc}`), c0 ? c0.surchargePP : "");
     F(P.sub, guard(pc, `SUM(${L}${P.hotels}:${L}${P.tls})`), v("sub"), MONEY, { bold: true });
     F(P.gst, guard(pc, `ROUND(${L}${P.sub}*${gstA}/100,0)`), v("tax"));
     F(P.after, guard(pc, `${L}${P.sub}+${L}${P.gst}`), v("afterTax"));
@@ -348,8 +344,6 @@ export async function buildCostSheetWorkbook(ExcelJS, d) {
     { type: "expression", formulae: [`AND(${tl}<>"",${tl}<>"x",NOT(ISFORMULA(${tl})))`], style: { fill: amber, font: { bold: true, color: { argb: "FF92400E" } } } },
     { type: "expression", formulae: [`${tl}="x"`], style: { font: { color: { argb: "FF9CA3AF" } } } },
   ] });
-  sh.addConditionalFormatting({ ref: `${colLetter(FC)}${P.hotels}:${colLetter(LC)}${P.final}`, rules: [{ type: "expression", formulae: [`${colLetter(FC)}$${R.tlOwn}>0`], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: TL_TINT } } } }] });
-  sh.addConditionalFormatting({ ref: `${colLetter(FC)}${R.name}:${colLetter(LC)}${R.tlOwn}`, rules: [{ type: "expression", formulae: [`${colLetter(FC)}$${R.tlOwn}>0`], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFDE68A" } } } }] });
   sh.addConditionalFormatting({ ref: `${colLetter(FC)}${P.match}:${colLetter(SSC)}${P.match}`, rules: [{ type: "cellIs", operator: "equal", formulae: ['"edited"'], style: { fill: amber, font: { color: { argb: "FF92400E" } } } }] });
   sh.addConditionalFormatting({ ref: `A${CHK_FIRST}:A${CHK_LAST}`, rules: [
     { type: "expression", formulae: [`LEFT($A${CHK_FIRST},1)="!"`], style: { fill: amber, font: { color: { argb: "FF92400E" }, bold: true } } },

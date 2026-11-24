@@ -1761,13 +1761,17 @@ export function calcCostSheetSlabFinalPrice(snap, slab) {
   const localPP = localHandlers.reduce((s,h) => { const c = lineCostFor(h, slab.id, "local"); return s + (c===null ? 0 : h.mode==="pp" ? c : (slab.foc>0 ? c/slab.foc : 0)); }, 0);
   const extrasPP = extras.reduce((s,e) => { const c = lineCostFor(e, slab.id, "extra"); return s + (c===null ? 0 : e.mode==="PP" ? c : (slab.foc>0 ? c/slab.foc : 0)); }, 0);
 
-  const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
+  // A slab's own tour leader surcharge (one kind of slab now; older sheets keep
+  // theirs in tlSlabs, handled by calcCostSheetTlSlabFinalPrice below).
+  const surTotal = Object.entries(slab.tlCosts||{}).reduce((s,[k,v])=>s+((slab.tlIncludes||{})[k] ? n(v) : 0),0);
+  const surchargePP = slab.foc>0 ? surTotal/slab.foc : 0;
+  const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP + surchargePP;
   const tax = Math.round(sub * (snap.gst||0)/100);
   const afterTax = sub + tax;
   const markupAmt = Math.round(afterTax * (snap.markup||0)/100);
   const sellingINR = afterTax + markupAmt;
   const finalFX = ceilFX(sellingINR / (snap.roe||1));
-  return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt };
+  return { finalFX, sub: Math.round(sub), tax, afterTax: Math.round(afterTax), markupAmt, surchargePP: Math.round(surchargePP) };
 }
 
 // Standalone copy of Cost Sheet's own calcTlSlab -- T/L slabs have a

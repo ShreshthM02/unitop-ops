@@ -131,7 +131,8 @@ export function makeCalculators(s) {
     // for the group, divided across the paying pax like local handler lumpsums.
     const extrasPP = extras.reduce((a, e) => { const c = lineCostFor(e, slab.id, "extra"); return a + (c === null ? 0 : e.mode === "PP" ? c : (slab.foc > 0 ? c / slab.foc : 0)); }, 0);
 
-    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP;
+    const sur = surchargeOf(slab);
+    const sub = totHotel + totMeal + tptPP + tlPP + miscPP + monPP + localPP + extrasPP + sur.perPax;
     const tax = Math.round(sub * gst / 100);
     const afterTax = sub + tax;
     const markupAmt = Math.round(afterTax * markup / 100);
@@ -142,6 +143,7 @@ export function makeCalculators(s) {
       tptTotal, tptPP: Math.round(tptPP), tlPP: Math.round(tlPP), miscPP: Math.round(miscPP), monPP: Math.round(monPP),
       localPP: Math.round(localPP), extrasPP: Math.round(extrasPP), sub: Math.round(sub), tax, afterTax: Math.round(afterTax),
       markupAmt, sellingINR: Math.round(sellingINR), finalFX, ssFX,
+      surchargeTotal: Math.round(sur.total), surchargePP: Math.round(sur.perPax),
       subRaw: sub, // unrounded; T/L slabs build on this, never on the rounded display figure
     };
   };
@@ -172,11 +174,32 @@ export function makeCalculators(s) {
 export const TL_PARTS = [["hotel", "Hotel"], ["singleSupp", "Single supplement"], ["meals", "Extra meals"], ["transport", "Transport"], ["monument", "Monument"], ["localHandler", "Local handler"], ["extras", "Extras"]];
 // One T/L slab's own costs split by part: [{ key, label, total, perPax }] (only parts that are included and above zero).
 export function tlBreakdown(tl) {
-  const pax = n(tl && tl.pax);
+  const pax = n(tl && (tl.foc !== undefined ? tl.foc : tl.pax));
+  const costs = (tl && (tl.tlCosts || tl.costs)) || {};
+  const includes = (tl && (tl.tlIncludes || tl.includes)) || {};
   return TL_PARTS.map(([key, label]) => {
-    const total = (tl && tl.includes && tl.includes[key]) ? n(tl.costs && tl.costs[key]) : 0;
+    const total = includes[key] ? n(costs[key]) : 0;
     return { key, label, total, perPax: pax > 0 ? total / pax : 0 };
   }).filter((x) => x.total > 0);
+}
+
+// One kind of slab. Older saved cost sheets kept "T/L slabs" in a second list;
+// this folds them into the one list, keeping their ids (so every per-slab
+// figure still lines up), their paying pax as the slab's pax, and their own
+// costs as the slab's tour leader surcharge.
+export function migrateTlSlabs(slabs, tlSlabs) {
+  const base = Array.isArray(slabs) ? slabs : [];
+  const extra = (Array.isArray(tlSlabs) ? tlSlabs : []).map((t) => ({
+    id: t.id, label: t.label, foc: n(t.pax), vehicle: t.vehicle || "", ...(t.vehicleOther ? { vehicleOther: t.vehicleOther } : {}),
+    tlCosts: { ...(t.costs || {}) }, tlIncludes: { ...(t.includes || {}) },
+  }));
+  return [...base, ...extra];
+}
+export const blankTlCosts = () => ({ costs: { hotel: "", singleSupp: "", meals: "", transport: "", monument: "", localHandler: "", extras: "" }, includes: { hotel: true, singleSupp: true, meals: true, transport: true, monument: true, localHandler: true, extras: true } });
+export function surchargeOf(slab) {
+  const costs = (slab && slab.tlCosts) || {}, inc = (slab && slab.tlIncludes) || {};
+  const total = Object.entries(costs).reduce((a, [k, v]) => a + (inc[k] ? n(v) : 0), 0);
+  return { total, perPax: n(slab && slab.foc) > 0 ? total / n(slab.foc) : 0 };
 }
 
 const rs = (v) => "₹" + Math.round(v).toLocaleString("en-IN");

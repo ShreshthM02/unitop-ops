@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import * as Lib from '../lib/index.js';
-import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate, lineCostFor, lineBasis, ssBuild, tlBreakdown, TL_PARTS } from '../lib/costSheetCalc.js';
+import { makeCalculators, withCells, appliedSlabIds, matrixSpans, hasFx, fxRate, lineCostFor, lineBasis, ssBuild, tlBreakdown, TL_PARTS, migrateTlSlabs, blankTlCosts, surchargeOf } from '../lib/costSheetCalc.js';
 import { buildCostSheetWorkbook as buildCostSheetWorkbookFile } from '../lib/costSheetXlsx.js';
 import DateInput from '../lib/DateInput.jsx';
 import { PricingMatrix } from './PricingMatrix.jsx';
@@ -175,7 +175,6 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // and a 12-pax T/L slab side by side). Each one appears as a real row
   // in the Final Price Summary below, alongside the group slabs, with its
   // own label -- not a separate reference number.
-  const [tlSlabs, setTlSlabs] = useState([]);
   const monDr = useDragReorder(setMonuments), dayDr = useDragReorder(setDays);
   const scrollRestoreRef = useRef(null);
   useLayoutEffect(() => {
@@ -185,7 +184,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       if (winY != null) window.scrollTo(0, winY);
       scrollRestoreRef.current = null;
     }
-  }, [tlSlabs.length, transports.length, days.length, localHandlers.length, slabs.length]);
+  }, [transports.length, days.length, localHandlers.length, slabs.length]);
   // Direct, guaranteed scroll preservation -- after two CSS-based
   // theories (scroll-anchoring, then flexbox min-height) were confirmed
   // deployed but did NOT stop the reported "jumps to top" behavior, this
@@ -198,23 +197,18 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
   // and on inspection all five "+Add" buttons in this file shared the
   // exact same root cause and were equally affected (only one had
   // actually been fixed). All five now share this one mechanism.
-  const addTlSlab = () => {
-    scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY };
-    setTlSlabs(p=>[...p, {
-      id: Date.now(), label: "10 pax + 1 T/L", vehicle: "", pax: "",
-      costs: { hotel:"", singleSupp:"", meals:"", transport:"", monument:"", localHandler:"", extras:"" },
-      includes: { hotel:true, singleSupp:true, meals:true, transport:true, monument:true, localHandler:true, extras:true },
-    }]);
-  };
-  const updateTlSlab = (i, patch) => setTlSlabs(p=>p.map((t,idx)=>idx===i?{...t,...patch}:t));
-  const removeTlSlab = (i) => setTlSlabs(p=>p.filter((_,idx)=>idx!==i));
-  const fetchTlSlabCosts = (i) => {
+  // "Fetch latest costs" for a slab's tour leader surcharge: pulls this sheet's
+  // own hotel, meals and per-pax costs in, so the T/L's share can be edited from there.
+  const fetchTlSlabCosts = (slabId) => {
+    const target = slabs.find(x=>x.id===slabId);
     const ref = slabs[0] ? calcSlab(slabs[0]) : null;
-    updateTlSlab(i, { costs: {
+    const costs = {
       hotel: Math.round(totHotel)||"", singleSupp: Math.round(daySS)||"", meals: Math.round(totMeal)||"",
       transport: ref?ref.tptPP||"":"", monument: ref?ref.monPP||"":"",
       localHandler: ref?ref.localPP||"":"", extras: ref?ref.extrasPP||"":"",
-    }});
+    };
+    if (!target) return;
+    setSlabs(p=>p.map(x=>x.id===slabId?{...x, tlCosts: costs, tlIncludes: { ...blankTlCosts().includes, ...(x.tlIncludes||{}) }}:x));
   };
 
   // Client / Foreign Agent and Assigned Staff -- pre-filled from the tour
@@ -240,20 +234,14 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     setMiscMode(v.miscMode); setMiscCost(v.miscCost);
     setMonMode(v.monMode); setMonExtra(v.monExtra); setMonuments(v.monuments);
     setDays(v.days);
-    { const ids = [...(v.slabs||[]).map(x=>x.id), ...(Array.isArray(v.tlSlabs)?v.tlSlabs:[]).map(x=>x.id)]; setTransports((v.transports||[]).map(t=>withCells(t, ids, "transport"))); }
-    setSlabs(v.slabs);
+    // One kind of slab: older versions kept "T/L slabs" in a second list (or, older
+    // still, as a single object); they are folded into the one list, ids kept.
+    const legacyTl = Array.isArray(v.tlSlabs) ? v.tlSlabs
+      : (v.tlSlabEnabled ? [{ id:Date.now(), label:v.tlSlabLabel||"10 pax + 1 T/L", vehicle:v.tlSlabVehicle||"", pax:v.tlSlabPax||"", costs:v.tlSlabCosts||{}, includes:v.tlSlabIncludes||{} }] : []);
+    const mergedSlabs = migrateTlSlabs(v.slabs, legacyTl);
+    { const ids = mergedSlabs.map(x=>x.id); setTransports((v.transports||[]).map(t=>withCells(t, ids, "transport"))); }
+    setSlabs(mergedSlabs);
     setLocalHandlers(v.localHandlers); setExtras(v.extras);
-    // Defensive fallbacks: versions saved before Tour Leader Slab existed
-    // won't have these fields at all; versions saved with the OLD
-    // single-object T/L Slab shape (before "allow multiple") get migrated
-    // into a one-item array rather than lost.
-    if (Array.isArray(v.tlSlabs)) {
-      setTlSlabs(v.tlSlabs);
-    } else if (v.tlSlabEnabled) {
-      setTlSlabs([{ id:Date.now(), label:v.tlSlabLabel||"10 pax + 1 T/L", vehicle:v.tlSlabVehicle||"", pax:v.tlSlabPax||"", costs:v.tlSlabCosts||{hotel:"",meals:"",transport:"",monument:"",localHandler:"",extras:""}, includes:v.tlSlabIncludes||{hotel:true,meals:true,transport:true,monument:true,localHandler:true,extras:true} }]);
-    } else {
-      setTlSlabs([]);
-    }
     setClientAgentName(v.clientAgentName ?? (query.agentCompany||query.groupName||query.clientName||""));
     setDocNotes(v.docNotes ?? "");
     setAssignedStaffName(v.assignedStaffName ?? ((staff||[]).find(s=>s.id===query.assignedTo)?.name||""));
@@ -347,13 +335,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
 
   // Pricing maths lives in lib/costSheetCalc.js so the screen, the PDF and the
   // Excel export all price from the same code.
-  const { calcSlab, calcTlSlab } = makeCalculators({
+  const { calcSlab } = makeCalculators({
     transports, tlMode, tlCost, miscMode, miscCost, monMode, localHandlers, extras, gst, markup, roe,
     totals: { totMeal, totHotel, totSS, monTotal },
   });
 
   const saveVersion = () => {
-    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:[...slabs], days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:tlSlabs.map(t=>({...t,costs:{...t.costs},includes:{...t.includes}})), clientAgentName, assignedStaffName, docNotes };
+    const snap = { version, date:new Date().toLocaleString("en-IN"), slabs:slabs.map(x=>({...x, ...(x.tlCosts?{tlCosts:{...x.tlCosts}}:{}), ...(x.tlIncludes?{tlIncludes:{...x.tlIncludes}}:{})})), days:[...days], transports:[...transports], gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments:[...monuments], localHandlers:[...localHandlers], extras:[...extras], note: versionNote, tlSlabs:[], clientAgentName, assignedStaffName, docNotes };
     setVersions(p=>[...p.filter(v=>v.version!==version), snap]);
     const savePromise = saveCostSheetVersion(db, query.id, snap, currentUser?.id).then(({ id, error }) => {
       // saveCostSheetVersion now reports insert failures instead of
@@ -372,7 +360,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return savePromise;
   };
   const guard = useUnsavedGuard({ enabled: !readOnly, what: "Cost Sheet", onClose, onSave: () => saveVersion(),
-    snapshot: { slabs, days, transports, gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments, localHandlers, extras, tlSlabs, clientAgentName, assignedStaffName, docNotes } });
+    snapshot: { slabs, days, transports, gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra, monuments, localHandlers, extras, clientAgentName, assignedStaffName, docNotes } });
 
   const inp = {padding:"4px 6px",border:`1px solid ${G.gray200}`,borderRadius:4,fontSize:11,fontFamily:"'Inter',sans-serif",width:"100%",outline:"none",color:G.gray800,background:G.white};
 
@@ -474,8 +462,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // that show the same cost join into one block, and each cost shows the
     // WHOLE figure that was taken as well as what it comes to per paying pax.
     const mxCols = [
-      ...slabs.map(s=>({ id:s.id, label:s.label, pax:n(s.foc), vehicle:s.vehicle==="Others"?(s.vehicleOther||""):(s.vehicle||""), tl:false, calc:calcSlab(s) })),
-      ...tlSlabs.map(tl=>({ id:tl.id, label:tl.label, pax:n(tl.pax), vehicle:tl.vehicle==="Others"?(tl.vehicleOther||""):(tl.vehicle||""), tl:true, obj:tl, calc:calcTlSlab(tl) })),
+      ...slabs.map(s=>({ id:s.id, label:s.label, pax:n(s.foc), vehicle:s.vehicle==="Others"?(s.vehicleOther||""):(s.vehicle||""), obj:s, hasSur: surchargeOf(s).total>0, calc:calcSlab(s) })),
     ];
     const money = v => "₹"+Math.round(v).toLocaleString();
     const gridCell = (inner, align, extra, zebra) => `<div class="grid-cell${zebra?" zebra":""}" style="text-align:${align}${extra||""}">${inner}</div>`;
@@ -485,13 +472,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     // steps from sub-total to the final price. The single supplement is its
     // own right-hand column (it is per single room, never divided by pax).
     const ssB = ssBuild(totSS, gst, markup, roe);
-    const colsMeta = mxCols.map(c=>({ id:c.id, label:c.label, pax:c.pax, tl:c.tl }));
-    const TLTINT = "#fff8e1", SSTINT = "#f4f1fb";
+    const colsMeta = mxCols.map(c=>({ id:c.id, label:c.label, pax:c.pax }));
+    const SSTINT = "#f4f1fb";
     const dash = '<span style="color:#999">&ndash;</span>';
     const val = v => v==null ? dash : (v ? money(v) : "—");
     const numCells = (vals, o={}) => mxCols.map((c,i)=>gridCell(
       (vals[i]==null ? dash : (vals[i] || o.zero===false ? money(vals[i]) : "—")),
-      "right", `${o.bold?";font-weight:700":""}${o.style||""}${!o.style && c.tl ? ";background:"+TLTINT : ""}${o.custom&&o.custom[i]?";background:#fef3c7;font-weight:700":""}`)).join("");
+      "right", `${o.bold?";font-weight:700":""}${o.style||""}${o.custom&&o.custom[i]?";background:#fef3c7;font-weight:700":""}`)).join("");
     const mxRow = (label, basis, vals, ssV, o={}) =>
       gridCell(label, "left", `${o.indent?";padding-left:10pt":""}${o.bold?";font-weight:700":""}${o.style||""}`)
       + gridCell(basis||"", "left", `;font-size:6.8pt;${o.style?"":"color:#555"}${o.style||""}`)
@@ -522,13 +509,13 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       + mxCols.map(c=>gridCell(c.calc.finalFX>0?`${currency} ${c.calc.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700")).join("")
       + gridCell(ssB.finalFX>0?`${currency} ${ssB.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700");
     const buildHeaders = ["Cost per paying pax (₹)", "What was quoted",
-      ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</span>`),
+      ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}</span>`),
       `Single supp.<br/><span style="font-size:6.5pt;font-weight:400">per single room</span>`];
     // The surcharge, split by what the tour leader's own costs are made of.
     const tlPartRows = TL_PARTS.map(([key,label]) => {
-      const per = mxCols.map(c => c.tl ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).perPax : null);
+      const per = mxCols.map(c => c.hasSur ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).perPax : null);
       if (!per.some(v=>v>0)) return "";
-      const tot = mxCols.map(c => c.tl ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).total : null);
+      const tot = mxCols.map(c => c.hasSur ? (tlBreakdown(c.obj).find(x=>x.key===key)||{}).total : null);
       const basis = tot.filter(v=>v>0).length ? "₹"+tot.filter(v=>v>0).map(v=>Math.round(v).toLocaleString()).join(" / ₹")+" &divide; paying pax" : "";
       return mxRow(label, basis, per.map(v=>v>0?v:(v===undefined?0:null)), "", { indent:true, style:";font-size:7.4pt" });
     }).join("");
@@ -544,14 +531,14 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         + mxRow("Tour Facilitator", n(tlCost) ? `₹${n(tlCost).toLocaleString()} ${tlMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.tlPP), "")
         + mxRow("Miscellaneous", n(miscCost) ? `₹${n(miscCost).toLocaleString()} ${miscMode==="pp"?"per pax":"group"}` : "", mxCols.map(c=>c.calc.miscPP), "")
         + mxRow("Monuments", monuments.some(m=>m.include)||n(monExtra) ? `₹${Math.round(monTotal).toLocaleString()} ${monMode==="pp"?"per pax":"group"}` : "none included", mxCols.map(c=>c.calc.monPP), "")
-        + (tlSlabs.length ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.tl?c.calc.surchargePP:null), "", { style:"" }) + tlPartRows : "")
+        + (mxCols.some(c=>c.hasSur) ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.hasSur?c.calc.surchargePP:null), "", { style:"" }) + tlPartRows : "")
         + buildRows + finalRow,
         "", [19,17,...mxCols.map(()=>8),8])}`;
-    const tlTileNote = c => { if(!c.tl) return ""; const parts = tlBreakdown(c.obj); return `<div style="font-size:6.5pt;color:#7a5a00;margin-top:2pt">incl. T/L surcharge ${money(c.calc.surchargePP)} pp${parts.length?": "+parts.map(x=>`${x.label} ${money(x.perPax)}`).join(", "):""}</div>`; };
+    const tlTileNote = c => { if(!c.hasSur) return ""; const parts = tlBreakdown(c.obj); return `<div style="font-size:6.5pt;color:#7a5a00;margin-top:2pt">incl. T/L surcharge ${money(c.calc.surchargePP)} pp${parts.length?": "+parts.map(x=>`${x.label} ${money(x.perPax)}`).join(", "):""}</div>`; };
     const finalBlock = `
       <div class="section-title" style="margin:7pt 0 4pt">Final cost per pax</div>
       <div style="display:grid;grid-template-columns:repeat(${mxCols.length+1},1fr);gap:5pt;margin-bottom:4pt;page-break-inside:avoid;break-inside:avoid">
-        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;${c.tl?"background:"+TLTINT:""}"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}${c.tl?" &middot; T/L":""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div>${tlTileNote(c)}</div>`).join("")}
+        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div>${tlTileNote(c)}</div>`).join("")}
         <div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;background:${SSTINT}"><div style="font-weight:700;font-size:8.5pt">Single supplement</div><div style="font-size:6.8pt;color:#666">per single room</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${ssB.finalFX>0?currency+" "+ssB.finalFX.toLocaleString():"—"}</div></div>
       </div>`;
     const matrixBlock = buildBlock;
@@ -579,9 +566,9 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     return buildCostSheetWorkbookFile(ExcelJS, {
       query, currentVersionLabel, savedTimestamp, clientAgentName, assignedStaffName,
       gst, markup, roe, currency, tlMode, tlCost, miscMode, miscCost, monMode, monExtra,
-      monuments, days, transports: transports.map(t=>({ ...t, slabs: appliedSlabIds(t, [...slabs.map(x=>x.id), ...tlSlabs.map(x=>x.id)], "transport") })), localHandlers, extras, slabs, tlSlabs,
+      monuments, days, transports: transports.map(t=>({ ...t, slabs: appliedSlabIds(t, slabs.map(x=>x.id), "transport") })), localHandlers, extras, slabs,
       totals: { totMeal, totHotel, daySS, handlerSS, totSS, monTotal },
-      calcSlab, calcTlSlab, formatDateSlash,
+      calcSlab, formatDateSlash,
     });
   };
 
@@ -617,7 +604,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     <button onClick={()=>setter(val)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${cur===val?G.accent:G.gray200}`,background:cur===val?"#FDEDEC":G.white,color:cur===val?G.accent:G.gray600,fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:cur===val?600:400}}>{label}</button>
   );
 
-  const hasAnyPricedSlab = (slabs.length > 0 && calcSlab(slabs[0]).finalFX > 0) || (tlSlabs.length > 0 && calcTlSlab(tlSlabs[0]).finalFX > 0);
+  const hasAnyPricedSlab = slabs.length > 0 && calcSlab(slabs[0]).finalFX > 0;
   const hasFinalPrice = hasAnyPricedSlab && !!lastSavedCostSheetId;
 
   return (
@@ -850,11 +837,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
           {/* 10.3 - 10.4  Pricing matrix: transport, local handler, extra services, group slabs and tour leader slabs on one grid */}
           {secH("Pricing Matrix & Final Prices","🧮")}
           <PricingMatrix
-            slabs={slabs} setSlabs={setSlabs} tlSlabs={tlSlabs} setTlSlabs={setTlSlabs}
+            slabs={slabs} setSlabs={setSlabs}
             transports={transports} setTransports={setTransports} localHandlers={localHandlers} setLocalHandlers={setLocalHandlers}
-            extras={extras} setExtras={setExtras} calcSlab={calcSlab} calcTlSlab={calcTlSlab} currency={currency} roe={roe}
+            extras={extras} setExtras={setExtras} calcSlab={calcSlab} currency={currency} roe={roe}
             totHotel={totHotel} totMeal={totMeal} handlerSS={handlerSS} daySS={daySS} gst={gst} markup={markup}
-            onAddSlab={addSlab} onAddTlSlab={addTlSlab} onAddTransport={addTransport} onAddLocalHandler={addLocalHandler}
+            onAddSlab={addSlab} onAddTransport={addTransport} onAddLocalHandler={addLocalHandler}
             onAddExtra={()=>{ scrollRestoreRef.current = { fieldset: fieldsetRef.current?.scrollTop ?? null, window: window.scrollY }; setExtras(p=>[...p,{id:Date.now(),description:"",cost:"",mode:"PP",cells:{}}]); }}
             onFetchTl={fetchTlSlabCosts}
           />

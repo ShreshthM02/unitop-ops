@@ -85,10 +85,10 @@ describe('CostSheet PDF export: Tour Leader Slabs and Client/Agent + Assigned St
     expect(html).toContain('Priya Sharma');
   });
 
-  it('a T/L slab appears as its own row in the PDF Final Price Summary, with its real label', async () => {
+  it('an added slab appears in the PDF with its real label', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    const labelInput = screen.getByDisplayValue('10 pax + 1 T/L');
+    fireEvent.click(screen.getByText('+ Add Slab'));
+    const labelInput = screen.getByDisplayValue('New Slab');
     fireEvent.change(labelInput, { target: { value: 'Small Group PDF Test' } });
     clickExport('📕 PDF');
     const html = capturedHTML();
@@ -125,16 +125,16 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     expect(html).toContain('19fr');
   });
 
-  it('a T/L slab row shows the same Tour Facilitator cost as a group slab would (not the surcharge in that column)', async () => {
+  it('a slab with a tour leader surcharge shows it split by part, separate from the Tour Facilitator cost', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
     fireEvent.change(screen.getByPlaceholderText('Total cost'), { target: { value: '6000' } });
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
-    fireEvent.change(screen.getByLabelText('Paying pax'), { target: { value: '6' } });
+    fireEvent.change(screen.getAllByLabelText('FOC (N paying)')[0], { target: { value: '6' } });
+    fireEvent.change(screen.getAllByLabelText('Hotel (tour leader)')[0], { target: { value: '3000' } });
     clickExport('📕 PDF');
     const html = capturedHTML();
-    // Tour Facilitator: lumpsum 6000 / 6 pax = 1000, should appear as a
-    // real number in the Tour Facil column for the T/L slab row too.
-    expect(html).toMatch(/₹1,000/);
+    expect(html).toMatch(/₹1,000/);                 // Tour Facilitator 6000 / 6
+    expect(html).toContain('Tour leader surcharge');
+    expect(html).toMatch(/incl\. T\/L surcharge ₹500 pp: Hotel ₹500/);
   });
 });
 
@@ -196,7 +196,7 @@ describe('CostSheet PDF: column headers no longer visually collide (missing gap 
 describe('CostSheet PDF: fr units instead of % prevent wide tables (T/L Slabs, 16 columns) from overflowing the printable page once column-gap is added', () => {
   it('every content-grid uses fr units, never %, in grid-template-columns', async () => {
     const { capturedHTML } = await exportAndCaptureHTML();
-    fireEvent.click(screen.getByText('+ Add T/L Slab'));
+    fireEvent.click(screen.getByText('+ Add Slab'));
     clickExport('📕 PDF');
     const html = capturedHTML();
     const gridDeclarations = [...html.matchAll(/class="content-grid" style="grid-template-columns:([^"]+)"/g)].map(m => m[1]);
