@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import * as Lib from '../lib/index.js';
 import DateInput from '../lib/DateInput.jsx';
+import HistoryExportMenu from './HistoryExportMenu.jsx';
+import { fleetServiceSpec, fleetExpenseSpec } from '../lib/historyExports.js';
 const { G, db, useCan, RichTextEditor, sanitizeRichHtml, richHtmlHasContent, useIsNarrowViewport, defaultResizeImage, formatDateSlash, FileRemark,
   FLEET_PROFILE_FIELDS, blankVehicle, loadFleetVehicles, saveFleetVehicle, loadFleetRows, saveFleetRow, deleteFleetRow,
   mapDbFleetServiceRow, fleetServiceRowToDb, mapDbFleetExpenseRow, fleetExpenseRowToDb, newFleetId, vehicleFolderName,
@@ -118,7 +120,10 @@ function ServiceHistoryTab({ vehicle, canEdit }) {
   };
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: G.gray600, marginBottom: 10 }}>Tours this vehicle has run. Added by hand — nothing is pulled in automatically.</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ flex: 1, fontSize: 11.5, color: G.gray600 }}>Tours this vehicle has run. Added by hand — nothing is pulled in automatically.</div>
+        <HistoryExportMenu kind="Vehicle" name={vehicle.name || vehicle.regNo} what="Service History" getSpecs={() => fleetServiceSpec(vehicle, sortByDateDesc(rows, "startDate"))} />
+      </div>
       <ErrorLine msg={loadErr} />
       <ManualRows columns={columns} rows={sortByDateDesc(rows, "startDate")} blank={() => ({ tourFileNo: "", startDate: "", endDate: "", sector: "", notes: "" })}
         validate={validateServiceRow} onSave={onSave} onDelete={onDelete} canEdit={canEdit} addLabel="+ Add Service Entry" rowLabel="service entry"
@@ -164,6 +169,7 @@ function ExpenseLedgerTab({ vehicle, canEdit }) {
         <div><div style={lbl}>To</div><DateInput aria-label="Filter to date" style={{ ...inp, width: 150 }}  value={to} onChange={e => setTo(e.target.value)} /></div>
         {filtered && <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setFrom(""); setTo(""); }}>Clear</button>}
         <div style={{ flex: 1 }} />
+        <HistoryExportMenu kind="Vehicle" name={vehicle.name || vehicle.regNo} what="Expense Ledger" getSpecs={() => fleetExpenseSpec(vehicle, shown, from, to)} />
         <div style={{ textAlign: "right" }}>
           <div style={kicker}>{filtered ? "Total for selected dates" : "Total expense"}</div>
           <div data-testid="fleet-expense-total" style={{ fontSize: 20, fontWeight: 700, color: G.navy, fontFamily: "'Playfair Display',serif" }}>{formatINR(totalExpenses(shown))}</div>

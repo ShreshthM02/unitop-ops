@@ -11,10 +11,20 @@ const NAVY = "FF0D1B2A", LIGHT = "FFEEF1F5", GREY = "FF6B7280", BORDER = "FFD1D5
 
 export function safeSheetName(s) { return String(s || "Sheet").replace(/[\\/?*[\]:]/g, " ").slice(0, 31).trim() || "Sheet"; }
 
-export function buildSimpleWorkbook(ExcelJS, { title, sheetName, info = [], columns, rows, totals }) {
+export function buildSimpleWorkbook(ExcelJS, spec) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Unitop Ops"; wb.created = new Date();
-  const ws = wb.addWorksheet(safeSheetName(sheetName || title), { properties: { tabColor: { argb: NAVY } } });
+  const specs = Array.isArray(spec) ? spec : [spec];
+  const used = new Set();
+  specs.forEach((sp) => addSheet(wb, sp, used));
+  return wb;
+}
+
+function addSheet(wb, { title, sheetName, info = [], columns, rows, totals }, used) {
+  let name = safeSheetName(sheetName || title), k = 2;
+  while (used.has(name.toLowerCase())) name = safeSheetName(`${(sheetName || title).slice(0, 27)} ${k++}`);
+  used.add(name.toLowerCase());
+  const ws = wb.addWorksheet(name, { properties: { tabColor: { argb: NAVY } } });
   const n = columns.length;
   ws.columns = columns.map((c) => ({ key: c.key, width: c.width || 16 }));
 
@@ -73,7 +83,7 @@ export function buildSimpleWorkbook(ExcelJS, { title, sheetName, info = [], colu
   ws.autoFilter = { from: { row: HDR, column: 1 }, to: { row: HDR, column: n } };
   ws.views = [{ state: "frozen", ySplit: HDR, showGridLines: false }];
   ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: `${HDR}:${HDR}` };
-  return wb;
+  return ws;
 }
 
 function colLetter(c) { let s = ""; while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; }
