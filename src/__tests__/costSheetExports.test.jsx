@@ -49,17 +49,19 @@ describe('PDF export: itinerary first, then the price matrix, then the final cos
   it('has the settings strip, the day-wise itinerary, the build-up, then the final cost tiles; no checks box', async () => {
     await mount();
     exportMenu('📕 PDF');
-    for (const w of ['GST', 'Day-wise Itinerary', 'How each price is built', 'Final cost per pax', 'Single supp', '10 pax', '16 pax', '9 + 1 T/L', 'Sub-total', 'After tax', 'Selling price', 'Final price']) expect(pdfHtml).toContain(w);
+    for (const w of ['GST', 'Day-wise Itinerary', 'PRICE MATRIX', 'Final cost per pax', 'Single supp', '10 pax', '16 pax', '9 + 1 T/L', 'Sub-total', 'After tax', 'Selling price', 'Final price']) expect(pdfHtml).toContain(w);
     const at = (w) => pdfHtml.indexOf(w);
     expect(at('Day-wise Itinerary')).toBeGreaterThan(-1);
-    expect(at('Day-wise Itinerary')).toBeLessThan(at('How each price is built'));
-    expect(at('How each price is built')).toBeLessThan(at('Final cost per pax'));
+    expect(at('Day-wise Itinerary')).toBeLessThan(at('PRICE MATRIX'));
+    expect(at('PRICE MATRIX')).toBeLessThan(at('Final cost per pax'));
+    expect(pdfHtml).toContain('Quoted price');
+    for (const gone of ['How each price is built', 'What was quoted', '(page 2)', 'Costs are in rupees unless a row says otherwise', 'incl. T/L surcharge']) expect(pdfHtml).not.toContain(gone);
     expect(pdfHtml).not.toContain('Checked before export');
     expect(pdfHtml).not.toContain('Final Price Summary');
     expect(pdfHtml).not.toContain('Tour Leader Slabs');
   });
 
-  it('splits the tour leader surcharge into its parts, in the matrix and on the final tile', async () => {
+  it('splits the tour leader surcharge into its parts, in the matrix only (no note under the final tiles)', async () => {
     await mount();
     exportMenu('📕 PDF');
     const i = pdfHtml.indexOf('Tour leader surcharge');
@@ -68,7 +70,7 @@ describe('PDF export: itinerary first, then the price matrix, then the final cos
     expect(after).toContain('Hotel');
     expect(after).toContain('Single supplement');
     expect(after).toContain('Extra meals');
-    expect(pdfHtml).toMatch(/incl\. T\/L surcharge ₹856 pp: Hotel ₹467, Single supplement ₹311, Extra meals ₹78/);
+    expect(pdfHtml).not.toContain('incl. T/L surcharge');
   });
 
   it('shows the foreign-currency details: amount, ROE and rupee equivalent', async () => {

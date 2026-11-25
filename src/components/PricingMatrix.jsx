@@ -281,7 +281,7 @@ export function PricingMatrix({
             {!shut.ex && extras.map((e, i) => lineRow(e, i, "extra", setExtras, exDr, "e.g. Boat ride at Varanasi, Cultural show, Camel ride...", "description"))}
             {!shut.ex && (<tr><td style={stickyCol}><button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={openThen("ex", onAddExtra)}>+ Add Extra Service</button></td><td colSpan={cols.length + 2} /></tr>)}
 
-            {groupRow("tls", "Tour leader surcharge", (c) => (c.sur.total > 0 ? (n(c.pax) <= 0 ? "Set paying pax" : inr(c.calc.surchargePP)) : ""), cols.filter((c) => c.sur.total > 0).length || "none used", "optional · the tour leader's own costs, spread over the paying pax")}
+            {groupRow("tls", "Tour leader surcharge", (c) => (c.sur.total > 0 ? (n(c.pax) <= 0 ? "Set paying pax" : inr(c.calc.surchargePP)) : ""), cols.filter((c) => c.sur.total > 0).length || "none used", "")}
             {!shut.tls && (<>
               {TL_KEYS.map(([key, label]) => (
                 <tr key={key}>

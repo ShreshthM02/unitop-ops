@@ -134,7 +134,8 @@ describe('CostSheet PDF export: follow-up fixes (T/L Facilitator distinction, em
     const html = capturedHTML();
     expect(html).toMatch(/₹1,000/);                 // Tour Facilitator 6000 / 6
     expect(html).toContain('Tour leader surcharge');
-    expect(html).toMatch(/incl\. T\/L surcharge ₹500 pp: Hotel ₹500/);
+    expect(html).not.toContain('incl. T/L surcharge');
+    expect(html).toMatch(/Hotel[\s\S]{0,400}₹500/);
   });
 });
 

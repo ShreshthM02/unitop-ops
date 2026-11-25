@@ -428,7 +428,6 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
     const settingsBlock = `
       <div style="display:flex;justify-content:center;gap:16pt;flex-wrap:wrap;margin-bottom:8pt;font-size:9pt">
         <span><b>GST:</b> ${gst}%</span><span><b>Markup:</b> ${markup}%</span><span><b>ROE:</b> ${roe}</span><span><b>Currency:</b> ${currency}</span>
-        <span style="color:#555">Costs are in rupees unless a row says otherwise</span>
       </div>`;
 
     const dayRows = days.map((d,i) => rowHTML([
@@ -508,7 +507,7 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       + gridCell(`&divide; ROE ${roe}, rounded up`, "left", ";background:#0d1b2a;color:#fff;font-size:7pt")
       + mxCols.map(c=>gridCell(c.calc.finalFX>0?`${currency} ${c.calc.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700")).join("")
       + gridCell(ssB.finalFX>0?`${currency} ${ssB.finalFX.toLocaleString()}`:"—", "right", ";background:#0d1b2a;color:#fff;font-weight:700");
-    const buildHeaders = ["Cost per paying pax (₹)", "What was quoted",
+    const buildHeaders = ["Cost per paying pax (₹)", "Quoted price",
       ...mxCols.map(c=>`${c.label||"—"}<br/><span style="font-size:6.5pt;font-weight:400">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}</span>`),
       `Single supp.<br/><span style="font-size:6.5pt;font-weight:400">per single room</span>`];
     // The surcharge, split by what the tour leader's own costs are made of.
@@ -520,11 +519,11 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
       return mxRow(label, basis, per.map(v=>v>0?v:(v===undefined?0:null)), "", { indent:true, style:";font-size:7.4pt" });
     }).join("");
     const buildBlock = `
-      <div class="section-title" style="margin:0 0 3pt">How each price is built</div>
+      <div class="section-title" style="margin:0 0 3pt">PRICE MATRIX</div>
       <div style="font-size:7pt;color:#555;margin-bottom:3pt">Amber = figure specific to that slab &middot; dash = not applied &middot; blue = quoted in a foreign currency &middot; single supplement is per single room, not divided by pax.</div>
       ${tableBlock(buildHeaders, [],
-        mxRow("Hotels", `${nightsWithHotel} night${nightsWithHotel===1?"":"s"}, net rates (page 2)`, mxCols.map(()=>totHotel), daySS)
-        + mxRow("Extra meals", "per day plans (page 2)", mxCols.map(()=>totMeal), "")
+        mxRow("Hotels", `${nightsWithHotel} night${nightsWithHotel===1?"":"s"}, net rates`, mxCols.map(()=>totHotel), daySS)
+        + mxRow("Extra meals", "per day plans", mxCols.map(()=>totMeal), "")
         + (transports.length ? bandR("Transport","tptPP","") + listRows(transports,"transport","sector","Transport") : "")
         + (localHandlers.length ? bandR("Local handler","localPP", handlerSS||"") + listRows(localHandlers,"local","sector","Local handler") : "")
         + (extras.length ? bandR("Extra services","extrasPP","") + listRows(extras,"extra","description","Extra service") : "")
@@ -534,11 +533,10 @@ export function CostSheet({ query, onClose, onProceedToQuotation, currentUser, r
         + (mxCols.some(c=>c.hasSur) ? mxRow("Tour leader surcharge", "T/L's own costs &divide; paying pax", mxCols.map(c=>c.hasSur?c.calc.surchargePP:null), "", { style:"" }) + tlPartRows : "")
         + buildRows + finalRow,
         "", [19,17,...mxCols.map(()=>8),8])}`;
-    const tlTileNote = c => { if(!c.hasSur) return ""; const parts = tlBreakdown(c.obj); return `<div style="font-size:6.5pt;color:#7a5a00;margin-top:2pt">incl. T/L surcharge ${money(c.calc.surchargePP)} pp${parts.length?": "+parts.map(x=>`${x.label} ${money(x.perPax)}`).join(", "):""}</div>`; };
     const finalBlock = `
       <div class="section-title" style="margin:7pt 0 4pt">Final cost per pax</div>
       <div style="display:grid;grid-template-columns:repeat(${mxCols.length+1},1fr);gap:5pt;margin-bottom:4pt;page-break-inside:avoid;break-inside:avoid">
-        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div>${tlTileNote(c)}</div>`).join("")}
+        ${mxCols.map(c=>`<div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;"><div style="font-weight:700;font-size:8.5pt">${c.label||"—"}</div><div style="font-size:6.8pt;color:#666">${c.pax||"—"} paying${c.vehicle?" &middot; "+c.vehicle:""}</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${c.calc.finalFX>0?currency+" "+c.calc.finalFX.toLocaleString():"—"}</div></div>`).join("")}
         <div style="border:0.5pt solid #cfd4da;border-radius:3pt;padding:4pt 6pt;background:${SSTINT}"><div style="font-weight:700;font-size:8.5pt">Single supplement</div><div style="font-size:6.8pt;color:#666">per single room</div><div style="font-size:13pt;font-weight:700;color:#0d1b2a;margin-top:2pt">${ssB.finalFX>0?currency+" "+ssB.finalFX.toLocaleString():"—"}</div></div>
       </div>`;
     const matrixBlock = buildBlock;

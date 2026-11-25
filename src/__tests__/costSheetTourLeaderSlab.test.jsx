@@ -24,6 +24,7 @@ describe('One kind of slab: a single "+ Add Slab", no separate T/L slab', () => 
     const row = screen.getByText(/Tour leader surcharge ·/);
     expect(row.textContent).toContain('▸');
     expect(row.textContent).toContain('none used');
+    expect(row.textContent).not.toMatch(/optional|spread over the paying pax/);
     expect(screen.queryByLabelText('Hotel (tour leader)')).toBeNull();
   });
 
