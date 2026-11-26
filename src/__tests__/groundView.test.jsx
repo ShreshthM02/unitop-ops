@@ -167,6 +167,16 @@ describe('GanttView UI: Ground View tab', () => {
     expect(onOpenQuery).toHaveBeenCalledWith(q);
   });
 
+  it('Ground View card names the foreign agent in a small "via" line when there is one', async () => {
+    const { default: GanttView } = await import('../components/GanttView.jsx');
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const q = [{ id: 'q1', tourFileId: 'TUR-1', groupName: 'G', agentCompany: 'Uni Travel', status: 'operations', cancelled: false, travelDate: todayStr, nights: 2 }];
+    render(<GanttView queries={q} onOpenQuery={()=>{}} staff={staff} vendors={vendors} tourExecutions={{}}/>);
+    fireEvent.click(screen.getByText(/Ground View/));
+    expect(screen.getByTestId('ground-agent').textContent).toBe('via Uni Travel');
+  });
+
   it('shows a genuine empty state when nothing is running on the chosen date', async () => {
     const { default: GanttView } = await import('../components/GanttView.jsx');
     render(<GanttView queries={[]} onOpenQuery={()=>{}} staff={staff} vendors={vendors} tourExecutions={{}}/>);

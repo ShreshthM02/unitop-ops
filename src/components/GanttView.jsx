@@ -36,6 +36,9 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
     return new Date(+m[1], +m[2]-1, +m[3]);
   };
 
+  // Foreign agent, shown quietly (small grey text / hover) so the calendars stay uncluttered.
+  const agentOf = q => q.agentCompany || q.agentName || "";
+
   // Only show queries that are in operations or completed AND have a confirmed travel date
   const allTours = queries
     .filter(q=>["operations","finance","completed"].includes(q.status) && q.tourFileId && !q.cancelled && q.travelDate)
@@ -155,13 +158,14 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                       <td onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{padding:"6px 12px",borderBottom:`1px solid ${G.gray100}`,verticalAlign:"middle",position:"sticky",left:0,background:ti%2===0?G.white:G.gray50,zIndex:1,cursor:onOpenQuery?"pointer":"default"}}>
                         <div style={{fontSize:12,fontWeight:500}}>{tour.query.groupName||tour.query.clientName}</div>
                         <div style={{fontSize:10,color:G.gray400}}>{tour.query.tourFileId||tour.query.id} · {tour.query.destination||tour.query.sector||""}</div>
+                        {agentOf(tour.query)&&<div data-testid="gantt-agent" title={`Agent: ${agentOf(tour.query)}`} style={{fontSize:9,color:G.gray400,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:190}}>via {agentOf(tour.query)}</div>}
                       </td>
                       {monthDays.map(d=>{
                         const bar = barForDay(tour, d);
                         return (
                           <td key={d} style={{padding:"3px 1px",borderBottom:`1px solid ${G.gray100}`,borderLeft:isToday(d)?`2px solid ${G.accent}`:"none",height:36}}>
                             {bar && (
-                              <div onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{height:18,background:tour.color,opacity:0.85,margin:"0 1px",
+                              <div title={[tour.query.groupName||tour.query.clientName, agentOf(tour.query)&&`via ${agentOf(tour.query)}`].filter(Boolean).join(" · ")} onClick={()=>onOpenQuery&&onOpenQuery(tour.query)} style={{height:18,background:tour.color,opacity:0.85,margin:"0 1px",
                                 borderRadius:bar.isFirst&&bar.isLast?"4px":bar.isFirst?"4px 0 0 4px":bar.isLast?"0 4px 4px 0":"0",
                                 display:"flex",alignItems:"center",overflow:"hidden",cursor:onOpenQuery?"pointer":"default"}}>
                                 {bar.isFirst&&<span style={{fontSize:9,color:"#fff",paddingLeft:4,whiteSpace:"nowrap",overflow:"hidden",fontWeight:600}}>
@@ -181,7 +185,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
               {ganttTours.slice(0,6).map(t=>(
                 <span key={t.query.id} style={{display:"flex",alignItems:"center",gap:5}}>
                   <span style={{width:10,height:10,borderRadius:2,background:t.color,display:"inline-block"}}/>
-                  {t.query.groupName||t.query.clientName}
+                  {t.query.groupName||t.query.clientName}{agentOf(t.query)&&<span style={{opacity:0.7}}> ({agentOf(t.query)})</span>}
                 </span>
               ))}
               {ganttTours.length>6&&<span>+{ganttTours.length-6} more</span>}
@@ -226,6 +230,7 @@ export default function GanttView({ queries, onOpenQuery, staff, vendors, tourEx
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:700,color:G.navy}}>{q.groupName||q.clientName||q.id}</div>
                       <div style={{fontSize:11,color:G.gray400}}>{q.tourFileId||q.id} · Day {dayIndex} of {totalDays}</div>
+                      {agentOf(q)&&<div data-testid="ground-agent" style={{fontSize:10,color:G.gray400,fontStyle:"italic"}}>via {agentOf(q)}</div>}
                     </div>
                     {facilitatorNames.length>0 && (
                       <div style={{textAlign:"right"}}>

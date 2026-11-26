@@ -10,6 +10,18 @@ const queries = [
   },
 ];
 
+describe('GanttView: foreign agent shown subtly', () => {
+  it('Gantt row label carries a small "via <agent>" line, bar hover and legend name the agent', () => {
+    render(<GanttView queries={queries} tours={[]}/>);
+    expect(screen.getByTestId('gantt-agent').textContent).toBe('via Uni Travel');
+    expect(document.querySelector('[title*="via Uni Travel"]')).toBeTruthy();
+  });
+  it('no agent on the query means no extra line', () => {
+    render(<GanttView queries={[{...queries[0], agentCompany: ''}]} tours={[]}/>);
+    expect(screen.queryByTestId('gantt-agent')).toBeNull();
+  });
+});
+
 describe('GanttView: Movement Chart tab', () => {
   it('adds a third "Movement Chart" tab alongside Gantt and Ground View (Overlap was replaced by Ground View, per direct request -- a real operational "what\'s happening today" view rather than a date-range collision chart)', () => {
     render(<GanttView queries={queries} tours={[]}/>);
